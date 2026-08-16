@@ -4,9 +4,10 @@
  * the display formatters.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, afterEach } from 'vitest'
 import {
-  computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, isSubscriptionPlan, modelOf,
+  applyLivePricing, computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
+  isSubscriptionPlan, modelOf,
 } from '../src/client/pricing.ts'
 
 describe('modelOf', () => {
@@ -59,6 +60,48 @@ describe('computeCost', () => {
   it('charges nothing for a subscription-plan model key', () => {
     expect(isSubscriptionPlan('some-plan-key')).toBe(false)
     expect(computeCost(modelOf('flash'), { input: MILLION, cacheHit: 0, cacheMiss: MILLION, output: MILLION })).toBeGreaterThan(0)
+  })
+})
+
+describe('live pricing overrides', () => {
+  const MILLION = 1_000_000
+
+  afterEach(() => {
+    // 清掉实时覆盖（模块级状态），避免影响后续用例；缺省字段即回退内置值。
+    applyLivePricing({ source: 'builtin' })
+  })
+
+  it('uses the live exchange rate for USD models when provided', () => {
+    applyLivePricing({ source: 'live', rate: 7.5 })
+    const cost = computeCost(modelOf('gemini-pro'), { input: MILLION, cacheHit: MILLION, cacheMiss: 0, output: 0 }, 1)
+    // 标准档缓存命中 $0.2/1M，按 live 汇率 7.5 换算。
+    expect(cost).toBeCloseTo((1_000_000 * 0.2) / MILLION * 7.5, 10)
+  })
+
+  it('overrides a matched model price with the live USD table', () => {
+    applyLivePricing({ source: 'live', prices: { flash: { input: 2, cacheHit: 0.2, output: 8 } } })
+    const row = modelOf('flash')
+    expect(row.price.currency).toBe('USD')
+    const cost = computeCost(row, { input: MILLION, cacheHit: 0, cacheMiss: MILLION, output: MILLION }, 1)
+    // 美元单价 × 内置汇率 6.79（未给 rate 时）。
+    expect(cost).toBeCloseTo((1_000_000 * 2 + 1_000_000 * 8) / MILLION * 6.79, 10)
+  })
+
+  it('keeps the built-in catalog when no live data applies', () => {
+    applyLivePricing({ source: 'builtin' })
+    expect(modelOf('flash').price.currency).toBe('CNY')
+    expect(modelOf('flash').name).toBe('DeepSeek V4 Flash')
+    expect(modelOf('gemini-pro').price.currency).toBe('USD')
+  })
+
+  it('reports the built-in rate and source when no live rate is applied', () => {
+    applyLivePricing({ source: 'builtin' })
+    expect(getRateInfo()).toEqual({ rate: 6.79, live: false })
+  })
+
+  it('reports the live rate and source once applied', () => {
+    applyLivePricing({ source: 'live', rate: 7.5 })
+    expect(getRateInfo()).toEqual({ rate: 7.5, live: true })
   })
 })
 

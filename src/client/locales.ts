@@ -35,6 +35,9 @@ export type UsageBillingKey =
   | 'billing.close'
   | 'billing.lastUpdated'
   | 'billing.noData'
+  | 'billing.todayRate'
+  | 'billing.rateLive'
+  | 'billing.rateBuiltin'
 
 export const NS = 'usageBilling'
 
@@ -73,6 +76,9 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.close': '关闭',
   'billing.lastUpdated': '数据更新于',
   'billing.noData': '暂无计费数据',
+  'billing.todayRate': '今日汇率',
+  'billing.rateLive': '实时',
+  'billing.rateBuiltin': '内置',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -110,4 +116,7 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.close': 'Close',
   'billing.lastUpdated': 'Updated',
   'billing.noData': 'No billing data yet',
+  'billing.todayRate': 'Today rate',
+  'billing.rateLive': 'Live',
+  'billing.rateBuiltin': 'Built-in',
 }

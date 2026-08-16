@@ -13,12 +13,43 @@
  * mixes both bands by a configured peak share ({@link DEFAULT_PEAK_SHARE}).
  */
 
+import type { LivePrice, LivePricing } from '../pricing-shared.ts'
+
 /**
  * USD → CNY rate for display. Source: China Foreign Exchange Trade System
  * mid-rate 6.7878 on 2026-08-14; rounded to 6.79. Only applies to overseas
  * USD-priced models — domestic models never pass through this rate.
+ * The node half may refresh this at boot via `/api/billing/pricing`; until a
+ * live rate arrives the built-in value stays in force.
  */
 export const USD_TO_CNY = 6.79
+
+/** 运行时实时覆盖：undefined = 用内置目录与内置汇率（默认值降级）。 */
+let liveRate: number | undefined
+let livePrices: Readonly<Record<string, LivePrice>> | undefined
+
+/**
+ * Apply the node half's live pricing snapshot. Absent fields keep the
+ * built-in catalog and rate; callers never fabricate values.
+ * @param pricing - the `/api/billing/pricing` response.
+ */
+export function applyLivePricing(pricing: LivePricing): void {
+  liveRate = pricing.rate
+  livePrices = pricing.prices
+}
+
+/** 当前汇率：实时覆盖优先，缺省回退内置固定值。 */
+function currentRate(): number {
+  return liveRate ?? USD_TO_CNY
+}
+
+/**
+ * 当前生效的 USD → CNY 汇率及其来源：live = 启动时实时拉取成功，
+ * builtin = 实时拉取失败、正在用内置默认值。
+ */
+export function getRateInfo(): { rate: number; live: boolean } {
+  return { rate: currentRate(), live: liveRate !== undefined }
+}
 
 /** Default share of traffic assumed to fall in the peak band (0..1). */
 export const DEFAULT_PEAK_SHARE = 0.5
@@ -403,10 +434,15 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
 /** Lookup a model by its stats key; falls back to the generic `other` entry. */
 export function modelOf(key: string): ModelEntry {
   const found = MODEL_CATALOG.find(entry => entry.key === key)
-  if (found !== undefined) return found
-  const fallback = MODEL_CATALOG.at(-1)
-  if (fallback !== undefined) return fallback
-  throw new Error('MODEL_CATALOG must not be empty')
+  const base = found ?? (() => {
+    const fallback = MODEL_CATALOG.at(-1)
+    if (fallback !== undefined) return fallback
+    throw new Error('MODEL_CATALOG must not be empty')
+  })()
+  const live = livePrices?.[key]
+  if (live === undefined) return base
+  // 实时价是路由器的美元单价（平档、无时段区分）：整表替换并走汇率换算。
+  return { ...base, price: { currency: 'USD', input: live.input, cacheHit: live.cacheHit, output: live.output } }
 }
 
 /** Resolve a price-table row by its CSS variable name (theme token or fallback color). */
@@ -432,7 +468,7 @@ function priceBandCost(band: PriceBand, buckets: TokenUsageBuckets, currency: 'C
     + (buckets.output * band.output)
   ) / 1_000_000
   // 统一成人民币：只有美元计价的国外模型需要乘汇率，国内模型原样就是 ¥。
-  return currency === 'USD' ? raw * USD_TO_CNY : raw
+  return currency === 'USD' ? raw * currentRate() : raw
 }
 
 /**
@@ -454,10 +490,14 @@ export function computeCost(entry: ModelEntry, buckets: TokenUsageBuckets, peakS
 
 /** Format a CNY amount with adaptive precision. */
 export function formatMoney(cny: number): string {
-  if (cny >= 1000) return `¥${cny.toFixed(0)}`
-  if (cny >= 10) return `¥${cny.toFixed(1)}`
-  if (cny >= 0.1) return `¥${cny.toFixed(2)}`
-  return `¥${cny.toFixed(3)}`
+  // 外部统计 JSON 的数字字段可能被写成字符串/非法值：先归一化，避免
+  // toFixed 抛 TypeError 把整个渲染树打崩（插件 surface 会被卸载）。
+  const value = Number(cny)
+  if (!Number.isFinite(value)) return '¥0'
+  if (value >= 1000) return `¥${value.toFixed(0)}`
+  if (value >= 10) return `¥${value.toFixed(1)}`
+  if (value >= 0.1) return `¥${value.toFixed(2)}`
+  return `¥${value.toFixed(3)}`
 }
 
 /**
@@ -484,5 +524,7 @@ export function formatTokens(value: number): string {
 
 /** Format a percentage. */
 export function formatPercent(value: number): string {
-  return `${value.toFixed(1)}%`
+  const normalized = Number(value)
+  if (!Number.isFinite(normalized)) return '0.0%'
+  return `${normalized.toFixed(1)}%`
 }

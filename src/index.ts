@@ -18,6 +18,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { aggregateUsage } from './aggregate.ts'
+import { fetchLivePricing } from './pricing-fetch.ts'
+import type { LivePricing } from './pricing-shared.ts'
 
 /** Plugin configuration. */
 export interface UsageBillingConfig {
@@ -43,6 +45,22 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     join(cwd, '.dsh-usage-stats.json'),
     join(homedir(), '.dsh/.dsh-usage-stats.json'),
   ].filter((path): path is string => typeof path === 'string' && path.length > 0)
+
+  // 后台拉取一次实时定价（汇率 + OpenRouter 模型价）；失败自动降级内置目录。
+  let live: LivePricing = { source: 'builtin' }
+  void fetchLivePricing().then((result) => { live = result })
+
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'exact',
+      path: '/api/billing/pricing',
+      handler: async (_req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify(live))
+      },
+    }),
+    'usage-billing: pricing route',
+  )
 
   ctx.effect(
     () => ctx.webServer.register({

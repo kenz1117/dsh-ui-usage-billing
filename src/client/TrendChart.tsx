@@ -1,9 +1,11 @@
 /**
- * TrendChart: dependency-free SVG stacked bar chart of daily cost per model.
- * Each day's column stacks every model's share in its brand color, so the
- * total trend and the per-model composition are visible at once. A hover
- * crosshair shows the day's model breakdown. No chart library — the surface
- * stays self-contained and offline.
+ * TrendChart: dependency-free SVG chart of daily cost + calls.
+ *
+ * The columns are GROUPED per model — one bar per model per day, each in its
+ * brand color, so per-model cost is directly comparable. The blue line is the
+ * total call volume across all models, plotted on its own right-hand axis.
+ * A hover crosshair shows the day's model breakdown. No chart library — the
+ * surface stays self-contained and offline.
  */
 
 import { useMemo, useState } from 'react'
@@ -16,7 +18,7 @@ export interface TrendSeriesModel {
   key: string
   /** Human-readable model name. */
   name: string
-  /** Resolved brand color for the stack segment and legend swatch. */
+  /** Resolved brand color for the bar and legend swatch (empty = single-color fallback). */
   color: string
 }
 
@@ -26,21 +28,28 @@ export interface TrendPoint {
   date: string
   /** Total cost that day. */
   cost: number
-  /** API calls that day. */
+  /** API calls that day (total across models). */
   calls: number
-  /** Per-model cost that day (stats key → CNY); absent entries stack zero. */
+  /** Per-model cost that day (stats key → CNY); absent entries plot zero. */
   byModel?: Readonly<Record<string, number>>
 }
 
 /** Fixed viewBox; the SVG scales to its container. */
 const W = 680
 const H = 220
-const PAD = { top: 18, right: 16, bottom: 26, left: 46 }
+const PAD = { top: 18, right: 40, bottom: 26, left: 46 }
 
 /** Split a date into `M/D` for axis labels. */
 function shortDate(iso: string): string {
   const [, month, day] = iso.split('-')
   return `${Number(month)}/${Number(day)}`
+}
+
+/** Compact tick label for the calls axis: `1.2K` / `3.4M`. */
+function shortNumber(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
+  return String(Math.round(value))
 }
 
 /** Ticks every `step` items for sparse axis labels. */
@@ -51,27 +60,23 @@ function tickIndexes(length: number, step: number): number[] {
   return out
 }
 
-/** One day's stacked geometry: the column x and its per-model segments. */
-interface Column {
-  date: string
-  x: number
-  segments: readonly Segment[]
-  total: number
-}
+/** Single-color fallback identity used when the stats carry no per-model detail. */
+const TOTAL_MODEL: TrendSeriesModel = { key: '__total__', name: '总计', color: '' }
 
-/** One stacked segment within a day's column. */
-interface Segment {
+/** One grouped bar: one model's cost on one day. */
+interface Bar {
+  date: string
   model: TrendSeriesModel
-  y0: number
-  y1: number
-  /** Top segment carries the column's rounded corners; others are squared. */
-  rounded: boolean
+  /** Bar left edge x. */
+  x: number
+  /** Cost value this model contributed that day. */
+  value: number
 }
 
 /**
- * Render the daily per-model stacked cost chart.
+ * Render the daily grouped cost bars plus the total-calls line.
  * @param props.data - sorted daily rows (ascending date).
- * @param props.models - the model legend, in stack order (bottom first).
+ * @param props.models - the model legend, in bar order.
  */
 export function TrendChart({ data, models = [] }: { data: readonly TrendPoint[]; models?: readonly TrendSeriesModel[] }): React.ReactNode {
   const [hover, setHover] = useState<number | null>(null)
@@ -79,38 +84,52 @@ export function TrendChart({ data, models = [] }: { data: readonly TrendPoint[];
   const layout = useMemo(() => {
     const n = data.length
     if (n === 0) return null
-    const maxCost = Math.max(...data.map(d => d.cost), 0.0001)
     const plotW = W - PAD.left - PAD.right
     const plotH = H - PAD.top - PAD.bottom
     const inner = (i: number): number => {
       if (n === 1) return PAD.left + plotW / 2
       return PAD.left + (plotW * i) / (n - 1)
     }
+    // 刻度按「单模型单日最大费用」：分组柱每根代表一个模型，直方更饱满。
+    const maxCost = Math.max(...data.flatMap(d => Object.values(d.byModel ?? {})), ...data.map(d => d.cost), 0.0001)
     const yCost = (value: number): number => PAD.top + plotH - (value / maxCost) * plotH
-    const barW = Math.min(18, (plotW / n) * 0.5)
-    // 堆叠段：每个日期按 models 顺序自下而上累计各模型当日费用。
-    const columns: Column[] = data.map((d, i) => {
-      let acc = 0
-      const segments: Segment[] = models.map((model) => {
-        const value = d.byModel?.[model.key] ?? 0
-        const y0 = acc
-        acc += value
-        return { model, y0, y1: acc, rounded: false }
-      })
-      const top = segments.at(-1)
-      if (top !== undefined) top.rounded = true
-      return { date: d.date, x: inner(i), segments, total: acc }
+    // 调用量比例尺：独立右轴，柱（费用）与线（调用）各用各的刻度。
+    const maxCalls = Math.max(...data.map(d => d.calls), 1)
+    const yCalls = (value: number): number => PAD.top + plotH - (value / maxCalls) * plotH
+
+    const groupW = plotW / n
+    const barCount = Math.max(models.length, 1)
+    const barW = Math.min(14, (groupW / barCount) * 0.7)
+
+    // 分组柱：同一天内每个模型一根独立柱，并排排布。
+    const bars: Bar[] = data.flatMap((d, i) => {
+      if (models.length === 0) {
+        // 无模型明细：单色总费用柱兜底。
+        return [{ date: d.date, model: TOTAL_MODEL, x: inner(i) - barW / 2, value: d.cost }]
+      }
+      return models.map((model, k) => ({
+        date: d.date,
+        model,
+        x: inner(i) - groupW / 2 + (groupW * (k + 0.5)) / models.length - barW / 2,
+        value: d.byModel?.[model.key] ?? 0,
+      }))
     })
+
     const costTicks = [0, 0.25, 0.5, 0.75, 1].map(f => maxCost * f).reverse()
-    return { n, plotW, plotH, inner, yCost, barW, columns, costTicks, maxCost }
+    const callsTicks = [0, 0.25, 0.5, 0.75, 1].map(f => maxCalls * f).reverse()
+    // 调用量折线路径：柱 = 每日分模型费用，线 = 每日总调用次数。
+    const linePath = data.map((d, i) => {
+      const y = yCalls(d.calls)
+      return `${i === 0 ? 'M' : 'L'}${inner(i)} ${y}`
+    }).join(' ')
+    return { n, plotW, plotH, inner, yCost, yCalls, barW, bars, costTicks, callsTicks, linePath }
   }, [data, models])
 
   if (layout === null) {
     return <div className={css.chartEmpty}>暂无趋势数据</div>
   }
 
-  const { n, plotW, inner, yCost, barW, columns, costTicks } = layout
-  const activeColumn = hover === null ? undefined : columns[hover]
+  const { n, plotW, plotH, inner, yCost, yCalls, barW, bars, costTicks, callsTicks, linePath } = layout
   const activePoint = hover === null ? undefined : data[hover]
   const indices = tickIndexes(n, Math.max(1, Math.ceil(n / 8)))
 
@@ -120,7 +139,7 @@ export function TrendChart({ data, models = [] }: { data: readonly TrendPoint[];
         viewBox={`0 0 ${W} ${H}`}
         className={css.chartSvg}
         role="img"
-        aria-label="Daily cost by model"
+        aria-label="Daily cost by model and total calls"
         onMouseLeave={() => { setHover(null) }}
         onMouseMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect()
@@ -143,23 +162,31 @@ export function TrendChart({ data, models = [] }: { data: readonly TrendPoint[];
           )
         })}
 
-        {/* Stacked per-model cost columns. */}
-        {columns.map(column => (
-          <g key={column.date}>
-            {column.segments.map(segment => (
-              <rect
-                key={segment.model.key}
-                x={column.x - barW / 2}
-                y={yCost(segment.y1)}
-                width={barW}
-                height={Math.max(segment.y1 - segment.y0 > 0 ? 1 : 0, yCost(segment.y0) - yCost(segment.y1))}
-                rx={segment.rounded ? 3 : 0}
-                className={css.chartStack}
-                style={{ fill: segment.model.color }}
-              />
-            ))}
-          </g>
-        ))}
+        {/* Grouped per-model cost bars. */}
+        {bars.map(bar => (bar.value > 0 ? (
+          <rect
+            key={`${bar.date}-${bar.model.key}`}
+            x={bar.x}
+            y={yCost(bar.value)}
+            width={barW}
+            height={yCost(0) - yCost(bar.value)}
+            rx={2}
+            className={bar.model.color === '' ? css.chartBar : css.chartStack}
+            style={bar.model.color === '' ? undefined : { fill: bar.model.color }}
+          />
+        ) : null))}
+
+        {/* Calls line (right axis): the daily call volume trend. */}
+        <path d={linePath} fill="none" className={css.chartLine} />
+        {/* Right-axis call labels. */}
+        {callsTicks.map((value, idx) => {
+          const y = yCalls(value)
+          return (
+            <text key={`calls-${idx}`} x={W - PAD.right + 8} y={y + 3} textAnchor="start" className={css.chartAxisLabel}>
+              {shortNumber(value)}
+            </text>
+          )
+        })}
 
         {/* X-axis date labels. */}
         {indices.map((i) => {
@@ -173,27 +200,27 @@ export function TrendChart({ data, models = [] }: { data: readonly TrendPoint[];
         })}
 
         {/* Hover crosshair. */}
-        {activeColumn !== undefined && hover !== null && (
-          <line x1={inner(hover)} x2={inner(hover)} y1={PAD.top} y2={PAD.top + layout.plotH} className={css.chartCrosshair} />
+        {hover !== null && (
+          <line x1={inner(hover)} x2={inner(hover)} y1={PAD.top} y2={PAD.top + plotH} className={css.chartCrosshair} />
         )}
       </svg>
 
       {/* Hover tooltip: the day's model breakdown. */}
-      {activeColumn !== undefined && activePoint !== undefined && hover !== null && (
+      {activePoint !== undefined && hover !== null && (
         <div
           className={css.chartTooltip}
-          style={{ left: `${(inner(hover) / W) * 100}%`, top: `${(yCost(activeColumn.total) / H) * 100}%` }}
+          style={{ left: `${(inner(hover) / W) * 100}%`, top: `${(yCost(activePoint.cost) / H) * 100}%` }}
         >
           <div className={css.chartTooltipDate}>{activePoint.date}</div>
-          {activeColumn.segments.filter(segment => segment.y1 - segment.y0 > 0).map(segment => (
-            <div key={segment.model.key} className={css.chartTooltipRow}>
-              <span className={css.chartTooltipSwatch} style={{ background: segment.model.color }} />
-              {segment.model.name} <strong>{formatMoney(segment.y1 - segment.y0)}</strong>
+          {models.filter(model => (activePoint.byModel?.[model.key] ?? 0) > 0).map(model => (
+            <div key={model.key} className={css.chartTooltipRow}>
+              <span className={css.chartTooltipSwatch} style={{ background: model.color }} />
+              {model.name} <strong>{formatMoney(activePoint.byModel?.[model.key] ?? 0)}</strong>
             </div>
           ))}
           <div className={css.chartTooltipRow}>
             <span className={css.chartLegendBar} />
-            总计 <strong>{formatMoney(activeColumn.total)}</strong>
+            总计 <strong>{formatMoney(activePoint.cost)}</strong>
           </div>
           <div className={css.chartTooltipRow}>
             <span className={css.chartLegendLine} />
@@ -202,7 +229,7 @@ export function TrendChart({ data, models = [] }: { data: readonly TrendPoint[];
         </div>
       )}
 
-      {/* Model legend. */}
+      {/* Model legend: colored squares are per-model cost, the line is calls. */}
       {models.length > 0 && (
         <div className={css.chartLegend}>
           {models.map(model => (
@@ -211,6 +238,10 @@ export function TrendChart({ data, models = [] }: { data: readonly TrendPoint[];
               {model.name}
             </span>
           ))}
+          <span>
+            <span className={css.chartLegendLine} />
+            调用
+          </span>
         </div>
       )}
     </div>

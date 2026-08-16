@@ -7,7 +7,8 @@
   },
   "include": [
     "src/client",
-    "src/css-modules.d.ts"
+    "src/css-modules.d.ts",
+    "src/pricing-shared.ts"
   ],
   "references": [
     {

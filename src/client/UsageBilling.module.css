@@ -33,93 +33,89 @@
   stroke-width: 2;
 }
 
-/* Wide mode: pill with icon, total, and chevron. */
+/* Wide mode: quiet data panel — icon, today total, divider, month total. */
 .trigger {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 9px 12px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  padding: 10px 14px;
+  border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 12px;
   background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
   text-align: left;
-  transition: border-color 140ms ease, background-color 140ms ease, transform 120ms ease;
+  transition: border-color 140ms ease, background-color 140ms ease;
 }
 
 .trigger:hover,
 .trigger:focus-visible {
-  border-color: var(--dsw-alias-border-l3);
+  border-color: var(--dsw-alias-border-l2);
   background: var(--dsw-alias-interactive-bg-hover);
   outline: none;
 }
 
-.trigger:active {
-  transform: scale(0.985);
-}
-
+/* icon 无底座：安静标注计费语义，不与主数字抢层级 */
 .triggerIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
   flex: none;
-  border-radius: 9px;
-  background: linear-gradient(135deg, var(--dsw-static-blue-500), var(--dsw-static-deepseek-500));
-  color: var(--dsw-static-neutral-bluish-00);
+  width: 16px;
+  height: 16px;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .triggerIcon svg {
   width: 15px;
   height: 15px;
-  stroke-width: 2.2;
+  stroke-width: 1.8;
 }
 
-.triggerText {
+/* 左块（今日，主）与右块（当月，次）：单行「标签 + 金额」 */
+.triggerToday,
+.triggerMonth {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: baseline;
+  gap: 4px;
   min-width: 0;
 }
 
-.triggerLabel {
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+/* 分隔线：左右两块之间，极淡不抢戏 */
+.triggerDivider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--dsw-alias-border-l1);
 }
 
-.triggerMeta {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 11px;
-  line-height: 15px;
-  color: var(--dsw-alias-label-tertiary);
+/* 今日主金额：最大、中性主色、等宽数字 */
+.triggerAmount {
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.triggerMeta strong {
+/* 当月次金额：次层级 */
+.triggerAmountSub {
   font-size: 13px;
+  line-height: 18px;
   font-weight: 600;
-  color: var(--dsw-static-blue-500);
+  color: var(--dsw-alias-label-secondary);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.triggerMeta em {
-  font-style: normal;
-  color: var(--dsw-alias-label-caption);
-}
-
-.triggerChevron {
-  width: 14px;
-  height: 14px;
-  margin-left: auto;
-  flex: none;
-  color: var(--dsw-alias-label-caption);
+/* 维度标签 */
+.triggerMeta {
+  font-size: 10.5px;
+  line-height: 14px;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
 }
 
 /* ── Dashboard modal ────────────────────────────────────────────────── */
@@ -195,108 +191,76 @@
 
 /* ── Hero ───────────────────────────────────────────────────────────── */
 
+/* 克制排版：浅色卡 + 本月超大主数字 + 右侧本年/今日次统计，无渐变无装饰。 */
 .hero {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 24px;
-  min-height: 118px;
-  padding: 18px 22px;
+  padding: 20px 24px;
+  border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 16px;
-  background: linear-gradient(135deg, var(--dsw-static-blue-800) 0%, var(--dsw-static-deepseek-600) 55%, var(--dsw-static-deepseek-500) 100%);
-  color: var(--dsw-static-neutral-bluish-00);
-  overflow: hidden;
-  position: relative;
+  background: var(--dsw-alias-bg-layer-1);
 }
 
-.hero::after {
-  content: '';
-  position: absolute;
-  right: -40px;
-  top: -60px;
-  width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 70%);
-  pointer-events: none;
-}
-
+/* 左区：本月主数字 */
 .heroMain {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 3px;
-  flex: 1 1 auto;
+  gap: 4px;
   min-width: 0;
 }
 
 .heroLabel {
   font-size: 12px;
   line-height: 17px;
-  font-weight: 500;
-  opacity: 0.82;
+  color: var(--dsw-alias-label-tertiary);
   white-space: nowrap;
 }
 
 .heroValue {
-  font-size: 38px;
-  line-height: 46px;
-  font-weight: 700;
+  font-size: 40px;
+  line-height: 48px;
+  font-weight: 600;
   letter-spacing: -0.02em;
+  color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .heroMeta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   font-size: 12px;
   line-height: 17px;
-  opacity: 0.82;
+  color: var(--dsw-alias-label-caption);
   white-space: nowrap;
 }
 
-.heroMeta em {
-  font-style: normal;
-  margin-left: 2px;
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.heroDivider {
-  width: 1px;
-  align-self: stretch;
-  flex: none;
-  background: rgba(255, 255, 255, 0.22);
-}
-
+/* 右区：本年 / 今日 两行次统计 */
 .heroSide {
   display: flex;
-  align-items: center;
-  gap: 28px;
-  flex: 0 0 auto;
-  min-width: 140px;
+  flex-direction: column;
+  gap: 10px;
+  flex: none;
 }
 
 .heroSideItem {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 3px;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .heroSideLabel {
   font-size: 12px;
   line-height: 17px;
-  opacity: 0.82;
+  color: var(--dsw-alias-label-tertiary);
   white-space: nowrap;
 }
 
 .heroSideValue {
-  font-size: 22px;
-  line-height: 28px;
+  font-size: 16px;
+  line-height: 22px;
   font-weight: 600;
+  color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -305,13 +269,14 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  font-size: 12px;
+  margin-left: 4px;
+  font-size: 11px;
   line-height: 17px;
   font-weight: 600;
 }
 
-.deltaUp { color: #9ff0b8; }
-.deltaDown { color: #ffb4b4; }
+.deltaUp { color: var(--dsw-static-green-500); }
+.deltaDown { color: var(--dsw-static-red-500); }
 
 /* ── KPI grid ───────────────────────────────────────────────────────── */
 
@@ -459,6 +424,7 @@
 
 .chartLine {
   stroke: var(--dsw-static-blue-500);
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -666,6 +632,30 @@
   color: var(--dsw-static-blue-500);
 }
 
+/* 汇率来源徽标：实时（绿）/ 内置（中性灰） */
+.rateBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  margin-left: 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 500;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+.rateBadgeLive {
+  color: var(--dsw-static-green-500);
+  background: color-mix(in srgb, var(--dsw-static-green-500) 10%, transparent);
+}
+
+.rateBadgeBuiltin {
+  color: var(--dsw-alias-label-tertiary);
+  background: var(--dsw-alias-bg-module-platform);
+}
+
 .pricingToggleText {
   display: flex;
   align-items: baseline;
@@ -797,21 +787,11 @@
   .hero {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
-  }
-
-  .heroMain {
-    min-width: 0;
-    width: 100%;
-  }
-
-  .heroDivider {
-    width: 100%;
-    height: 1px;
-    align-self: stretch;
+    gap: 14px;
   }
 
   .heroSide {
-    min-width: 0;
+    flex-direction: row;
+    gap: 20px;
   }
 }
