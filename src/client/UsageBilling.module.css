@@ -274,6 +274,7 @@
 .heroSide {
   display: flex;
   align-items: center;
+  gap: 28px;
   flex: 0 0 auto;
   min-width: 140px;
 }
@@ -446,6 +447,16 @@
   opacity: 0.6;
 }
 
+/* Stacked per-model segment: fill rides each model's brand color inline. */
+.chartStack {
+  stroke: var(--dsw-alias-bg-layer-1);
+  stroke-width: 0.75;
+}
+
+.chartStack:hover {
+  opacity: 0.85;
+}
+
 .chartLine {
   stroke: var(--dsw-static-blue-500);
   stroke-linecap: round;
@@ -516,6 +527,15 @@
   opacity: 0.5;
 }
 
+/* Model color swatch shared by the tooltip rows and the legend. */
+.chartTooltipSwatch {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+}
+
 .chartLegend {
   display: flex;
   gap: 14px;
@@ -537,6 +557,11 @@
   overflow: auto;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 12px;
+  /* Elevated surface scrollbar rebind contract (ui-theme scrollbar.css):
+     the thumb pair must target the l2 elevation so it stays visible on the
+     panel surface instead of inheriting the base pair. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .modelTable,

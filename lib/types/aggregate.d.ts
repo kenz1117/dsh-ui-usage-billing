@@ -56,11 +56,22 @@ export declare function dayStamp(time: number): string;
  * `SessionPersistence` to list sessions and read each log once.
  */
 export type UsagePersistence = Pick<SessionPersistence, 'list' | 'readFrom'>;
+/** The usage-stats document served to the billing dashboard. */
+export interface UsageStatsDocument {
+    version: number;
+    updatedAt: number;
+    source: 'session-logs';
+    total: ModelUsage;
+    byModel: Record<string, ModelUsage>;
+    byDay: Record<string, ModelUsage>;
+    /** 模型 × 日期 二维统计：趋势图按模型堆叠的输入（[date][modelKey]）。 */
+    byDayModels: Record<string, Record<string, ModelUsage>>;
+}
 /**
  * Aggregate real usage from every persisted session log.
  * @param persistence - the session persistence service.
  * @param options - aggregation tuning (e.g. subscription-plan providers).
  * @returns the usage-stats document (same shape the dashboard expects).
  */
-export declare function aggregateUsage(persistence: UsagePersistence, options?: AggregateOptions): Promise<unknown>;
+export declare function aggregateUsage(persistence: UsagePersistence, options?: AggregateOptions): Promise<UsageStatsDocument>;
 //# sourceMappingURL=aggregate.d.ts.map

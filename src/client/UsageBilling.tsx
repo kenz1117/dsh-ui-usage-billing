@@ -127,6 +127,15 @@ interface UsageStats {
     cacheMiss: number
     cost: number
   }>
+  /** 模型 × 日期 二维统计（趋势图堆叠柱的输入）；旧快照可能缺失，渲染时降级为单色柱。 */
+  byDayModels?: Record<string, Record<string, {
+    calls: number
+    input: number
+    output: number
+    cacheHit: number
+    cacheMiss: number
+    cost: number
+  }>>
 }
 
 /** Path to the usage-stats endpoint served by this plugin's node half. */
@@ -137,6 +146,7 @@ const EMPTY_STATS: UsageStats = {
   total: { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0 },
   byModel: {},
   byDay: {},
+  byDayModels: {},
 }
 
 /** Try to load stats from the server; returns null when no valid JSON stats are served. */
@@ -184,11 +194,11 @@ interface ModelRow {
  * Sidebar footer trigger: compact pill in wide mode, icon in rail mode.
  * @param props - framework props plus `wide` column state.
  */
-function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; totalCost: number; todayCost: number }): React.ReactNode {
-  const { wide, onOpen, totalCost, todayCost } = props
+function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; monthCost: number; todayCost: number }): React.ReactNode {
+  const { wide, onOpen, monthCost, todayCost } = props
   if (!wide) {
     return (
-      <button type="button" className={css.railButton} onClick={onOpen} title={formatMoney(totalCost)}>
+      <button type="button" className={css.railButton} onClick={onOpen} title={formatMoney(monthCost)}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
           <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
         </svg>
@@ -205,7 +215,7 @@ function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; to
       <span className={css.triggerText}>
         <span className={css.triggerLabel}>计费仪表盘</span>
         <span className={css.triggerMeta}>
-          总计 <strong>{formatMoney(totalCost)}</strong>
+          当月 <strong>{formatMoney(monthCost)}</strong>
           {todayCost > 0 && <em>今日 {formatMoney(todayCost)}</em>}
         </span>
       </span>
@@ -216,11 +226,19 @@ function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; to
   )
 }
 
+/** Props of the billing dashboard modal. */
+interface BillingDashboardProps {
+  stats: UsageStats
+  t: (key: UsageBillingKey) => string
+  onClose: () => void
+  health: ModelHealth
+}
+
 /**
  * The centered billing dashboard modal.
  * @param props - stats, locale function, close handler, and model health.
  */
-function BillingDashboard({ stats, t, onClose, health }: { stats: UsageStats; t: (key: UsageBillingKey) => string; onClose: () => void; health: ModelHealth }): React.ReactNode {
+function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps): React.ReactNode {
   const { total, byModel, byDay } = stats
   // Pricing table starts collapsed; the billing table stays open.
   const [pricingOpen, setPricingOpen] = useState(false)
@@ -234,15 +252,28 @@ function BillingDashboard({ stats, t, onClose, health }: { stats: UsageStats; t:
   const latestDate = dates.at(-1) ?? ''
   const today = new Date().toISOString().slice(0, 10)
   const todayCost = byDay[today]?.cost ?? 0
+  // 当年 / 当月 / 当日 三维：按 byDay 的日期前缀归并（无需额外数据）。
+  const monthPrefix = today.slice(0, 7)
+  const yearPrefix = today.slice(0, 4)
+  const monthCost = dates.reduce((sum, d) => sum + (d.startsWith(monthPrefix) ? (byDay[d]?.cost ?? 0) : 0), 0)
+  const monthCalls = dates.reduce((sum, d) => sum + (d.startsWith(monthPrefix) ? (byDay[d]?.calls ?? 0) : 0), 0)
+  const yearCost = dates.reduce((sum, d) => sum + (d.startsWith(yearPrefix) ? (byDay[d]?.cost ?? 0) : 0), 0)
 
-  // Trend series for the SVG chart.
+  // Trend series for the SVG chart: each day's total plus its per-model cost
+  // breakdown (byDayModels feeds the stacked columns; absent → single-color).
   const trend: TrendPoint[] = useMemo(
-    () => dates.map(date => ({
-      date,
-      cost: byDay[date]!.cost,
-      calls: byDay[date]!.calls,
-    })),
-    [dates, byDay],
+    () => dates.map((date) => {
+      const byModel: Record<string, number> = {}
+      const dayModels = stats.byDayModels?.[date]
+      if (dayModels !== undefined) {
+        for (const [key, data] of Object.entries(dayModels)) {
+          if (data.cost > 0) byModel[key] = data.cost
+        }
+      }
+      const day = byDay[date]
+      return { date, cost: day?.cost ?? 0, calls: day?.calls ?? 0, byModel }
+    }),
+    [dates, byDay, stats.byDayModels],
   )
 
   // Model rows: estimated cost from the pricing catalog, actual from stats.
@@ -283,8 +314,15 @@ function BillingDashboard({ stats, t, onClose, health }: { stats: UsageStats; t:
   const displayTotal = total.cost > 0 ? total.cost : estimatedTotal
   const avgPerCall = total.calls > 0 ? displayTotal / total.calls : 0
 
+  // Trend-chart legend: model rows sort by cost desc, so the stack bottoms
+  // with the most expensive model (visually stable baseline).
+  const chartModels = useMemo(
+    () => modelRows.map(row => ({ key: row.key, name: row.name, color: row.color })),
+    [modelRows],
+  )
+
   // Range summary for the hero delta.
-  const prevDayCost = trend.length >= 2 ? trend[trend.length - 2]!.cost : 0
+  const prevDayCost = trend.length >= 2 ? (trend.at(-2)?.cost ?? 0) : 0
   const deltaPct = prevDayCost > 0 ? ((todayCost - prevDayCost) / prevDayCost) * 100 : 0
 
   return (
@@ -318,18 +356,21 @@ function BillingDashboard({ stats, t, onClose, health }: { stats: UsageStats; t:
 
         {/* Scrollable body */}
         <div className={css.dashboardBody}>
-          {/* Hero */}
+          {/* Hero: 本月为主数字，右侧并列 本年 / 今日 */}
           <section className={css.hero}>
             <div className={css.heroMain}>
-              <span className={css.heroLabel}>{t('billing.totalCost')}</span>
-              <span className={css.heroValue}>{formatMoney(displayTotal)}</span>
+              <span className={css.heroLabel}>{t('billing.monthCost')}</span>
+              <span className={css.heroValue}>{formatMoney(monthCost)}</span>
               <span className={css.heroMeta}>
-                {total.calls.toLocaleString()} {t('billing.calls')}
-                {total.cost > 0 && <em>· 实际</em>}
+                {monthCalls.toLocaleString()} {t('billing.calls')}
               </span>
             </div>
             <div className={css.heroDivider} />
             <div className={css.heroSide}>
+              <div className={css.heroSideItem}>
+                <span className={css.heroSideLabel}>{t('billing.yearCost')}</span>
+                <span className={css.heroSideValue}>{formatMoney(yearCost)}</span>
+              </div>
               <div className={css.heroSideItem}>
                 <span className={css.heroSideLabel}>{t('billing.todayCost')}</span>
                 <span className={css.heroSideValue}>{formatMoney(todayCost)}</span>
@@ -374,7 +415,7 @@ function BillingDashboard({ stats, t, onClose, health }: { stats: UsageStats; t:
               <h3 className={css.panelTitle}>{t('billing.trend')}</h3>
               <span className={css.panelHint}>{latestDate}</span>
             </div>
-            <TrendChart data={trend} />
+            <TrendChart data={trend} models={chartModels} />
           </section>
 
           {/* Model billing table */}
@@ -484,11 +525,13 @@ function BillingDashboard({ stats, t, onClose, health }: { stats: UsageStats; t:
                             : formatUnitPrice(entry.price.input, entry.price.currency)}
                         </td>
                         <td className={css.numCol}>
-                          {entry.price.offPeak !== undefined && entry.price.offPeak.cacheHit !== undefined
+                          {entry.price.offPeak !== undefined
                             ? (
                               <span className={css.bandPrice}>
                                 <span>{formatUnitPrice(entry.price.cacheHit, entry.price.currency)}</span>
-                                <span className={css.bandPriceOff}>{formatUnitPrice(entry.price.offPeak.cacheHit, entry.price.currency)}</span>
+                                <span className={css.bandPriceOff}>
+                                  {formatUnitPrice(entry.price.offPeak.cacheHit, entry.price.currency)}
+                                </span>
                               </span>
                             )
                             : formatUnitPrice(entry.price.cacheHit, entry.price.currency)}
@@ -498,7 +541,9 @@ function BillingDashboard({ stats, t, onClose, health }: { stats: UsageStats; t:
                             ? (
                               <span className={css.bandPrice}>
                                 <span>{formatUnitPrice(entry.price.output, entry.price.currency)}</span>
-                                <span className={css.bandPriceOff}>{formatUnitPrice(entry.price.offPeak.output, entry.price.currency)}</span>
+                                <span className={css.bandPriceOff}>
+                                  {formatUnitPrice(entry.price.offPeak.output, entry.price.currency)}
+                                </span>
                               </span>
                             )
                             : formatUnitPrice(entry.price.output, entry.price.currency)}
@@ -542,7 +587,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   // Load stats on mount.
   useEffect(() => {
     let mounted = true
-    void loadUsageStats().then(data => {
+    void loadUsageStats().then((data) => {
       if (mounted && data !== null) setStats(data)
     })
     return () => { mounted = false }
@@ -552,20 +597,24 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   // answers its model catalog (live credentials), red when none do.
   useEffect(() => {
     let mounted = true
-    void checkModels().then(result => {
+    void checkModels().then((result) => {
       if (mounted) setHealth(result)
     })
     return () => { mounted = false }
   }, [checkModels])
 
   const today = new Date().toISOString().slice(0, 10)
+  // 触发胶囊的主数字：当月累计（byDay 按 YYYY-MM 前缀归并）。
+  const monthCost = Object.entries(stats.byDay)
+    .filter(([date]) => date.startsWith(today.slice(0, 7)))
+    .reduce((sum, [, day]) => sum + day.cost, 0)
 
   return (
     <>
       <UsageBillingTrigger
         {...props}
         onOpen={openDashboard}
-        totalCost={stats.total.cost > 0 ? stats.total.cost : 0}
+        monthCost={monthCost}
         todayCost={stats.byDay[today]?.cost ?? 0}
       />
       {open && (

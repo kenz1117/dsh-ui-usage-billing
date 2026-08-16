@@ -103,17 +103,50 @@ export function dayStamp(time: number): string {
  */
 export type UsagePersistence = Pick<SessionPersistence, 'list' | 'readFrom'>
 
+/** The usage-stats document served to the billing dashboard. */
+export interface UsageStatsDocument {
+  version: number
+  updatedAt: number
+  source: 'session-logs'
+  total: ModelUsage
+  byModel: Record<string, ModelUsage>
+  byDay: Record<string, ModelUsage>
+  /** 模型 × 日期 二维统计：趋势图按模型堆叠的输入（[date][modelKey]）。 */
+  byDayModels: Record<string, Record<string, ModelUsage>>
+}
+
+/** Get-or-create one model cell inside a usage map (avoids non-null assertions). */
+function usageCell(map: Map<string, ModelUsage>, key: string): ModelUsage {
+  const existing = map.get(key)
+  if (existing !== undefined) return existing
+  const fresh = emptyUsage()
+  map.set(key, fresh)
+  return fresh
+}
+
+/** Get-or-create one day's model cell inside the two-dimensional map. */
+function modelDayCell(map: Map<string, Map<string, ModelUsage>>, day: string, modelKey: string): ModelUsage {
+  let models = map.get(day)
+  if (models === undefined) {
+    models = new Map()
+    map.set(day, models)
+  }
+  return usageCell(models, modelKey)
+}
+
 /**
  * Aggregate real usage from every persisted session log.
  * @param persistence - the session persistence service.
  * @param options - aggregation tuning (e.g. subscription-plan providers).
  * @returns the usage-stats document (same shape the dashboard expects).
  */
-export async function aggregateUsage(persistence: UsagePersistence, options: AggregateOptions = {}): Promise<unknown> {
+export async function aggregateUsage(persistence: UsagePersistence, options: AggregateOptions = {}): Promise<UsageStatsDocument> {
   const subscriptionProviders = new Set(options.subscriptionProviders ?? DEFAULT_SUBSCRIPTION_PROVIDERS)
   const total = emptyUsage()
   const byModel = new Map<string, ModelUsage>()
   const byDay = new Map<string, ModelUsage>()
+  // 模型 × 日期 二维聚合：趋势图按模型堆叠展示的输入（byDayModels[date][modelKey]）。
+  const byModelDay = new Map<string, Map<string, ModelUsage>>()
   for (const meta of await persistence.list()) {
     const { events } = await persistence.readFrom(meta.id, 0)
     let key = 'other'
@@ -131,18 +164,21 @@ export async function aggregateUsage(persistence: UsagePersistence, options: Agg
       const modelKey = key
       const day = dayStamp(event.time)
       foldUsage(total, event.data.usage, modelKey, subscription)
-      foldUsage(byModel.get(modelKey) ?? byModel.set(modelKey, emptyUsage()).get(modelKey)!, event.data.usage, modelKey, subscription)
-      const dayCell = byDay.get(day) ?? byDay.set(day, emptyUsage()).get(day)!
-      foldUsage(dayCell, event.data.usage, modelKey, subscription)
+      foldUsage(usageCell(byModel, modelKey), event.data.usage, modelKey, subscription)
+      foldUsage(usageCell(byDay, day), event.data.usage, modelKey, subscription)
+      foldUsage(modelDayCell(byModelDay, day, modelKey), event.data.usage, modelKey, subscription)
     }
   }
   const toRecord = (map: Map<string, ModelUsage>): Record<string, ModelUsage> => Object.fromEntries(map)
+  const toModelDayRecord = (map: Map<string, Map<string, ModelUsage>>): Record<string, Record<string, ModelUsage>> =>
+    Object.fromEntries([...map].map(([day, models]) => [day, Object.fromEntries(models)]))
   return {
-    version: 1,
+    version: 2,
     updatedAt: Date.now(),
     source: 'session-logs',
     total,
     byModel: toRecord(byModel),
     byDay: toRecord(byDay),
+    byDayModels: toModelDayRecord(byModelDay),
   }
 }

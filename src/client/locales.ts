@@ -5,6 +5,8 @@ export type UsageBillingKey =
   | 'billing.subtitle'
   | 'billing.cost'
   | 'billing.todayCost'
+  | 'billing.monthCost'
+  | 'billing.yearCost'
   | 'billing.totalCost'
   | 'billing.calls'
   | 'billing.cacheHitRate'
@@ -41,6 +43,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.subtitle': '计费仪表盘',
   'billing.cost': '费用',
   'billing.todayCost': '今日费用',
+  'billing.monthCost': '本月费用',
+  'billing.yearCost': '本年费用',
   'billing.totalCost': '总费用',
   'billing.calls': '调用',
   'billing.cacheHitRate': '缓存命中率',
@@ -76,6 +80,8 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.subtitle': 'Billing dashboard',
   'billing.cost': 'Cost',
   'billing.todayCost': 'Today',
+  'billing.monthCost': 'This month',
+  'billing.yearCost': 'This year',
   'billing.totalCost': 'Total',
   'billing.calls': 'Calls',
   'billing.cacheHitRate': 'Cache Hit',
