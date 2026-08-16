@@ -402,7 +402,11 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
 
 /** Lookup a model by its stats key; falls back to the generic `other` entry. */
 export function modelOf(key: string): ModelEntry {
-  return MODEL_CATALOG.find(entry => entry.key === key) ?? MODEL_CATALOG[MODEL_CATALOG.length - 1]!
+  const found = MODEL_CATALOG.find(entry => entry.key === key)
+  if (found !== undefined) return found
+  const fallback = MODEL_CATALOG.at(-1)
+  if (fallback !== undefined) return fallback
+  throw new Error('MODEL_CATALOG must not be empty')
 }
 
 /** Resolve a price-table row by its CSS variable name (theme token or fallback color). */
