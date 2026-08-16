@@ -1,0 +1,6 @@
+/** Locale dictionaries for the usage billing surface. */
+export type UsageBillingKey = 'billing.title' | 'billing.subtitle' | 'billing.cost' | 'billing.todayCost' | 'billing.totalCost' | 'billing.calls' | 'billing.cacheHitRate' | 'billing.tokens' | 'billing.inputTokens' | 'billing.outputTokens' | 'billing.avgCost' | 'billing.trend' | 'billing.trendEmpty' | 'billing.models' | 'billing.estimated' | 'billing.actual' | 'billing.pricing' | 'billing.showPricing' | 'billing.hidePricing' | 'billing.pricePerM' | 'billing.input' | 'billing.output' | 'billing.cacheHit' | 'billing.peak' | 'billing.offPeak' | 'billing.flat' | 'billing.peakHours' | 'billing.band' | 'billing.openDashboard' | 'billing.close' | 'billing.lastUpdated' | 'billing.noData';
+export declare const NS = "usageBilling";
+export declare const zh: Record<UsageBillingKey, string>;
+export declare const en: Record<UsageBillingKey, string>;
+//# sourceMappingURL=locales.d.ts.map

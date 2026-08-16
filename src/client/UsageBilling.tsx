@@ -1,0 +1,576 @@
+/**
+ * UsageBilling: sidebar footer trigger + full billing dashboard modal.
+ *
+ * The trigger sits above Settings in the sidebar footer (rail shows an icon,
+ * wide shows a pill with the running total). Clicking opens a centered modal
+ * dashboard: hero total, KPI tiles, a dependency-free SVG daily trend chart,
+ * a per-model billing table priced from the built-in catalog, and a pricing
+ * table. Data comes from the host's `/api/billing/usage-stats` endpoint;
+ * before real data arrives the dashboard shows an empty (zero) snapshot,
+ * never fabricated samples.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import clsx from 'clsx'
+import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { TrendChart, type TrendPoint } from './TrendChart.tsx'
+import {
+  computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, isSubscriptionPlan, MODEL_CATALOG,
+  modelOf, resolveToken, type TokenUsageBuckets,
+} from './pricing.ts'
+import { NS, type UsageBillingKey } from './locales.ts'
+import css from './UsageBilling.module.css'
+
+/** Model-connectivity health reported by the host model directory probe. */
+export interface ModelHealth {
+  /** Whether the probe completed (false while still loading). */
+  checked: boolean
+  /** True when at least one connected provider answered its model catalog. */
+  available: boolean
+  /** Connected provider count. */
+  providers: number
+  /** Provider count whose catalog probe failed. */
+  failures: number
+  /** Display names of providers that answered their model catalog (live). */
+  okProviders: readonly string[]
+  /** Display names of providers whose catalog probe failed. */
+  badProviders: readonly string[]
+}
+
+/** Idle health state before the probe settles. */
+const IDLE_HEALTH: ModelHealth = {
+  checked: false, available: false, providers: 0, failures: 0,
+  okProviders: [], badProviders: [],
+}
+
+/**
+ * The dashboard's display names (中文厂商名) never equal the provider names a
+ * user actually configures (deepseek, zhipu, qwen…), so the dot match also
+ * accepts a bidirectional substring hit and a display-name alias list.
+ */
+const PROVIDER_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  'DeepSeek': ['deepseek'],
+  '智谱 AI': ['zhipu', 'glm', 'z.ai'],
+  '阿里通义': ['qwen', 'tongyi', 'dashscope', 'aliyun'],
+  '字节豆包': ['doubao', 'volcengine', 'ark'],
+  '月之暗面': ['moonshot', 'kimi'],
+  'MiniMax': ['minimax'],
+  '百度文心': ['ernie', 'wenxin', 'qianfan', 'baidu'],
+  '腾讯混元': ['hunyuan', 'tencent'],
+  '零一万物': ['01.ai', 'lingyi', 'yi'],
+  '阶跃星辰': ['step', 'stepfun', 'step-3.7'],
+  '科大讯飞': ['spark', 'xfyun', 'iflytek'],
+  '商汤': ['sensenova', 'sensetime'],
+  '百川智能': ['baichuan'],
+  'OpenAI': ['openai'],
+  'Google': ['google', 'gemini'],
+  'xAI': ['xai', 'grok'],
+  'Meta': ['meta', 'llama'],
+}
+
+/** Normalize a provider name for dot matching: lower case, no spaces. */
+function normalizeProvider(name: string): string {
+  return name.trim().toLowerCase().replace(/[\s_/-]+/g, '')
+}
+
+/** Whether one normalized name is a substring of the other (length-guarded). */
+function providerNameHits(display: string, live: string): boolean {
+  if (display.length === 0 || live.length === 0) return false
+  if (display === live) return true
+  const [short, long] = display.length <= live.length ? [display, live] : [live, display]
+  // 太短的片段（如单字母）不做子串判断，避免误匹配。
+  return short.length >= 3 && long.includes(short)
+}
+
+/** Whether a catalog display name matches one live provider name. */
+function providerMatches(display: string, live: string): boolean {
+  const displayKey = normalizeProvider(display)
+  const liveKey = normalizeProvider(live)
+  if (providerNameHits(displayKey, liveKey)) return true
+  const aliases = PROVIDER_ALIASES[display]
+  return aliases !== undefined && aliases.some(alias => providerNameHits(normalizeProvider(alias), liveKey))
+}
+
+/** Resolve one provider's dot state: green when live, red when failed, gray when unknown. */
+function providerDot(health: ModelHealth, provider: string): string | undefined {
+  if (!health.checked) return css.healthIdle
+  if (health.okProviders.some(live => providerMatches(provider, live))) return css.healthOk
+  if (health.badProviders.some(live => providerMatches(provider, live))) return css.healthBad
+  return css.healthIdle
+}
+
+/** Usage stats structure from `.dsh-usage-stats.json`. */
+interface UsageStats {
+  total: {
+    calls: number
+    input: number
+    output: number
+    cacheHit: number
+    cacheMiss: number
+    cost: number
+  }
+  byModel: Record<string, {
+    calls: number
+    input: number
+    output: number
+    cacheHit: number
+    cacheMiss: number
+    cost: number
+  }>
+  byDay: Record<string, {
+    calls: number
+    input: number
+    output: number
+    cacheHit: number
+    cacheMiss: number
+    cost: number
+  }>
+}
+
+/** Path to the usage-stats endpoint served by this plugin's node half. */
+const USAGE_STATS_PATH = '/api/billing/usage-stats'
+
+/** Empty snapshot: shown before (or without) real host data — zeros, never fabricated samples. */
+const EMPTY_STATS: UsageStats = {
+  total: { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0 },
+  byModel: {},
+  byDay: {},
+}
+
+/** Try to load stats from the server; returns null when no valid JSON stats are served. */
+async function loadUsageStats(): Promise<UsageStats | null> {
+  try {
+    const response = await fetch(USAGE_STATS_PATH)
+    if (!response.ok) return null
+    // The web server's SPA fallback answers unknown paths with HTML, so a
+    // 200 is not proof of JSON; parse the text and only accept objects.
+    const text = await response.text()
+    const parsed = JSON.parse(text) as unknown
+    if (parsed !== null && typeof parsed === 'object' && 'total' in parsed) {
+      return parsed as UsageStats
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/** Full props type for the UsageBilling component. */
+type UsageBillingProps =
+  PropsRuntime<'sidebar.footer.action'>
+  & SidebarFooterActionOwnerProps
+  & InjectFace<{ checkModels: () => Promise<ModelHealth> }>
+  & PropsLocale<typeof NS>
+
+/** One model row derived from stats + the pricing catalog. */
+interface ModelRow {
+  key: string
+  name: string
+  provider: string
+  color: string
+  calls: number
+  input: number
+  output: number
+  cacheHitRate: number
+  estimated: number
+  actual?: number
+  /** Billed through a subscription plan (no per-token cost). */
+  plan: boolean
+}
+
+/**
+ * Sidebar footer trigger: compact pill in wide mode, icon in rail mode.
+ * @param props - framework props plus `wide` column state.
+ */
+function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; totalCost: number; todayCost: number }): React.ReactNode {
+  const { wide, onOpen, totalCost, todayCost } = props
+  if (!wide) {
+    return (
+      <button type="button" className={css.railButton} onClick={onOpen} title={formatMoney(totalCost)}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        </svg>
+      </button>
+    )
+  }
+  return (
+    <button type="button" className={css.trigger} onClick={onOpen}>
+      <span className={css.triggerIcon}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        </svg>
+      </span>
+      <span className={css.triggerText}>
+        <span className={css.triggerLabel}>计费仪表盘</span>
+        <span className={css.triggerMeta}>
+          总计 <strong>{formatMoney(totalCost)}</strong>
+          {todayCost > 0 && <em>今日 {formatMoney(todayCost)}</em>}
+        </span>
+      </span>
+      <svg className={css.triggerChevron} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+        <path d="m9 6 6 6-6 6" />
+      </svg>
+    </button>
+  )
+}
+
+/**
+ * The centered billing dashboard modal.
+ * @param props - stats, locale function, close handler, and model health.
+ */
+function BillingDashboard({ stats, t, onClose, health }: { stats: UsageStats; t: (key: UsageBillingKey) => string; onClose: () => void; health: ModelHealth }): React.ReactNode {
+  const { total, byModel, byDay } = stats
+  // Pricing table starts collapsed; the billing table stays open.
+  const [pricingOpen, setPricingOpen] = useState(false)
+
+  const cacheHitRate = total.cacheHit + total.cacheMiss > 0
+    ? (total.cacheHit / (total.cacheHit + total.cacheMiss)) * 100
+    : 0
+
+  // Latest date from the day series (real data when served, demo otherwise).
+  const dates = Object.keys(byDay).sort()
+  const latestDate = dates.at(-1) ?? ''
+  const today = new Date().toISOString().slice(0, 10)
+  const todayCost = byDay[today]?.cost ?? 0
+
+  // Trend series for the SVG chart.
+  const trend: TrendPoint[] = useMemo(
+    () => dates.map(date => ({
+      date,
+      cost: byDay[date]!.cost,
+      calls: byDay[date]!.calls,
+    })),
+    [dates, byDay],
+  )
+
+  // Model rows: estimated cost from the pricing catalog, actual from stats.
+  const modelRows: ModelRow[] = useMemo(
+    () => Object.entries(byModel)
+      .filter(([, data]) => data.calls > 0)
+      .map(([key, data]) => {
+        const entry = modelOf(key)
+        const buckets: TokenUsageBuckets = {
+          input: data.input,
+          cacheHit: data.cacheHit,
+          cacheMiss: data.cacheMiss,
+          output: data.output,
+        }
+        return {
+          key,
+          name: entry.name,
+          provider: entry.provider,
+          color: resolveToken(entry.colorVar),
+          calls: data.calls,
+          input: data.input,
+          output: data.output,
+          cacheHitRate: data.cacheHit + data.cacheMiss > 0
+            ? (data.cacheHit / (data.cacheHit + data.cacheMiss)) * 100
+            : 0,
+          estimated: computeCost(entry, buckets),
+          plan: isSubscriptionPlan(key),
+          // exactOptionalPropertyTypes: absent actual when the stats carry none.
+          ...(data.cost > 0 ? { actual: data.cost } : {}),
+        }
+      })
+      .sort((a, b) => (b.actual ?? b.estimated) - (a.actual ?? a.estimated)),
+    [byModel],
+  )
+
+  // Total: real stats value when present, otherwise the estimated sum.
+  const estimatedTotal = modelRows.reduce((sum, row) => sum + row.estimated, 0)
+  const displayTotal = total.cost > 0 ? total.cost : estimatedTotal
+  const avgPerCall = total.calls > 0 ? displayTotal / total.calls : 0
+
+  // Range summary for the hero delta.
+  const prevDayCost = trend.length >= 2 ? trend[trend.length - 2]!.cost : 0
+  const deltaPct = prevDayCost > 0 ? ((todayCost - prevDayCost) / prevDayCost) * 100 : 0
+
+  return (
+    <Modal open onClose={onClose} title={t('billing.title')} headless className={css.dashboardModal ?? ''}>
+      <div className={css.dashboard}>
+        {/* Header */}
+        <div className={css.dashboardHead}>
+          <div>
+            <h2 className={css.dashboardTitle}>{t('billing.title')}</h2>
+            <p className={css.dashboardSubtitle}>
+              {t('billing.lastUpdated')} {latestDate}
+            </p>
+          </div>
+          <div className={css.dashboardRight}>
+            {health.checked && (
+              <span className={clsx(css.healthBadge, health.available ? css.healthBadgeOk : css.healthBadgeBad)}>
+                <span className={clsx(css.healthDot, health.available ? css.healthOk : css.healthBad)} aria-hidden="true" />
+                {health.available
+                  ? `${health.providers} 模型可用${health.failures > 0 ? ` · ${health.failures} 失效` : ''}`
+                  : `${health.failures} 模型不可用`}
+              </span>
+            )}
+            <button type="button" className={css.closeButton} aria-label={t('billing.close')} onClick={onClose}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable body */}
+        <div className={css.dashboardBody}>
+          {/* Hero */}
+          <section className={css.hero}>
+            <div className={css.heroMain}>
+              <span className={css.heroLabel}>{t('billing.totalCost')}</span>
+              <span className={css.heroValue}>{formatMoney(displayTotal)}</span>
+              <span className={css.heroMeta}>
+                {total.calls.toLocaleString()} {t('billing.calls')}
+                {total.cost > 0 && <em>· 实际</em>}
+              </span>
+            </div>
+            <div className={css.heroDivider} />
+            <div className={css.heroSide}>
+              <div className={css.heroSideItem}>
+                <span className={css.heroSideLabel}>{t('billing.todayCost')}</span>
+                <span className={css.heroSideValue}>{formatMoney(todayCost)}</span>
+                <span className={clsx(css.delta, deltaPct >= 0 ? css.deltaUp : css.deltaDown)}>
+                  {deltaPct >= 0 ? '▲' : '▼'} {Math.abs(deltaPct).toFixed(1)}%
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* KPI grid */}
+          <section className={css.kpiGrid}>
+            <div className={css.kpiTile}>
+              <span className={css.kpiLabel}>{t('billing.cacheHitRate')}</span>
+              <span className={clsx(css.kpiValue, css.kpiGreen)}>{formatPercent(cacheHitRate)}</span>
+              <span className={css.kpiDetail}>
+                {formatTokens(total.cacheHit)} / {formatTokens(total.cacheHit + total.cacheMiss)}
+              </span>
+            </div>
+            <div className={css.kpiTile}>
+              <span className={css.kpiLabel}>{t('billing.tokens')}</span>
+              <span className={css.kpiValue}>{formatTokens(total.input + total.output)}</span>
+              <span className={css.kpiDetail}>
+                {t('billing.inputTokens')} {formatTokens(total.input)} · {t('billing.outputTokens')} {formatTokens(total.output)}
+              </span>
+            </div>
+            <div className={css.kpiTile}>
+              <span className={css.kpiLabel}>{t('billing.avgCost')}</span>
+              <span className={css.kpiValue}>{formatMoney(avgPerCall)}</span>
+              <span className={css.kpiDetail}>{t('billing.calls')} {total.calls.toLocaleString()}</span>
+            </div>
+            <div className={css.kpiTile}>
+              <span className={css.kpiLabel}>{t('billing.calls')}</span>
+              <span className={css.kpiValue}>{total.calls.toLocaleString()}</span>
+              <span className={css.kpiDetail}>{modelRows.length} {t('billing.models')}</span>
+            </div>
+          </section>
+
+          {/* Trend chart */}
+          <section className={css.panel}>
+            <div className={css.panelHead}>
+              <h3 className={css.panelTitle}>{t('billing.trend')}</h3>
+              <span className={css.panelHint}>{latestDate}</span>
+            </div>
+            <TrendChart data={trend} />
+          </section>
+
+          {/* Model billing table */}
+          <section className={css.panel}>
+            <div className={css.panelHead}>
+              <h3 className={css.panelTitle}>{t('billing.models')}</h3>
+              <span className={css.panelHint}>{t('billing.estimated')} · {t('billing.pricePerM')}</span>
+            </div>
+            <div className={css.tableScroll}>
+              <table className={css.modelTable}>
+                <thead>
+                  <tr>
+                    <th>{t('billing.models')}</th>
+                    <th className={css.numCol}>{t('billing.calls')}</th>
+                    <th className={css.numCol}>{t('billing.inputTokens')}</th>
+                    <th className={css.numCol}>{t('billing.outputTokens')}</th>
+                    <th className={css.numCol}>{t('billing.cacheHitRate')}</th>
+                    <th className={css.numCol}>{t('billing.estimated')}</th>
+                    <th className={css.numCol}>{t('billing.actual')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {modelRows.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className={css.emptyRow}>{t('billing.noData')}</td>
+                    </tr>
+                  )}
+                  {modelRows.map(row => (
+                    <tr key={row.key}>
+                      <td>
+                        <span className={css.modelCell}>
+                          {/* The one per-model dot doubles as the health state. */}
+                          <span className={clsx(css.modelDot, providerDot(health, row.provider))} aria-hidden="true" />
+                          <span>
+                            <span className={css.modelName}>{row.name}</span>
+                            <span className={css.modelProvider}>{row.provider}</span>
+                          </span>
+                        </span>
+                      </td>
+                      <td className={css.numCol}>{row.calls.toLocaleString()}</td>
+                      <td className={css.numCol}>{formatTokens(row.input)}</td>
+                      <td className={css.numCol}>{formatTokens(row.output)}</td>
+                      <td className={css.numCol}>{formatPercent(row.cacheHitRate)}</td>
+                      <td className={clsx(css.numCol, css.costCol)}>
+                        {row.plan ? <span className={css.planTag}>订阅包含</span> : formatMoney(row.estimated)}
+                      </td>
+                      <td className={css.numCol}>
+                        {row.plan
+                          ? <span className={css.planTag}>订阅包含</span>
+                          : row.actual !== undefined ? formatMoney(row.actual) : <span className={css.na}>—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Pricing table — collapsed by default */}
+          <section className={css.panel}>
+            <button
+              type="button"
+              className={css.pricingToggle}
+              onClick={() => { setPricingOpen(prev => !prev) }}
+              aria-expanded={pricingOpen}
+            >
+              <span className={css.pricingToggleText}>
+                <span className={css.panelTitle}>{t('billing.pricing')}</span>
+                <span className={css.panelHint}>{t('billing.pricePerM')}</span>
+              </span>
+              <svg className={clsx(css.pricingChevron, pricingOpen && css.pricingChevronOpen)} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            {pricingOpen && (
+              <div className={css.tableScroll}>
+                <table className={css.pricingTable}>
+                  <thead>
+                    <tr>
+                      <th>Model</th>
+                      <th className={css.numCol}>{t('billing.input')}</th>
+                      <th className={css.numCol}>{t('billing.cacheHit')}</th>
+                      <th className={css.numCol}>{t('billing.output')}</th>
+                      <th>{t('billing.band')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {MODEL_CATALOG.map(entry => (
+                      <tr key={entry.key}>
+                        <td>
+                          <span className={css.modelCell}>
+                            <span className={css.modelDot} style={{ background: resolveToken(entry.colorVar) }} />
+                            <span>
+                              <span className={css.modelName}>{entry.name}</span>
+                              <span className={css.modelProvider}>{entry.provider}</span>
+                            </span>
+                          </span>
+                        </td>
+                        <td className={css.numCol}>
+                          {entry.price.offPeak !== undefined
+                            ? (
+                              <span className={css.bandPrice}>
+                                <span>{formatUnitPrice(entry.price.input, entry.price.currency)}</span>
+                                <span className={css.bandPriceOff}>{formatUnitPrice(entry.price.offPeak.input, entry.price.currency)}</span>
+                              </span>
+                            )
+                            : formatUnitPrice(entry.price.input, entry.price.currency)}
+                        </td>
+                        <td className={css.numCol}>
+                          {entry.price.offPeak !== undefined && entry.price.offPeak.cacheHit !== undefined
+                            ? (
+                              <span className={css.bandPrice}>
+                                <span>{formatUnitPrice(entry.price.cacheHit, entry.price.currency)}</span>
+                                <span className={css.bandPriceOff}>{formatUnitPrice(entry.price.offPeak.cacheHit, entry.price.currency)}</span>
+                              </span>
+                            )
+                            : formatUnitPrice(entry.price.cacheHit, entry.price.currency)}
+                        </td>
+                        <td className={css.numCol}>
+                          {entry.price.offPeak !== undefined
+                            ? (
+                              <span className={css.bandPrice}>
+                                <span>{formatUnitPrice(entry.price.output, entry.price.currency)}</span>
+                                <span className={css.bandPriceOff}>{formatUnitPrice(entry.price.offPeak.output, entry.price.currency)}</span>
+                              </span>
+                            )
+                            : formatUnitPrice(entry.price.output, entry.price.currency)}
+                        </td>
+                        <td>
+                          {entry.price.offPeak !== undefined && entry.peakHours !== undefined
+                            ? (
+                              <span className={css.bandTag}>
+                                <span>{t('billing.peak')} {entry.peakHours}</span>
+                                <span className={css.bandTagOff}>{t('billing.offPeak')} 50%</span>
+                              </span>
+                            )
+                            : <span className={css.flatTag}>{t('billing.flat')}</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/**
+ * UsageBilling: sidebar trigger plus the billing dashboard modal.
+ * @param props - framework-provided sidebar and locale props.
+ */
+export function UsageBilling(props: UsageBillingProps): React.ReactNode {
+  const { t, checkModels } = props
+  // Start empty; swap in real host data when the server serves valid JSON.
+  const [stats, setStats] = useState<UsageStats>(EMPTY_STATS)
+  const [health, setHealth] = useState<ModelHealth>(IDLE_HEALTH)
+  const [open, setOpen] = useState(false)
+  const close = useCallback(() => { setOpen(false) }, [])
+  const openDashboard = useCallback(() => { setOpen(true) }, [])
+
+  // Load stats on mount.
+  useEffect(() => {
+    let mounted = true
+    void loadUsageStats().then(data => {
+      if (mounted && data !== null) setStats(data)
+    })
+    return () => { mounted = false }
+  }, [])
+
+  // Probe connected models: the sidebar dot turns green when any provider
+  // answers its model catalog (live credentials), red when none do.
+  useEffect(() => {
+    let mounted = true
+    void checkModels().then(result => {
+      if (mounted) setHealth(result)
+    })
+    return () => { mounted = false }
+  }, [checkModels])
+
+  const today = new Date().toISOString().slice(0, 10)
+
+  return (
+    <>
+      <UsageBillingTrigger
+        {...props}
+        onOpen={openDashboard}
+        totalCost={stats.total.cost > 0 ? stats.total.cost : 0}
+        todayCost={stats.byDay[today]?.cost ?? 0}
+      />
+      {open && (
+        <BillingDashboard stats={stats} t={t} onClose={close} health={health} />
+      )}
+    </>
+  )
+}
