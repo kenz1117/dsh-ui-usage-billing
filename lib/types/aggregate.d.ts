@@ -17,6 +17,17 @@ import type { TokenUsage } from '@deepseek-ai/dsh-llm';
  * like kimi-coding / token plans fall here and therefore cost nothing).
  */
 export declare const MODEL_KEY_ALIASES: Readonly<Record<string, string>>;
+/**
+ * 走订阅套餐（coding / token / agent plan）的 provider id：这些通道的调用
+ * 按套餐计费，不再按 token 计费，因此即使模型 id 与计费表撞名也一律豁免。
+ * 部署可在 plugin config 的 `subscriptionProviders` 中覆盖。
+ */
+export declare const DEFAULT_SUBSCRIPTION_PROVIDERS: readonly string[];
+/** Aggregation tuning options. */
+export interface AggregateOptions {
+    /** 订阅制 provider id 列表；默认 {@link DEFAULT_SUBSCRIPTION_PROVIDERS}。 */
+    subscriptionProviders?: readonly string[];
+}
 /** One model's aggregated usage plus estimated cost in CNY. */
 export interface ModelUsage {
     calls: number;
@@ -35,8 +46,9 @@ export declare function emptyUsage(): ModelUsage;
  * @param acc - the accumulator to mutate.
  * @param usage - the provider-reported usage of one call.
  * @param key - the billing-catalog key this call belongs to.
+ * @param subscription - whether the call went through a subscription plan; such calls never cost money.
  */
-export declare function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string): void;
+export declare function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean): void;
 /** Local-time date stamp (the host runs in the user's timezone). */
 export declare function dayStamp(time: number): string;
 /**
@@ -47,7 +59,8 @@ export type UsagePersistence = Pick<SessionPersistence, 'list' | 'readFrom'>;
 /**
  * Aggregate real usage from every persisted session log.
  * @param persistence - the session persistence service.
+ * @param options - aggregation tuning (e.g. subscription-plan providers).
  * @returns the usage-stats document (same shape the dashboard expects).
  */
-export declare function aggregateUsage(persistence: UsagePersistence): Promise<unknown>;
+export declare function aggregateUsage(persistence: UsagePersistence, options?: AggregateOptions): Promise<unknown>;
 //# sourceMappingURL=aggregate.d.ts.map
