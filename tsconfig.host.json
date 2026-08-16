@@ -9,7 +9,9 @@
     "src/index.ts",
     "src/invariant.ts",
     "src/aggregate.ts",
-    "src/client/pricing.ts"
+    "src/client/pricing.ts",
+    "src/pricing-fetch.ts",
+    "src/pricing-shared.ts"
   ],
   "references": [
     {

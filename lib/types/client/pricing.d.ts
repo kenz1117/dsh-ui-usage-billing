@@ -12,12 +12,29 @@
  * (09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate. The estimator
  * mixes both bands by a configured peak share ({@link DEFAULT_PEAK_SHARE}).
  */
+import type { LivePricing } from '../pricing-shared.ts';
 /**
  * USD → CNY rate for display. Source: China Foreign Exchange Trade System
  * mid-rate 6.7878 on 2026-08-14; rounded to 6.79. Only applies to overseas
  * USD-priced models — domestic models never pass through this rate.
+ * The node half may refresh this at boot via `/api/billing/pricing`; until a
+ * live rate arrives the built-in value stays in force.
  */
 export declare const USD_TO_CNY = 6.79;
+/**
+ * Apply the node half's live pricing snapshot. Absent fields keep the
+ * built-in catalog and rate; callers never fabricate values.
+ * @param pricing - the `/api/billing/pricing` response.
+ */
+export declare function applyLivePricing(pricing: LivePricing): void;
+/**
+ * 当前生效的 USD → CNY 汇率及其来源：live = 启动时实时拉取成功，
+ * builtin = 实时拉取失败、正在用内置默认值。
+ */
+export declare function getRateInfo(): {
+    rate: number;
+    live: boolean;
+};
 /** Default share of traffic assumed to fall in the peak band (0..1). */
 export declare const DEFAULT_PEAK_SHARE = 0.5;
 /**

@@ -17,9 +17,10 @@ import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-s
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TrendChart, type TrendPoint } from './TrendChart.tsx'
 import {
-  computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, isSubscriptionPlan, MODEL_CATALOG,
-  modelOf, resolveToken, type TokenUsageBuckets,
+  applyLivePricing, computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
+  isSubscriptionPlan, MODEL_CATALOG, modelOf, resolveToken, type TokenUsageBuckets,
 } from './pricing.ts'
+import type { LivePricing } from '../pricing-shared.ts'
 import { NS, type UsageBillingKey } from './locales.ts'
 import css from './UsageBilling.module.css'
 
@@ -141,6 +142,9 @@ interface UsageStats {
 /** Path to the usage-stats endpoint served by this plugin's node half. */
 const USAGE_STATS_PATH = '/api/billing/usage-stats'
 
+/** Path to the live-pricing endpoint served by this plugin's node half. */
+const PRICING_PATH = '/api/billing/pricing'
+
 /** Empty snapshot: shown before (or without) real host data — zeros, never fabricated samples. */
 const EMPTY_STATS: UsageStats = {
   total: { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0 },
@@ -158,12 +162,46 @@ async function loadUsageStats(): Promise<UsageStats | null> {
     // 200 is not proof of JSON; parse the text and only accept objects.
     const text = await response.text()
     const parsed = JSON.parse(text) as unknown
-    if (parsed !== null && typeof parsed === 'object' && 'total' in parsed) {
-      return parsed as UsageStats
+    if (parsed === null || typeof parsed !== 'object' || !('total' in parsed)) return null
+    // 缺字段快照兜底：聚合升级前的旧文件可能缺 byDay/byModel，按空统计渲染，
+    // 避免渲染路径读 undefined 抛错导致整个插件 surface 被卸载。
+    const candidate = parsed as Partial<UsageStats>
+    return {
+      total: candidate.total ?? EMPTY_STATS.total,
+      byModel: candidate.byModel ?? {},
+      byDay: candidate.byDay ?? {},
+      ...(candidate.byDayModels !== undefined ? { byDayModels: candidate.byDayModels } : {}),
     }
-    return null
   } catch {
     return null
+  }
+}
+
+/**
+ * Apply the node half's live pricing snapshot. The node half refreshes once
+ * at boot, so an early `builtin` answer may just mean the refresh is still
+ * in flight — retry briefly before settling for the built-in values.
+ * Any final failure keeps the built-in catalog and rate — degrade, never
+ * fabricate.
+ * @param attempt - current retry index (0-based).
+ */
+async function loadLivePricing(attempt = 0): Promise<void> {
+  const MAX_ATTEMPTS = 4
+  try {
+    const response = await fetch(PRICING_PATH)
+    if (!response.ok) return
+    const text = await response.text()
+    const parsed = JSON.parse(text) as unknown
+    if (parsed === null || typeof parsed !== 'object' || !('source' in parsed)) return
+    const pricing = parsed as LivePricing
+    if (pricing.source === 'builtin' && attempt < MAX_ATTEMPTS - 1) {
+      // 节点端启动拉取可能仍在进行中：稍后重试，避免把「更新中」误判成永久内置。
+      setTimeout(() => { void loadLivePricing(attempt + 1) }, 2000)
+      return
+    }
+    applyLivePricing(pricing)
+  } catch {
+    // 拉取失败：维持内置目录与内置汇率（默认值降级）。
   }
 }
 
@@ -195,33 +233,36 @@ interface ModelRow {
  * @param props - framework props plus `wide` column state.
  */
 function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; monthCost: number; todayCost: number }): React.ReactNode {
-  const { wide, onOpen, monthCost, todayCost } = props
+  const { wide, t, onOpen, monthCost, todayCost } = props
+  // 银行卡 icon：计费语义，窄栏与宽栏共用。
+  const cardIcon = (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+      <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+      <path d="M2.5 9.5h19" />
+      <rect x="6" y="12" width="4" height="3.5" rx="0.75" />
+    </svg>
+  )
   if (!wide) {
     return (
-      <button type="button" className={css.railButton} onClick={onOpen} title={formatMoney(monthCost)}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-        </svg>
+      <button type="button" className={css.railButton} onClick={onOpen} title={`${t('billing.title')} · ${formatMoney(monthCost)}`}>
+        {cardIcon}
       </button>
     )
   }
   return (
-    <button type="button" className={css.trigger} onClick={onOpen}>
-      <span className={css.triggerIcon}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-        </svg>
+    <button type="button" className={css.trigger} onClick={onOpen} title={`${t('billing.title')} · 本月 ${formatMoney(monthCost)}`}>
+      <span className={css.triggerIcon}>{cardIcon}</span>
+      {/* 左块：今日费用为重点 */}
+      <span className={css.triggerToday}>
+        <span className={css.triggerMeta}>今日</span>
+        <span className={css.triggerAmount}>{formatMoney(todayCost)}</span>
       </span>
-      <span className={css.triggerText}>
-        <span className={css.triggerLabel}>计费仪表盘</span>
-        <span className={css.triggerMeta}>
-          当月 <strong>{formatMoney(monthCost)}</strong>
-          {todayCost > 0 && <em>今日 {formatMoney(todayCost)}</em>}
-        </span>
+      <span className={css.triggerDivider} />
+      {/* 右块：当月费用为次要 */}
+      <span className={css.triggerMonth}>
+        <span className={css.triggerMeta}>当月</span>
+        <span className={css.triggerAmountSub}>{formatMoney(monthCost)}</span>
       </span>
-      <svg className={css.triggerChevron} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-        <path d="m9 6 6 6-6 6" />
-      </svg>
     </button>
   )
 }
@@ -243,13 +284,15 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
   // Pricing table starts collapsed; the billing table stays open.
   const [pricingOpen, setPricingOpen] = useState(false)
 
+  // 当前汇率与来源：供单价表标题展示（实时 / 内置）。
+  const rateInfo = getRateInfo()
+
   const cacheHitRate = total.cacheHit + total.cacheMiss > 0
     ? (total.cacheHit / (total.cacheHit + total.cacheMiss)) * 100
     : 0
 
   // Latest date from the day series (real data when served, demo otherwise).
   const dates = Object.keys(byDay).sort()
-  const latestDate = dates.at(-1) ?? ''
   const today = new Date().toISOString().slice(0, 10)
   const todayCost = byDay[today]?.cost ?? 0
   // 当年 / 当月 / 当日 三维：按 byDay 的日期前缀归并（无需额外数据）。
@@ -259,10 +302,22 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
   const monthCalls = dates.reduce((sum, d) => sum + (d.startsWith(monthPrefix) ? (byDay[d]?.calls ?? 0) : 0), 0)
   const yearCost = dates.reduce((sum, d) => sum + (d.startsWith(yearPrefix) ? (byDay[d]?.cost ?? 0) : 0), 0)
 
+  // 最近 7 天窗口（含今天）：不足一周的日期补零，图表固定为整周。
+  const trendDates = useMemo(() => {
+    const out: string[] = []
+    for (let offset = 6; offset >= 0; offset -= 1) {
+      const day = new Date()
+      day.setDate(day.getDate() - offset)
+      out.push(day.toISOString().slice(0, 10))
+    }
+    return out
+  }, [])
+  const latestDate = trendDates.at(-1) ?? today
+
   // Trend series for the SVG chart: each day's total plus its per-model cost
   // breakdown (byDayModels feeds the stacked columns; absent → single-color).
   const trend: TrendPoint[] = useMemo(
-    () => dates.map((date) => {
+    () => trendDates.map((date) => {
       const byModel: Record<string, number> = {}
       const dayModels = stats.byDayModels?.[date]
       if (dayModels !== undefined) {
@@ -273,7 +328,7 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
       const day = byDay[date]
       return { date, cost: day?.cost ?? 0, calls: day?.calls ?? 0, byModel }
     }),
-    [dates, byDay, stats.byDayModels],
+    [trendDates, byDay, stats.byDayModels],
   )
 
   // Model rows: estimated cost from the pricing catalog, actual from stats.
@@ -356,7 +411,7 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
 
         {/* Scrollable body */}
         <div className={css.dashboardBody}>
-          {/* Hero: 本月为主数字，右侧并列 本年 / 今日 */}
+          {/* Hero: 本月主数字 + 右侧 本年/今日 次统计，克制排版无渐变 */}
           <section className={css.hero}>
             <div className={css.heroMain}>
               <span className={css.heroLabel}>{t('billing.monthCost')}</span>
@@ -365,7 +420,6 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
                 {monthCalls.toLocaleString()} {t('billing.calls')}
               </span>
             </div>
-            <div className={css.heroDivider} />
             <div className={css.heroSide}>
               <div className={css.heroSideItem}>
                 <span className={css.heroSideLabel}>{t('billing.yearCost')}</span>
@@ -373,9 +427,11 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
               </div>
               <div className={css.heroSideItem}>
                 <span className={css.heroSideLabel}>{t('billing.todayCost')}</span>
-                <span className={css.heroSideValue}>{formatMoney(todayCost)}</span>
-                <span className={clsx(css.delta, deltaPct >= 0 ? css.deltaUp : css.deltaDown)}>
-                  {deltaPct >= 0 ? '▲' : '▼'} {Math.abs(deltaPct).toFixed(1)}%
+                <span className={css.heroSideValue}>
+                  {formatMoney(todayCost)}
+                  <span className={clsx(css.delta, deltaPct >= 0 ? css.deltaUp : css.deltaDown)}>
+                    {deltaPct >= 0 ? '▲' : '▼'} {Math.abs(deltaPct).toFixed(1)}%
+                  </span>
                 </span>
               </div>
             </div>
@@ -484,7 +540,12 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
             >
               <span className={css.pricingToggleText}>
                 <span className={css.panelTitle}>{t('billing.pricing')}</span>
-                <span className={css.panelHint}>{t('billing.pricePerM')}</span>
+                <span className={css.panelHint}>
+                  {t('billing.todayRate')} 1 USD = {formatMoney(rateInfo.rate)}
+                  <span className={clsx(css.rateBadge, rateInfo.live ? css.rateBadgeLive : css.rateBadgeBuiltin)}>
+                    {rateInfo.live ? t('billing.rateLive') : t('billing.rateBuiltin')}
+                  </span>
+                </span>
               </span>
               <svg className={clsx(css.pricingChevron, pricingOpen && css.pricingChevronOpen)} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
                 <path d="m6 9 6 6 6-6" />
@@ -584,12 +645,13 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const close = useCallback(() => { setOpen(false) }, [])
   const openDashboard = useCallback(() => { setOpen(true) }, [])
 
-  // Load stats on mount.
+  // Load stats on mount; also apply the live pricing snapshot in parallel.
   useEffect(() => {
     let mounted = true
     void loadUsageStats().then((data) => {
       if (mounted && data !== null) setStats(data)
     })
+    void loadLivePricing()
     return () => { mounted = false }
   }, [])
 
