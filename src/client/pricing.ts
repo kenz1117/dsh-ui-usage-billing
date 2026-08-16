@@ -54,22 +54,6 @@ export function getRateInfo(): { rate: number; live: boolean } {
 /** Default share of traffic assumed to fall in the peak band (0..1). */
 export const DEFAULT_PEAK_SHARE = 0.5
 
-/**
- * Model keys served through a subscription plan (e.g. a coding plan or topic
- * plan) instead of metered per-token API billing. Usage through these routes
- * costs no tokens: the estimator treats them as ¥0 and the billing table
- * labels them 订阅包含. Add any model key your deployment serves through a
- * plan here; leave empty when every route is pay-as-you-go.
- * kimi-k3: 月之暗面 coding plan 通道的调用按套餐计费，费用记 0。
- * mimo-v2.5: 小米 token plan 通道的调用按订阅计费，费用记 0。
- */
-export const SUBSCRIPTION_PLAN_KEYS: readonly string[] = ['kimi-k3', 'mimo-v2.5']
-
-/** Whether one stats model key is billed through a subscription plan. */
-export function isSubscriptionPlan(key: string): boolean {
-  return SUBSCRIPTION_PLAN_KEYS.includes(key)
-}
-
 /** Usage buckets consumed by one model (counts in raw tokens). */
 export interface TokenUsageBuckets {
   /** Uncached input tokens. */
@@ -498,8 +482,6 @@ function priceBandCost(band: PriceBand, buckets: TokenUsageBuckets, currency: 'C
  * @returns the estimated cost in CNY.
  */
 export function computeCost(entry: ModelEntry, buckets: TokenUsageBuckets, peakShare = DEFAULT_PEAK_SHARE): number {
-  // Subscription-plan routes bill no tokens; the estimate is ¥0 by design.
-  if (isSubscriptionPlan(entry.key)) return 0
   const peak = priceBandCost(entry.price, buckets, entry.price.currency)
   const off = entry.price.offPeak === undefined ? peak : priceBandCost(entry.price.offPeak, buckets, entry.price.currency)
   return peak * peakShare + off * (1 - peakShare)

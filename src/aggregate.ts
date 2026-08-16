@@ -35,13 +35,22 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
 }
 
 /**
- * 走订阅套餐（coding / token / agent plan）的 provider id：这些通道的调用
- * 按套餐计费，不再按 token 计费，因此即使模型 id 与计费表撞名也一律豁免。
- * 部署可在 plugin config 的 `subscriptionProviders` 中覆盖。
+ * 走订阅套餐（coding / token plan / opencode 订阅）的 provider id：这些通道的
+ * 调用按套餐计费，不再按 token 计费，因此即使模型 id 与计费表撞名也一律豁免。
+ * 与 pi-ai 内置提供方对齐（含各地区变体：qwen/xiaomi 的 token-plan、opencode 与
+ * opencode-go、zai-coding-cn）；部署可在 plugin config 的 `subscriptionProviders`
+ * 中覆盖。
  */
 export const DEFAULT_SUBSCRIPTION_PROVIDERS: readonly string[] = [
   'kimi-coding',
+  'zai-coding-cn',
+  'opencode',
+  'opencode-go',
+  'qwen-token-plan',
+  'qwen-token-plan-cn',
+  'xiaomi-token-plan-ams',
   'xiaomi-token-plan-cn',
+  'xiaomi-token-plan-sgp',
 ]
 
 /** Aggregation tuning options. */
@@ -58,6 +67,8 @@ export interface ModelUsage {
   cacheHit: number
   cacheMiss: number
   cost: number
+  /** 该模型本次统计的所有调用是否都走订阅通道（coding/token plan）；混合通道不置位。 */
+  plan?: boolean
 }
 
 /** Zeroed usage accumulator. */
@@ -152,6 +163,8 @@ export async function aggregateUsage(persistence: UsagePersistence, options: Agg
   const byDay = new Map<string, ModelUsage>()
   // 模型 × 日期 二维聚合：趋势图按模型堆叠展示的输入（byDayModels[date][modelKey]）。
   const byModelDay = new Map<string, Map<string, ModelUsage>>()
+  // 每个模型 key 走订阅通道的调用数：等于总调用数才置 plan，混合通道不标。
+  const planCalls = new Map<string, number>()
   for (const meta of await persistence.list()) {
     const { events } = await persistence.readFrom(meta.id, 0)
     let key = 'other'
@@ -172,9 +185,18 @@ export async function aggregateUsage(persistence: UsagePersistence, options: Agg
       foldUsage(usageCell(byModel, modelKey), event.data.usage, modelKey, subscription)
       foldUsage(usageCell(byDay, day), event.data.usage, modelKey, subscription)
       foldUsage(modelDayCell(byModelDay, day, modelKey), event.data.usage, modelKey, subscription)
+      if (subscription) planCalls.set(modelKey, (planCalls.get(modelKey) ?? 0) + 1)
     }
   }
-  const toRecord = (map: Map<string, ModelUsage>): Record<string, ModelUsage> => Object.fromEntries(map)
+  const toRecord = (map: Map<string, ModelUsage>): Record<string, ModelUsage> => {
+    // exactOptionalPropertyTypes：只有全部调用都走订阅通道时才带 plan 字段。
+    const record: Record<string, ModelUsage> = {}
+    for (const [key, cell] of map) {
+      if (planCalls.get(key) === cell.calls && cell.calls > 0) record[key] = { ...cell, plan: true }
+      else record[key] = cell
+    }
+    return record
+  }
   const toModelDayRecord = (map: Map<string, Map<string, ModelUsage>>): Record<string, Record<string, ModelUsage>> =>
     Object.fromEntries([...map].map(([day, models]) => [day, Object.fromEntries(models)]))
   return {

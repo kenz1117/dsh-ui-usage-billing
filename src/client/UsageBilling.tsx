@@ -18,7 +18,7 @@ import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TrendChart, type TrendPoint } from './TrendChart.tsx'
 import {
   applyLivePricing, computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
-  isSubscriptionPlan, MODEL_CATALOG, modelOf, resolveToken, type TokenUsageBuckets,
+  MODEL_CATALOG, modelOf, resolveToken, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance } from '../pricing-shared.ts'
 import { NS, type UsageBillingKey } from './locales.ts'
@@ -426,7 +426,9 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
             ? (data.cacheHit / (data.cacheHit + data.cacheMiss)) * 100
             : 0,
           estimated: computeCost(entry, buckets),
-          plan: isSubscriptionPlan(key),
+          // 订阅标记来自服务端统计：只有该模型全部调用都走订阅通道才置位
+          //（同一模型按量/订阅混合通道时显示实际金额，不误标「订阅包含」）。
+          plan: data.plan === true,
           // exactOptionalPropertyTypes: absent actual when the stats carry none.
           ...(data.cost > 0 ? { actual: data.cost } : {}),
         }

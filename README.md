@@ -13,7 +13,7 @@ DeepSeek Harness 计费仪表盘插件。从持久化会话日志实时聚合模
 - **计费仪表盘**：Hero 按 **当年 / 当月 / 当日** 三维展示费用，KPI 指标（缓存命中率 / Token 总量 / 单次平均成本 / 调用次数）、按模型分色的**堆叠趋势图**、按模型计费明细、可展开的单价表。
 - **真实用量**：服务端从会话日志实时聚合，无需手工维护统计文件。
 - **模型健康探测**：模型行的圆点反映各厂商接入状态（正常绿 / 异常红 / 未接入灰）。
-- **订阅计划豁免**：走 coding/token 套餐的模型照常统计 token，费用记 0。
+- **订阅计划豁免**：走 coding / token plan / opencode 订阅通道的模型照常统计 token、费用记 0（按**通道**判定，同一模型走按量通道时正常计费）。
 - **余额查询**：模型计费明细按厂商显示「余额」列，DeepSeek 通过官方余额 API 实时查询；未配置 / Key 无效 / 服务不可达均有状态提示，扩展点可接更多厂商。
 - **实时汇率与定价**：启动时自动拉取腾讯财经行情（USD→CNY）与 OpenRouter 官方模型价，失败自动降级内置默认值；此后每 6 小时自动刷新，单价表标注「今日汇率」与实时 / 内置徽标。
 - **动态刷新**：侧边栏入口与仪表盘每 30 秒自动更新，无需重启或手动刷新。
@@ -87,7 +87,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | 阿里通义 | Qwen3.8 Max、Qwen3.7-Max、Qwen3.5-Plus、Qwen3.5-Flash |
 | 字节豆包 | Doubao Seed-2.0 Pro、Seed-2.0 Mini、Seed-1.6 |
 | 月之暗面 | Kimi K3、K2.7 Code、K2.7 Code HighSpeed、K2.6 |
-| 小米 | MiMo V2.5（token plan 订阅制）¹ |
+| 小米 | MiMo V2.5（走 token plan 订阅通道时豁免计费）¹ |
 | MiniMax | MiniMax-M3 |
 | 百度 | ERNIE-5.1 |
 | 腾讯 | 混元 T1、混元 Hy3 |
@@ -102,7 +102,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | Meta | Llama 4 Maverick、Scout |
 | 其他 | 未收录模型的统一回退定价 |
 
-> ¹ 讯飞、商汤、小米未公布按量单价，表内为估算价；小米 MiMo V2.5 实际走 token plan 订阅，费用记 0，正式定价公布后自动校准。
+> ¹ 讯飞、商汤、小米未公布按量单价，表内为估算价；这些模型走订阅通道（coding / token plan / opencode）时费用记 0，正式定价公布后自动校准。订阅通道与 pi-ai 内置提供方对齐（kimi-coding、zai-coding-cn、opencode、opencode-go、qwen/xiaomi 的 token-plan 各区域变体），可按 `subscriptionProviders` 配置覆盖。
 
 新增模型：在 `MODEL_CATALOG` 追加条目，并在 `src/aggregate.ts` 的 `MODEL_KEY_ALIASES` 中映射真实模型 id。
 
