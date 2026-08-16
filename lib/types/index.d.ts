@@ -16,6 +16,8 @@ export interface UsageBillingConfig {
     statsPath?: string;
     /** 订阅制（coding / token / agent plan）provider id 列表；默认 kimi-coding、xiaomi-token-plan-cn。 */
     subscriptionProviders?: string[];
+    /** 余额查询用的 DeepSeek 凭据引用（环境变量名）；默认 DEEPSEEK_API_KEY。 */
+    balanceApiKeyEnv?: string;
 }
 /** Required services: the web server and the persisted session log store. */
 export declare const inject: string[];

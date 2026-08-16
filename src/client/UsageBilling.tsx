@@ -20,7 +20,7 @@ import {
   applyLivePricing, computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
   isSubscriptionPlan, MODEL_CATALOG, modelOf, resolveToken, type TokenUsageBuckets,
 } from './pricing.ts'
-import type { LivePricing } from '../pricing-shared.ts'
+import type { BalanceResponse, LivePricing, ProviderBalance } from '../pricing-shared.ts'
 import { NS, type UsageBillingKey } from './locales.ts'
 import css from './UsageBilling.module.css'
 
@@ -104,6 +104,8 @@ function providerDot(health: ModelHealth, provider: string): string | undefined 
 
 /** Usage stats structure from `.dsh-usage-stats.json`. */
 interface UsageStats {
+  /** 服务端聚合时间戳（毫秒）；旧快照可能缺失。 */
+  updatedAt?: number
   total: {
     calls: number
     input: number
@@ -145,6 +147,38 @@ const USAGE_STATS_PATH = '/api/billing/usage-stats'
 /** Path to the live-pricing endpoint served by this plugin's node half. */
 const PRICING_PATH = '/api/billing/pricing'
 
+/** Path to the account-balance endpoint served by this plugin's node half. */
+const BALANCE_PATH = '/api/billing/balance'
+
+/** 弹窗打开期间统计与定价的自动刷新间隔（毫秒）。 */
+const STATS_REFRESH_INTERVAL_MS = 30_000
+
+/**
+ * 本地时区（北京时间）日期戳：与服务端聚合的 dayStamp 一致。不要用
+ * `toISOString()`——那是 UTC，北京时间的凌晨 0-8 点会取到前一天。
+ */
+function localDayStamp(time = Date.now()): string {
+  const date = new Date(time)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+/** 本地时区时钟：`HH:MM:SS`。 */
+function formatClock(time: number): string {
+  const date = new Date(time)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+/**
+ * 高区分度图表色板：趋势图柱、图例与计费表圆点按模型分配。不用模型品牌色
+ * （目录里多为蓝色系，视觉上几乎分不开），保证每个模型一眼可辨。
+ */
+const CHART_PALETTE: readonly string[] = [
+  '#3b82f6', '#06b6d4', '#8b5cf6', '#f59e0b', '#10b981',
+  '#ef4444', '#ec4899', '#6366f1', '#f97316', '#14b8a6',
+]
+
 /** Empty snapshot: shown before (or without) real host data — zeros, never fabricated samples. */
 const EMPTY_STATS: UsageStats = {
   total: { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0 },
@@ -171,6 +205,7 @@ async function loadUsageStats(): Promise<UsageStats | null> {
       byModel: candidate.byModel ?? {},
       byDay: candidate.byDay ?? {},
       ...(candidate.byDayModels !== undefined ? { byDayModels: candidate.byDayModels } : {}),
+      ...(candidate.updatedAt !== undefined ? { updatedAt: candidate.updatedAt } : {}),
     }
   } catch {
     return null
@@ -202,6 +237,25 @@ async function loadLivePricing(attempt = 0): Promise<void> {
     applyLivePricing(pricing)
   } catch {
     // 拉取失败：维持内置目录与内置汇率（默认值降级）。
+  }
+}
+
+/**
+ * 拉取各提供方账户余额（供模型计费明细表的余额列）；失败返回空列表。
+ * @returns the balance rows, or an empty list on any failure.
+ */
+async function fetchBalances(): Promise<readonly ProviderBalance[]> {
+  try {
+    const response = await fetch(BALANCE_PATH)
+    if (!response.ok) return []
+    const text = await response.text()
+    const parsed = JSON.parse(text) as unknown
+    if (parsed !== null && typeof parsed === 'object' && 'balances' in parsed) {
+      return (parsed as BalanceResponse).balances
+    }
+    return []
+  } catch {
+    return []
   }
 }
 
@@ -273,13 +327,14 @@ interface BillingDashboardProps {
   t: (key: UsageBillingKey) => string
   onClose: () => void
   health: ModelHealth
+  balances: readonly ProviderBalance[]
 }
 
 /**
  * The centered billing dashboard modal.
- * @param props - stats, locale function, close handler, and model health.
+ * @param props - stats, locale function, close handler, model health, balances.
  */
-function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps): React.ReactNode {
+function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashboardProps): React.ReactNode {
   const { total, byModel, byDay } = stats
   // Pricing table starts collapsed; the billing table stays open.
   const [pricingOpen, setPricingOpen] = useState(false)
@@ -287,13 +342,29 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
   // 当前汇率与来源：供单价表标题展示（实时 / 内置）。
   const rateInfo = getRateInfo()
 
+  // 按提供方归一化匹配余额（deepseek ↔ DeepSeek）。
+  const balanceFor = (provider: string): ProviderBalance | undefined =>
+    balances.find(balance => normalizeProvider(balance.provider) === normalizeProvider(provider))
+
+  // 余额列单元格：按查询状态渲染金额或占位文案。
+  const renderBalance = (balance: ProviderBalance | undefined): React.ReactNode => {
+    if (balance === undefined) return <span className={css.na}>—</span>
+    if (balance.error === 'unconfigured') return t('billing.balanceUnconfigured')
+    if (balance.error === 'unauthorized') return t('billing.balanceUnauthorized')
+    if (balance.error === 'unreachable') return t('billing.balanceUnreachable')
+    if (balance.totalBalance === undefined) return <span className={css.na}>—</span>
+    return balance.currency === 'USD'
+      ? `$${balance.totalBalance.toFixed(2)}`
+      : formatMoney(balance.totalBalance)
+  }
+
   const cacheHitRate = total.cacheHit + total.cacheMiss > 0
     ? (total.cacheHit / (total.cacheHit + total.cacheMiss)) * 100
     : 0
 
   // Latest date from the day series (real data when served, demo otherwise).
   const dates = Object.keys(byDay).sort()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localDayStamp()
   const todayCost = byDay[today]?.cost ?? 0
   // 当年 / 当月 / 当日 三维：按 byDay 的日期前缀归并（无需额外数据）。
   const monthPrefix = today.slice(0, 7)
@@ -308,7 +379,7 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
     for (let offset = 6; offset >= 0; offset -= 1) {
       const day = new Date()
       day.setDate(day.getDate() - offset)
-      out.push(day.toISOString().slice(0, 10))
+      out.push(localDayStamp(day.getTime()))
     }
     return out
   }, [])
@@ -332,6 +403,7 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
   )
 
   // Model rows: estimated cost from the pricing catalog, actual from stats.
+  // 先按费用排序，再按序分配高区分度图表色：品牌色系太接近，无法区分模型。
   const modelRows: ModelRow[] = useMemo(
     () => Object.entries(byModel)
       .filter(([, data]) => data.calls > 0)
@@ -347,7 +419,6 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
           key,
           name: entry.name,
           provider: entry.provider,
-          color: resolveToken(entry.colorVar),
           calls: data.calls,
           input: data.input,
           output: data.output,
@@ -360,7 +431,11 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
           ...(data.cost > 0 ? { actual: data.cost } : {}),
         }
       })
-      .sort((a, b) => (b.actual ?? b.estimated) - (a.actual ?? a.estimated)),
+      .sort((a, b) => (b.actual ?? b.estimated) - (a.actual ?? a.estimated))
+      .map((row, index) => ({
+        ...row,
+        color: CHART_PALETTE[index % CHART_PALETTE.length] ?? '#8b95a3',
+      })),
     [byModel],
   )
 
@@ -478,7 +553,12 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
           <section className={css.panel}>
             <div className={css.panelHead}>
               <h3 className={css.panelTitle}>{t('billing.models')}</h3>
-              <span className={css.panelHint}>{t('billing.estimated')} · {t('billing.pricePerM')}</span>
+              {/* 更新时间精确到时分秒；旧快照没有时间戳时留空。 */}
+              <span className={css.panelHint}>
+                {stats.updatedAt !== undefined
+                  ? `${t('billing.lastUpdated')} ${formatClock(stats.updatedAt)}`
+                  : ''}
+              </span>
             </div>
             <div className={css.tableScroll}>
               <table className={css.modelTable}>
@@ -489,8 +569,8 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
                     <th className={css.numCol}>{t('billing.inputTokens')}</th>
                     <th className={css.numCol}>{t('billing.outputTokens')}</th>
                     <th className={css.numCol}>{t('billing.cacheHitRate')}</th>
-                    <th className={css.numCol}>{t('billing.estimated')}</th>
                     <th className={css.numCol}>{t('billing.actual')}</th>
+                    <th className={css.numCol}>{t('billing.balance')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -515,14 +595,12 @@ function BillingDashboard({ stats, t, onClose, health }: BillingDashboardProps):
                       <td className={css.numCol}>{formatTokens(row.input)}</td>
                       <td className={css.numCol}>{formatTokens(row.output)}</td>
                       <td className={css.numCol}>{formatPercent(row.cacheHitRate)}</td>
-                      <td className={clsx(css.numCol, css.costCol)}>
-                        {row.plan ? <span className={css.planTag}>订阅包含</span> : formatMoney(row.estimated)}
-                      </td>
                       <td className={css.numCol}>
                         {row.plan
                           ? <span className={css.planTag}>订阅包含</span>
                           : row.actual !== undefined ? formatMoney(row.actual) : <span className={css.na}>—</span>}
                       </td>
+                      <td className={css.numCol}>{renderBalance(balanceFor(row.provider))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -641,19 +719,41 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   // Start empty; swap in real host data when the server serves valid JSON.
   const [stats, setStats] = useState<UsageStats>(EMPTY_STATS)
   const [health, setHealth] = useState<ModelHealth>(IDLE_HEALTH)
+  const [balances, setBalances] = useState<readonly ProviderBalance[]>([])
   const [open, setOpen] = useState(false)
   const close = useCallback(() => { setOpen(false) }, [])
-  const openDashboard = useCallback(() => { setOpen(true) }, [])
+
+  // 重新拉取统计与余额：初次挂载、打开弹窗、弹窗期间轮询共用同一入口。
+  const reloadStats = useCallback(() => {
+    void loadUsageStats().then((data) => {
+      if (data !== null) setStats(data)
+    })
+    void fetchBalances().then((list) => {
+      if (list.length > 0) setBalances(list)
+    })
+  }, [])
+
+  const openDashboard = useCallback(() => {
+    // 打开弹窗时先刷新一次统计与定价，避免看到的是上次挂载的旧数据。
+    void reloadStats()
+    void loadLivePricing()
+    setOpen(true)
+  }, [reloadStats])
 
   // Load stats on mount; also apply the live pricing snapshot in parallel.
   useEffect(() => {
-    let mounted = true
-    void loadUsageStats().then((data) => {
-      if (mounted && data !== null) setStats(data)
-    })
+    void reloadStats()
     void loadLivePricing()
-    return () => { mounted = false }
-  }, [])
+  }, [reloadStats])
+
+  // 常驻定时刷新统计与定价：左下角触发器与弹窗都保持最新，无需退出重进。
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void reloadStats()
+      void loadLivePricing()
+    }, STATS_REFRESH_INTERVAL_MS)
+    return () => { clearInterval(timer) }
+  }, [reloadStats])
 
   // Probe connected models: the sidebar dot turns green when any provider
   // answers its model catalog (live credentials), red when none do.
@@ -665,7 +765,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     return () => { mounted = false }
   }, [checkModels])
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localDayStamp()
   // 触发胶囊的主数字：当月累计（byDay 按 YYYY-MM 前缀归并）。
   const monthCost = Object.entries(stats.byDay)
     .filter(([date]) => date.startsWith(today.slice(0, 7)))
@@ -680,7 +780,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
         todayCost={stats.byDay[today]?.cost ?? 0}
       />
       {open && (
-        <BillingDashboard stats={stats} t={t} onClose={close} health={health} />
+        <BillingDashboard stats={stats} t={t} onClose={close} health={health} balances={balances} />
       )}
     </>
   )

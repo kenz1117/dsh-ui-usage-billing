@@ -38,6 +38,10 @@ export type UsageBillingKey =
   | 'billing.todayRate'
   | 'billing.rateLive'
   | 'billing.rateBuiltin'
+  | 'billing.balance'
+  | 'billing.balanceUnconfigured'
+  | 'billing.balanceUnauthorized'
+  | 'billing.balanceUnreachable'
 
 export const NS = 'usageBilling'
 
@@ -79,6 +83,10 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.todayRate': '今日汇率',
   'billing.rateLive': '实时',
   'billing.rateBuiltin': '内置',
+  'billing.balance': '余额',
+  'billing.balanceUnconfigured': '未配置',
+  'billing.balanceUnauthorized': '密钥无效',
+  'billing.balanceUnreachable': '查询失败',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -119,4 +127,8 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.todayRate': 'Today rate',
   'billing.rateLive': 'Live',
   'billing.rateBuiltin': 'Built-in',
+  'billing.balance': 'Balance',
+  'billing.balanceUnconfigured': 'Not set',
+  'billing.balanceUnauthorized': 'Bad key',
+  'billing.balanceUnreachable': 'Unavailable',
 }

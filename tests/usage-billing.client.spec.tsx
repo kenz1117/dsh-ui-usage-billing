@@ -7,6 +7,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest'
+import type { ComponentProps } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { UsageBilling } from '../src/client/UsageBilling.tsx'
 import { zh } from '../src/client/locales.ts'
@@ -19,13 +20,14 @@ const t = (key: string): string => (zh as Record<string, string>)[key] ?? key
 
 describe('UsageBilling surface', () => {
   it('opens the dashboard modal on trigger click without throwing', async () => {
-    const { container } = render(<UsageBilling {...({
+    const props = {
       wide: true,
       t,
       checkModels: async () => ({
         checked: true, available: true, providers: 1, failures: 0, okProviders: [], badProviders: [],
       }),
-    } as never)} />)
+    } as unknown as ComponentProps<typeof UsageBilling>
+    const { container } = render(<UsageBilling {...props} />)
     const trigger = container.querySelector('button')
     expect(trigger).not.toBeNull()
     fireEvent.click(trigger!)

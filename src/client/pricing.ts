@@ -475,6 +475,12 @@ function priceBandCost(band: PriceBand, buckets: TokenUsageBuckets, currency: 'C
  * Estimate the CNY cost of one model's token usage, mixing the peak and
  * off-peak bands by the given peak share (flat-priced models cost the same in
  * both bands).
+ *
+ * 计费维度是「缓存命中价 × 时段价」的交叉：每个时段档内部分别按缓存命中
+ * 价（cacheHit）与未命中价（input/cacheMiss）计价，两个时段档再按
+ * peakShare 混合。时段定义以北京时间为准（如 DeepSeek V4 高峰
+ * 09:00-12:00 / 14:00-18:00）。因聚合只有按日 token 量、没有请求级时间戳，
+ * 时段只能按比例估算，而非逐请求判定。
  * @param entry - the catalog entry whose prices apply.
  * @param buckets - token usage counts.
  * @param peakShare - share of traffic in the peak band (0..1); defaults to {@link DEFAULT_PEAK_SHARE}.

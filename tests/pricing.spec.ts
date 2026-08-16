@@ -57,6 +57,22 @@ describe('computeCost', () => {
     expect(computeCost(modelOf('glm'), buckets, 1)).toBeCloseTo(computeCost(modelOf('glm'), buckets, 0), 10)
   })
 
+  it('crosses cache-hit pricing with peak/off-peak bands', () => {
+    // 缓存 × 时段多维交叉：高峰档内用高峰缓存价，低谷档内用低谷缓存价，
+    // 再按时段占比混合（DeepSeek V4 高峰 09:00-12:00 / 14:00-18:00，北京时间）。
+    const buckets = { input: 2 * MILLION, cacheHit: MILLION, cacheMiss: MILLION, output: MILLION }
+    const peakOnly = computeCost(modelOf('flash'), buckets, 1)
+    const offOnly = computeCost(modelOf('flash'), buckets, 0)
+    // 高峰：缓存命中 ¥0.1、未命中 ¥3、输出 ¥9（每 1M）。
+    const expectedPeak = (MILLION * 0.1 + MILLION * 3 + MILLION * 9) / MILLION
+    expect(peakOnly).toBeCloseTo(expectedPeak, 10)
+    // 低谷：缓存命中 ¥0.05、未命中 ¥1.5、输出 ¥4.5（每 1M）。
+    const expectedOff = (MILLION * 0.05 + MILLION * 1.5 + MILLION * 4.5) / MILLION
+    expect(offOnly).toBeCloseTo(expectedOff, 10)
+    // 各半混合：两个档位各贡献一半。
+    expect(computeCost(modelOf('flash'), buckets, 0.5)).toBeCloseTo((expectedPeak + expectedOff) / 2, 10)
+  })
+
   it('charges nothing for a subscription-plan model key', () => {
     expect(isSubscriptionPlan('some-plan-key')).toBe(false)
     expect(computeCost(modelOf('flash'), { input: MILLION, cacheHit: 0, cacheMiss: MILLION, output: MILLION })).toBeGreaterThan(0)
