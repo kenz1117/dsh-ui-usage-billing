@@ -23,6 +23,8 @@ import { aggregateUsage } from './aggregate.ts'
 export interface UsageBillingConfig {
   /** Absolute path to a `.dsh-usage-stats.json` fallback file. */
   statsPath?: string
+  /** 订阅制（coding / token / agent plan）provider id 列表；默认 kimi-coding、xiaomi-token-plan-cn。 */
+  subscriptionProviders?: string[]
 }
 
 /** Required services: the web server and the persisted session log store. */
@@ -49,7 +51,11 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       handler: async (_req, res) => {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         try {
-          res.end(JSON.stringify(await aggregateUsage(ctx.sessionPersistence)))
+          res.end(JSON.stringify(await aggregateUsage(ctx.sessionPersistence, {
+            ...(config.subscriptionProviders === undefined
+              ? {}
+              : { subscriptionProviders: config.subscriptionProviders }),
+          })))
           return
         } catch {
           // Persistence read failed; fall through to the JSON-file candidates.
