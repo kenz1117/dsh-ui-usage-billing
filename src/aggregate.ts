@@ -29,6 +29,9 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'hunyuan-t1': 'hunyuan-t1',
   'step-3.7-flash': 'step',
   'seed-2.0-mini': 'doubao-mini',
+  // 月之暗面 Kimi：coding plan 通道的 model id 是短名 k3。
+  'k3': 'kimi-k3',
+  'kimi-k3': 'kimi-k3',
 }
 
 /**
@@ -79,15 +82,17 @@ export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subsc
   acc.output += usage.outputTokens
   acc.cacheHit += cacheHit
   acc.cacheMiss += cacheMiss
-  // 订阅套餐不计费；计费表里没有的模型（未知/订阅）也记 0。
-  acc.cost = !subscription && MODEL_CATALOG.some(entry => entry.key === key)
-    ? computeCost(modelOf(key), {
-      input: acc.input,
-      cacheHit: acc.cacheHit,
-      cacheMiss: acc.cacheMiss,
-      output: acc.output,
+  // 订阅套餐不计费；计费表里没有的模型（未知/订阅）也记 0。费用按本次调用
+  // 增量累加（计价是线性的）：同一桶内混入订阅/未知调用时，后面免费调用
+  // 不再把整个桶的 cost 覆盖成 0。
+  if (!subscription && MODEL_CATALOG.some(entry => entry.key === key)) {
+    acc.cost += computeCost(modelOf(key), {
+      input: cacheHit + cacheMiss,
+      cacheHit,
+      cacheMiss,
+      output: usage.outputTokens,
     })
-    : 0
+  }
 }
 
 /** Local-time date stamp (the host runs in the user's timezone). */

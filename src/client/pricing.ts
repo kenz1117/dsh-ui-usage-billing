@@ -60,8 +60,9 @@ export const DEFAULT_PEAK_SHARE = 0.5
  * costs no tokens: the estimator treats them as ¥0 and the billing table
  * labels them 订阅包含. Add any model key your deployment serves through a
  * plan here; leave empty when every route is pay-as-you-go.
+ * kimi-k3: 月之暗面 coding plan 通道的调用按套餐计费，费用记 0。
  */
-export const SUBSCRIPTION_PLAN_KEYS: readonly string[] = []
+export const SUBSCRIPTION_PLAN_KEYS: readonly string[] = ['kimi-k3']
 
 /** Whether one stats model key is billed through a subscription plan. */
 export function isSubscriptionPlan(key: string): boolean {
