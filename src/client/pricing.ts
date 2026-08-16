@@ -61,8 +61,9 @@ export const DEFAULT_PEAK_SHARE = 0.5
  * labels them 订阅包含. Add any model key your deployment serves through a
  * plan here; leave empty when every route is pay-as-you-go.
  * kimi-k3: 月之暗面 coding plan 通道的调用按套餐计费，费用记 0。
+ * mimo-v2.5: 小米 token plan 通道的调用按订阅计费，费用记 0。
  */
-export const SUBSCRIPTION_PLAN_KEYS: readonly string[] = ['kimi-k3']
+export const SUBSCRIPTION_PLAN_KEYS: readonly string[] = ['kimi-k3', 'mimo-v2.5']
 
 /** Whether one stats model key is billed through a subscription plan. */
 export function isSubscriptionPlan(key: string): boolean {
@@ -265,6 +266,15 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     provider: '月之暗面',
     colorVar: 'dsw-static-neutral-bluish-500',
     price: { currency: 'CNY', input: 20, cacheHit: 2, output: 100 },
+  },
+  // 小米 MiMo (OpenAI-compatible; token plan 通道 model id 为 mimo-v2.5，
+  // 按订阅豁免计费；按量单价未公布，表内为估算价，正式定价公布后校准).
+  {
+    key: 'mimo-v2.5',
+    name: 'MiMo V2.5',
+    provider: '小米',
+    colorVar: 'dsw-static-green-400',
+    price: { currency: 'CNY', input: 4, cacheHit: 0.4, output: 12 },
   },
   // MiniMax (OpenAI-compatible, TokenHub 2026-08-14).
   {
