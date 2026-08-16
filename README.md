@@ -87,6 +87,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | 阿里通义 | Qwen3.8 Max、Qwen3.7-Max、Qwen3.5-Plus、Qwen3.5-Flash |
 | 字节豆包 | Doubao Seed-2.0 Pro、Seed-2.0 Mini、Seed-1.6 |
 | 月之暗面 | Kimi K3、K2.7 Code、K2.7 Code HighSpeed、K2.6 |
+| 小米 | MiMo V2.5（token plan 订阅制）¹ |
 | MiniMax | MiniMax-M3 |
 | 百度 | ERNIE-5.1 |
 | 腾讯 | 混元 T1、混元 Hy3 |
@@ -101,7 +102,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | Meta | Llama 4 Maverick、Scout |
 | 其他 | 未收录模型的统一回退定价 |
 
-> ¹ 讯飞、商汤未公布按量单价，表内为估算价，正式定价公布后自动校准。
+> ¹ 讯飞、商汤、小米未公布按量单价，表内为估算价；小米 MiMo V2.5 实际走 token plan 订阅，费用记 0，正式定价公布后自动校准。
 
 新增模型：在 `MODEL_CATALOG` 追加条目，并在 `src/aggregate.ts` 的 `MODEL_KEY_ALIASES` 中映射真实模型 id。
 
