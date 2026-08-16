@@ -1,130 +1,148 @@
 # dsh-ui-usage-billing
 
+DeepSeek Harness 计费仪表盘插件。从持久化会话日志实时聚合模型用量，按多厂商最新官方价格估算费用，在侧边栏一键查看完整仪表盘。
+
 [![GitHub license](https://img.shields.io/github/license/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing)
 [![GitHub last commit](https://img.shields.io/github/last-commit/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing)
 [![npm version](https://img.shields.io/npm/v/@kenz1117/dsh-ui-usage-billing)](https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing)
 
-DeepSeek Harness 计费仪表盘插件：侧边栏"设置"上方一个触发按钮，点开是完整的计费仪表盘——总费用 Hero、KPI 指标卡、无第三方库的 SVG 每日趋势图、按模型统计的计费明细表（内置多厂商最新价格表）和单价表。完全离线、无 CDN、无图表库依赖。
+## 特性
 
-## 功能特性
+- **侧边栏入口**：设置按钮上方的触发胶囊，显示累计费用；折叠栏自动切换为图标。
+- **计费仪表盘**：总费用卡片、KPI 指标（缓存命中率 / Token 总量 / 单次平均成本 / 调用次数）、按日趋势图、按模型计费明细、可展开的单价表。
+- **真实用量**：服务端从会话日志实时聚合，无需手工维护统计文件。
+- **模型健康探测**：模型行的圆点反映各厂商接入状态（正常绿 / 异常红 / 未接入灰）。
+- **订阅计划豁免**：走 coding/token 套餐的模型照常统计 token，费用记 0。
+- **离线自包含**：无图表库、无外部 CDN，全部使用设计令牌，适配深色/浅色主题。
 
-- **侧边栏触发按钮**：宽侧边栏显示含累计费用的胶囊按钮；折叠栏显示图标按钮
-- **居中仪表盘弹窗**：
-  - Hero：总费用渐变卡 + 今日费用 + 日环比
-  - KPI 卡：缓存命中率、Token 总量、单次平均成本、调用次数
-  - 每日趋势图：SVG 费用面积线 + 调用柱状图，支持悬浮十字线与提示
-  - 模型计费明细表：按模型的调用/输入/输出/缓存命中率/估算费用与实际费用
-  - 单价表：每个支持模型的输入 / 缓存命中 / 输出单价（默认收起）
-- **模型健康点**：每个模型行的小圆点——该厂商模型目录加载成功（凭据有效）显示绿色、探测失败红色、未接入灰色，通过宿主 `llm.models` 探测
-- **真实用量**：node half 从持久化的会话日志实时聚合出 `/api/billing/usage-stats`，无需手工维护统计文件
-- **订阅计划不计费**：走 coding/token 套餐的模型照常统计 token 但费用记 0
-- **暗色/亮色自适应**：全部使用 `--dsw-*` 设计令牌，无硬编码颜色
-- **自包含**：无图表库、无外部 CDN，完全离线可用
+## 快速开始
 
-## 展示位置
+在宿主 `cordis.patch.yml` 中加入：
 
-注册在 `sidebar.footer.action`——左侧边栏底部、设置按钮正上方。宽侧边栏显示胶囊按钮，折叠栏显示图标。
+```yaml
+- insert:
+    - id: ui-usage-billing
+      name: '@kenz1117/dsh-ui-usage-billing'
+```
+
+或通过包管理器安装：
+
+```sh
+npm install @kenz1117/dsh-ui-usage-billing
+```
+
+启动宿主后，侧边栏设置上方即出现计费入口。无需额外配置；`sessionPersistence` 可用时自动聚合真实用量。
 
 ## 工作原理
 
-插件分两个半边：
+插件由服务端与浏览器端两部分组成：
 
-- **Node 半边**（`src/index.ts`）：注入 `webServer` + `sessionPersistence`，注册 `GET /api/billing/usage-stats`。每次请求把全部持久化会话日志做一次折叠（`aggregate.ts`）：一次 LLM 调用归属到它前面最近的 `request/header` 记录的模型，token 按缓存命中/未命中分桶，日期按本机时区归天。
-- **浏览器半边**（`src/client/`）：请求该接口渲染仪表盘，并通过 `llm.models` 探测健康点。真实数据到达前（或接口不可用时）显示全 0 空快照——绝不显示伪造的样本数据。
+```
+浏览器端                                  服务端（Node）
+  │                                        │
+  ├─ GET /api/billing/usage-stats ────────▶ ├─ sessionPersistence 遍历持久化会话日志
+  │                                        ├─ 按 request/header 归属模型
+  │                                        ├─ token 按缓存命中 / 未命中分桶
+  │                                        └─ 按单价表估算费用（人民币）
+  ├─ llm.models 健康探测 ─────────────────▶ └─ 返回聚合统计 JSON
+  └─ 渲染仪表盘
+```
+
+- **服务端**（`src/index.ts`）：注入 `webServer` 与 `sessionPersistence`，注册 `GET /api/billing/usage-stats`。每次调用折叠全部持久化日志：一次 LLM 调用归属到其前置 `request/header` 记录的模型，token 拆分到缓存命中 / 未命中桶，日期按本机时区归天。聚合逻辑见 `src/aggregate.ts`。
+- **浏览器端**（`src/client/`）：请求上述接口渲染仪表盘，通过 `llm.models` 探测各厂商连接状态。真实数据到达前显示全零空快照，不展示伪造样本。
 
 ## 计费引擎
 
-[`pricing.ts`](src/client/pricing.ts) 持有各模型的单价表与费用估算。**每个模型的价格表用它的原生币种**：国内厂商（DeepSeek、智谱、通义…）直接存人民币；国外厂商（OpenAI、Google、xAI、Meta）存美元。费用统一按人民币计算展示——只有美元计价的模型经过汇率（CFETS 中间价 6.79，2026-08-14），国内模型全程不经过汇率。
+单价表（`src/client/pricing.ts`）采用**原生币种**存储：国内厂商直接录入人民币价格，国外厂商录入美元价格。费用统一以人民币计算与展示——仅美元计价模型经过汇率（CFETS 中间价 6.79，2026-08-14），国内模型全程不经过汇率换算。
 
 ```
-cost（人民币）= (missInput×p_input + cacheHit×p_cacheHit + output×p_output) / 1M tokens
-              —— 价格本身是人民币；国外模型为 USD × 6.79
+cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_output) / 10⁶
+           —— 价格为原生币种；美元模型按 USD × 6.79 折算
 ```
 
-统计的 `input` 是总输入（cacheHit + cacheMiss），估算器拆分计价——命中份额按命中价、其余按未命中价，不重复计费。
+统计中的 `input` 为总输入（cacheHit + cacheMiss），估算按命中 / 未命中分拆计价，避免重复计费。支持双档计费的模型按 `DEFAULT_PEAK_SHARE`（默认 0.5）混合高峰与低谷档。
 
-**支持模型（2026-08-16 主流阵容，OpenAI 兼容系列，已剔除退役型号）：**
+### 支持模型（2026-08-16 主流阵容，OpenAI 兼容系列）
 
 | 厂商 | 模型 |
 |---|---|
-| DeepSeek | V4 Flash、V4 Pro — **按时段峰谷计费**（高峰 09:00-12:00 / 14:00-18:00 北京 = 低谷 2 倍，2026-08-17 起） |
+| DeepSeek | V4 Flash、V4 Pro（按时段峰谷计费：高峰 09:00-12:00 / 14:00-18:00 北京 = 低谷 2 倍） |
 | 智谱 AI | GLM-5.3、GLM-5.2、GLM-4.6 |
 | 阿里通义 | Qwen3.8 Max、Qwen3.7-Max、Qwen3.5-Plus、Qwen3.5-Flash |
-| 字节豆包 | Doubao Seed-2.0 Pro、Seed-2.0 Mini、Seed-1.6（缓存命中免费） |
+| 字节豆包 | Doubao Seed-2.0 Pro、Seed-2.0 Mini、Seed-1.6 |
 | 月之暗面 | Kimi K3、K2.7 Code、K2.7 Code HighSpeed、K2.6 |
 | MiniMax | MiniMax-M3 |
 | 百度 | ERNIE-5.1 |
 | 腾讯 | 混元 T1、混元 Hy3 |
 | 零一万物 | Yi-Lightning |
 | 阶跃星辰 | Step 3.7 Flash |
-| 科大讯飞 | Spark 4.0 Ultra（套餐制，约价） |
-| 商汤 | SenseNova 6.5（公测中，约价） |
+| 科大讯飞 | Spark 4.0 Ultra（套餐制）¹ |
+| 商汤 | SenseNova 6.5（公测中）¹ |
 | 百川智能 | Baichuan M3-Plus |
 | OpenAI | GPT-5.6 Sol / Terra / Luna |
-| Google | Gemini 3.1 Pro、3.6 Flash — **Standard / Flex 双档**（Flex = 闲时流量 -50%，非按时段） |
+| Google | Gemini 3.1 Pro、3.6 Flash（Standard / Flex 双档，Flex = -50%） |
 | xAI | Grok 4.6、Grok 4.3 |
 | Meta | Llama 4 Maverick、Scout |
-| Custom | 未知名模型的 `other` 兜底价 |
+| 其他 | 未收录模型的统一回退定价 |
 
-- **估算**按单价表计算；**实际**是按真实会话用量聚合的成本。明细表两列都展示。
-- **双档模型**：DeepSeek 高峰价 = 低谷 2 倍；Gemini Standard = Flex 2 倍。估算器按 `DEFAULT_PEAK_SHARE`（0.5）混合两档——改 `pricing.ts` 里的常量或单价表即可调整。
-- 表里没有的模型：往 `MODEL_CATALOG` 加条目即可（node half 通过 `aggregate.ts` 的 `MODEL_KEY_ALIASES` 把真实 model id 映射到计费键）。
+> ¹ 讯飞、商汤未公布按量单价，表内为估算价，正式定价公布后自动校准。
 
-## 安装 / 组合
+新增模型：在 `MODEL_CATALOG` 追加条目，并在 `src/aggregate.ts` 的 `MODEL_KEY_ALIASES` 中映射真实模型 id。
 
-在 `cordis.patch.yml` 加一行：
+## HTTP API
 
-```yaml
-- name: '@kenz1117/dsh-ui-usage-billing'
+### `GET /api/billing/usage-stats`
+
+聚合统计文档，浏览器端数据源：
+
+```json
+{
+  "total": {
+    "calls": 733,
+    "input": 255931033,
+    "output": 414286,
+    "cacheHit": 255525760,
+    "cacheMiss": 405273,
+    "cost": 22.87
+  },
+  "byModel": {
+    "flash": { "calls": 733, "input": 255931033, "output": 414286, "cacheHit": 255525760, "cacheMiss": 405273, "cost": 22.87 }
+  },
+  "byDay": {
+    "2026-08-15": { "calls": 74, "input": 32593373, "output": 35375, "cacheHit": 32558208, "cacheMiss": 35165, "cost": 0.52 }
+  }
+}
 ```
 
-可选配置：
+字段含义：`input` 为总输入 token；`cacheHit` / `cacheMiss` 为缓存命中 / 未命中分桶；`cost` 为人民币估算费用。`sessionPersistence` 不可用时回退到配置文件（见下）。
+
+## 配置
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
-| `statsPath` | 未设置 | 当 `sessionPersistence` 不可用时，回退读取的 `.dsh-usage-stats.json` 绝对路径 |
+| `statsPath` | 未设置 | 回退统计文件 `.dsh-usage-stats.json` 的绝对路径（`sessionPersistence` 不可用时生效） |
 
 ## 开发
 
+环境要求：Node.js ^22.19 \|\| >=24，pnpm。
+
 ```sh
 pnpm install
-pnpm --filter @kenz1117/dsh-ui-usage-billing bundle   # 产出 lib/index.js + lib/client.js
+pnpm --filter @kenz1117/dsh-ui-usage-billing bundle   # 构建 lib/index.js 与 lib/client.js
 npx vitest run packages/client/ui-usage-billing/tests  # 单元测试
 ```
 
-## 安装（发布到 GitHub / npm）
+## 发布
 
-这是一个完整独立的 npm 包。
+本包为独立 npm 包，发布后即可被其他 DeepSeek Harness 宿主安装。
 
-1. 从本目录发布：
+```sh
+npm publish --access public
+```
 
-   ```sh
-   npm publish --access public
-   ```
+宿主通过 `package.json` 的 `dsh.client` 声明（`platform: web`）与 `exports["./client"]` bundle 自动发现浏览器端，无需注册中心登记。
 
-2. 使用方安装到他们的 profile：
+## 许可证
 
-   ```sh
-   dsh plugin --profile web add @kenz1117/dsh-ui-usage-billing
-   ```
-
-   或在 `cordis.patch.yml` 添加：
-
-   ```yaml
-   - insert:
-       - id: ui-usage-billing
-         name: '@kenz1117/dsh-ui-usage-billing'
-   ```
-
-宿主通过 `package.json` 里的 `dsh.client` 声明（`platform: web`）加 `exports["./client"]` bundle 自动发现浏览器半边，无需注册中心登记。
-
-## 模型体验
-
-无——该插件只读取并展示用量数据，不发送模型请求、不影响提示词组装。
-
-## 已知限制与后续规划
-
-- **聚合成本与日志总量线性相关**——每次请求都重读全部会话日志。未来版本可为每个会话持久化增量计数器。
-- **价格是快照值**——单价表在编写时对齐了各厂商官方标价；厂商会调整价格，部署时请核对 `pricing.ts` 中的有效费率。
-- **趋势图是柱 + 单线**——趋势视图展示费用（线）与调用（柱）；多模型序列需要分类图例。
+[MIT](LICENSE) © 2026 KenZ (kenz1117)
