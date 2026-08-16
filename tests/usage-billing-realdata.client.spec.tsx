@@ -7,6 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ComponentProps } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { UsageBilling } from '../src/client/UsageBilling.tsx'
 import { zh } from '../src/client/locales.ts'
@@ -59,13 +60,14 @@ describe('UsageBilling real-data surface', () => {
   })
 
   it('opens the dashboard over a realistic snapshot without throwing', async () => {
-    const { container } = render(<UsageBilling {...({
+    const props = {
       wide: true,
       t,
       checkModels: async () => ({
         checked: true, available: true, providers: 1, failures: 0, okProviders: [], badProviders: [],
       }),
-    } as never)} />)
+    } as unknown as ComponentProps<typeof UsageBilling>
+    const { container } = render(<UsageBilling {...props} />)
     const trigger = container.querySelector('button')
     expect(trigger).not.toBeNull()
     fireEvent.click(trigger!)

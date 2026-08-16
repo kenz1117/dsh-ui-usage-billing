@@ -17,7 +17,9 @@ import type { Context } from '@deepseek-ai/cordis'
 // Type-only: merges the ctx.sessionPersistence service declaration.
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import type {} from '@deepseek-ai/dsh-credentials'
 import { aggregateUsage } from './aggregate.ts'
+import { queryBalances } from './balance.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
 import type { LivePricing } from './pricing-shared.ts'
 
@@ -27,10 +29,18 @@ export interface UsageBillingConfig {
   statsPath?: string
   /** 订阅制（coding / token / agent plan）provider id 列表；默认 kimi-coding、xiaomi-token-plan-cn。 */
   subscriptionProviders?: string[]
+  /** 余额查询用的 DeepSeek 凭据引用（环境变量名）；默认 DEEPSEEK_API_KEY。 */
+  balanceApiKeyEnv?: string
 }
 
+/** 实时定价的后台刷新间隔（毫秒）：汇率/模型价低频变化，6 小时一次足够。 */
+const PRICING_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000
+
+/** DeepSeek 余额查询的默认凭据引用（与 llm-deepseek 的默认引用一致）。 */
+const DEFAULT_BALANCE_API_KEY_ENV = 'DEEPSEEK_API_KEY'
+
 /** Required services: the web server and the persisted session log store. */
-export const inject = ['webServer', 'sessionPersistence']
+export const inject = ['webServer', 'sessionPersistence', 'credentials']
 
 /**
  * Host plugin body: serve real aggregated usage to the browser dashboard.
@@ -46,9 +56,20 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     join(homedir(), '.dsh/.dsh-usage-stats.json'),
   ].filter((path): path is string => typeof path === 'string' && path.length > 0)
 
-  // 后台拉取一次实时定价（汇率 + OpenRouter 模型价）；失败自动降级内置目录。
+  // 后台拉取实时定价（汇率 + OpenRouter 模型价），失败自动降级内置目录；
+  // 之后每 6 小时刷新一次，汇率/价格无需重启进程就能保持最新。
   let live: LivePricing = { source: 'builtin' }
-  void fetchLivePricing().then((result) => { live = result })
+  const refreshPricing = async (): Promise<void> => {
+    live = await fetchLivePricing()
+  }
+  void refreshPricing()
+  ctx.effect(
+    () => {
+      const timer = setInterval(() => { void refreshPricing() }, PRICING_REFRESH_INTERVAL_MS)
+      return () => { clearInterval(timer) }
+    },
+    'usage-billing: pricing refresh timer',
+  )
 
   ctx.effect(
     () => ctx.webServer.register({
@@ -60,6 +81,19 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       },
     }),
     'usage-billing: pricing route',
+  )
+
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'exact',
+      path: '/api/billing/balance',
+      handler: async (_req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+        const balances = await queryBalances(ctx, config.balanceApiKeyEnv ?? DEFAULT_BALANCE_API_KEY_ENV)
+        res.end(JSON.stringify({ balances }))
+      },
+    }),
+    'usage-billing: balance route',
   )
 
   ctx.effect(

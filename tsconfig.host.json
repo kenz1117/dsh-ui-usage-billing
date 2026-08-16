@@ -11,7 +11,8 @@
     "src/aggregate.ts",
     "src/client/pricing.ts",
     "src/pricing-fetch.ts",
-    "src/pricing-shared.ts"
+    "src/pricing-shared.ts",
+    "src/balance.ts"
   ],
   "references": [
     {
@@ -28,6 +29,9 @@
     },
     {
       "path": "../../llm/llm"
+    },
+    {
+      "path": "../../credentials/credentials"
     },
     {
       "path": "../../runtime-diagnostics/invariants"
