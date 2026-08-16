@@ -11,11 +11,11 @@ import {
   aggregateUsage, dayStamp, foldUsage, emptyUsage, type UsagePersistence,
 } from '../src/aggregate.ts'
 
-/** Minimal `request/header` event recording the active model. */
-function header(seq: number, model: string): SessionEvent {
+/** Minimal `request/header` event recording the active model and provider. */
+function header(seq: number, model: string, provider = 'deepseek-official'): SessionEvent {
   return {
     type: 'request/header', seq, time: 1_000,
-    data: { header: { config: { provider: 'deepseek-official', model, reasoningEffort: 'high', maxTokens: 256_000 }, version: 1, id: 's', createdAt: 0, cwd: '/tmp', agentPreset: 'standard' }, reason: 'initial' },
+    data: { header: { config: { provider, model, reasoningEffort: 'high', maxTokens: 256_000 }, version: 1, id: 's', createdAt: 0, cwd: '/tmp', agentPreset: 'standard' }, reason: 'initial' },
   } as unknown as SessionEvent
 }
 
@@ -43,7 +43,7 @@ function fakePersistence(logs: Record<string, SessionEvent[]>): UsagePersistence
 describe('foldUsage', () => {
   it('accumulates calls and splits tokens into cache buckets', () => {
     const acc = emptyUsage()
-    foldUsage(acc, USAGE, 'flash')
+    foldUsage(acc, USAGE, 'flash', false)
     expect(acc.calls).toBe(1)
     expect(acc.cacheHit).toBe(800)
     expect(acc.cacheMiss).toBe(120) // inputTokens 100 + cacheWriteTokens 20
@@ -53,12 +53,20 @@ describe('foldUsage', () => {
 
   it('prices catalog models and leaves unknown models free', () => {
     const known = emptyUsage()
-    foldUsage(known, USAGE, 'flash')
+    foldUsage(known, USAGE, 'flash', false)
     expect(known.cost).toBeGreaterThan(0)
 
     const unknown = emptyUsage()
-    foldUsage(unknown, USAGE, 'mimo-v2-pro') // 订阅/未知模型
+    foldUsage(unknown, USAGE, 'mimo-v2-pro', false) // 目录外的模型
     expect(unknown.cost).toBe(0)
+  })
+
+  it('charges nothing for subscription-plan calls even when the model id collides with the catalog', () => {
+    // 订阅 provider 的模型 id 即使撞名计费表（kimi-k3 有价），也一律免费。
+    const acc = emptyUsage()
+    foldUsage(acc, USAGE, 'kimi-k3', true)
+    expect(acc.calls).toBe(1)
+    expect(acc.cost).toBe(0)
   })
 })
 
@@ -108,6 +116,19 @@ describe('aggregateUsage', () => {
     expect(byModel['mimo-v2-pro']?.calls).toBe(1)
     expect(byModel['mimo-v2-pro']?.cost).toBe(0)
     expect(byModel['mimo-v2-pro']?.cacheHit).toBe(800)
+  })
+
+  it('waives cost for subscription providers even when their model id is in the catalog', async () => {
+    // kimi-coding 是订阅 provider：用它跑 deepseek-v4-flash（计费表有价）也不计费。
+    const stats = await aggregateUsage(fakePersistence({
+      'session-a': [
+        header(1, 'deepseek-v4-flash', 'kimi-coding'),
+        message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE),
+      ],
+    }))
+    const flash = (stats.byModel as Record<string, { calls: number; cost: number }>).flash
+    expect(flash.calls).toBe(1)
+    expect(flash.cost).toBe(0)
   })
 
   it('rolls multiple sessions into one total', async () => {
