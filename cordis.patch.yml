@@ -1,0 +1,8 @@
+# The ui-usage-billing bundle patch: inserts the billing dashboard plugin into
+# the profile root as one entry. Applied by `dsh plugin add @kenz1117/dsh-ui-usage-billing`;
+# the row id addresses this plugin's host half, whose `/api/billing/usage-stats`
+# route serves the browser half rendered in the sidebar footer.
+
+- insert:
+    - id: ui-usage-billing
+      name: '@kenz1117/dsh-ui-usage-billing'
