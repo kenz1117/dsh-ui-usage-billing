@@ -31,6 +31,22 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'seed-2.0-mini': 'doubao-mini',
 }
 
+/**
+ * 走订阅套餐（coding / token / agent plan）的 provider id：这些通道的调用
+ * 按套餐计费，不再按 token 计费，因此即使模型 id 与计费表撞名也一律豁免。
+ * 部署可在 plugin config 的 `subscriptionProviders` 中覆盖。
+ */
+export const DEFAULT_SUBSCRIPTION_PROVIDERS: readonly string[] = [
+  'kimi-coding',
+  'xiaomi-token-plan-cn',
+]
+
+/** Aggregation tuning options. */
+export interface AggregateOptions {
+  /** 订阅制 provider id 列表；默认 {@link DEFAULT_SUBSCRIPTION_PROVIDERS}。 */
+  subscriptionProviders?: readonly string[]
+}
+
 /** One model's aggregated usage plus estimated cost in CNY. */
 export interface ModelUsage {
   calls: number
@@ -53,8 +69,9 @@ export function emptyUsage(): ModelUsage {
  * @param acc - the accumulator to mutate.
  * @param usage - the provider-reported usage of one call.
  * @param key - the billing-catalog key this call belongs to.
+ * @param subscription - whether the call went through a subscription plan; such calls never cost money.
  */
-export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string): void {
+export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean): void {
   const cacheHit = usage.cacheReadTokens ?? 0
   const cacheMiss = usage.inputTokens + (usage.cacheWriteTokens ?? 0)
   acc.calls += 1
@@ -62,8 +79,8 @@ export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string): void
   acc.output += usage.outputTokens
   acc.cacheHit += cacheHit
   acc.cacheMiss += cacheMiss
-  // Only catalog-priced models cost money; unknown / subscription models price 0.
-  acc.cost = MODEL_CATALOG.some(entry => entry.key === key)
+  // 订阅套餐不计费；计费表里没有的模型（未知/订阅）也记 0。
+  acc.cost = !subscription && MODEL_CATALOG.some(entry => entry.key === key)
     ? computeCost(modelOf(key), {
       input: acc.input,
       cacheHit: acc.cacheHit,
@@ -89,29 +106,34 @@ export type UsagePersistence = Pick<SessionPersistence, 'list' | 'readFrom'>
 /**
  * Aggregate real usage from every persisted session log.
  * @param persistence - the session persistence service.
+ * @param options - aggregation tuning (e.g. subscription-plan providers).
  * @returns the usage-stats document (same shape the dashboard expects).
  */
-export async function aggregateUsage(persistence: UsagePersistence): Promise<unknown> {
+export async function aggregateUsage(persistence: UsagePersistence, options: AggregateOptions = {}): Promise<unknown> {
+  const subscriptionProviders = new Set(options.subscriptionProviders ?? DEFAULT_SUBSCRIPTION_PROVIDERS)
   const total = emptyUsage()
   const byModel = new Map<string, ModelUsage>()
   const byDay = new Map<string, ModelUsage>()
   for (const meta of await persistence.list()) {
     const { events } = await persistence.readFrom(meta.id, 0)
     let key = 'other'
+    let subscription = false
     for (const event of events) {
       if (event.type === 'request/header') {
-        const model = event.data.header.config.model
+        const { model, provider } = event.data.header.config
         key = MODEL_KEY_ALIASES[model] ?? model
+        // 订阅套餐 provider 的调用即使撞名计费表也一律免费。
+        subscription = subscriptionProviders.has(provider)
         continue
       }
       if (event.type !== 'assistant/message' || event.data.usage === undefined) continue
       // 归属到最近的 request/header 记录的模型，token 按缓存分桶累加。
       const modelKey = key
       const day = dayStamp(event.time)
-      foldUsage(total, event.data.usage, modelKey)
-      foldUsage(byModel.get(modelKey) ?? byModel.set(modelKey, emptyUsage()).get(modelKey)!, event.data.usage, modelKey)
+      foldUsage(total, event.data.usage, modelKey, subscription)
+      foldUsage(byModel.get(modelKey) ?? byModel.set(modelKey, emptyUsage()).get(modelKey)!, event.data.usage, modelKey, subscription)
       const dayCell = byDay.get(day) ?? byDay.set(day, emptyUsage()).get(day)!
-      foldUsage(dayCell, event.data.usage, modelKey)
+      foldUsage(dayCell, event.data.usage, modelKey, subscription)
     }
   }
   const toRecord = (map: Map<string, ModelUsage>): Record<string, ModelUsage> => Object.fromEntries(map)
