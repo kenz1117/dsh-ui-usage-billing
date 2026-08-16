@@ -16,6 +16,14 @@ DeepSeek Harness 计费仪表盘插件。从持久化会话日志实时聚合模
 - **订阅计划豁免**：走 coding/token 套餐的模型照常统计 token，费用记 0。
 - **离线自包含**：无图表库、无外部 CDN，全部使用设计令牌，适配深色/浅色主题。
 
+## 截图
+
+![计费仪表盘](screenshots/dashboard1.png)
+
+![计费仪表盘（单价表展开）](screenshots/dashboard2.png)
+
+![侧边栏入口](screenshots/trigger.png)
+
 ## 快速开始
 
 在宿主 `cordis.patch.yml` 中加入：
