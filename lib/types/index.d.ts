@@ -14,6 +14,8 @@ import type { Context } from '@deepseek-ai/cordis';
 export interface UsageBillingConfig {
     /** Absolute path to a `.dsh-usage-stats.json` fallback file. */
     statsPath?: string;
+    /** 订阅制（coding / token / agent plan）provider id 列表；默认 kimi-coding、xiaomi-token-plan-cn。 */
+    subscriptionProviders?: string[];
 }
 /** Required services: the web server and the persisted session log store. */
 export declare const inject: string[];
