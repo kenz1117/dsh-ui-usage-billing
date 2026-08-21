@@ -1115,6 +1115,367 @@
   background: #000;
 }
 
+/* ── 币种切换 ─────────────────────────────────────────────────────── */
+
+.currencyToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--dsw-alias-border-muted, #3a4250);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2, #232a33);
+  margin-right: 8px;
+}
+
+.currencyButton {
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-text-secondary, #9aa5b1);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.currencyButtonActive {
+  background: var(--dsw-alias-accent-muted, #2f6fed);
+  color: #fff;
+}
+
+/* ── 订阅套餐额度 ──────────────────────────────────────────────────── */
+
+.subscriptionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.subscriptionCard {
+  border: 1px solid var(--dsw-alias-border-muted, #3a4250);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--dsw-alias-bg-layer-2, #232a33);
+}
+
+.subscriptionHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.subscriptionName {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.subscriptionPlan {
+  font-size: 11px;
+  color: var(--dsw-alias-text-secondary, #9aa5b1);
+}
+
+.subscriptionStatus {
+  font-size: 11px;
+  color: var(--dsw-alias-warning, #e0a63c);
+  margin-bottom: 6px;
+}
+
+.subscriptionWindow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+.subscriptionWindowLabel {
+  flex: 0 0 44px;
+  color: var(--dsw-alias-text-secondary, #9aa5b1);
+}
+
+.subscriptionTrack {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--dsw-alias-bg-layer-3, #1a2028);
+  overflow: hidden;
+}
+
+.subscriptionFill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--dsw-alias-accent, #3b82f6);
+}
+
+.subscriptionPct {
+  flex: 0 0 auto;
+  min-width: 52px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.subscriptionReset {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-text-secondary, #9aa5b1);
+}
+
+/* ── 厂商计费与订阅（按厂商聚合） ──────────────────────────────────── */
+
+/* 厂商组列表：垂直堆叠的厂商卡片。 */
+.providerGroupList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 厂商组卡片：厂商名 + 模型用量子表 + 订阅额度卡片。 */
+.providerGroup {
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+/* 厂商组头部：左侧厂商名 + 健康点，右侧订阅套数 + 厂商余额。 */
+.providerGroupHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.providerGroupTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.providerGroupName {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.providerGroupMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.providerGroupBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 17px;
+  font-weight: 500;
+  color: var(--dsw-static-green-500);
+  background: color-mix(in srgb, var(--dsw-static-green-500) 12%, transparent);
+}
+
+.providerGroupBalance {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.providerGroupBalanceLabel {
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* ── 每轮费用 + 异常 ───────────────────────────────────────────────── */
+
+.roundsFlagBadge {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  background: #ef4444;
+}
+
+.rounds {
+  margin-top: 10px;
+}
+
+.roundsBars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 110px;
+  padding: 4px 2px 0;
+  overflow-x: auto;
+}
+
+.roundsBarCol {
+  flex: 1 0 28px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
+}
+
+/* 每根柱子顶部的费用数字：加宽柱位以容纳金额，超长省略。 */
+.roundsBarLabel {
+  font-size: 8px;
+  line-height: 1;
+  text-align: center;
+  margin-bottom: 2px;
+  color: var(--dsw-alias-text-secondary, #9aa5b1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* 柱子生长区：占满标签之外的剩余高度，柱子从底部向上。 */
+.roundsBarWrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+}
+
+.roundsBar {
+  width: 100%;
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--dsw-alias-accent, #3b82f6);
+  position: relative;
+}
+
+.roundsBarFlagged {
+  width: 100%;
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: #ef4444;
+  outline: 1.5px solid #ef4444;
+  outline-offset: 1px;
+  position: relative;
+}
+
+.roundsFlagMark {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 4px #ef4444;
+}
+
+.roundsAxis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--dsw-alias-text-secondary, #9aa5b1);
+}
+
+.roundsEmpty {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--dsw-alias-text-secondary, #9aa5b1);
+}
+
+/* ── 用量热力图（月度活跃地图：每天一格大圆角卡片，周日开头 7 列） ──── */
+
+/* 参考「活跃地图」：格子为横向圆角矩形、日期数字居中、薄荷绿渐变，
+   上月补位以灰色数字呈现、今日之后留空。 */
+.heatmap {
+  margin-top: 10px;
+}
+
+.heatmapGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* 灰色占位卡（上月补位 / 未来日期 / 下月补位）：浅灰底 + 灰数字。 */
+.heatmapCellEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-dimmed, #6b7480);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 当日卡片：横向圆角矩形，数字居中；背景色按强度 level 内联覆盖。 */
+.heatmapCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+/* 数字对比度随强度变化：低强度深字、高强度白字。 */
+.heatmapCell[data-level='0'],
+.heatmapCell[data-level='1'],
+.heatmapCell[data-level='2'] {
+  color: var(--dsw-alias-label-primary);
+}
+
+.heatmapCell[data-level='3'],
+.heatmapCell[data-level='4'] {
+  color: var(--dsw-static-neutral-bluish-00, #ffffff);
+}
+
+.heatmapFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 10px;
+  color: var(--dsw-alias-text-secondary, #9aa5b1);
+}
+
+.heatmapLegend {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.heatmapLegend i {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+
+.heatmapHover {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Responsive ─────────────────────────────────────────────────────── */
 
 @media (max-width: 640px) {

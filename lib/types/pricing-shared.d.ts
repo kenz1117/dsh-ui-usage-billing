@@ -47,4 +47,43 @@ export interface ProviderBalance {
 export interface BalanceResponse {
     balances: readonly ProviderBalance[];
 }
+/** Quota query result status; the dashboard maps each to a row state. */
+export type SubscriptionStatus = 'ok' | 'not-configured' | 'unauthorized' | 'rate-limited' | 'unavailable' | 'invalid-response';
+/** One quota window (session / weekly / monthly / billing). */
+export interface SubscriptionWindow {
+    kind: 'session' | 'weekly' | 'monthly' | 'billing';
+    /** Used share in percent (0–100, one decimal). */
+    usedPercent: number;
+    /** Remaining share in percent (0–100, one decimal). */
+    remainingPercent: number;
+    /** ISO reset time; absent when the provider reports none. */
+    resetsAt?: string;
+    /** Absolute remaining amount; present when the provider reports one. */
+    remaining?: number;
+}
+/** One provider's subscription plan quota row. */
+export interface SubscriptionQuota {
+    /** Adapter id: `kimi` / `zai` / `opencode-go`. */
+    provider: string;
+    /** Human display name (e.g. Kimi For Coding). */
+    displayName: string;
+    /** Plan label; absent when the provider did not name one. */
+    plan?: string;
+    status: SubscriptionStatus;
+    /** Quota windows, newest-window first; empty when the query failed. */
+    windows: readonly SubscriptionWindow[];
+}
+/** Response of `/api/billing/subscriptions`. */
+export interface SubscriptionResponse {
+    quotas: readonly SubscriptionQuota[];
+}
+/** Config for one subscription adapter (validated in apply). */
+export interface SubscriptionPlanConfig {
+    /** Adapter id: `kimi` / `zai` / `opencode-go`. */
+    provider: string;
+    /** API base URL override; defaults to the provider's public endpoint. */
+    baseUrl?: string;
+    /** Z.ai region override; defaults to the settings-namespace `zaiRegion`. */
+    region?: 'global' | 'bigmodel-cn';
+}
 //# sourceMappingURL=pricing-shared.d.ts.map

@@ -6,9 +6,30 @@
 
 import { describe, expect, it, afterEach } from 'vitest'
 import {
-  applyLivePricing, computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
-  isSubscriptionPlan, modelOf,
+  applyLivePricing, cnyToUsd, computeCost, computeCostAt, formatMoney, formatPercent, formatTokens, formatUnitPrice,
+  getRateInfo, isPeakHour, modelOf, MODEL_CATALOG, tierAt,
 } from '../src/client/pricing.ts'
+import { PROVIDER_ALIASES } from '../src/client/UsageBilling.tsx'
+
+describe('provider alias completeness', () => {
+  it('maps every catalog provider display name to aliases (Custom exempt)', () => {
+    // 一致性守卫：健康绿灯按 display name → 别名 → 实际 provider id 匹配。
+    // 任何 catalog 厂商漏配别名都会让该厂商的模型行圆点永远落回灰色未连接。
+    const displayNames = [...new Set(MODEL_CATALOG.map(entry => entry.provider))]
+    for (const name of displayNames) {
+      if (name === 'Custom') continue
+      const aliases = PROVIDER_ALIASES[name]
+      expect(aliases, `catalog provider "${name}" missing PROVIDER_ALIASES entry`).toBeDefined()
+      expect(aliases?.length ?? 0).toBeGreaterThan(0)
+    }
+  })
+
+  it('matches the xiaomi token-plan channel id to the 小米 dot', () => {
+    // 订阅通道的 provider id 是 xiaomi-token-plan-cn 等变体：经别名前缀子串匹配。
+    const aliases = PROVIDER_ALIASES['小米'] ?? []
+    expect(aliases.some(alias => 'xiaomitokenplancn'.includes(alias))).toBe(true)
+  })
+})
 
 describe('modelOf', () => {
   it('resolves a known stats key to its catalog entry', () => {
@@ -73,9 +94,13 @@ describe('computeCost', () => {
     expect(computeCost(modelOf('flash'), buckets, 0.5)).toBeCloseTo((expectedPeak + expectedOff) / 2, 10)
   })
 
-  it('charges nothing for a subscription-plan model key', () => {
-    expect(isSubscriptionPlan('some-plan-key')).toBe(false)
-    expect(computeCost(modelOf('flash'), { input: MILLION, cacheHit: 0, cacheMiss: MILLION, output: MILLION })).toBeGreaterThan(0)
+  it('resolves catalog rows for plan-channel models with a metered estimate', () => {
+    // 订阅判定在服务端按通道（provider）进行，前端不做「模型 = 订阅」假设：
+    // kimi-k3 / mimo-v2.5 走按量通道时按目录价估算，走订阅通道时由服务端记 0。
+    expect(modelOf('kimi-k3').name).toBe('Kimi K3')
+    expect(modelOf('mimo-v2.5').name).toBe('MiMo V2.5')
+    expect(computeCost(modelOf('kimi-k3'), { input: MILLION, cacheHit: 0, cacheMiss: MILLION, output: MILLION })).toBeGreaterThan(0)
+    expect(computeCost(modelOf('mimo-v2.5'), { input: MILLION, cacheHit: 0, cacheMiss: MILLION, output: MILLION })).toBeGreaterThan(0)
   })
 })
 
@@ -142,5 +167,71 @@ describe('display formatters', () => {
     expect(formatTokens(255_884_353)).toBe('255.9M')
     expect(formatTokens(414_102)).toBe('414K')
     expect(formatPercent(99.9)).toBe('99.9%')
+  })
+})
+
+describe('peak/off-peak tier (P0-1)', () => {
+  it('flags the official Beijing peak windows (09-12 / 14-18)', () => {
+    expect(isPeakHour(9)).toBe(true)
+    expect(isPeakHour(10)).toBe(true)
+    expect(isPeakHour(11)).toBe(true)
+    expect(isPeakHour(12)).toBe(false)
+    expect(isPeakHour(13)).toBe(false)
+    expect(isPeakHour(14)).toBe(true)
+    expect(isPeakHour(17)).toBe(true)
+    expect(isPeakHour(18)).toBe(false)
+  })
+
+  it('derives the tier from a wall-clock epoch in Beijing time', () => {
+    // 北京时间 = UTC+8：北京时间 10 点 = UTC 02 点。
+    const at = (beijingHour: number): number => Date.UTC(2026, 7, 21, (beijingHour + 24 - 8) % 24)
+    expect(tierAt(at(10))).toBe('peak')
+    expect(tierAt(at(13))).toBe('offPeak')
+    expect(tierAt(at(15))).toBe('peak')
+    expect(tierAt(at(20))).toBe('offPeak')
+    expect(tierAt(null)).toBe('peak') // 未知时刻保守按高峰
+  })
+})
+
+describe('computeCostAt (P0-1)', () => {
+  const MILLION = 1_000_000
+  const at = (beijingHour: number): number => Date.UTC(2026, 7, 21, (beijingHour + 24 - 8) % 24)
+  const buckets = { input: 2 * MILLION, cacheHit: MILLION, cacheMiss: MILLION, output: MILLION }
+
+  it('prices the peak band when the call falls in the peak window', () => {
+    // 高峰：缓存命中 ¥0.1、未命中 ¥3、输出 ¥9（每 1M）。
+    expect(computeCostAt(modelOf('flash'), buckets, at(10)))
+      .toBeCloseTo((MILLION * 0.1 + MILLION * 3 + MILLION * 9) / MILLION, 10)
+  })
+
+  it('prices the off-peak band outside the window', () => {
+    // 低谷：缓存命中 ¥0.05、未命中 ¥1.5、输出 ¥4.5（每 1M）。
+    expect(computeCostAt(modelOf('flash'), buckets, at(13)))
+      .toBeCloseTo((MILLION * 0.05 + MILLION * 1.5 + MILLION * 4.5) / MILLION, 10)
+  })
+
+  it('falls back to the peak-share mix when the time is missing', () => {
+    expect(computeCostAt(modelOf('flash'), buckets, null)).toBeCloseTo(computeCost(modelOf('flash'), buckets, 0.5), 10)
+  })
+
+  it('prices flat models identically at any time', () => {
+    expect(computeCostAt(modelOf('glm'), buckets, at(10))).toBeCloseTo(computeCostAt(modelOf('glm'), buckets, at(13)), 10)
+  })
+})
+
+describe('currency display (P2-3)', () => {
+  it('converts CNY to USD by the built-in rate', () => {
+    expect(cnyToUsd(6.79)).toBeCloseTo(1, 10)
+    expect(cnyToUsd(0)).toBe(0)
+  })
+
+  it('formats money in the requested currency', () => {
+    // formatMoney 只负责符号与精度；汇率换算是调用方 cnyToUsd 的事。
+    expect(formatMoney(6.79, 'usd')).toBe('$6.79')
+    expect(formatMoney(cnyToUsd(6.79), 'usd')).toBe('$1.00')
+    expect(formatMoney(10, 'usd')).toBe('$10.0')
+    expect(formatMoney(0, 'usd')).toBe('$0')
+    expect(formatMoney(Number.NaN, 'usd')).toBe('$0')
+    expect(formatMoney(6.79)).toBe('¥6.79') // 默认仍是人民币
   })
 })

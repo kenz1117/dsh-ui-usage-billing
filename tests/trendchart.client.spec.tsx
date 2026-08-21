@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * TrendChart rendering smoke test: the grouped bars + calls line must render
+ * TrendChart rendering smoke test: the stacked bars + calls line must render
  * without throwing (a throw unmounts the whole plugin surface in the host).
  */
 
@@ -24,11 +24,18 @@ const MODELS = [
 ]
 
 describe('TrendChart', () => {
-  it('renders grouped bars and the calls line without throwing', () => {
+  it('renders stacked bars and the calls line without throwing', () => {
     const { container } = render(<TrendChart data={DATA} models={MODELS} />)
     expect(container.querySelector('svg')).not.toBeNull()
-    // 两个模型 × 7 天中费用 > 0 的柱。
+    // 两个模型 × 7 天中费用 > 0 的柱段。
     expect(container.querySelectorAll('rect').length).toBeGreaterThan(0)
+  })
+
+  it('stacks all models of a day into a single bar column', () => {
+    const { container } = render(<TrendChart data={DATA} models={MODELS} />)
+    const xs = new Set([...container.querySelectorAll('rect')].map(rect => rect.getAttribute('x')))
+    // 有量的 6 天各一根柱：x 位置数等于天数，而非「天数 × 模型数」。
+    expect(xs.size).toBe(6)
   })
 
   it('renders the single-color fallback when no model detail exists', () => {

@@ -14,27 +14,11 @@ import { stat } from 'node:fs/promises'
 import type { SessionHeader } from '@deepseek-ai/dsh-session/types'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
-import { MODEL_CATALOG, computeCost, modelOf } from './client/pricing.ts'
+import { MODEL_CATALOG, MODEL_KEY_ALIASES, computeCostAt, modelOf } from './client/pricing.ts'
 
-/**
- * Real provider model ids map to their billing-catalog keys. Unknown ids stay
- * as-is and price zero (they are not in the catalog; subscription-plan routes
- * like kimi-coding / token plans fall here and therefore cost nothing).
- */
-export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
-  'deepseek-v4-flash': 'flash',
-  'deepseek-v4-pro': 'pro',
-  'glm-5.2': 'glm',
-  'qwen3.8-max': 'qwen-3.8-max',
-  'qwen3.7-max': 'qwen-max',
-  'qwen-max': 'qwen-max',
-  'hunyuan-t1': 'hunyuan-t1',
-  'step-3.7-flash': 'step',
-  'seed-2.0-mini': 'doubao-mini',
-  // 月之暗面 Kimi：coding plan 通道的 model id 是短名 k3。
-  'k3': 'kimi-k3',
-  'kimi-k3': 'kimi-k3',
-}
+// 模型别名（真实 provider id → 计费目录键）统一定义在 client/pricing.ts，
+// 聚合层折叠与客户端渲染共用同一张表，避免两侧不一致导致「未收录」。
+export { MODEL_KEY_ALIASES }
 
 /**
  * 走订阅套餐（coding / token plan / opencode 订阅）的 provider id：这些通道的
@@ -86,8 +70,9 @@ export function emptyUsage(): ModelUsage {
  * @param usage - the provider-reported usage of one call.
  * @param key - the billing-catalog key this call belongs to.
  * @param subscription - whether the call went through a subscription plan; such calls never cost money.
+ * @param timeMs - the call's wall-clock time (epoch ms); drives peak/off-peak pricing.
  */
-export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean): void {
+export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number): void {
   const cacheHit = usage.cacheReadTokens ?? 0
   const cacheMiss = usage.inputTokens + (usage.cacheWriteTokens ?? 0)
   acc.calls += 1
@@ -97,14 +82,14 @@ export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subsc
   acc.cacheMiss += cacheMiss
   // 订阅套餐不计费；计费表里没有的模型（未知/订阅）也记 0。费用按本次调用
   // 增量累加（计价是线性的）：同一桶内混入订阅/未知调用时，后面免费调用
-  // 不再把整个桶的 cost 覆盖成 0。
+  // 不再把整个桶的 cost 覆盖成 0。时段按本次调用的实际时刻精确判定。
   if (!subscription && MODEL_CATALOG.some(entry => entry.key === key)) {
-    acc.cost += computeCost(modelOf(key), {
+    acc.cost += computeCostAt(modelOf(key), {
       input: cacheHit + cacheMiss,
       cacheHit,
       cacheMiss,
       output: usage.outputTokens,
-    })
+    }, timeMs)
   }
 }
 
@@ -113,6 +98,16 @@ export function dayStamp(time: number): string {
   const date = new Date(time)
   const pad = (n: number): string => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+/** cwd 未知时工作区聚合的占位名（UI 显示 em dash，保持语言无关）。 */
+export const UNKNOWN_WORKSPACE_NAME = '—'
+
+/** 工作区名：取 cwd 的末级目录名；无 cwd 时返回 {@link UNKNOWN_WORKSPACE_NAME}。 */
+export function workspaceNameOf(cwd: string | undefined): string {
+  if (cwd === undefined || cwd === '') return UNKNOWN_WORKSPACE_NAME
+  const parts = cwd.split(/[\\/]/).filter(Boolean)
+  return parts.at(-1) ?? UNKNOWN_WORKSPACE_NAME
 }
 
 /**
@@ -135,6 +130,10 @@ export interface UsageStatsDocument {
   byDayModels: Record<string, Record<string, ModelUsage>>
   /** 会话明细：按费用倒序，封顶 {@link SESSION_ROW_LIMIT} 行；旧快照可能缺失。 */
   bySession: SessionUsageRow[]
+  /** 每轮费用明细：按起始时间倒序，封顶 {@link TURN_ROW_LIMIT} 行；旧快照可能缺失。 */
+  byTurn?: TurnUsageRow[]
+  /** 工作区聚合：按 cwd 末级目录归并，按费用倒序；旧快照可能缺失。 */
+  byWorkspace?: WorkspaceUsageRow[]
 }
 
 /** 会话明细行：仪表盘「会话明细」面板的数据源。 */
@@ -151,8 +150,46 @@ export interface SessionUsageRow {
   lastActive: number
 }
 
+/** 每轮费用明细行：仪表盘「每轮费用」图的数据源。 */
+export interface TurnUsageRow {
+  /** 会话 id（字符串形式）：不同会话的轮次号相互独立，展示时需区分。 */
+  sessionId: string
+  /** 会话内轮次号。 */
+  turn: number
+  /** 归因模型 key（计费目录键；未收录原样保留）。 */
+  model: string
+  input: number
+  output: number
+  cacheHit: number
+  cacheMiss: number
+  /** 该轮成本（人民币元，按调用时刻精确判高峰/空闲档）。 */
+  cost: number
+  /** 轮起始时刻（毫秒）。 */
+  startedAt: number
+  /** 轮结束时刻（毫秒）；未结束轮缺失。 */
+  endedAt?: number
+}
+
+/** 会话内折叠的每轮行（不含 sessionId，合并时补齐）。 */
+type SessionTurnRow = Omit<TurnUsageRow, 'sessionId'>
+
+/** 工作区聚合行：按会话 cwd 的末级目录归并。 */
+export interface WorkspaceUsageRow {
+  /** 目录末级名；cwd 未知的会话归入「未命名」。 */
+  name: string
+  calls: number
+  cost: number
+  input: number
+  output: number
+  /** 该工作区最近一次活跃时刻（毫秒）。 */
+  lastActive: number
+}
+
 /** 会话明细行的响应封顶：控制 payload 体积，重度用户的完整长尾不逐行下发。 */
 export const SESSION_ROW_LIMIT = 100
+
+/** 每轮费用行的响应封顶：同样控制 payload 体积。 */
+export const TURN_ROW_LIMIT = 200
 
 /** 聚合文档的短 TTL（毫秒）：合并密集轮询，TTL 内直接复用上次的合并结果。 */
 export const AGGREGATE_TTL_MS = 5000
@@ -165,6 +202,8 @@ interface SessionFold {
   byDayModels: Map<string, Map<string, ModelUsage>>
   /** 每个模型 key 在本会话内走订阅通道的调用数（合并时跨会话累加判定 plan）。 */
   planCalls: Map<string, number>
+  /** 每轮费用明细（按轮次号升序，不含 sessionId）；sessionId 在合并时补齐。 */
+  turns: SessionTurnRow[]
   /** 日志里最新的 session/title 文本（无标题事件时 undefined）。 */
   title?: string
   /** 最后一个事件的时间戳（毫秒）；空日志为 0。 */
@@ -190,9 +229,32 @@ function modelDayCell(map: Map<string, Map<string, ModelUsage>>, day: string, mo
   return usageCell(models, modelKey)
 }
 
+/** 每轮折叠的中间状态：turn/start 设起点，turn/end 设终点，调用累加桶与成本。 */
+interface TurnState {
+  turn: number
+  model: string
+  input: number
+  output: number
+  cacheHit: number
+  cacheMiss: number
+  cost: number
+  startedAt: number
+  endedAt?: number
+}
+
+/** Get-or-create one turn's accumulation state. */
+function turnState(turns: Map<number, TurnState>, turn: number): TurnState {
+  const existing = turns.get(turn)
+  if (existing !== undefined) return existing
+  const fresh: TurnState = { turn, model: 'other', input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0, startedAt: Number.MAX_SAFE_INTEGER }
+  turns.set(turn, fresh)
+  return fresh
+}
+
 /**
  * Fold one session's events into a {@link SessionFold}. 每个 LLM 调用归属到
- * 其前置 request/header 记录的模型；同时提取最新会话标题与最后活跃时间。
+ * 其前置 request/header 记录的模型；同时提取最新会话标题、最后活跃时间，
+ * 并按轮次折叠每轮费用明细（turn/start → turn/end；调用按 (turn) 归组）。
  * @param events - the session's persisted events in log order.
  * @param subscriptionProviders - provider ids billed through subscription plans.
  * @returns the per-session fold (cached by the incremental aggregator).
@@ -204,10 +266,12 @@ export function foldSession(events: readonly { type: string; time: number; data:
     byDay: new Map(),
     byDayModels: new Map(),
     planCalls: new Map(),
+    turns: [],
     lastActive: 0,
   }
   let key = 'other'
   let subscription = false
+  const turns = new Map<number, TurnState>()
   for (const event of events) {
     fold.lastActive = Math.max(fold.lastActive, event.time)
     // session/title 由 dsh-session-title 经声明合并注册，本包不引用它，
@@ -215,6 +279,18 @@ export function foldSession(events: readonly { type: string; time: number; data:
     if (event.type === 'session/title') {
       const title = (event.data as { title?: unknown }).title
       if (typeof title === 'string' && title.length > 0) fold.title = title
+      continue
+    }
+    if (event.type === 'turn/start') {
+      const turn = (event.data as { turn?: number }).turn ?? -1
+      const state = turnState(turns, turn)
+      if (event.time < state.startedAt) state.startedAt = event.time
+      continue
+    }
+    if (event.type === 'turn/end') {
+      const turn = (event.data as { turn?: number }).turn ?? -1
+      const state = turns.get(turn)
+      if (state !== undefined) state.endedAt = event.time
       continue
     }
     if (event.type === 'request/header') {
@@ -228,14 +304,46 @@ export function foldSession(events: readonly { type: string; time: number; data:
     const usage = (event.data as { usage?: TokenUsage }).usage
     if (usage === undefined) continue
     // 归属到最近的 request/header 记录的模型，token 按缓存分桶累加。
+    // 时段按本次调用的实际时刻（event.time）精确判定，不再按固定比例混合。
     const modelKey = key
     const day = dayStamp(event.time)
-    foldUsage(fold.total, usage, modelKey, subscription)
-    foldUsage(usageCell(fold.byModel, modelKey), usage, modelKey, subscription)
-    foldUsage(usageCell(fold.byDay, day), usage, modelKey, subscription)
-    foldUsage(modelDayCell(fold.byDayModels, day, modelKey), usage, modelKey, subscription)
+    foldUsage(fold.total, usage, modelKey, subscription, event.time)
+    foldUsage(usageCell(fold.byModel, modelKey), usage, modelKey, subscription, event.time)
+    foldUsage(usageCell(fold.byDay, day), usage, modelKey, subscription, event.time)
+    foldUsage(modelDayCell(fold.byDayModels, day, modelKey), usage, modelKey, subscription, event.time)
     if (subscription) fold.planCalls.set(modelKey, (fold.planCalls.get(modelKey) ?? 0) + 1)
+    // 每轮明细：同一轮内的调用累加进该轮状态（模型取最近一次的归属）。
+    const turn = (event.data as { turn?: number }).turn ?? -1
+    const state = turnState(turns, turn)
+    state.model = modelKey
+    state.input += usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
+    state.output += usage.outputTokens
+    state.cacheHit += usage.cacheReadTokens ?? 0
+    state.cacheMiss += usage.inputTokens + (usage.cacheWriteTokens ?? 0)
+    if (!subscription && MODEL_CATALOG.some(entry => entry.key === modelKey)) {
+      state.cost += computeCostAt(modelOf(modelKey), {
+        input: (usage.cacheReadTokens ?? 0) + usage.inputTokens + (usage.cacheWriteTokens ?? 0),
+        cacheHit: usage.cacheReadTokens ?? 0,
+        cacheMiss: usage.inputTokens + (usage.cacheWriteTokens ?? 0),
+        output: usage.outputTokens,
+      }, event.time)
+    }
+    if (state.startedAt === Number.MAX_SAFE_INTEGER) state.startedAt = event.time
   }
+  fold.turns = [...turns.values()]
+    .filter(state => state.input > 0 || state.output > 0)
+    .sort((a, b) => a.turn - b.turn)
+    .map(state => ({
+      turn: state.turn,
+      model: state.model,
+      input: state.input,
+      output: state.output,
+      cacheHit: state.cacheHit,
+      cacheMiss: state.cacheMiss,
+      cost: state.cost,
+      startedAt: state.startedAt === Number.MAX_SAFE_INTEGER ? fold.lastActive : state.startedAt,
+      ...(state.endedAt === undefined ? {} : { endedAt: state.endedAt }),
+    }))
   return fold
 }
 
@@ -317,7 +425,10 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const byDayModels = new Map<string, Map<string, ModelUsage>>()
       const planCalls = new Map<string, number>()
       const sessionRows: SessionUsageRow[] = []
+      const turnRows: TurnUsageRow[] = []
+      const workspaceMap = new Map<string, WorkspaceUsageRow>()
       for (const { meta, fold } of folds) {
+        const sessionId = String(meta.id)
         mergeUsageInto(total, fold.total)
         for (const [modelKey, cell] of fold.byModel) mergeUsageInto(usageCell(byModel, modelKey), cell)
         for (const [day, cell] of fold.byDay) mergeUsageInto(usageCell(byDay, day), cell)
@@ -327,9 +438,20 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         for (const [modelKey, count] of fold.planCalls) {
           planCalls.set(modelKey, (planCalls.get(modelKey) ?? 0) + count)
         }
+        // 每轮明细：跨会话的轮次统一按起始时间倒序（展示最近 N 轮）。
+        for (const row of fold.turns) turnRows.push({ sessionId, ...row })
+        // 工作区聚合：按 cwd 末级目录归并（cwd 未知归入占位名）。
+        const wsName = workspaceNameOf(meta.cwd)
+        const ws = workspaceMap.get(wsName) ?? { name: wsName, calls: 0, cost: 0, input: 0, output: 0, lastActive: 0 }
+        ws.calls += fold.total.calls
+        ws.cost += fold.total.cost
+        ws.input += fold.total.input
+        ws.output += fold.total.output
+        ws.lastActive = Math.max(ws.lastActive, fold.lastActive)
+        workspaceMap.set(wsName, ws)
         if (fold.total.calls > 0) {
           sessionRows.push({
-            id: String(meta.id),
+            id: sessionId,
             // exactOptionalPropertyTypes：缺失的可选字段不带 key。
             ...(fold.title !== undefined ? { title: fold.title } : {}),
             ...(meta.cwd !== undefined ? { cwd: meta.cwd } : {}),
@@ -340,6 +462,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         }
       }
       sessionRows.sort((a, b) => b.cost - a.cost || b.lastActive - a.lastActive)
+      turnRows.sort((a, b) => b.startedAt - a.startedAt)
+      const workspaces = [...workspaceMap.values()].sort((a, b) => b.cost - a.cost || b.lastActive - a.lastActive)
 
       const toRecord = (map: Map<string, ModelUsage>): Record<string, ModelUsage> => {
         // exactOptionalPropertyTypes：只有全部调用都走订阅通道时才带 plan 字段。
@@ -354,7 +478,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         Object.fromEntries([...map].map(([day, models]) => [day, Object.fromEntries(models)]))
 
       lastDoc = {
-        version: 2,
+        version: 3,
         updatedAt: now,
         source: 'session-logs',
         total,
@@ -362,6 +486,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         byDay: toRecord(byDay),
         byDayModels: toModelDayRecord(byDayModels),
         bySession: sessionRows.slice(0, SESSION_ROW_LIMIT),
+        byTurn: turnRows.slice(0, TURN_ROW_LIMIT),
+        byWorkspace: workspaces.slice(0, SESSION_ROW_LIMIT),
       }
       lastAt = now
       return lastDoc

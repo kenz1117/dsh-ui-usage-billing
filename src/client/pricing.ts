@@ -54,6 +54,31 @@ export function getRateInfo(): { rate: number; live: boolean } {
 /** Default share of traffic assumed to fall in the peak band (0..1). */
 export const DEFAULT_PEAK_SHARE = 0.5
 
+/** 计费时段档位：高峰 / 空闲（官方 DeepSeek 刊例价：高峰 = 空闲 × 2）。 */
+export type PriceTierId = 'peak' | 'offPeak'
+
+/** 成本显示币种：人民币（国内模型直价）/ 美元（国外模型直价或换算显示）。 */
+export type CostCurrency = 'cny' | 'usd'
+
+/**
+ * 高峰时段判定（北京时间，UTC+8，无夏令时）：09:00–12:00、14:00–18:00。
+ * @param beijingHour - 北京时间的小时数（0–23）。
+ */
+export function isPeakHour(beijingHour: number): boolean {
+  return (beijingHour >= 9 && beijingHour < 12) || (beijingHour >= 14 && beijingHour < 18)
+}
+
+/**
+ * 由时刻（epoch 毫秒）推断计费时段；时刻未知/非法时按高峰计（保守：未知
+ * 时刻不低估成本，与社区 dsh-usage-chart 的 tierAt 语义一致）。
+ * @param timeMs - Unix epoch 毫秒；null/undefined/NaN 视为未知。
+ */
+export function tierAt(timeMs: number | null | undefined): PriceTierId {
+  if (timeMs === null || timeMs === undefined || !Number.isFinite(timeMs)) return 'peak'
+  const beijingHour = (new Date(timeMs).getUTCHours() + 8) % 24
+  return isPeakHour(beijingHour) ? 'peak' : 'offPeak'
+}
+
 /** Usage buckets consumed by one model (counts in raw tokens). */
 export interface TokenUsageBuckets {
   /** Uncached input tokens. */
@@ -123,6 +148,20 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
   {
     key: 'flash',
     name: 'DeepSeek V4 Flash',
+    provider: 'DeepSeek',
+    colorVar: 'dsw-static-blue-500',
+    price: {
+      currency: 'CNY',
+      input: 3,
+      cacheHit: 0.1,
+      output: 9,
+      offPeak: { input: 1.5, cacheHit: 0.05, output: 4.5 },
+    },
+    peakHours: '09:00-12:00 / 14:00-18:00',
+  },
+  {
+    key: 'flash-vision-exp',
+    name: 'DeepSeek V4 Flash Vision (Exp)',
     provider: 'DeepSeek',
     colorVar: 'dsw-static-blue-500',
     price: {
@@ -426,15 +465,39 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
   },
 ]
 
+/**
+ * 真实 provider model id → 计费目录键（`MODEL_CATALOG[].key`）的映射。未知 id
+ * 原样保留并落回 `other`（未知模型不估算费用）。聚合层（aggregate.ts）在折叠时
+ * 用同一张表把日志里的 model id 归并为目录键，客户端渲染（`modelOf`）也按它
+ * 解析，两侧共用一份映射，避免同一模型两侧不一致导致「未收录」。
+ */
+export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
+  'deepseek-v4-flash': 'flash',
+  'deepseek-v4-flash-vision-exp': 'flash-vision-exp',
+  'deepseek-v4-pro': 'pro',
+  'glm-5.2': 'glm',
+  'qwen3.8-max': 'qwen-3.8-max',
+  'qwen3.7-max': 'qwen-max',
+  'qwen-max': 'qwen-max',
+  'hunyuan-t1': 'hunyuan-t1',
+  'step-3.7-flash': 'step',
+  'seed-2.0-mini': 'doubao-mini',
+  // 月之暗面 Kimi：coding plan 通道的 model id 是短名 k3。
+  'k3': 'kimi-k3',
+  'kimi-k3': 'kimi-k3',
+}
+
 /** Lookup a model by its stats key; falls back to the generic `other` entry. */
 export function modelOf(key: string): ModelEntry {
-  const found = MODEL_CATALOG.find(entry => entry.key === key)
+  // 先按别名归并为目录键（catalog key 本身不在别名表里，原样通过）。
+  const resolved = MODEL_KEY_ALIASES[key] ?? key
+  const found = MODEL_CATALOG.find(entry => entry.key === resolved)
   const base = found ?? (() => {
     const fallback = MODEL_CATALOG.at(-1)
     if (fallback !== undefined) return fallback
     throw new Error('MODEL_CATALOG must not be empty')
   })()
-  const live = livePrices?.[key]
+  const live = livePrices?.[resolved]
   if (live === undefined) return base
   // 实时价是路由器的美元单价（平档、无时段区分）：整表替换并走汇率换算。
   return { ...base, price: { currency: 'USD', input: live.input, cacheHit: live.cacheHit, output: live.output } }
@@ -487,16 +550,44 @@ export function computeCost(entry: ModelEntry, buckets: TokenUsageBuckets, peakS
   return peak * peakShare + off * (1 - peakShare)
 }
 
-/** Format a CNY amount with adaptive precision. */
-export function formatMoney(cny: number): string {
+/**
+ * 按调用时刻精确判定高峰/空闲档并计价（P0-1：替代固定比例混合）。时刻未知
+ * （null/NaN，理论不发生在真实事件流）时回退 {@link DEFAULT_PEAK_SHARE} 混合，
+ * 保持旧语义不低估。平档模型（无 offPeak）两个时段同价。
+ * @param entry - the catalog entry whose prices apply.
+ * @param buckets - token usage counts.
+ * @param timeMs - the call's wall-clock time (epoch ms); null falls back to the peak-share mix.
+ * @param peakShare - fallback mix used only when `timeMs` is missing.
+ * @returns the estimated cost in the entry's native currency.
+ */
+export function computeCostAt(entry: ModelEntry, buckets: TokenUsageBuckets, timeMs: number | null | undefined, peakShare = DEFAULT_PEAK_SHARE): number {
+  if (entry.price.offPeak === undefined) return priceBandCost(entry.price, buckets, entry.price.currency)
+  if (timeMs === null || timeMs === undefined || !Number.isFinite(timeMs)) return computeCost(entry, buckets, peakShare)
+  const band = tierAt(timeMs) === 'peak' ? entry.price : entry.price.offPeak
+  return priceBandCost(band, buckets, entry.price.currency)
+}
+
+/** 人民币 → 美元（显示换算用）：1 USD = {@link USD_TO_CNY} CNY。 */
+export function cnyToUsd(cny: number): number {
+  return cny / USD_TO_CNY
+}
+
+/**
+ * Format an amount with adaptive precision and the given currency symbol.
+ * @param amount - the amount (CNY by default; pass `usd` for dollar display).
+ * @param currency - display currency; default `cny`.
+ */
+export function formatMoney(amount: number, currency: CostCurrency = 'cny'): string {
   // 外部统计 JSON 的数字字段可能被写成字符串/非法值：先归一化，避免
   // toFixed 抛 TypeError 把整个渲染树打崩（插件 surface 会被卸载）。
-  const value = Number(cny)
-  if (!Number.isFinite(value)) return '¥0'
-  if (value >= 1000) return `¥${value.toFixed(0)}`
-  if (value >= 10) return `¥${value.toFixed(1)}`
-  if (value >= 0.1) return `¥${value.toFixed(2)}`
-  return `¥${value.toFixed(3)}`
+  const value = Number(amount)
+  if (!Number.isFinite(value)) return currency === 'cny' ? '¥0' : '$0'
+  const symbol = currency === 'cny' ? '¥' : '$'
+  if (value <= 0) return `${symbol}0`
+  if (value >= 1000) return `${symbol}${value.toFixed(0)}`
+  if (value >= 10) return `${symbol}${value.toFixed(1)}`
+  if (value >= 0.1) return `${symbol}${value.toFixed(2)}`
+  return `${symbol}${value.toFixed(3)}`
 }
 
 /**

@@ -10,14 +10,14 @@ DeepSeek Harness 计费仪表盘插件。从持久化会话日志实时聚合模
 ## 特性
 
 - **侧边栏入口**：设置按钮上方的触发胶囊，显示**当月费用 + 今日费用**；折叠栏自动切换为图标。
-- **计费仪表盘**：Hero 按 **当年 / 当月 / 当日** 三维展示费用，KPI 指标（缓存命中率 / Token 总量 / 单次平均成本 / 调用次数）、按模型色段堆叠的**每日费用趋势图**（7 天 / 30 天窗口切换）、按模型计费明细、可展开的单价表。
+- **计费仪表盘**：Hero 按 **当年 / 当月 / 当日** 三维展示费用，KPI 指标（缓存命中率 / Token 总量 / 单次平均成本 / 调用次数）、按模型色段堆叠的**每日费用趋势图**（7 天 / 30 天窗口切换）、**厂商计费与订阅面板**、可展开的单价表。
 - **月度预算**：仪表盘内置预算条——开关控制显隐、金额可直接编辑（已用 / 总额 / 百分比进度，超支自动转红并脉冲提示），偏好持久化在浏览器本地；宿主配置 `monthlyBudget` 可作为默认金额。
 - **超支通知**：预算开启且当月花费超过预算时，自动弹出系统通知（浏览器 Notification，每天最多一次）；通知不可用时红色脉冲进度条兜底。
 - **会话明细**：可折叠面板按费用倒序列出每个会话的花费（标题 / 项目 / 调用数 / 费用 / 最后活跃），直接回答「钱花在哪」。
 - **真实用量**：服务端从会话日志实时聚合，无需手工维护统计文件；增量缓存保证只有写过的日志会被重新折叠，重度使用下轮询依然轻量。
 - **模型健康探测**：模型行的圆点反映各厂商接入状态（正常绿 / 异常红 / 未接入灰）。
 - **订阅计划豁免**：走 coding / token plan / opencode 订阅通道的模型照常统计 token、费用记 0（按**通道**判定，同一模型走按量通道时正常计费）。
-- **余额查询**：模型计费明细按厂商显示「余额」列，DeepSeek 通过官方余额 API 实时查询；未配置 / Key 无效 / 服务不可达均有状态提示，扩展点可接更多厂商。
+- **余额查询**：厂商组头部显示该厂商余额（只显示一次，不再随每行重复），DeepSeek 通过官方余额 API 实时查询；未配置 / Key 无效 / 服务不可达均有状态提示，扩展点可接更多厂商。
 - **可用天数估算**：余额列按最近 7 天日均消耗折算「约可撑 N 天」，剩余不足 3 天红色强调。
 - **余额不足告警**：任一厂商余额（折算人民币）低于阈值时每天弹一次系统通知；阈值经宿主配置 `lowBalanceThreshold`（人民币元）下发，未配置默认 50 元。
 - **未收录模型标注**：真实模型 id 不在计费目录时，明细行显示真实 id 并标注「未收录」，费用按兜底档估算；厂商可从模型 id 自动推断（如 `mi-mimo-2.5` → 小米），健康圆点据此点亮。
@@ -25,6 +25,14 @@ DeepSeek Harness 计费仪表盘插件。从持久化会话日志实时聚合模
 - **动态刷新**：侧边栏入口与仪表盘每 30 秒自动更新，无需重启或手动刷新。
 - **更新时间**：模型计费明细表头显示最近一次统计的更新时间，精确到时分秒。
 - **北京时间统一**：统计聚合与仪表盘日期一律按北京时间归天，跨零点不漂移。
+- **精确时段计费**：每笔调用的费用按实际发生时刻（北京时间）精确判定高峰 / 低谷档，替代固定比例混合——凌晨调用不再被按高峰价估算。
+- **订阅套餐额度**：自动识别你在 dsh `llm-pi-ai` 设置里配置的订阅类 provider（kimi-coding、zai-coding-cn、opencode、qwen/xiaomi/火山 token-plan、百度/GLM 等 coding/agent plan），只显示识别到的套餐；有额度 API 的（Kimi / Z.ai / OpenCode Go）实时显示剩余百分比与重置时间，无公开额度接口的标注「额度接口未接入」。API Key 复用 `llm-pi-ai` 的 `apiKeyEnv` 引用经凭据 seam 解析，无需额外配置。面板默认展开，打开即见。
+- **厂商计费与订阅（按厂商聚合）**：模型计费明细与订阅套餐合并为**单一容器**，按厂商作为一级分组——同厂商的非订阅按量模型（显示实际费用）与订阅套餐（显示额度卡片）落在同一组，避免散乱；余额与健康圆点只在厂商组头部显示一次（**余额是厂商的余额**，不再随每行重复）。订阅 provider 通过内置别名归并到对应模型厂商（如 `kimi-coding` → 月之暗面），无模型厂商的跨厂商通道（如 opencode）按自身名独立成组。
+- **模型可用数按模型统计**：侧边栏入口右上角「N 模型可用」按**模型数量**统计（各厂商成功接入的模型之和），而非厂商数量，口径与文案一致。
+- **用量热力图**：当月日历热力图（本月 1 号到今天每天一格，周日开头 7 列），按日费用分 5 档色阶，悬停显示日期与金额。默认展开。
+- **每轮费用与成本突增**：按会话轮次折叠的每轮费用图（最近 40 轮），位于用量热力图下方，默认收起；每根柱子顶部标注该轮费用数字，相对近 6 轮成本超 2 倍的轮次红色标注并归因（输出增长 / 上下文膨胀 / 缓存命中率下降）。
+- **工作区统计**：按会话工作目录（cwd 末级）归并的花费 / 调用 / Token 汇总表。
+- **双币种显示**：仪表盘右上角 ¥ / $ 切换，美元金额按当前汇率换算显示。
 - **离线自包含**：无图表库、无外部 CDN，全部使用设计令牌，适配深色/浅色主题。
 
 ## 截图
@@ -88,33 +96,33 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 
 统计中的 `input` 为总输入（cacheHit + cacheMiss），估算按命中 / 未命中分拆计价，避免重复计费。支持双档计费的模型按 `DEFAULT_PEAK_SHARE`（默认 0.5）混合高峰与低谷档。
 
-### 支持模型（2026-08-16 主流阵容，OpenAI 兼容系列）
+### 支持模型（2026-08-21 主流阵容，OpenAI 兼容系列）
 
-| 厂商 | 模型 |
-|---|---|
-| DeepSeek | V4 Flash、V4 Pro（按时段峰谷计费：高峰 09:00-12:00 / 14:00-18:00 北京 = 低谷 2 倍） |
-| 智谱 AI | GLM-5.3、GLM-5.2、GLM-4.6 |
-| 阿里通义 | Qwen3.8 Max、Qwen3.7-Max、Qwen3.5-Plus、Qwen3.5-Flash |
-| 字节豆包 | Doubao Seed-2.0 Pro、Seed-2.0 Mini、Seed-1.6 |
-| 月之暗面 | Kimi K3、K2.7 Code、K2.7 Code HighSpeed、K2.6 |
-| 小米 | MiMo V2.5（走 token plan 订阅通道时豁免计费）¹ |
-| MiniMax | MiniMax-M3 |
-| 百度 | ERNIE-5.1 |
-| 腾讯 | 混元 T1、混元 Hy3 |
-| 零一万物 | Yi-Lightning |
-| 阶跃星辰 | Step 3.7 Flash |
-| 科大讯飞 | Spark 4.0 Ultra（套餐制）¹ |
-| 商汤 | SenseNova 6.5（公测中）¹ |
-| 百川智能 | Baichuan M3-Plus |
-| OpenAI | GPT-5.6 Sol / Terra / Luna |
-| Google | Gemini 3.1 Pro、3.6 Flash（Standard / Flex 双档，Flex = -50%） |
-| xAI | Grok 4.6、Grok 4.3 |
-| Meta | Llama 4 Maverick、Scout |
-| 其他 | 未收录模型的统一回退定价 |
+| 厂商       | 模型                                                                                      |
+| -------- | --------------------------------------------------------------------------------------- |
+| DeepSeek | V4 Flash、V4 Flash Vision (Exp)、V4 Pro（按时段峰谷计费：高峰 09:00-12:00 / 14:00-18:00 北京 = 低谷 2 倍） |
+| 智谱 AI    | GLM-5.3、GLM-5.2、GLM-4.6                                                                 |
+| 阿里通义     | Qwen3.8 Max、Qwen3.7-Max、Qwen3.5-Plus、Qwen3.5-Flash                                      |
+| 字节豆包     | Doubao Seed-2.0 Pro、Seed-2.0 Mini、Seed-1.6                                              |
+| 月之暗面     | Kimi K3、K2.7 Code、K2.7 Code HighSpeed、K2.6                                              |
+| 小米       | MiMo V2.5（走 token plan 订阅通道时豁免计费）¹                                                      |
+| MiniMax  | MiniMax-M3                                                                              |
+| 百度       | ERNIE-5.1                                                                               |
+| 腾讯       | 混元 T1、混元 Hy3                                                                            |
+| 零一万物     | Yi-Lightning                                                                            |
+| 阶跃星辰     | Step 3.7 Flash                                                                          |
+| 科大讯飞     | Spark 4.0 Ultra（套餐制）¹                                                                   |
+| 商汤       | SenseNova 6.5（公测中）¹                                                                     |
+| 百川智能     | Baichuan M3-Plus                                                                        |
+| OpenAI   | GPT-5.6 Sol / Terra / Luna                                                              |
+| Google   | Gemini 3.1 Pro、3.6 Flash（Standard / Flex 双档，Flex = -50%）                                |
+| xAI      | Grok 4.6、Grok 4.3                                                                       |
+| Meta     | Llama 4 Maverick、Scout                                                                  |
+| 其他       | 未收录模型的统一回退定价                                                                            |
 
 > ¹ 讯飞、商汤、小米未公布按量单价，表内为估算价；这些模型走订阅通道（coding / token plan / opencode）时费用记 0，正式定价公布后自动校准。订阅通道与 pi-ai 内置提供方对齐（kimi-coding、zai-coding-cn、opencode、opencode-go、qwen/xiaomi 的 token-plan 各区域变体），可按 `subscriptionProviders` 配置覆盖。
 
-新增模型：在 `MODEL_CATALOG` 追加条目，并在 `src/aggregate.ts` 的 `MODEL_KEY_ALIASES` 中映射真实模型 id。
+新增模型：在 `MODEL_CATALOG` 追加条目，并在 `src/client/pricing.ts` 的 `MODEL_KEY_ALIASES` 中映射真实模型 id（聚合层与客户端渲染共用同一张表）。
 
 ## HTTP API
 
@@ -128,7 +136,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
   "rate": 7.11,
   "rateTime": "2026-08-16T12:00:00+08:00",
   "models": {
-    "deepseek-chat": { "input": 0.5, "output": 2, "cacheHit": 0.1 }
+    "flash": { "input": 3, "output": 9, "cacheHit": 0.1 }
   }
 }
 ```
@@ -189,17 +197,18 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 
 ## 配置
 
-| 字段 | 默认 | 说明 |
-|---|---|---|
-| `statsPath` | 未设置 | 回退统计文件 `.dsh-usage-stats.json` 的绝对路径（`sessionPersistence` 不可用时生效） |
-| `balanceApiKeyEnv` | `DEEPSEEK_API_KEY` | 余额查询使用的 DeepSeek 凭据引用（环境变量名），经 `ctx.credentials` 解析 |
-| `subscriptionProviders` | `kimi-coding`、`xiaomi-token-plan-cn` | 订阅制（coding / token 套餐）provider id 列表，照常统计 token、费用记 0 |
-| `monthlyBudget` | 未设置 | 月度预算默认金额（人民币元）；随 usage-stats 下发，作为仪表盘预算条的初始金额（用户在界面上的设置优先并本地持久化） |
-| `lowBalanceThreshold` | `50` | 余额不足告警阈值（人民币元）；随 usage-stats 下发，任一厂商余额折算人民币低于此值时每天提醒一次 |
+| 字段                      | 默认                                   | 说明                                                                                                           |
+| ----------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `statsPath`             | 未设置                                  | 回退统计文件 `.dsh-usage-stats.json` 的绝对路径（`sessionPersistence` 不可用时生效）                                            |
+| `balanceApiKeyEnv`      | `DEEPSEEK_API_KEY`                   | 余额查询使用的 DeepSeek 凭据引用（环境变量名），经 `ctx.credentials` 解析                                                          |
+| `subscriptionProviders` | `kimi-coding`、`xiaomi-token-plan-cn` | 订阅制（coding / token 套餐）provider id 列表，照常统计 token、费用记 0                                                        |
+| `monthlyBudget`         | 未设置                                  | 月度预算默认金额（人民币元）；随 usage-stats 下发，作为仪表盘预算条的初始金额（用户在界面上的设置优先并本地持久化）                                             |
+| `lowBalanceThreshold`   | `50`                                 | 余额不足告警阈值（人民币元）；随 usage-stats 下发，任一厂商余额折算人民币低于此值时每天提醒一次                                                       |
+| `subscriptionPlans`     | 自动识别                                 | 订阅额度适配器白名单（`{ provider, baseUrl?, region? }`）；缺省时自动从 `llm-pi-ai` 设置识别所有订阅类 provider（有额度 API 的查额度，无 API 的仅标识） |
 
 ## 开发
 
-环境要求：Node.js ^22.19 \|\| >=24，pnpm。
+环境要求：Node.js ^22.19 || >=24，pnpm。
 
 ```sh
 pnpm install
