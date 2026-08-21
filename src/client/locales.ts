@@ -25,6 +25,7 @@ export type UsageBillingKey =
   | 'billing.sessionOverflow'
   | 'billing.budgetOverBody'
   | 'billing.models'
+  | 'billing.providerBilling'
   | 'billing.estimated'
   | 'billing.actual'
   | 'billing.pricing'
@@ -53,6 +54,34 @@ export type UsageBillingKey =
   | 'billing.uncatalogued'
   | 'billing.balanceDays'
   | 'billing.balanceLowBody'
+  | 'billing.subscriptions'
+  | 'billing.subscriptionNotConfigured'
+  | 'billing.subscriptionUnauthorized'
+  | 'billing.subscriptionUnavailable'
+  | 'billing.subscriptionInvalid'
+  | 'billing.subscriptionRateLimited'
+  | 'billing.subscriptionSession'
+  | 'billing.subscriptionWeekly'
+  | 'billing.subscriptionMonthly'
+  | 'billing.subscriptionBilling'
+  | 'billing.subscriptionRemaining'
+  | 'billing.subscriptionReset'
+  | 'billing.subscriptionNoApi'
+  | 'billing.heatmapLess'
+  | 'billing.heatmapMore'
+  | 'billing.currency'
+  | 'billing.currencyCny'
+  | 'billing.currencyUsd'
+  | 'billing.heatmap'
+  | 'billing.rounds'
+  | 'billing.anomaly'
+  | 'billing.workspaces'
+  | 'billing.plan'
+  | 'billing.remaining'
+  | 'billing.unknownModel'
+  | 'billing.model'
+  | 'billing.currentRound'
+  | 'billing.costAbbr'
 
 export const NS = 'usageBilling'
 
@@ -81,6 +110,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.sessionOverflow': '仅显示花费前 {limit} 个，共 {total} 个会话',
   'billing.budgetOverBody': '本月花费 {cost} 已超过预算 {budget}（{pct}%）',
   'billing.models': '模型计费明细',
+  'billing.providerBilling': '厂商计费与订阅',
   'billing.estimated': '估算',
   'billing.actual': '实际',
   'billing.pricing': '模型单价表',
@@ -109,6 +139,34 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.uncatalogued': '未收录',
   'billing.balanceDays': '约可撑 {days} 天',
   'billing.balanceLowBody': '{name} 余额 {balance}，约可撑 {days} 天，请及时充值',
+  'billing.subscriptions': '订阅套餐',
+  'billing.subscriptionNotConfigured': '未配置密钥',
+  'billing.subscriptionUnauthorized': '密钥无效',
+  'billing.subscriptionUnavailable': '查询失败',
+  'billing.subscriptionInvalid': '响应异常',
+  'billing.subscriptionRateLimited': '触发限流',
+  'billing.subscriptionSession': '本次',
+  'billing.subscriptionWeekly': '本周',
+  'billing.subscriptionMonthly': '本月',
+  'billing.subscriptionBilling': '计费周期',
+  'billing.subscriptionRemaining': '剩余 {pct}%',
+  'billing.subscriptionReset': '{date} 重置',
+  'billing.subscriptionNoApi': '该厂商暂未提供用量查询接口',
+  'billing.heatmapLess': '少',
+  'billing.heatmapMore': '多',
+  'billing.currency': '币种',
+  'billing.currencyCny': '人民币',
+  'billing.currencyUsd': '美元',
+  'billing.heatmap': '用量热力图',
+  'billing.rounds': '每轮费用',
+  'billing.anomaly': '成本突增',
+  'billing.workspaces': '工作区统计',
+  'billing.plan': '套餐',
+  'billing.remaining': '剩余',
+  'billing.unknownModel': '未定价',
+  'billing.model': '模型',
+  'billing.currentRound': '当前',
+  'billing.costAbbr': '费用',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -136,6 +194,7 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.sessionOverflow': 'Top {limit} of {total} sessions by cost',
   'billing.budgetOverBody': 'This month {cost} exceeded the budget {budget} ({pct}%)',
   'billing.models': 'Model billing',
+  'billing.providerBilling': 'Provider billing & subscriptions',
   'billing.estimated': 'Est.',
   'billing.actual': 'Actual',
   'billing.pricing': 'Model pricing',
@@ -164,4 +223,32 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.uncatalogued': 'Not catalogued',
   'billing.balanceDays': '~{days} days left',
   'billing.balanceLowBody': '{name} balance {balance}, ~{days} days left, please top up',
+  'billing.subscriptions': 'Subscriptions',
+  'billing.subscriptionNotConfigured': 'Key not set',
+  'billing.subscriptionUnauthorized': 'Bad key',
+  'billing.subscriptionUnavailable': 'Unavailable',
+  'billing.subscriptionInvalid': 'Bad response',
+  'billing.subscriptionRateLimited': 'Rate limited',
+  'billing.subscriptionSession': 'Current',
+  'billing.subscriptionWeekly': 'Weekly',
+  'billing.subscriptionMonthly': 'Monthly',
+  'billing.subscriptionBilling': 'Billing',
+  'billing.subscriptionRemaining': '{pct}% left',
+  'billing.subscriptionReset': 'Resets {date}',
+  'billing.subscriptionNoApi': 'Provider does not offer a usage API',
+  'billing.heatmapLess': 'Less',
+  'billing.heatmapMore': 'More',
+  'billing.currency': 'Currency',
+  'billing.currencyCny': 'CNY',
+  'billing.currencyUsd': 'USD',
+  'billing.heatmap': 'Usage heatmap',
+  'billing.rounds': 'Cost per turn',
+  'billing.anomaly': 'Cost spike',
+  'billing.workspaces': 'Workspaces',
+  'billing.plan': 'Plan',
+  'billing.remaining': 'Left',
+  'billing.unknownModel': 'Unpriced',
+  'billing.model': 'Model',
+  'billing.currentRound': 'current',
+  'billing.costAbbr': 'cost',
 }

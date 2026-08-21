@@ -11,7 +11,7 @@
 
 import { useMemo, useState } from 'react'
 import css from './UsageBilling.module.css'
-import { formatMoney } from './pricing.ts'
+import { cnyToUsd, formatMoney, type CostCurrency } from './pricing.ts'
 
 /** One model's legend identity: key, display name, and brand color. */
 export interface TrendSeriesModel {
@@ -82,9 +82,11 @@ interface Bar {
  * Render the daily stacked cost bars plus the total-calls line.
  * @param props.data - sorted daily rows (ascending date).
  * @param props.models - the model legend, in bar order.
+ * @param props.currency - display currency for the cost labels.
  */
-export function TrendChart({ data, models = [] }: { data: readonly TrendPoint[]; models?: readonly TrendSeriesModel[] }): React.ReactNode {
+export function TrendChart({ data, models = [], currency = 'cny' }: { data: readonly TrendPoint[]; models?: readonly TrendSeriesModel[]; currency?: CostCurrency }): React.ReactNode {
   const [hover, setHover] = useState<number | null>(null)
+  const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
 
   const layout = useMemo(() => {
     const n = data.length
@@ -170,7 +172,7 @@ export function TrendChart({ data, models = [] }: { data: readonly TrendPoint[];
             <g key={`cost-${idx}`}>
               <line x1={PAD.left} x2={W - PAD.right} y1={y} y2={y} className={css.chartGrid} />
               <text x={PAD.left - 8} y={y + 3} textAnchor="end" className={css.chartAxisLabel}>
-                {formatMoney(value)}
+                {money(value)}
               </text>
             </g>
           )
@@ -229,12 +231,12 @@ export function TrendChart({ data, models = [] }: { data: readonly TrendPoint[];
           {models.filter(model => (activePoint.byModel?.[model.key] ?? 0) > 0).map(model => (
             <div key={model.key} className={css.chartTooltipRow}>
               <span className={css.chartTooltipSwatch} style={{ background: model.color }} />
-              {model.name} <strong>{formatMoney(activePoint.byModel?.[model.key] ?? 0)}</strong>
+              {model.name} <strong>{money(activePoint.byModel?.[model.key] ?? 0)}</strong>
             </div>
           ))}
           <div className={css.chartTooltipRow}>
             <span className={css.chartLegendBar} />
-            总计 <strong>{formatMoney(activePoint.cost)}</strong>
+            总计 <strong>{money(activePoint.cost)}</strong>
           </div>
           <div className={css.chartTooltipRow}>
             <span className={css.chartLegendLine} />

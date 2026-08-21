@@ -16,12 +16,16 @@ import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStor
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TrendChart, type TrendPoint } from './TrendChart.tsx'
+import { RoundCostChart, type RoundChartRow } from './round-chart.tsx'
+import { UsageHeatmap, type HeatmapDay } from './heatmap.tsx'
+import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
 import type { createBillingBudgetStore } from './budget-store.ts'
 import {
-  applyLivePricing, computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
-  MODEL_CATALOG, modelOf, resolveToken, type TokenUsageBuckets,
+  applyLivePricing, cnyToUsd, computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
+  MODEL_CATALOG, modelOf, resolveToken, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance } from '../pricing-shared.ts'
+import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
 import { NS, type UsageBillingKey } from './locales.ts'
 import css from './UsageBilling.module.css'
 
@@ -31,9 +35,9 @@ export interface ModelHealth {
   checked: boolean
   /** True when at least one connected provider answered its model catalog. */
   available: boolean
-  /** Connected provider count. */
-  providers: number
-  /** Provider count whose catalog probe failed. */
+  /** 可用模型总数：累加每个厂商成功 advertise 的模型数，而非厂商数。 */
+  models: number
+  /** 失效厂商数（目录探测失败的厂商；失败信息不细分到模型级）。 */
   failures: number
   /** Display names of providers that answered their model catalog (live). */
   okProviders: readonly string[]
@@ -52,7 +56,7 @@ function projectName(cwd: string | undefined): string | undefined {
 
 /** Idle health state before the probe settles. */
 const IDLE_HEALTH: ModelHealth = {
-  checked: false, available: false, providers: 0, failures: 0,
+  checked: false, available: false, models: 0, failures: 0,
   okProviders: [], badProviders: [],
 }
 
@@ -141,6 +145,38 @@ export function providerFromModelKey(modelKey: string): string | undefined {
   return undefined
 }
 
+/**
+ * 订阅套餐 provider id → 所属模型厂商（用于把订阅额度归并到对应厂商组）。
+ * 厂商名与 PROVIDER_ALIASES 保持一致，使订阅卡片与模型用量落在同一组下。
+ * opencode 是跨厂商订阅通道、无单一模型厂商，按自身显示名独立成组。
+ */
+const SUBSCRIPTION_VENDORS: Readonly<Record<string, string>> = {
+  'kimi-coding': '月之暗面',
+  'zai-coding-cn': '智谱 AI',
+  'zai-coding': '智谱 AI',
+  'qwen-token-plan': '阿里通义',
+  'qwen-token-plan-cn': '阿里通义',
+  'xiaomi-token-plan-ams': '小米',
+  'xiaomi-token-plan-cn': '小米',
+  'xiaomi-token-plan-sgp': '小米',
+  'volcengine-token-plan': '字节豆包',
+  'ark-token-plan': '字节豆包',
+  'doubao-token-plan': '字节豆包',
+  'ernie': '百度文心',
+  'baidu': '百度文心',
+  'wenxin': '百度文心',
+  'minimax': 'MiniMax',
+  'opencode': 'OpenCode',
+  'opencode-go': 'OpenCode',
+}
+
+/** 订阅套餐归并到的厂商显示名；未知 id 回退为从 model id 反推或 id 本身。 */
+function subscriptionVendorOf(provider: string): string {
+  const mapped = SUBSCRIPTION_VENDORS[provider]
+  if (mapped !== undefined) return mapped
+  return providerFromModelKey(provider) ?? provider
+}
+
 /** 余额不足告警的默认阈值（人民币元）：宿主 Config 未配置时客户端兜底。 */
 const DEFAULT_LOW_BALANCE_THRESHOLD = 50
 
@@ -171,6 +207,28 @@ interface SessionBillingRow {
   calls: number
   cost: number
   lastActive: number
+}
+
+/** 订阅额度查询状态的文案（ok 时无需额外标注，返回空串）。 */
+function subscriptionStatusText(status: SubscriptionQuota['status'], t: (key: UsageBillingKey) => string): string {
+  switch (status) {
+    case 'ok': return ''
+    case 'not-configured': return t('billing.subscriptionNotConfigured')
+    case 'unauthorized': return t('billing.subscriptionUnauthorized')
+    case 'rate-limited': return t('billing.subscriptionRateLimited')
+    case 'invalid-response': return t('billing.subscriptionInvalid')
+    default: return t('billing.subscriptionUnavailable')
+  }
+}
+
+/** 订阅额度窗口的类型标签（本次 / 本周 / 本月 / 计费周期）。 */
+function subscriptionWindowLabel(kind: SubscriptionQuota['windows'][number]['kind'], t: (key: UsageBillingKey) => string): string {
+  switch (kind) {
+    case 'session': return t('billing.subscriptionSession')
+    case 'weekly': return t('billing.subscriptionWeekly')
+    case 'monthly': return t('billing.subscriptionMonthly')
+    case 'billing': return t('billing.subscriptionBilling')
+  }
 }
 
 /** Usage stats structure from `.dsh-usage-stats.json`. */
@@ -218,6 +276,28 @@ interface UsageStats {
     cacheMiss: number
     cost: number
   }>>
+  /** 每轮费用明细（服务端聚合路径恒带）；旧快照可能缺失。 */
+  byTurn?: readonly {
+    sessionId: string
+    turn: number
+    model: string
+    input: number
+    output: number
+    cacheHit: number
+    cacheMiss: number
+    cost: number
+    startedAt: number
+    endedAt?: number
+  }[]
+  /** 工作区聚合（按 cwd 末级目录）；旧快照可能缺失。 */
+  byWorkspace?: readonly {
+    name: string
+    calls: number
+    cost: number
+    input: number
+    output: number
+    lastActive: number
+  }[]
 }
 
 /** Path to the usage-stats endpoint served by this plugin's node half. */
@@ -228,6 +308,9 @@ const PRICING_PATH = '/api/billing/pricing'
 
 /** Path to the account-balance endpoint served by this plugin's node half. */
 const BALANCE_PATH = '/api/billing/balance'
+
+/** Path to the subscription-plan quota endpoint served by this plugin's node half. */
+const SUBSCRIPTIONS_PATH = '/api/billing/subscriptions'
 
 /** 弹窗打开期间统计与定价的自动刷新间隔（毫秒）。 */
 const STATS_REFRESH_INTERVAL_MS = 30_000
@@ -288,6 +371,8 @@ async function loadUsageStats(): Promise<UsageStats | null> {
       ...(typeof candidate.budget === 'number' ? { budget: candidate.budget } : {}),
       ...(typeof candidate.lowBalanceThreshold === 'number' ? { lowBalanceThreshold: candidate.lowBalanceThreshold } : {}),
       ...(Array.isArray(candidate.bySession) ? { bySession: candidate.bySession } : {}),
+      ...(Array.isArray(candidate.byTurn) ? { byTurn: candidate.byTurn } : {}),
+      ...(Array.isArray(candidate.byWorkspace) ? { byWorkspace: candidate.byWorkspace } : {}),
     }
   } catch {
     return null
@@ -341,6 +426,25 @@ async function fetchBalances(): Promise<readonly ProviderBalance[]> {
   }
 }
 
+/**
+ * 拉取订阅套餐剩余额度（供订阅面板）；失败返回空列表。
+ * @returns the quota rows, or an empty list on any failure.
+ */
+async function fetchSubscriptions(): Promise<readonly SubscriptionQuota[]> {
+  try {
+    const response = await fetch(SUBSCRIPTIONS_PATH)
+    if (!response.ok) return []
+    const text = await response.text()
+    const parsed = JSON.parse(text) as unknown
+    if (parsed !== null && typeof parsed === 'object' && 'quotas' in parsed) {
+      return (parsed as SubscriptionResponse).quotas
+    }
+    return []
+  } catch {
+    return []
+  }
+}
+
 /** 组件注入面：探活 + 计费指标写入（billing 自身写入，主题插件经服务读取）。 */
 export interface UsageBillingInjected {
   checkModels: () => Promise<ModelHealth>
@@ -376,6 +480,23 @@ interface ModelRow {
   plan: boolean
   /** 真实 model id 不在计费目录（落回「其他」）：费用未估算，标注反馈。 */
   uncatalogued: boolean
+}
+
+/**
+ * 按厂商聚合的计费组：模型用量 + 订阅额度 + 厂商余额。
+ * 余额与健康点只挂在厂商组头部（同厂商只显示一次），不再随每行重复。
+ */
+interface ProviderBillingGroup {
+  /** 厂商显示名（模型厂商；订阅通道无厂商时用订阅名/自身 id）。 */
+  name: string
+  /** 该厂商下的模型用量行（按费用降序，已过滤 calls>0）。 */
+  models: readonly ModelRow[]
+  /** 归并到该厂商的订阅额度卡片。 */
+  subscriptions: readonly SubscriptionQuota[]
+  /** 该厂商余额（同厂商只显示一次）。 */
+  balance: ProviderBalance | undefined
+  /** 健康点状态：按厂商名与 health 的在线/失效列表匹配。 */
+  dot: string | undefined
 }
 
 /**
@@ -444,6 +565,12 @@ interface BillingDashboardProps {
   onClose: () => void
   health: ModelHealth
   balances: readonly ProviderBalance[]
+  quotas: readonly SubscriptionQuota[]
+  /** 显示币种（成本金额按此币种换算显示）。 */
+  currency: CostCurrency
+  onCurrency: (currency: CostCurrency) => void
+  /** 每轮费用明细（服务端按起始时间倒序下发）。 */
+  turns: readonly RoundChartRow[]
   renderSlot: DashboardRenderSlots['renderSlot']
   /** 预算偏好（开关 + 金额）：由父组件从 store 读下传。 */
   budgetEnabled: boolean
@@ -457,17 +584,32 @@ interface BillingDashboardProps {
  * The centered billing dashboard modal.
  * @param props - stats, locale function, close handler, model health, balances, renderSlot.
  */
-function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount }: BillingDashboardProps): React.ReactNode {
+function BillingDashboard({ stats, t, onClose, health, balances, quotas, currency, onCurrency, turns, renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount }: BillingDashboardProps): React.ReactNode {
   const { total, byModel, byDay } = stats
   // Pricing table starts collapsed; the billing table stays open.
   const [pricingOpen, setPricingOpen] = useState(false)
   // 会话明细同样默认折叠（长尾列表，按需展开）。
   const [sessionsOpen, setSessionsOpen] = useState(false)
+  // 每轮费用默认收起：柱状图较长，按需展开。
+  const [roundsOpen, setRoundsOpen] = useState(false)
+  // 用量热力图默认展开：月度日历信息密度高，作为常驻概览。
+  const [heatmapOpen, setHeatmapOpen] = useState(true)
+  // 工作区统计默认收起：长尾列表，按需展开。
+  const [workspacesOpen, setWorkspacesOpen] = useState(false)
   // 趋势窗口：7 天 / 30 天切换（30 天窗口数据不足时按日补零）。
   const [trendDays, setTrendDays] = useState<7 | 30>(7)
 
   // 当前汇率与来源：供单价表标题展示（实时 / 内置）。
   const rateInfo = getRateInfo()
+
+  // 显示币种换算：usd 时把 CNY 金额按当前汇率换算显示。
+  const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
+
+  // 每轮成本异常标记：按起始时间升序传给 flagAnomalies（最近的在末尾）。
+  const roundFlags: AnomalyFlag[] = useMemo(
+    () => flagAnomalies([...turns].reverse()),
+    [turns],
+  )
 
   // A1: 日均消耗（最近 7 天）——余额列据此估算可用天数；无消耗记录时 0（不显示天数）。
   const dailyBurn = dailyBurnRate(byDay, localDayStamp())
@@ -486,7 +628,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, bud
     if (balance.totalBalance === undefined) return <span className={css.na}>—</span>
     const amount = balance.currency === 'USD'
       ? `$${balance.totalBalance.toFixed(2)}`
-      : formatMoney(balance.totalBalance)
+      : money(balance.totalBalance)
     // USD 余额按当前汇率折成人民币，与日均消耗（元）同口径。
     const balanceCny = balance.currency === 'USD' ? balance.totalBalance * rateInfo.rate : balance.totalBalance
     if (dailyBurn <= 0) return amount
@@ -527,6 +669,12 @@ function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, bud
     return out
   }, [trendDays])
   const latestDate = trendDates.at(-1) ?? today
+
+  // 热力图输入：按日费用（YYYY-MM-DD → 金额）。
+  const heatmapDays: HeatmapDay[] = useMemo(
+    () => Object.entries(byDay).map(([date, day]) => ({ date, value: day.cost })),
+    [byDay],
+  )
 
   // Trend series for the SVG chart: each day's total plus its per-model cost
   // breakdown (byDayModels feeds the stacked columns; absent → single-color).
@@ -589,6 +737,45 @@ function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, bud
     [byModel],
   )
 
+  // 按厂商聚合：模型用量与订阅额度都归并到同一厂商组，余额只在厂商头部显示一次。
+  // 厂商组同时容纳非订阅按量模型（无订阅额度也成组）与订阅套餐（无用量也成组）。
+  const providerGroups: ProviderBillingGroup[] = useMemo(() => {
+    const subscriptionsByVendor = new Map<string, SubscriptionQuota[]>()
+    for (const quota of quotas) {
+      if (quota.status === 'not-configured') continue
+      const vendor = subscriptionVendorOf(quota.provider)
+      const list = subscriptionsByVendor.get(vendor)
+      if (list === undefined) subscriptionsByVendor.set(vendor, [quota])
+      else list.push(quota)
+    }
+    const modelsByVendor = new Map<string, ModelRow[]>()
+    for (const row of modelRows) {
+      const list = modelsByVendor.get(row.provider)
+      if (list === undefined) modelsByVendor.set(row.provider, [row])
+      else list.push(row)
+    }
+    const names = new Set<string>([...modelsByVendor.keys(), ...subscriptionsByVendor.keys()])
+    return [...names]
+      .map(name => ({
+        name,
+        models: modelsByVendor.get(name) ?? [],
+        subscriptions: subscriptionsByVendor.get(name) ?? [],
+        balance: balanceFor(name),
+        dot: providerDot(health, name),
+      }))
+      .sort((a, b) => {
+        const costOf = (group: ProviderBillingGroup): number =>
+          group.models.reduce((sum, m) => sum + (m.actual ?? m.estimated), 0)
+        const diff = costOf(b) - costOf(a)
+        if (diff !== 0) return diff
+        // 有模型用量的组排在纯订阅组之前；同为纯订阅组保持原顺序（排序稳定）。
+        if (a.models.length === 0 && b.models.length === 0) return 0
+        if (b.models.length === 0) return -1
+        if (a.models.length === 0) return 1
+        return a.name.localeCompare(b.name, 'zh')
+      })
+  }, [modelRows, quotas, balances, health])
+
   // Total: real stats value when present, otherwise the estimated sum.
   const estimatedTotal = modelRows.reduce((sum, row) => sum + row.estimated, 0)
   const displayTotal = total.cost > 0 ? total.cost : estimatedTotal
@@ -625,12 +812,27 @@ function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, bud
             </p>
           </div>
           <div className={css.dashboardRight}>
+            <span className={css.currencyToggle} role="group" aria-label={t('billing.currency')}>
+              {(['cny', 'usd'] as const).map(unit => (
+                <button
+                  key={unit}
+                  type="button"
+                  className={clsx(css.currencyButton, currency === unit && css.currencyButtonActive)}
+                  aria-pressed={currency === unit}
+                  data-testid={`billing-currency-${unit}`}
+                  title={unit === 'cny' ? t('billing.currencyCny') : t('billing.currencyUsd')}
+                  onClick={() => { onCurrency(unit) }}
+                >
+                  {unit === 'cny' ? '¥' : '$'}
+                </button>
+              ))}
+            </span>
             {health.checked && (
               <span className={clsx(css.healthBadge, health.available ? css.healthBadgeOk : css.healthBadgeBad)}>
                 <span className={clsx(css.healthDot, health.available ? css.healthOk : css.healthBad)} aria-hidden="true" />
                 {health.available
-                  ? `${health.providers} 模型可用${health.failures > 0 ? ` · ${health.failures} 失效` : ''}`
-                  : `${health.failures} 模型不可用`}
+                  ? `${health.models} 模型可用${health.failures > 0 ? ` · ${health.failures} 厂商失效` : ''}`
+                  : `${health.failures} 厂商不可用`}
               </span>
             )}
             <button
@@ -662,7 +864,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, bud
                 {t('billing.monthCost')}
               </span>
               <span className={css.heroValue}>
-                {formatMoney(monthCost)}
+                {money(monthCost)}
               </span>
               <span className={css.heroMeta}>
                 {monthCalls.toLocaleString()} {t('billing.calls')}
@@ -674,7 +876,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, bud
                   {t('billing.yearCost')}
                 </span>
                 <span className={css.heroSideValue}>
-                  {formatMoney(yearCost)}
+                  {money(yearCost)}
                 </span>
               </div>
               <div className={css.heroSideItem}>
@@ -682,7 +884,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, bud
                   {t('billing.todayCost')}
                 </span>
                 <span className={css.heroSideValue}>
-                  {formatMoney(todayCost)}
+                  {money(todayCost)}
                   <span className={clsx(css.delta, deltaPct >= 0 ? css.deltaUp : css.deltaDown)}>
                     {deltaPct >= 0 ? '▲' : '▼'} {Math.abs(deltaPct).toFixed(1)}%
                   </span>
@@ -719,7 +921,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, bud
                   const pct = (monthCost / budgetAmount) * 100
                   return (
                     <span className={css.budgetValue} data-testid="billing-budget-value">
-                      {formatMoney(monthCost)} / {formatMoney(budgetAmount)} · {pct.toFixed(1)}%
+                      {money(monthCost)} / {money(budgetAmount)} · {pct.toFixed(1)}%
                     </span>
                   )
                 })()}
@@ -767,7 +969,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, bud
             </div>
             <div className={css.kpiTile}>
               <span className={css.kpiLabel}>{t('billing.avgCost')}</span>
-              <span className={css.kpiValue}>{formatMoney(avgPerCall)}</span>
+              <span className={css.kpiValue}>{money(avgPerCall)}</span>
               <span className={css.kpiDetail}>{t('billing.calls')} {total.calls.toLocaleString()}</span>
             </div>
             <div className={css.kpiTile}>
@@ -805,17 +1007,16 @@ function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, bud
                 {latestDate}
               </span>
             </div>
-            <TrendChart data={trend} models={chartModels} />
+            <TrendChart data={trend} models={chartModels} currency={currency} />
           </section>
 
-          {/* Model billing table */}
-          <section
-            className={css.panel}
-            data-testid="billing-panel-models"
-          >
+          {/* 厂商计费与订阅：单一容器按厂商聚合模型用量与订阅额度。
+              厂商组同时容纳非订阅按量模型（无订阅额度也成组）与订阅套餐
+              （无用量也成组）；余额与健康点只在厂商头部显示一次。 */}
+          <section className={css.panel} data-testid="billing-panel-providers">
             <div className={css.panelHead}>
               <h3 className={css.panelTitle}>
-                {t('billing.models')}
+                {t('billing.providerBilling')}
               </h3>
               {renderSlot('billing.dashboard.decor', { position: 'models' })}
               {/* 更新时间精确到时分秒；旧快照没有时间戳时留空。 */}
@@ -825,63 +1026,235 @@ function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, bud
                   : ''}
               </span>
             </div>
-            <div className={clsx(css.tableScroll, css.modelTableScroll)} data-testid="billing-table-scroll">
-              <table className={css.modelTable}>
-                <thead>
-                  <tr>
-                    <th>{t('billing.models')}</th>
-                    <th className={css.numCol}>{t('billing.calls')}</th>
-                    <th className={css.numCol}>{t('billing.inputTokens')}</th>
-                    <th className={css.numCol}>{t('billing.outputTokens')}</th>
-                    <th className={css.numCol}>{t('billing.cacheHitRate')}</th>
-                    <th className={css.numCol}>{t('billing.actual')}</th>
-                    <th className={css.numCol}>{t('billing.balance')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {modelRows.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className={css.emptyRow}>{t('billing.noData')}</td>
-                    </tr>
-                  )}
-                  {modelRows.map(row => (
-                    <tr key={row.key}>
-                      <td>
-                        <span className={css.modelCell}>
-                          {/* The one per-model dot doubles as the health state. */}
-                          <span className={clsx(css.modelDot, providerDot(health, row.provider))} aria-hidden="true" />
-                          <span>
-                            <span className={css.modelName}>
-                              {row.name}
-                              {/* 未收录：真实 id 不在计费目录，费用按兜底档估算，明确标注。 */}
-                              {row.uncatalogued && (
-                                <span className={css.uncataloguedTag} data-testid="billing-uncatalogued-tag">
-                                  {t('billing.uncatalogued')}
-                                </span>
-                              )}
-                            </span>
-                            <span className={css.modelProvider}>{row.provider}</span>
+            {providerGroups.length === 0 ? (
+              <div className={css.emptyRow} data-testid="billing-provider-empty">
+                {t('billing.noData')}
+              </div>
+            ) : (
+              <div className={css.providerGroupList} data-testid="billing-provider-groups">
+                {providerGroups.map(group => (
+                  <div key={group.name} className={css.providerGroup} data-testid="billing-provider-group">
+                    {/* 厂商组头部：厂商名 + 健康点 + 订阅套数 + 厂商余额（只显示一次）。 */}
+                    <div className={css.providerGroupHead}>
+                      <span className={css.providerGroupTitle}>
+                        <span className={clsx(css.healthDot, group.dot)} aria-hidden="true" />
+                        <span className={css.providerGroupName}>{group.name}</span>
+                      </span>
+                      <span className={css.providerGroupMeta}>
+                        {group.subscriptions.length > 0 && (
+                          <span className={css.providerGroupBadge} data-testid="billing-provider-sub-count">
+                            {group.subscriptions.length} 套餐
                           </span>
-                        </span>
-                      </td>
-                      <td className={css.numCol}>{row.calls.toLocaleString()}</td>
-                      <td className={css.numCol}>{formatTokens(row.input)}</td>
-                      <td className={css.numCol}>{formatTokens(row.output)}</td>
-                      <td className={css.numCol}>{formatPercent(row.cacheHitRate)}</td>
-                      <td className={css.numCol}>
-                        {row.plan
-                          ? <span className={css.planTag}>订阅包含</span>
-                          : row.actual !== undefined ? formatMoney(row.actual) : <span className={css.na}>—</span>}
-                      </td>
-                      <td className={css.numCol}>{renderBalance(balanceFor(row.provider))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        )}
+                        {group.balance !== undefined && (
+                          <span className={css.providerGroupBalance} data-testid="billing-provider-balance">
+                            <span className={css.providerGroupBalanceLabel}>{t('billing.balance')}</span>
+                            {renderBalance(group.balance)}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    {/* 模型用量子表：无余额列（余额已在厂商头部显示一次）。 */}
+                    {group.models.length > 0 && (
+                      <div className={clsx(css.tableScroll, css.modelTableScroll)} data-testid="billing-table-scroll">
+                        <table className={css.modelTable}>
+                          <thead>
+                            <tr>
+                              <th>{t('billing.model')}</th>
+                              <th className={css.numCol}>{t('billing.calls')}</th>
+                              <th className={css.numCol}>{t('billing.inputTokens')}</th>
+                              <th className={css.numCol}>{t('billing.outputTokens')}</th>
+                              <th className={css.numCol}>{t('billing.cacheHitRate')}</th>
+                              <th className={css.numCol}>{t('billing.actual')}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.models.map(row => (
+                              <tr key={row.key}>
+                                <td>
+                                  <span className={css.modelCell}>
+                                    <span>
+                                      <span className={css.modelName}>
+                                        {row.name}
+                                        {/* 未收录：真实 id 不在计费目录，费用按兜底档估算，明确标注。 */}
+                                        {row.uncatalogued && (
+                                          <span className={css.uncataloguedTag} data-testid="billing-uncatalogued-tag">
+                                            {t('billing.uncatalogued')}
+                                          </span>
+                                        )}
+                                      </span>
+                                      <span className={css.modelProvider}>{row.provider}</span>
+                                    </span>
+                                  </span>
+                                </td>
+                                <td className={css.numCol}>{row.calls.toLocaleString()}</td>
+                                <td className={css.numCol}>{formatTokens(row.input)}</td>
+                                <td className={css.numCol}>{formatTokens(row.output)}</td>
+                                <td className={css.numCol}>{formatPercent(row.cacheHitRate)}</td>
+                                <td className={css.numCol}>
+                                  {row.plan
+                                    ? <span className={css.planTag}>订阅包含</span>
+                                    : row.actual !== undefined ? money(row.actual) : <span className={css.na}>—</span>}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {/* 订阅额度卡片：归并到对应模型厂商，随厂商组展示。 */}
+                    {group.subscriptions.length > 0 && (
+                      <div className={css.subscriptionGrid} data-testid="billing-subscriptions-grid">
+                        {group.subscriptions.map(quota => {
+                          const statusText = subscriptionStatusText(quota.status, t)
+                          return (
+                            <div key={quota.provider} className={css.subscriptionCard} data-testid="billing-subscription-card">
+                              <div className={css.subscriptionHead}>
+                                <span className={css.subscriptionName}>{quota.displayName}</span>
+                                {quota.plan !== undefined && <span className={css.subscriptionPlan}>{quota.plan}</span>}
+                              </div>
+                              {statusText !== '' && <div className={css.subscriptionStatus}>{statusText}</div>}
+                              {quota.windows.length === 0 && statusText === '' && (
+                                <div className={css.subscriptionStatus}>{t('billing.subscriptionNoApi')}</div>
+                              )}
+                              {quota.windows.map(window => (
+                                <div key={window.kind} className={css.subscriptionWindow}>
+                                  <span className={css.subscriptionWindowLabel}>{subscriptionWindowLabel(window.kind, t)}</span>
+                                  <span className={css.subscriptionTrack} aria-hidden="true">
+                                    <span className={css.subscriptionFill} style={{ width: `${Math.min(100, Math.max(0, window.remainingPercent))}%` }} />
+                                  </span>
+                                  <span className={css.subscriptionPct}>
+                                    {t('billing.subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
+                                  </span>
+                                  {window.resetsAt !== undefined && (
+                                    <span className={css.subscriptionReset}>
+                                      {t('billing.subscriptionReset').replace('{date}', window.resetsAt.slice(0, 10))}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             {/* ZINE: 装饰孔位（footer 锚点：条码装饰底部） */}
             {renderSlot('billing.dashboard.decor', { position: 'footer' })}
           </section>
+
+          {/* 用量热力图（P1-3）：按日费用，GitHub 风格日历。 */}
+          <section className={css.panel} data-testid="billing-panel-heatmap">
+            <button
+              type="button"
+              className={css.pricingToggle}
+              data-testid="billing-heatmap-toggle"
+              onClick={() => { setHeatmapOpen(prev => !prev) }}
+              aria-expanded={heatmapOpen}
+            >
+              <span className={css.pricingToggleText}>
+                <span className={css.panelTitle}>
+                  {t('billing.heatmap')}
+                </span>
+              </span>
+              <svg className={clsx(css.pricingChevron, heatmapOpen && css.pricingChevronOpen)} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            {heatmapOpen && (
+              <UsageHeatmap days={heatmapDays} currency={currency} t={t} />
+            )}
+          </section>
+
+          {/* 每轮费用 + 成本突增异常（P1-1 / P1-2）。 */}
+          {turns.length > 0 && (
+            <section className={css.panel} data-testid="billing-panel-rounds">
+              <button
+                type="button"
+                className={css.pricingToggle}
+                data-testid="billing-rounds-toggle"
+                onClick={() => { setRoundsOpen(prev => !prev) }}
+                aria-expanded={roundsOpen}
+              >
+                <span className={css.pricingToggleText}>
+                  <span className={css.panelTitle}>
+                    {t('billing.rounds')}
+                  </span>
+                  {roundFlags.length > 0 && (
+                    <span className={css.roundsFlagBadge} data-testid="billing-rounds-flag-count">
+                      {roundFlags.length} {t('billing.anomaly')}
+                    </span>
+                  )}
+                </span>
+                <svg className={clsx(css.pricingChevron, roundsOpen && css.pricingChevronOpen)} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+              {roundsOpen && (
+                <RoundCostChart
+                  rounds={turns}
+                  flags={roundFlags}
+                  currency={currency}
+                  t={t}
+                />
+              )}
+            </section>
+          )}
+
+          {/* 工作区统计（P2-2）：按 cwd 末级目录归并。 */}
+          {stats.byWorkspace !== undefined && stats.byWorkspace.length > 0 && (
+            <section className={css.panel} data-testid="billing-panel-workspaces">
+              <button
+                type="button"
+                className={css.pricingToggle}
+                data-testid="billing-workspaces-toggle"
+                onClick={() => { setWorkspacesOpen(prev => !prev) }}
+                aria-expanded={workspacesOpen}
+              >
+                <span className={css.pricingToggleText}>
+                  <span className={css.panelTitle}>
+                    {t('billing.workspaces')}
+                  </span>
+                </span>
+                <svg className={clsx(css.pricingChevron, workspacesOpen && css.pricingChevronOpen)} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+              {workspacesOpen && (
+                <div className={css.tableScroll}>
+                  <table className={css.modelTable}>
+                    <thead>
+                      <tr>
+                        <th>{t('billing.project')}</th>
+                        <th className={css.numCol}>{t('billing.calls')}</th>
+                        <th className={css.numCol}>{t('billing.inputTokens')}</th>
+                        <th className={css.numCol}>{t('billing.outputTokens')}</th>
+                        <th className={css.numCol}>{t('billing.actual')}</th>
+                        <th className={css.numCol}>{t('billing.lastActive')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stats.byWorkspace.map(row => (
+                        <tr key={row.name}>
+                          <td><span className={css.modelName}>{row.name}</span></td>
+                          <td className={css.numCol}>{row.calls.toLocaleString()}</td>
+                          <td className={css.numCol}>{formatTokens(row.input)}</td>
+                          <td className={css.numCol}>{formatTokens(row.output)}</td>
+                          <td className={css.numCol}>{money(row.cost)}</td>
+                          <td className={css.numCol}>
+                            {row.lastActive > 0 ? `${localDayStamp(row.lastActive)}` : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* 会话明细：按费用倒序的可折叠面板，回答「钱花在哪」。
               服务端聚合路径恒带 bySession（空数组时显示空态）；JSON 回退
@@ -938,7 +1311,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, bud
                             <span className={css.modelProvider}>{projectName(row.cwd) ?? '—'}</span>
                           </td>
                           <td className={css.numCol}>{row.calls.toLocaleString()}</td>
-                          <td className={css.numCol}>{formatMoney(row.cost)}</td>
+                          <td className={css.numCol}>{money(row.cost)}</td>
                           <td className={css.numCol}>
                             {row.lastActive > 0 ? `${localDayStamp(row.lastActive)} ${formatClock(row.lastActive)}` : '—'}
                           </td>
@@ -1069,6 +1442,8 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const [stats, setStats] = useState<UsageStats>(EMPTY_STATS)
   const [health, setHealth] = useState<ModelHealth>(IDLE_HEALTH)
   const [balances, setBalances] = useState<readonly ProviderBalance[]>([])
+  const [quotas, setQuotas] = useState<readonly SubscriptionQuota[]>([])
+  const [currency, setCurrency] = useState<CostCurrency>('cny')
   const [open, setOpen] = useState(false)
   const close = useCallback(() => { setOpen(false) }, [])
 
@@ -1079,6 +1454,9 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     })
     void fetchBalances().then((list) => {
       if (list.length > 0) setBalances(list)
+    })
+    void fetchSubscriptions().then((list) => {
+      if (list.length > 0) setQuotas(list)
     })
   }, [])
 
@@ -1205,6 +1583,9 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   // dashboard 打开回调同样始终注册，供主题插件（如 StickerPad）触发。
   useEffect(() => registerOpen(openDashboard), [registerOpen, openDashboard])
 
+  // 每轮费用明细：服务端按起始时间倒序下发；旧快照缺失时为空数组（面板不出现）。
+  const turns: readonly RoundChartRow[] = useMemo(() => stats.byTurn ?? [], [stats.byTurn])
+
   return (
     <>
       {/* zine 模式下触发器由 CSS（body[data-zine-mode]）隐藏，入口交给主题贴纸层。 */}
@@ -1221,6 +1602,10 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           onClose={close}
           health={health}
           balances={balances}
+          quotas={quotas}
+          currency={currency}
+          onCurrency={setCurrency}
+          turns={turns}
           renderSlot={renderSlot}
           budgetEnabled={budgetEnabled}
           budgetAmount={effectiveBudget}

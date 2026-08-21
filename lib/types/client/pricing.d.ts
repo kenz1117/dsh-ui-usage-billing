@@ -37,6 +37,21 @@ export declare function getRateInfo(): {
 };
 /** Default share of traffic assumed to fall in the peak band (0..1). */
 export declare const DEFAULT_PEAK_SHARE = 0.5;
+/** 计费时段档位：高峰 / 空闲（官方 DeepSeek 刊例价：高峰 = 空闲 × 2）。 */
+export type PriceTierId = 'peak' | 'offPeak';
+/** 成本显示币种：人民币（国内模型直价）/ 美元（国外模型直价或换算显示）。 */
+export type CostCurrency = 'cny' | 'usd';
+/**
+ * 高峰时段判定（北京时间，UTC+8，无夏令时）：09:00–12:00、14:00–18:00。
+ * @param beijingHour - 北京时间的小时数（0–23）。
+ */
+export declare function isPeakHour(beijingHour: number): boolean;
+/**
+ * 由时刻（epoch 毫秒）推断计费时段；时刻未知/非法时按高峰计（保守：未知
+ * 时刻不低估成本，与社区 dsh-usage-chart 的 tierAt 语义一致）。
+ * @param timeMs - Unix epoch 毫秒；null/undefined/NaN 视为未知。
+ */
+export declare function tierAt(timeMs: number | null | undefined): PriceTierId;
 /** Usage buckets consumed by one model (counts in raw tokens). */
 export interface TokenUsageBuckets {
     /** Uncached input tokens. */
@@ -97,6 +112,13 @@ export interface ModelEntry {
  * from 2026-08-17, and Gemini's Flex tier discounts spare-capacity traffic.
  */
 export declare const MODEL_CATALOG: readonly ModelEntry[];
+/**
+ * 真实 provider model id → 计费目录键（`MODEL_CATALOG[].key`）的映射。未知 id
+ * 原样保留并落回 `other`（未知模型不估算费用）。聚合层（aggregate.ts）在折叠时
+ * 用同一张表把日志里的 model id 归并为目录键，客户端渲染（`modelOf`）也按它
+ * 解析，两侧共用一份映射，避免同一模型两侧不一致导致「未收录」。
+ */
+export declare const MODEL_KEY_ALIASES: Readonly<Record<string, string>>;
 /** Lookup a model by its stats key; falls back to the generic `other` entry. */
 export declare function modelOf(key: string): ModelEntry;
 /** Resolve a price-table row by its CSS variable name (theme token or fallback color). */
@@ -117,8 +139,25 @@ export declare function resolveToken(name: string): string;
  * @returns the estimated cost in CNY.
  */
 export declare function computeCost(entry: ModelEntry, buckets: TokenUsageBuckets, peakShare?: number): number;
-/** Format a CNY amount with adaptive precision. */
-export declare function formatMoney(cny: number): string;
+/**
+ * 按调用时刻精确判定高峰/空闲档并计价（P0-1：替代固定比例混合）。时刻未知
+ * （null/NaN，理论不发生在真实事件流）时回退 {@link DEFAULT_PEAK_SHARE} 混合，
+ * 保持旧语义不低估。平档模型（无 offPeak）两个时段同价。
+ * @param entry - the catalog entry whose prices apply.
+ * @param buckets - token usage counts.
+ * @param timeMs - the call's wall-clock time (epoch ms); null falls back to the peak-share mix.
+ * @param peakShare - fallback mix used only when `timeMs` is missing.
+ * @returns the estimated cost in the entry's native currency.
+ */
+export declare function computeCostAt(entry: ModelEntry, buckets: TokenUsageBuckets, timeMs: number | null | undefined, peakShare?: number): number;
+/** 人民币 → 美元（显示换算用）：1 USD = {@link USD_TO_CNY} CNY。 */
+export declare function cnyToUsd(cny: number): number;
+/**
+ * Format an amount with adaptive precision and the given currency symbol.
+ * @param amount - the amount (CNY by default; pass `usd` for dollar display).
+ * @param currency - display currency; default `cny`.
+ */
+export declare function formatMoney(amount: number, currency?: CostCurrency): string;
 /**
  * Format a per-1M-token price in its native currency (free when the rate is
  * zero): CNY for domestic models, USD for overseas ones.

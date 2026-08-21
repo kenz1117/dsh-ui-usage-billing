@@ -91,17 +91,19 @@ export function apply(ctx: ClientContext): void {
         // ones. Display names feed the per-model dots in the dashboard table.
         try {
           const { result } = await ctx.connection.api.llm.models({})
-          if (!result.ok) return { checked: true, available: false, providers: 0, failures: 0, okProviders: [], badProviders: [] }
+          if (!result.ok) return { checked: true, available: false, models: 0, failures: 0, okProviders: [], badProviders: [] }
           return {
             checked: true,
             available: result.value.groups.length > 0,
-            providers: result.value.groups.length,
+            // 右上角"模型可用"按模型统计：累加每个厂商成功 advertise 的模型数，
+            // 而不是厂商分组数（groups.length 是厂商数，一个厂商可含多个模型）。
+            models: result.value.groups.reduce((sum, group) => sum + group.models.length, 0),
             failures: result.value.failures.length,
             okProviders: result.value.groups.map(group => group.name),
             badProviders: result.value.failures.map(failure => failure.name),
           }
         } catch {
-          return { checked: true, available: false, providers: 0, failures: 0, okProviders: [], badProviders: [] }
+          return { checked: true, available: false, models: 0, failures: 0, okProviders: [], badProviders: [] }
         }
       },
       publishCosts: (costs) => { metrics.publishCosts(costs) },

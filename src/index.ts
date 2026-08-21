@@ -17,11 +17,17 @@ import type { Context } from '@deepseek-ai/cordis'
 // Type-only: merges the ctx.sessionPersistence service declaration.
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-host-webserver'
+// Type-only: merges the ctx.settings / ctx.credentials service declarations.
+import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-credentials'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
+import type { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import { createUsageAggregator } from './aggregate.ts'
 import { queryBalances } from './balance.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
 import type { LivePricing } from './pricing-shared.ts'
+import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, type IdentifiedSubscriptionPlan, type SubscriptionKeys, type SubscriptionPlanConfig, type SubscriptionQuota } from './subscriptions.ts'
 
 /** Plugin configuration. */
 export interface UsageBillingConfig {
@@ -29,6 +35,8 @@ export interface UsageBillingConfig {
   statsPath?: string
   /** 订阅制（coding / token / agent plan）provider id 列表；默认 kimi-coding、xiaomi-token-plan-cn。 */
   subscriptionProviders?: string[]
+  /** 订阅套餐额度适配器（kimi / zai / opencode-go）；默认全部内置。 */
+  subscriptionPlans?: readonly SubscriptionPlanConfig[]
   /** 余额查询用的 DeepSeek 凭据引用（环境变量名）；默认 DEEPSEEK_API_KEY。 */
   balanceApiKeyEnv?: string
   /** 月度预算（人民币元）；设置后随 usage-stats 下发，仪表盘显示预算进度条。 */
@@ -41,11 +49,60 @@ export interface UsageBillingConfig {
 /** 实时定价的后台刷新间隔（毫秒）：汇率/模型价低频变化，6 小时一次足够。 */
 const PRICING_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000
 
+/** 订阅套餐额度缓存时长（毫秒）：上游配额 API 低频变化，5 分钟足够。 */
+const SUBSCRIPTION_CACHE_MS = 5 * 60 * 1000
+
 /** DeepSeek 余额查询的默认凭据引用（与 llm-deepseek 的默认引用一致）。 */
 const DEFAULT_BALANCE_API_KEY_ENV = 'DEEPSEEK_API_KEY'
 
-/** Required services: the web server and the persisted session log store. */
-export const inject = ['webServer', 'sessionPersistence', 'credentials']
+/** Required services: the web server, the persisted session log store, and user settings. */
+export const inject = ['webServer', 'sessionPersistence', 'credentials', 'settings']
+
+/**
+ * 订阅 provider id（llm-pi-ai 设置键）→ billing 适配器 key 的映射。
+ * 复用 dsh 既有的 llm-pi-ai provider 配置（apiKeyEnv 引用），不引入新配置面。
+ */
+const SUBSCRIPTION_KEY_SOURCES: ReadonlyArray<{ provider: string; key: keyof SubscriptionKeys }> = [
+  { provider: 'kimi-coding', key: 'kimiApiKey' },
+  { provider: 'zai-coding-cn', key: 'zaiApiKey' },
+  { provider: 'opencode', key: 'opencodeApiKey' },
+  { provider: 'opencode-go', key: 'opencodeApiKey' },
+]
+
+/**
+ * 解析订阅适配器需要的 API Key：从 llm-pi-ai 设置的 `providers.<id>.apiKeyEnv`
+ * 读引用（如 kimi-coding → KIMI_CODING_API_KEY），再经凭据 seam 解析成实际值。
+ * 同时识别出用户配置了 key 的订阅套餐（供面板只显示已识别的）。
+ * @param settings - the settings service (reads the llm-pi-ai namespace).
+ * @param credentials - the credentials service (resolves the env refs).
+ */
+export async function resolveSubscriptionKeys(settings: SettingsProvider, credentials: CredentialProvider): Promise<{ keys: SubscriptionKeys; identified: IdentifiedSubscriptionPlan[] }> {
+  const keys: SubscriptionKeys = { ...EMPTY_SUBSCRIPTION_KEYS }
+  let providers: Record<string, { apiKeyEnv?: string }> | undefined
+  try {
+    const descriptors = settings.describe({ redactSecrets: true })
+    const pi = descriptors.find(descriptor => descriptor.ns === 'llm-pi-ai')?.value
+    providers = (pi as { providers?: Record<string, { apiKeyEnv?: string }> } | null | undefined)?.providers
+  } catch {
+    // 设置服务异常时按全空 key 处理（订阅面板显示未配置）。
+    return { keys, identified: [] }
+  }
+  for (const { provider, key } of SUBSCRIPTION_KEY_SOURCES) {
+    const env = providers?.[provider]?.apiKeyEnv
+    if (typeof env !== 'string' || env === '') continue
+    try {
+      const resolved = await credentials.resolve(credentialRef(env))
+      if (resolved?.value !== undefined && resolved.value !== '') keys[key] = resolved.value
+    } catch {
+      // 凭据解析失败跳过该 provider（保持未配置）。
+    }
+  }
+  // zai-coding-cn 是智谱国内域：跟随它时区域固定为 bigmodel-cn。
+  if (providers?.['zai-coding-cn']?.apiKeyEnv !== undefined && keys.zaiApiKey !== '') {
+    keys.zaiRegion = 'bigmodel-cn'
+  }
+  return { keys, identified: identifySubscriptionPlans(providers) }
+}
 
 /**
  * Host plugin body: serve real aggregated usage to the browser dashboard.
@@ -106,6 +163,35 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       },
     }),
     'usage-billing: balance route',
+  )
+
+  // 订阅套餐额度：外部 API 低频变化，缓存 5 分钟避免每次轮询都打上游。
+  // 只返回"识别到"的套餐：有额度适配器的查剩余量，无适配器的保留识别行
+  //（客户端显示"额度接口未接入"）；用户没配置 key 的 provider 一律不出现。
+  let quotaCache: { at: number; quotas: readonly SubscriptionQuota[] } = { at: 0, quotas: [] }
+  const refreshQuotas = async (): Promise<void> => {
+    const { keys, identified } = await resolveSubscriptionKeys(ctx.settings, ctx.credentials)
+    const plans = identified
+      .filter(item => item.adapter)
+      .map(item => ({ provider: item.provider, ...(item.region === undefined ? {} : { region: item.region }) }))
+    const queried = await collectSubscriptions(keys, plans)
+    const rows: SubscriptionQuota[] = [...queried]
+    for (const item of identified) {
+      if (!item.adapter) rows.push({ provider: item.provider, displayName: item.displayName, status: 'ok', windows: [] })
+    }
+    quotaCache = { at: Date.now(), quotas: rows }
+  }
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'exact',
+      path: '/api/billing/subscriptions',
+      handler: async (_req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+        if (Date.now() - quotaCache.at >= SUBSCRIPTION_CACHE_MS) await refreshQuotas()
+        res.end(JSON.stringify({ quotas: quotaCache.quotas }))
+      },
+    }),
+    'usage-billing: subscriptions route',
   )
 
   ctx.effect(
