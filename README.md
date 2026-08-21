@@ -18,7 +18,7 @@ DeepSeek Harness 计费仪表盘插件。从持久化会话日志实时聚合模
 - **真实用量**：服务端从会话日志实时聚合，无需手工维护统计文件；增量缓存保证只有写过的日志会被重新折叠，重度使用下轮询依然轻量。
 - **模型健康探测**：模型行的圆点反映各厂商接入状态（正常绿 / 异常红 / 未接入灰）。
 - **订阅计划豁免**：走 coding / token plan / opencode 订阅通道的模型照常统计 token、费用记 0（按**通道**判定，同一模型走按量通道时正常计费）。
-- **余额查询**：厂商组头部显示该厂商余额（只显示一次，不再随每行重复）。DeepSeek 用官方余额 API、月之暗面（Kimi）用 Moonshot 余额接口**实时查询**；API Key 复用 `llm-pi-ai` 设置的 `apiKeyEnv`（DeepSeek 另有 `balanceApiKeyEnv` 特例），未配置 / Key 无效 / 服务不可达均有状态提示，扩展点可接更多厂商。
+- **余额查询**：厂商组头部显示该厂商余额（只显示一次，不再随每行重复）。DeepSeek、月之暗面（Kimi）、阶跃星辰（StepFun）用官方余额接口**实时查询**；API Key 复用 `llm-pi-ai` 设置的 `apiKeyEnv`（DeepSeek 另有 `balanceApiKeyEnv` 特例），未配置 / Key 无效 / 服务不可达均有状态提示，扩展点可接更多厂商。
 - **可用天数估算**：余额列按最近 7 天日均消耗折算「约可撑 N 天」，剩余不足 3 天红色强调。
 - **余额不足告警**：任一厂商余额（折算人民币）低于阈值时每天弹一次系统通知；阈值经宿主配置 `lowBalanceThreshold`（人民币元）下发，未配置默认 50 元。
 - **未收录模型标注**：真实模型 id 不在计费目录时，明细行显示真实 id 并标注「未收录」，费用按兜底档估算；厂商可从模型 id 自动推断（如 `mi-mimo-2.5` → 小米），健康圆点据此点亮。
@@ -164,6 +164,14 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
       "totalBalance": 49.59,
       "grantedBalance": 46.59,
       "toppedUpBalance": 3.0
+    },
+    {
+      "provider": "阶跃星辰",
+      "displayName": "阶跃星辰",
+      "currency": "CNY",
+      "totalBalance": 150.0,
+      "toppedUpBalance": 200.0,
+      "grantedBalance": 50.0
     }
   ]
 }
@@ -242,7 +250,7 @@ npm publish --access public
 
 ## Known Limitations and Deferred Work
 
-- **余额查询已接入 DeepSeek / 月之暗面（Kimi）**：其他厂商因无公开余额 API 或需非 Bearer 鉴权，暂显示「未配置」；扩展点在 `src/balance.ts`（按厂商余额 API 增加查询器）。
+- **余额查询已接入 DeepSeek / 月之暗面（Kimi）/ 阶跃星辰（StepFun）**：这三家用标准 Bearer API key 即可查询。其余厂商因无公开余额接口或需非 Bearer 鉴权（小米 MiMo 走控制台 Cookie、商汤走 AccessKey 签名、MiniMax/字节豆包走额度制或 AK/SK），暂显示「未配置」；扩展点在 `src/balance.ts`（按厂商余额 API 增加查询器）。
 - **超支通知依赖浏览器 Notification**：权限被拒绝或平台不支持时只有界面红色脉冲兜底，没有宿主级通知通道；通知上限为每天一次。
 - **会话明细不可跳转**：点击会话行不会打开对应会话（跨插件导航需要宿主会话选择通道）；会话数封顶 100 行、面板只显示前 20 行。
 - **费用为目录价估算**：讯飞 / 商汤 / 小米等未公布按量单价的模型使用估算价（特性表脚注 ¹），正式定价以厂商账单为准。

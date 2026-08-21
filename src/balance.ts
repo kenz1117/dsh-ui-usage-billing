@@ -27,6 +27,9 @@ const DEEPSEEK_BALANCE_URL = 'https://api.deepseek.com/user/balance'
 /** Moonshot/Kimi 官方余额接口（platform.kimi.com/docs/api/balance）。 */
 const MOONSHOT_BALANCE_URL = 'https://api.moonshot.cn/v1/users/me/balance'
 
+/** 阶跃星辰 StepFun 官方账户信息接口（platform.stepfun.com/docs/api-reference/accounts/get）。 */
+const STEPFUN_BALANCE_URL = 'https://api.stepfun.com/v1/accounts'
+
 /** 数字归一化：接口返回的余额是字符串（如 `"110.00"`），统一转 number。 */
 function toNumber(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -135,6 +138,29 @@ function queryMoonshot(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance
 }
 
 /**
+ * Query the StepFun (阶跃星辰) account balance.
+ * @param ctx - host context carrying the credentials seam.
+ * @param apiKeyEnv - credential reference resolving the StepFun API key.
+ * @returns the balance row, or an error row when the key/endpoint misbehaves.
+ */
+function queryStepFun(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
+  return queryBearerBalance(ctx, STEPFUN_BALANCE_URL, apiKeyEnv, '阶跃星辰', '阶跃星辰', (data) => {
+    const doc = data as { balance?: unknown; total_cash_balance?: unknown; total_voucher_balance?: unknown }
+    const totalBalance = toNumber(doc.balance)
+    const toppedUpBalance = toNumber(doc.total_cash_balance)
+    const grantedBalance = toNumber(doc.total_voucher_balance)
+    return {
+      provider: '阶跃星辰',
+      displayName: '阶跃星辰',
+      currency: 'CNY',
+      ...(totalBalance !== undefined ? { totalBalance } : {}),
+      ...(toppedUpBalance !== undefined ? { toppedUpBalance } : {}),
+      ...(grantedBalance !== undefined ? { grantedBalance } : {}),
+    }
+  })
+}
+
+/**
  * One balance querier plus the llm-pi-ai provider route id it reads its key
  * from. The `provider` field is the model-table vendor display name, so
  * `balanceFor` matches by normalization; `route` is the llm-pi-ai providers
@@ -152,6 +178,7 @@ interface BalanceQuerier {
 const QUERIERS: readonly BalanceQuerier[] = [
   { route: 'deepseek', displayName: 'deepseek', querier: queryDeepSeek },
   { route: 'moonshot', displayName: '月之暗面', querier: queryMoonshot },
+  { route: 'stepfun', displayName: '阶跃星辰', querier: queryStepFun },
 ]
 
 /**
@@ -170,7 +197,7 @@ export async function queryBalances(
     const env = providers[route]?.apiKeyEnv
     // 未配置 key 的 route 直接标未配置，不走 credentialRef（空 env 会被其拒绝）。
     if (typeof env !== 'string' || env === '') {
-      return Promise.resolve({ provider: displayName, displayName, error: 'unconfigured' })
+      return Promise.resolve({ provider: displayName, displayName, error: 'unconfigured' as const })
     }
     return querier(ctx, env)
   }))
