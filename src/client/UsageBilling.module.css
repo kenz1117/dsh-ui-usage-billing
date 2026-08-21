@@ -959,6 +959,41 @@
   background: color-mix(in srgb, var(--dsw-static-amber-500) 12%, transparent);
 }
 
+/* 估算价标记：厂商未公布官方按量单价，用量青色系区分于「未收录」的琥珀色。 */
+.estimatedTag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 600;
+  vertical-align: 1px;
+  color: var(--dsw-static-blue-500);
+  background: color-mix(in srgb, var(--dsw-static-blue-500) 12%, transparent);
+}
+
+/* ── 即时代费用条（composer dock）──────────────────────────────────── */
+
+/* 会话 composer 输入框下方的统计条：与宿主 StatsLine 同姿态，一行小字。 */
+.liveCostBar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-static-neutral-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.liveCostItem {
+  white-space: nowrap;
+}
+
+.liveCostSep {
+  color: var(--dsw-static-neutral-300);
+}
+
 /* ── 余额天数提示 ───────────────────────────────────────────────────── */
 
 /* 余额单元格：金额 + 次行「约可撑 N 天」预估。 */

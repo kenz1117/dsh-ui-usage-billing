@@ -191,6 +191,26 @@ function dailyBurnRate(byDay: Record<string, { cost: number }>, today: string): 
   return total / dates.length
 }
 
+/**
+ * 本月预计总花费：按本月已有记录的平均日消耗 × 本月天数外推；无本月记录时
+ * 回退为最近 7 天日均 × 本月天数；无任何记录时返回 0（调用方不展示）。
+ * 导出供测试：纯函数，不依赖组件。
+ * @param byDay - 按日费用表。
+ * @param monthPrefix - 本月前缀（YYYY-MM）。
+ * @param today - 今日日期戳（YYYY-MM-DD）。
+ * @returns 本月预计花费（人民币元）；无数据时为 0。
+ */
+export function projectMonthCost(byDay: Record<string, { cost: number }>, monthPrefix: string, today: string): number {
+  const dates = Object.keys(byDay).filter(d => d.startsWith(monthPrefix))
+  // 本月总天数：取当月最后一日的日号（用下月第 0 天）。
+  const monthLen = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
+  const avg = dates.length > 0
+    ? dates.reduce((sum, d) => sum + (byDay[d]?.cost ?? 0), 0) / dates.length
+    : dailyBurnRate(byDay, today)
+  if (avg <= 0) return 0
+  return avg * monthLen
+}
+
 /** Resolve one provider's dot state: green when live, red when failed, gray when unknown. */
 function providerDot(health: ModelHealth, provider: string): string | undefined {
   if (!health.checked) return css.healthIdle
@@ -480,6 +500,8 @@ interface ModelRow {
   plan: boolean
   /** 真实 model id 不在计费目录（落回「其他」）：费用未估算，标注反馈。 */
   uncatalogued: boolean
+  /** 目录单价为估算价（厂商未公布官方按量价）：标注以免误当正式定价。 */
+  estimatedPricing: boolean
 }
 
 /**
@@ -658,6 +680,13 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
   const monthCalls = dates.reduce((sum, d) => sum + (d.startsWith(monthPrefix) ? (byDay[d]?.calls ?? 0) : 0), 0)
   const yearCost = dates.reduce((sum, d) => sum + (d.startsWith(yearPrefix) ? (byDay[d]?.cost ?? 0) : 0), 0)
 
+  // 本月预计总花费（forecast）：按本月已有记录的平均日消耗 × 本月天数外推，
+  // 无本月记录时回退为最近 7 天日均；无任何记录时为 0（不显示）。
+  const monthCostProjected = useMemo(
+    () => projectMonthCost(byDay, monthPrefix, today),
+    [byDay, monthPrefix, today],
+  )
+
   // 最近 N 天窗口（含今天）：缺失的日期补零，图表固定为整段区间。
   const trendDates = useMemo(() => {
     const out: string[] = []
@@ -727,6 +756,8 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
           // exactOptionalPropertyTypes: absent actual when the stats carry none.
           ...(data.cost > 0 ? { actual: data.cost } : {}),
           uncatalogued,
+          // 目录单价为估算价（未公布官方按量价）：行内标注，避免误当正式定价。
+          estimatedPricing: entry.estimated === true,
         }
       })
       .sort((a, b) => (b.actual ?? b.estimated) - (a.actual ?? a.estimated))
@@ -890,6 +921,16 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                   </span>
                 </span>
               </div>
+              {monthCostProjected > 0 && (
+                <div className={css.heroSideItem}>
+                  <span className={css.heroSideLabel}>
+                    {t('billing.monthProjected')}
+                  </span>
+                  <span className={css.heroSideValue}>
+                    {money(monthCostProjected)}
+                  </span>
+                </div>
+              )}
             </div>
           </section>
 
@@ -1080,6 +1121,12 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                                         {row.uncatalogued && (
                                           <span className={css.uncataloguedTag} data-testid="billing-uncatalogued-tag">
                                             {t('billing.uncatalogued')}
+                                          </span>
+                                        )}
+                                        {/* 估算价：厂商未公布官方按量单价，避免误当正式定价。 */}
+                                        {row.estimatedPricing && (
+                                          <span className={css.estimatedTag} data-testid="billing-estimated-tag">
+                                            {t('billing.estimatedPricing')}
                                           </span>
                                         )}
                                       </span>
