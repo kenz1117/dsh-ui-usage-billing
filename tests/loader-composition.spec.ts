@@ -175,12 +175,14 @@ describe('usage-billing real Loader composition', () => {
     expect(pricing.status).toBe(200)
     expect((pricing.json as { source: string }).source).toBe('builtin')
 
-    // balance：凭据替身解析不到 key，DeepSeek 行走 unconfigured，不触网。
+    // balance：凭据替身解析不到 key；DeepSeek（balanceApiKeyEnv 特例）与 Moonshot
+    //（llm-pi-ai 未配置）都行走 unconfigured，不触网。
     const balance = await getJson(port, '/api/billing/balance')
     expect(balance.status).toBe(200)
     const balances = (balance.json as { balances: { provider: string; error?: string }[] }).balances
-    expect(balances).toHaveLength(1)
-    expect(balances[0]).toMatchObject({ provider: 'deepseek', error: 'unconfigured' })
+    expect(balances).toHaveLength(2)
+    expect(balances.find(row => row.provider === 'deepseek')).toMatchObject({ error: 'unconfigured' })
+    expect(balances.find(row => row.provider === '月之暗面')).toMatchObject({ error: 'unconfigured' })
 
     // HMR 安全：卸载 billing 行后三条路由释放（webserver 仍在，答 404）。
     const billingEntry = [...loaded.loader.entries()]

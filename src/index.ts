@@ -70,6 +70,23 @@ const SUBSCRIPTION_KEY_SOURCES: ReadonlyArray<{ provider: string; key: keyof Sub
 ]
 
 /**
+ * 读取 llm-pi-ai 设置的 `providers` 字典（`<route> → { apiKeyEnv? }`）。
+ * 余额查询复用同一份来源：部署为某个 provider 配一次 key，多个 surface 共享。
+ * @param settings - the settings service (reads the llm-pi-ai namespace).
+ * @returns the providers dict; empty when the namespace is unreadable.
+ */
+async function readPiAiProviders(settings: SettingsProvider): Promise<Readonly<Record<string, { apiKeyEnv?: string }>>> {
+  try {
+    const descriptors = settings.describe({ redactSecrets: true })
+    const pi = descriptors.find(descriptor => descriptor.ns === 'llm-pi-ai')?.value
+    return (pi as { providers?: Record<string, { apiKeyEnv?: string }> } | null | undefined)?.providers ?? {}
+  } catch {
+    // 设置服务异常时按空 providers 处理（余额面板显示未配置）。
+    return {}
+  }
+}
+
+/**
  * 解析订阅适配器需要的 API Key：从 llm-pi-ai 设置的 `providers.<id>.apiKeyEnv`
  * 读引用（如 kimi-coding → KIMI_CODING_API_KEY），再经凭据 seam 解析成实际值。
  * 同时识别出用户配置了 key 的订阅套餐（供面板只显示已识别的）。
@@ -158,7 +175,14 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       path: '/api/billing/balance',
       handler: async (_req, res) => {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-        const balances = await queryBalances(ctx, config.balanceApiKeyEnv ?? DEFAULT_BALANCE_API_KEY_ENV)
+        // 余额 key 复用 llm-pi-ai 的 providers（同订阅）：部署为某 provider 配一次即可。
+        // DeepSeek 保留 `balanceApiKeyEnv` 特例：llm-pi-ai 未配 deepseek 时仍可用该 env 查余额。
+        const piProviders = await readPiAiProviders(ctx.settings)
+        const providers = { ...piProviders }
+        if (providers['deepseek'] === undefined) {
+          providers['deepseek'] = { apiKeyEnv: config.balanceApiKeyEnv ?? DEFAULT_BALANCE_API_KEY_ENV }
+        }
+        const balances = await queryBalances(ctx, providers)
         res.end(JSON.stringify({ balances }))
       },
     }),
