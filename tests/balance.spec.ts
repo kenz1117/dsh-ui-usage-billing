@@ -40,12 +40,14 @@ describe('queryBalances provider routing', () => {
       deepseek: {},
       moonshot: { apiKeyEnv: 'STUB_KEY' },
     })
-    expect(rows).toHaveLength(2)
+    expect(rows).toHaveLength(3)
     const moonshot = rows.find(row => row.provider === '月之暗面')
     expect(moonshot).toMatchObject({ displayName: '月之暗面', currency: 'CNY', totalBalance: 49.59, grantedBalance: 46.59, toppedUpBalance: 3 })
     const deepseek = rows.find(row => row.provider === 'deepseek')
     // deepseek route 无 apiKeyEnv → resolve 得到 undefined → unconfigured。
     expect(deepseek).toMatchObject({ provider: 'deepseek', error: 'unconfigured' })
+    // stepfun route 同样未配 → unconfigured。
+    expect(rows.find(row => row.provider === '阶跃星辰')).toMatchObject({ provider: '阶跃星辰', error: 'unconfigured' })
   })
 
   it('classifies a missing secret as unconfigured without fetching', async () => {
@@ -77,5 +79,20 @@ describe('Bearer fetch outcome classification', () => {
     const row = rows.find(row => row.provider === '月之暗面')
     expect(row).toMatchObject({ provider: '月之暗面', currency: 'CNY' })
     expect((row as ProviderBalance).totalBalance).toBeUndefined()
+  })
+
+  it('parses StepFun account fields onto the shared row', async () => {
+    const ctx = fakeContext('sk-secret')
+    stubFetch({ object: 'account', type: 'prepaid', balance: 150.00, total_cash_balance: 200.00, total_voucher_balance: 50.00 }, 200)
+    const rows = await queryBalances(ctx, { stepfun: { apiKeyEnv: 'STUB_KEY' } })
+    const row = rows.find(row => row.provider === '阶跃星辰')
+    expect(row).toMatchObject({
+      provider: '阶跃星辰',
+      displayName: '阶跃星辰',
+      currency: 'CNY',
+      totalBalance: 150,
+      toppedUpBalance: 200,
+      grantedBalance: 50,
+    })
   })
 })
