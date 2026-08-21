@@ -1,5 +1,5 @@
 {
-  "extends": "../../../tsconfig.base.json",
+  "extends": "/Users/ken/deepseek-harness/tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "lib/types",
@@ -14,30 +14,5 @@
     "src/pricing-shared.ts",
     "src/balance.ts"
   ],
-  "references": [
-    {
-      "path": "../../../vendor/cordis"
-    },
-    {
-      "path": "../../../vendor/schemastery"
-    },
-    {
-      "path": "../../core/session"
-    },
-    {
-      "path": "../../host/webserver"
-    },
-    {
-      "path": "../../llm/llm"
-    },
-    {
-      "path": "../../credentials/credentials"
-    },
-    {
-      "path": "../../runtime-diagnostics/invariants"
-    },
-    {
-      "path": "../../session/session-persistence"
-    }
-  ]
+  "references": []
 }

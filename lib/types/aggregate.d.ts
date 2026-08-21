@@ -18,9 +18,11 @@ import type { TokenUsage } from '@deepseek-ai/dsh-llm';
  */
 export declare const MODEL_KEY_ALIASES: Readonly<Record<string, string>>;
 /**
- * 走订阅套餐（coding / token / agent plan）的 provider id：这些通道的调用
- * 按套餐计费，不再按 token 计费，因此即使模型 id 与计费表撞名也一律豁免。
- * 部署可在 plugin config 的 `subscriptionProviders` 中覆盖。
+ * 走订阅套餐（coding / token plan / opencode 订阅）的 provider id：这些通道的
+ * 调用按套餐计费，不再按 token 计费，因此即使模型 id 与计费表撞名也一律豁免。
+ * 与 pi-ai 内置提供方对齐（含各地区变体：qwen/xiaomi 的 token-plan、opencode 与
+ * opencode-go、zai-coding-cn）；部署可在 plugin config 的 `subscriptionProviders`
+ * 中覆盖。
  */
 export declare const DEFAULT_SUBSCRIPTION_PROVIDERS: readonly string[];
 /** Aggregation tuning options. */
@@ -36,6 +38,8 @@ export interface ModelUsage {
     cacheHit: number;
     cacheMiss: number;
     cost: number;
+    /** 该模型本次统计的所有调用是否都走订阅通道（coding/token plan）；混合通道不置位。 */
+    plan?: boolean;
 }
 /** Zeroed usage accumulator. */
 export declare function emptyUsage(): ModelUsage;
@@ -53,9 +57,11 @@ export declare function foldUsage(acc: ModelUsage, usage: TokenUsage, key: strin
 export declare function dayStamp(time: number): string;
 /**
  * The persistence surface the aggregate reads: enough of
- * `SessionPersistence` to list sessions and read each log once.
+ * `SessionPersistence` to list sessions and read each log once; `locate`
+ * is optional — backends exposing it give the incremental cache a cheap
+ * invalidation stamp (artifact mtime + size), others always re-fold.
  */
-export type UsagePersistence = Pick<SessionPersistence, 'list' | 'readFrom'>;
+export type UsagePersistence = Pick<SessionPersistence, 'list' | 'readFrom'> & Partial<Pick<SessionPersistence, 'locate'>>;
 /** The usage-stats document served to the billing dashboard. */
 export interface UsageStatsDocument {
     version: number;
@@ -66,12 +72,73 @@ export interface UsageStatsDocument {
     byDay: Record<string, ModelUsage>;
     /** 模型 × 日期 二维统计：趋势图按模型堆叠的输入（[date][modelKey]）。 */
     byDayModels: Record<string, Record<string, ModelUsage>>;
+    /** 会话明细：按费用倒序，封顶 {@link SESSION_ROW_LIMIT} 行；旧快照可能缺失。 */
+    bySession: SessionUsageRow[];
+}
+/** 会话明细行：仪表盘「会话明细」面板的数据源。 */
+export interface SessionUsageRow {
+    /** 会话 id（字符串形式）。 */
+    id: string;
+    /** 日志里最新的 session/title 文本；无标题事件时缺失。 */
+    title?: string;
+    /** 会话创建时的工作目录（项目路径）；未知时缺失。 */
+    cwd?: string;
+    calls: number;
+    cost: number;
+    /** 最后一个事件的时间戳（毫秒）。 */
+    lastActive: number;
+}
+/** 会话明细行的响应封顶：控制 payload 体积，重度用户的完整长尾不逐行下发。 */
+export declare const SESSION_ROW_LIMIT = 100;
+/** 聚合文档的短 TTL（毫秒）：合并密集轮询，TTL 内直接复用上次的合并结果。 */
+export declare const AGGREGATE_TTL_MS = 5000;
+/** One persisted session's folded usage plus drill-down metadata. */
+interface SessionFold {
+    total: ModelUsage;
+    byModel: Map<string, ModelUsage>;
+    byDay: Map<string, ModelUsage>;
+    byDayModels: Map<string, Map<string, ModelUsage>>;
+    /** 每个模型 key 在本会话内走订阅通道的调用数（合并时跨会话累加判定 plan）。 */
+    planCalls: Map<string, number>;
+    /** 日志里最新的 session/title 文本（无标题事件时 undefined）。 */
+    title?: string;
+    /** 最后一个事件的时间戳（毫秒）；空日志为 0。 */
+    lastActive: number;
 }
 /**
- * Aggregate real usage from every persisted session log.
+ * Fold one session's events into a {@link SessionFold}. 每个 LLM 调用归属到
+ * 其前置 request/header 记录的模型；同时提取最新会话标题与最后活跃时间。
+ * @param events - the session's persisted events in log order.
+ * @param subscriptionProviders - provider ids billed through subscription plans.
+ * @returns the per-session fold (cached by the incremental aggregator).
+ */
+export declare function foldSession(events: readonly {
+    type: string;
+    time: number;
+    data: never;
+}[], subscriptionProviders: ReadonlySet<string>): SessionFold;
+/**
+ * 增量聚合器：按会话缓存折叠结果，用日志文件的 mtime+size 作失效键——
+ * 日志没动的会话直接复用，只有写过的会话重新折叠；整份文档另有短 TTL
+ * 合并密集轮询。缓存活在内存里（进程重启后首次全量折叠一次）。
+ */
+export interface UsageAggregator {
+    /** Aggregate current usage, reusing cached per-session folds when their logs are untouched. */
+    aggregate(): Promise<UsageStatsDocument>;
+}
+/**
+ * Create the incremental usage aggregator.
+ * @param persistence - the session persistence service.
+ * @param options - aggregation tuning (e.g. subscription-plan providers).
+ * @returns the aggregator holding the per-session fold cache.
+ */
+export declare function createUsageAggregator(persistence: UsagePersistence, options?: AggregateOptions): UsageAggregator;
+/**
+ * Aggregate real usage from every persisted session log (one-shot, no cache).
  * @param persistence - the session persistence service.
  * @param options - aggregation tuning (e.g. subscription-plan providers).
  * @returns the usage-stats document (same shape the dashboard expects).
  */
 export declare function aggregateUsage(persistence: UsagePersistence, options?: AggregateOptions): Promise<UsageStatsDocument>;
+export {};
 //# sourceMappingURL=aggregate.d.ts.map

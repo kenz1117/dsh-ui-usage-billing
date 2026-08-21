@@ -12,10 +12,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TrendChart, type TrendPoint } from './TrendChart.tsx'
+import type { createBillingBudgetStore } from './budget-store.ts'
 import {
   applyLivePricing, computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
   MODEL_CATALOG, modelOf, resolveToken, type TokenUsageBuckets,
@@ -40,6 +41,15 @@ export interface ModelHealth {
   badProviders: readonly string[]
 }
 
+/** 会话明细面板最多展示的行数（完整长尾在服务端另有一层封顶）。 */
+const SESSION_DISPLAY_LIMIT = 20
+
+/** 项目名取 cwd 的末级目录；无 cwd 时由调用方回退为 em dash。 */
+function projectName(cwd: string | undefined): string | undefined {
+  if (cwd === undefined) return undefined
+  return cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd
+}
+
 /** Idle health state before the probe settles. */
 const IDLE_HEALTH: ModelHealth = {
   checked: false, available: false, providers: 0, failures: 0,
@@ -50,13 +60,16 @@ const IDLE_HEALTH: ModelHealth = {
  * The dashboard's display names (中文厂商名) never equal the provider names a
  * user actually configures (deepseek, zhipu, qwen…), so the dot match also
  * accepts a bidirectional substring hit and a display-name alias list.
+ * 导出供一致性守卫测试：catalog 每个厂商都必须在此登记（Custom 除外），
+ * 防止新增厂商漏配导致健康绿灯不亮。
  */
-const PROVIDER_ALIASES: Readonly<Record<string, readonly string[]>> = {
+export const PROVIDER_ALIASES: Readonly<Record<string, readonly string[]>> = {
   'DeepSeek': ['deepseek'],
   '智谱 AI': ['zhipu', 'glm', 'z.ai'],
   '阿里通义': ['qwen', 'tongyi', 'dashscope', 'aliyun'],
   '字节豆包': ['doubao', 'volcengine', 'ark'],
   '月之暗面': ['moonshot', 'kimi'],
+  '小米': ['xiaomi', 'mi', 'mimo'],
   'MiniMax': ['minimax'],
   '百度文心': ['ernie', 'wenxin', 'qianfan', 'baidu'],
   '腾讯混元': ['hunyuan', 'tencent'],
@@ -94,6 +107,54 @@ function providerMatches(display: string, live: string): boolean {
   return aliases !== undefined && aliases.some(alias => providerNameHits(normalizeProvider(alias), liveKey))
 }
 
+/**
+ * 从真实 model id 反推提供方显示名：目录未收录的模型（key 落回「其他」）
+ * 只靠 entry.provider（Custom）永远点不亮健康灯，这里用厂商别名对 model id
+ * 做强匹配（别名作为完整 id / 前缀 / 独立段）与弱匹配（长别名子串），
+ * 命中即显示厂商名并点亮健康点；无命中保持 Custom。
+ * 导出供守卫测试：短别名（mi/yi）仅允许前缀形式，防止 minimax 等误吞。
+ */
+export function providerFromModelKey(modelKey: string): string | undefined {
+  // 强匹配保留原始连字符（normalize 会吞掉 `-`，前缀/独立段判断就失效了）。
+  const key = modelKey.trim().toLowerCase()
+  const compact = key.replace(/[\s_/-]+/g, '')
+  if (compact.length === 0) return undefined
+  // 强匹配：别名作为完整 id 或前缀/独立段（deepseek-chat、qwen-max、mi-mimo-2.5）。
+  for (const [display, aliases] of Object.entries(PROVIDER_ALIASES)) {
+    for (const alias of aliases) {
+      const a = normalizeProvider(alias)
+      if (a.length === 0) continue
+      if (key === a) return display
+      if (key.startsWith(`${a}-`) || key.startsWith(`${a}/`) || key.startsWith(`${a}_`)) return display
+      if (key.includes(`${a}-`) || key.includes(`${a}/`) || key.includes(`${a}_`)) return display
+    }
+  }
+  // 弱匹配：长别名（≥4 字符）作为 id 子串（mimo2.5 → mimo → 小米）；短别名
+  // 已在强匹配覆盖（前缀形式），这里不参与，避免误配。
+  for (const [display, aliases] of Object.entries(PROVIDER_ALIASES)) {
+    for (const alias of aliases) {
+      const a = normalizeProvider(alias)
+      if (a.length < 4) continue
+      if (compact.includes(a)) return display
+    }
+  }
+  return undefined
+}
+
+/** 余额不足告警的默认阈值（人民币元）：宿主 Config 未配置时客户端兜底。 */
+const DEFAULT_LOW_BALANCE_THRESHOLD = 50
+
+/**
+ * 日均消耗（元/天）：取最近 7 天（含今天）总花费 ÷ 有记录天数；无记录返回 0
+ * （此时可用天数无法估算，调用方不显示天数提示）。日期戳字典序即时间序。
+ */
+function dailyBurnRate(byDay: Record<string, { cost: number }>, today: string): number {
+  const dates = Object.keys(byDay).filter(d => d <= today).sort().slice(-7)
+  if (dates.length === 0) return 0
+  const total = dates.reduce((sum, d) => sum + (byDay[d]?.cost ?? 0), 0)
+  return total / dates.length
+}
+
 /** Resolve one provider's dot state: green when live, red when failed, gray when unknown. */
 function providerDot(health: ModelHealth, provider: string): string | undefined {
   if (!health.checked) return css.healthIdle
@@ -102,10 +163,26 @@ function providerDot(health: ModelHealth, provider: string): string | undefined 
   return css.healthIdle
 }
 
+/** 会话明细行（与服务端 SessionUsageRow 同形；旧快照可能缺失整个 bySession）。 */
+interface SessionBillingRow {
+  id: string
+  title?: string
+  cwd?: string
+  calls: number
+  cost: number
+  lastActive: number
+}
+
 /** Usage stats structure from `.dsh-usage-stats.json`. */
 interface UsageStats {
   /** 服务端聚合时间戳（毫秒）；旧快照可能缺失。 */
   updatedAt?: number
+  /** 月度预算（人民币元）：宿主 Config 注入；未配置时不渲染预算条。 */
+  budget?: number
+  /** 余额不足告警阈值（人民币元）：宿主 Config 注入；未配置时客户端用默认值。 */
+  lowBalanceThreshold?: number
+  /** 会话明细（按费用倒序，服务端已封顶）；旧快照可能缺失。 */
+  bySession?: readonly SessionBillingRow[]
   total: {
     calls: number
     input: number
@@ -121,6 +198,8 @@ interface UsageStats {
     cacheHit: number
     cacheMiss: number
     cost: number
+    /** Billed through a subscription plan (no per-token cost). */
+    plan?: boolean
   }>
   byDay: Record<string, {
     calls: number
@@ -206,6 +285,9 @@ async function loadUsageStats(): Promise<UsageStats | null> {
       byDay: candidate.byDay ?? {},
       ...(candidate.byDayModels !== undefined ? { byDayModels: candidate.byDayModels } : {}),
       ...(candidate.updatedAt !== undefined ? { updatedAt: candidate.updatedAt } : {}),
+      ...(typeof candidate.budget === 'number' ? { budget: candidate.budget } : {}),
+      ...(typeof candidate.lowBalanceThreshold === 'number' ? { lowBalanceThreshold: candidate.lowBalanceThreshold } : {}),
+      ...(Array.isArray(candidate.bySession) ? { bySession: candidate.bySession } : {}),
     }
   } catch {
     return null
@@ -259,11 +341,23 @@ async function fetchBalances(): Promise<readonly ProviderBalance[]> {
   }
 }
 
+/** 组件注入面：探活 + 计费指标写入（billing 自身写入，主题插件经服务读取）。 */
+export interface UsageBillingInjected {
+  checkModels: () => Promise<ModelHealth>
+  publishCosts: (costs: { todayCost: number; monthCost: number }) => void
+  registerOpen: (handler: () => void) => () => void
+}
+
+/** 预算 store 的 props 份额（useStore 读取 + actions 写面）。 */
+type BillingBudgetStoreProps = PropsStore<ReturnType<typeof createBillingBudgetStore>>
+
 /** Full props type for the UsageBilling component. */
 type UsageBillingProps =
   PropsRuntime<'sidebar.footer.action'>
   & SidebarFooterActionOwnerProps
-  & InjectFace<{ checkModels: () => Promise<ModelHealth> }>
+  & InjectFace<UsageBillingInjected>
+  & PropsRenderSlots<'billing.dashboard.decor'>
+  & BillingBudgetStoreProps
   & PropsLocale<typeof NS>
 
 /** One model row derived from stats + the pricing catalog. */
@@ -280,14 +374,19 @@ interface ModelRow {
   actual?: number
   /** Billed through a subscription plan (no per-token cost). */
   plan: boolean
+  /** 真实 model id 不在计费目录（落回「其他」）：费用未估算，标注反馈。 */
+  uncatalogued: boolean
 }
 
 /**
  * Sidebar footer trigger: compact pill in wide mode, icon in rail mode.
+ * ZINE 模式下入口由主题插件的贴纸层承担，本触发器由 CSS
+ * （body[data-zine-mode] 选择器）隐藏，组件本身无 zine 分支。
  * @param props - framework props plus `wide` column state.
  */
 function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; monthCost: number; todayCost: number }): React.ReactNode {
   const { wide, t, onOpen, monthCost, todayCost } = props
+
   // 银行卡 icon：计费语义，窄栏与宽栏共用。
   const cardIcon = (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
@@ -296,30 +395,47 @@ function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; mo
       <rect x="6" y="12" width="4" height="3.5" rx="0.75" />
     </svg>
   )
+
   if (!wide) {
     return (
-      <button type="button" className={css.railButton} onClick={onOpen} title={`${t('billing.title')} · ${formatMoney(monthCost)}`}>
+      <button
+        type="button"
+        className={css.railButton}
+        data-testid="billing-rail-button"
+        onClick={onOpen}
+        title={`${t('billing.title')} · ${formatMoney(monthCost)}`}
+      >
         {cardIcon}
       </button>
     )
   }
+
   return (
-    <button type="button" className={css.trigger} onClick={onOpen} title={`${t('billing.title')} · 本月 ${formatMoney(monthCost)}`}>
-      <span className={css.triggerIcon}>{cardIcon}</span>
+    <button
+      type="button"
+      className={css.trigger}
+      data-testid="billing-trigger"
+      onClick={onOpen}
+      title={`${t('billing.title')} · 本月 ${formatMoney(monthCost)}`}
+    >
+      <span className={css.triggerIcon} data-testid="billing-trigger-icon">{cardIcon}</span>
       {/* 左块：今日费用为重点 */}
-      <span className={css.triggerToday}>
+      <span className={css.triggerToday} data-testid="billing-trigger-today">
         <span className={css.triggerMeta}>今日</span>
         <span className={css.triggerAmount}>{formatMoney(todayCost)}</span>
       </span>
       <span className={css.triggerDivider} />
       {/* 右块：当月费用为次要 */}
-      <span className={css.triggerMonth}>
+      <span className={css.triggerMonth} data-testid="billing-trigger-month">
         <span className={css.triggerMeta}>当月</span>
         <span className={css.triggerAmountSub}>{formatMoney(monthCost)}</span>
       </span>
     </button>
   )
 }
+
+/** Dashboard 装饰孔位渲染面：仅供 BillingDashboard 透传 renderSlot。 */
+type DashboardRenderSlots = PropsRenderSlots<'billing.dashboard.decor'>
 
 /** Props of the billing dashboard modal. */
 interface BillingDashboardProps {
@@ -328,34 +444,61 @@ interface BillingDashboardProps {
   onClose: () => void
   health: ModelHealth
   balances: readonly ProviderBalance[]
+  renderSlot: DashboardRenderSlots['renderSlot']
+  /** 预算偏好（开关 + 金额）：由父组件从 store 读下传。 */
+  budgetEnabled: boolean
+  /** 生效预算金额（用户金额优先，宿主默认兜底；0 = 未设置）。 */
+  budgetAmount: number
+  onToggleBudget: () => void
+  onBudgetAmount: (value: number) => void
 }
 
 /**
  * The centered billing dashboard modal.
- * @param props - stats, locale function, close handler, model health, balances.
+ * @param props - stats, locale function, close handler, model health, balances, renderSlot.
  */
-function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashboardProps): React.ReactNode {
+function BillingDashboard({ stats, t, onClose, health, balances, renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount }: BillingDashboardProps): React.ReactNode {
   const { total, byModel, byDay } = stats
   // Pricing table starts collapsed; the billing table stays open.
   const [pricingOpen, setPricingOpen] = useState(false)
+  // 会话明细同样默认折叠（长尾列表，按需展开）。
+  const [sessionsOpen, setSessionsOpen] = useState(false)
+  // 趋势窗口：7 天 / 30 天切换（30 天窗口数据不足时按日补零）。
+  const [trendDays, setTrendDays] = useState<7 | 30>(7)
 
   // 当前汇率与来源：供单价表标题展示（实时 / 内置）。
   const rateInfo = getRateInfo()
+
+  // A1: 日均消耗（最近 7 天）——余额列据此估算可用天数；无消耗记录时 0（不显示天数）。
+  const dailyBurn = dailyBurnRate(byDay, localDayStamp())
 
   // 按提供方归一化匹配余额（deepseek ↔ DeepSeek）。
   const balanceFor = (provider: string): ProviderBalance | undefined =>
     balances.find(balance => normalizeProvider(balance.provider) === normalizeProvider(provider))
 
-  // 余额列单元格：按查询状态渲染金额或占位文案。
+  // 余额列单元格：按查询状态渲染金额或占位文案；余额有效且日均消耗可估时
+  // 附「约可撑 N 天」提示（A1），剩余不足 3 天时红色强调。
   const renderBalance = (balance: ProviderBalance | undefined): React.ReactNode => {
     if (balance === undefined) return <span className={css.na}>—</span>
     if (balance.error === 'unconfigured') return t('billing.balanceUnconfigured')
     if (balance.error === 'unauthorized') return t('billing.balanceUnauthorized')
     if (balance.error === 'unreachable') return t('billing.balanceUnreachable')
     if (balance.totalBalance === undefined) return <span className={css.na}>—</span>
-    return balance.currency === 'USD'
+    const amount = balance.currency === 'USD'
       ? `$${balance.totalBalance.toFixed(2)}`
       : formatMoney(balance.totalBalance)
+    // USD 余额按当前汇率折成人民币，与日均消耗（元）同口径。
+    const balanceCny = balance.currency === 'USD' ? balance.totalBalance * rateInfo.rate : balance.totalBalance
+    if (dailyBurn <= 0) return amount
+    const days = Math.floor(balanceCny / dailyBurn)
+    return (
+      <span className={css.balanceCell}>
+        <span>{amount}</span>
+        <span className={clsx(css.balanceDays, days <= 3 && css.balanceDaysLow)} data-testid="billing-balance-days">
+          {t('billing.balanceDays').replace('{days}', String(days))}
+        </span>
+      </span>
+    )
   }
 
   const cacheHitRate = total.cacheHit + total.cacheMiss > 0
@@ -373,16 +516,16 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
   const monthCalls = dates.reduce((sum, d) => sum + (d.startsWith(monthPrefix) ? (byDay[d]?.calls ?? 0) : 0), 0)
   const yearCost = dates.reduce((sum, d) => sum + (d.startsWith(yearPrefix) ? (byDay[d]?.cost ?? 0) : 0), 0)
 
-  // 最近 7 天窗口（含今天）：不足一周的日期补零，图表固定为整周。
+  // 最近 N 天窗口（含今天）：缺失的日期补零，图表固定为整段区间。
   const trendDates = useMemo(() => {
     const out: string[] = []
-    for (let offset = 6; offset >= 0; offset -= 1) {
+    for (let offset = trendDays - 1; offset >= 0; offset -= 1) {
       const day = new Date()
       day.setDate(day.getDate() - offset)
       out.push(localDayStamp(day.getTime()))
     }
     return out
-  }, [])
+  }, [trendDays])
   const latestDate = trendDates.at(-1) ?? today
 
   // Trend series for the SVG chart: each day's total plus its per-model cost
@@ -409,6 +552,10 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
       .filter(([, data]) => data.calls > 0)
       .map(([key, data]) => {
         const entry = modelOf(key)
+        // 目录未收录（key 落回「其他」）时：展示真实 model id 而非占位名，
+        // 并尝试从 id 反推提供方（B5），否则健康点永远点不亮。
+        const uncatalogued = entry.key === 'other'
+        const inferredProvider = uncatalogued ? providerFromModelKey(key) : undefined
         const buckets: TokenUsageBuckets = {
           input: data.input,
           cacheHit: data.cacheHit,
@@ -417,8 +564,8 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
         }
         return {
           key,
-          name: entry.name,
-          provider: entry.provider,
+          name: uncatalogued ? key : entry.name,
+          provider: inferredProvider ?? entry.provider,
           calls: data.calls,
           input: data.input,
           output: data.output,
@@ -431,6 +578,7 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
           plan: data.plan === true,
           // exactOptionalPropertyTypes: absent actual when the stats carry none.
           ...(data.cost > 0 ? { actual: data.cost } : {}),
+          uncatalogued,
         }
       })
       .sort((a, b) => (b.actual ?? b.estimated) - (a.actual ?? a.estimated))
@@ -459,11 +607,19 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
 
   return (
     <Modal open onClose={onClose} title={t('billing.title')} headless className={css.dashboardModal ?? ''}>
-      <div className={css.dashboard}>
+      <div className={css.dashboard} data-testid="billing-dashboard">
         {/* Header */}
-        <div className={css.dashboardHead}>
+        <div className={css.dashboardHead} data-testid="billing-dashboard-head">
           <div>
-            <h2 className={css.dashboardTitle}>{t('billing.title')}</h2>
+            {/* ZINE: 装饰孔位（head 锚点：窗口 chrome），由主题插件注入；未注入时为空 */}
+            {renderSlot('billing.dashboard.decor', { position: 'head' })}
+            <div className={css.headTitleRow}>
+              <h2 className={css.dashboardTitle}>
+                {t('billing.title')}
+              </h2>
+              {/* ZINE: 装饰孔位（headTitle 锚点：标题胶带） */}
+              {renderSlot('billing.dashboard.decor', { position: 'headTitle' })}
+            </div>
             <p className={css.dashboardSubtitle}>
               {t('billing.lastUpdated')} {latestDate}
             </p>
@@ -477,7 +633,13 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
                   : `${health.failures} 模型不可用`}
               </span>
             )}
-            <button type="button" className={css.closeButton} aria-label={t('billing.close')} onClick={onClose}>
+            <button
+              type="button"
+              className={css.closeButton}
+              aria-label={t('billing.close')}
+              data-testid="billing-close"
+              onClick={onClose}
+            >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
                 <path d="M18 6 6 18" />
                 <path d="m6 6 12 12" />
@@ -489,21 +651,36 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
         {/* Scrollable body */}
         <div className={css.dashboardBody}>
           {/* Hero: 本月主数字 + 右侧 本年/今日 次统计，克制排版无渐变 */}
-          <section className={css.hero}>
+          <section
+            className={css.hero}
+            data-testid="billing-hero"
+          >
+            {/* ZINE: 装饰孔位（hero 锚点：撕角便签角标） */}
+            {renderSlot('billing.dashboard.decor', { position: 'hero' })}
             <div className={css.heroMain}>
-              <span className={css.heroLabel}>{t('billing.monthCost')}</span>
-              <span className={css.heroValue}>{formatMoney(monthCost)}</span>
+              <span className={css.heroLabel}>
+                {t('billing.monthCost')}
+              </span>
+              <span className={css.heroValue}>
+                {formatMoney(monthCost)}
+              </span>
               <span className={css.heroMeta}>
                 {monthCalls.toLocaleString()} {t('billing.calls')}
               </span>
             </div>
             <div className={css.heroSide}>
               <div className={css.heroSideItem}>
-                <span className={css.heroSideLabel}>{t('billing.yearCost')}</span>
-                <span className={css.heroSideValue}>{formatMoney(yearCost)}</span>
+                <span className={css.heroSideLabel}>
+                  {t('billing.yearCost')}
+                </span>
+                <span className={css.heroSideValue}>
+                  {formatMoney(yearCost)}
+                </span>
               </div>
               <div className={css.heroSideItem}>
-                <span className={css.heroSideLabel}>{t('billing.todayCost')}</span>
+                <span className={css.heroSideLabel}>
+                  {t('billing.todayCost')}
+                </span>
                 <span className={css.heroSideValue}>
                   {formatMoney(todayCost)}
                   <span className={clsx(css.delta, deltaPct >= 0 ? css.deltaUp : css.deltaDown)}>
@@ -514,9 +691,67 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
             </div>
           </section>
 
+          {/* 月度预算：开关控制显隐（持久化到 localStorage），金额可编辑，
+              宿主 monthlyBudget 作为默认值；超支进度条转红。 */}
+          <section className={css.budget} data-testid="billing-budget">
+            <div className={css.budgetHead}>
+              <span className={css.budgetLabel}>{t('billing.budget')}</span>
+              <span className={css.budgetControls}>
+                {budgetEnabled && (
+                  <span className={css.budgetInputWrap} data-testid="billing-budget-input-wrap">
+                    {/* 单位符号：预算以人民币元计，避免误填分/美元。 */}
+                    <span className={css.budgetUnit} aria-hidden="true">¥</span>
+                    <input
+                      className={css.budgetInput}
+                      data-testid="billing-budget-input"
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={budgetAmount === 0 ? '' : budgetAmount}
+                      placeholder={stats.budget !== undefined ? String(stats.budget) : '0'}
+                      aria-label={`${t('billing.budget')}（元）`}
+                      title={`${t('billing.budget')}（元）`}
+                      onChange={(e) => { onBudgetAmount(e.target.valueAsNumber) }}
+                    />
+                  </span>
+                )}
+                {budgetEnabled && budgetAmount > 0 && (() => {
+                  const pct = (monthCost / budgetAmount) * 100
+                  return (
+                    <span className={css.budgetValue} data-testid="billing-budget-value">
+                      {formatMoney(monthCost)} / {formatMoney(budgetAmount)} · {pct.toFixed(1)}%
+                    </span>
+                  )
+                })()}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={budgetEnabled}
+                  aria-label={t('billing.budget')}
+                  data-testid="billing-budget-toggle"
+                  className={clsx(css.switch, budgetEnabled && css.switchOn)}
+                  onClick={onToggleBudget}
+                >
+                  <span className={css.switchKnob} />
+                </button>
+              </span>
+            </div>
+            {budgetEnabled && budgetAmount > 0 && (() => {
+              const pct = (monthCost / budgetAmount) * 100
+              return (
+                <div className={css.budgetTrack} data-testid="billing-budget-track">
+                  <div
+                    className={clsx(css.budgetFill, pct >= 100 && css.budgetFillOver)}
+                    style={{ width: `${Math.min(pct, 100)}%` }}
+                  />
+                </div>
+              )
+            })()}
+          </section>
+
           {/* KPI grid */}
-          <section className={css.kpiGrid}>
-            <div className={css.kpiTile}>
+          <section className={css.kpiGrid} data-testid="billing-kpi-grid">
+            <div className={css.kpiTile} data-testid="billing-kpi-tile">
               <span className={css.kpiLabel}>{t('billing.cacheHitRate')}</span>
               <span className={clsx(css.kpiValue, css.kpiGreen)}>{formatPercent(cacheHitRate)}</span>
               <span className={css.kpiDetail}>
@@ -543,18 +778,46 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
           </section>
 
           {/* Trend chart */}
-          <section className={css.panel}>
+          <section
+            className={clsx(css.panel, css.trendPanel)}
+            data-testid="billing-panel-trend"
+          >
             <div className={css.panelHead}>
-              <h3 className={css.panelTitle}>{t('billing.trend')}</h3>
-              <span className={css.panelHint}>{latestDate}</span>
+              <h3 className={css.panelTitle}>
+                {t('billing.trend')}
+              </h3>
+              {renderSlot('billing.dashboard.decor', { position: 'trend' })}
+              <span className={css.rangeToggle} role="group" aria-label={t('billing.trend')}>
+                {([7, 30] as const).map(days => (
+                  <button
+                    key={days}
+                    type="button"
+                    className={clsx(css.rangeButton, trendDays === days && css.rangeButtonActive)}
+                    aria-pressed={trendDays === days}
+                    data-testid={`billing-trend-${days}d`}
+                    onClick={() => { setTrendDays(days) }}
+                  >
+                    {days === 7 ? t('billing.trend7d') : t('billing.trend30d')}
+                  </button>
+                ))}
+              </span>
+              <span className={css.panelHint}>
+                {latestDate}
+              </span>
             </div>
             <TrendChart data={trend} models={chartModels} />
           </section>
 
           {/* Model billing table */}
-          <section className={css.panel}>
+          <section
+            className={css.panel}
+            data-testid="billing-panel-models"
+          >
             <div className={css.panelHead}>
-              <h3 className={css.panelTitle}>{t('billing.models')}</h3>
+              <h3 className={css.panelTitle}>
+                {t('billing.models')}
+              </h3>
+              {renderSlot('billing.dashboard.decor', { position: 'models' })}
               {/* 更新时间精确到时分秒；旧快照没有时间戳时留空。 */}
               <span className={css.panelHint}>
                 {stats.updatedAt !== undefined
@@ -562,7 +825,7 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
                   : ''}
               </span>
             </div>
-            <div className={css.tableScroll}>
+            <div className={clsx(css.tableScroll, css.modelTableScroll)} data-testid="billing-table-scroll">
               <table className={css.modelTable}>
                 <thead>
                   <tr>
@@ -588,7 +851,15 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
                           {/* The one per-model dot doubles as the health state. */}
                           <span className={clsx(css.modelDot, providerDot(health, row.provider))} aria-hidden="true" />
                           <span>
-                            <span className={css.modelName}>{row.name}</span>
+                            <span className={css.modelName}>
+                              {row.name}
+                              {/* 未收录：真实 id 不在计费目录，费用按兜底档估算，明确标注。 */}
+                              {row.uncatalogued && (
+                                <span className={css.uncataloguedTag} data-testid="billing-uncatalogued-tag">
+                                  {t('billing.uncatalogued')}
+                                </span>
+                              )}
+                            </span>
                             <span className={css.modelProvider}>{row.provider}</span>
                           </span>
                         </span>
@@ -608,18 +879,94 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
                 </tbody>
               </table>
             </div>
+            {/* ZINE: 装饰孔位（footer 锚点：条码装饰底部） */}
+            {renderSlot('billing.dashboard.decor', { position: 'footer' })}
           </section>
 
+          {/* 会话明细：按费用倒序的可折叠面板，回答「钱花在哪」。
+              服务端聚合路径恒带 bySession（空数组时显示空态）；JSON 回退
+              文件没有此字段，面板不出现。 */}
+          {stats.bySession !== undefined && (
+            <section className={css.panel} data-testid="billing-panel-sessions">
+              <button
+                type="button"
+                className={css.pricingToggle}
+                data-testid="billing-sessions-toggle"
+                onClick={() => { setSessionsOpen(prev => !prev) }}
+                aria-expanded={sessionsOpen}
+              >
+                <span className={css.pricingToggleText}>
+                  <span className={css.panelTitle}>
+                    {t('billing.sessions')}
+                  </span>
+                  <span className={css.panelHint}>
+                    {stats.bySession.length > SESSION_DISPLAY_LIMIT
+                      ? t('billing.sessionOverflow')
+                          .replace('{limit}', String(SESSION_DISPLAY_LIMIT))
+                          .replace('{total}', String(stats.bySession.length))
+                      : `${stats.bySession.length}`}
+                  </span>
+                </span>
+                <svg className={clsx(css.pricingChevron, sessionsOpen && css.pricingChevronOpen)} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+              {sessionsOpen && (
+                <div className={css.tableScroll} data-testid="billing-sessions-table">
+                  <table className={css.modelTable}>
+                    <thead>
+                      <tr>
+                        <th>{t('billing.sessions')}</th>
+                        <th>{t('billing.project')}</th>
+                        <th className={css.numCol}>{t('billing.calls')}</th>
+                        <th className={css.numCol}>{t('billing.actual')}</th>
+                        <th className={css.numCol}>{t('billing.lastActive')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stats.bySession.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className={css.emptyRow}>{t('billing.noData')}</td>
+                        </tr>
+                      )}
+                      {stats.bySession.slice(0, SESSION_DISPLAY_LIMIT).map(row => (
+                        <tr key={row.id}>
+                          <td>
+                            <span className={css.modelName}>{row.title ?? row.id.slice(0, 8)}</span>
+                          </td>
+                          <td>
+                            <span className={css.modelProvider}>{projectName(row.cwd) ?? '—'}</span>
+                          </td>
+                          <td className={css.numCol}>{row.calls.toLocaleString()}</td>
+                          <td className={css.numCol}>{formatMoney(row.cost)}</td>
+                          <td className={css.numCol}>
+                            {row.lastActive > 0 ? `${localDayStamp(row.lastActive)} ${formatClock(row.lastActive)}` : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+
           {/* Pricing table — collapsed by default */}
-          <section className={css.panel}>
+          <section
+            className={css.panel}
+            data-testid="billing-panel-pricing"
+          >
             <button
               type="button"
               className={css.pricingToggle}
+              data-testid="billing-pricing-toggle"
               onClick={() => { setPricingOpen(prev => !prev) }}
               aria-expanded={pricingOpen}
             >
               <span className={css.pricingToggleText}>
-                <span className={css.panelTitle}>{t('billing.pricing')}</span>
+                <span className={css.panelTitle}>
+                  {t('billing.pricing')}
+                </span>
                 <span className={css.panelHint}>
                   {t('billing.todayRate')} 1 USD = {formatMoney(rateInfo.rate)}
                   <span className={clsx(css.rateBadge, rateInfo.live ? css.rateBadgeLive : css.rateBadgeBuiltin)}>
@@ -717,7 +1064,7 @@ function BillingDashboard({ stats, t, onClose, health, balances }: BillingDashbo
  * @param props - framework-provided sidebar and locale props.
  */
 export function UsageBilling(props: UsageBillingProps): React.ReactNode {
-  const { t, checkModels } = props
+  const { t, checkModels, publishCosts, registerOpen, renderSlot, useStore, actions } = props
   // Start empty; swap in real host data when the server serves valid JSON.
   const [stats, setStats] = useState<UsageStats>(EMPTY_STATS)
   const [health, setHealth] = useState<ModelHealth>(IDLE_HEALTH)
@@ -772,17 +1119,114 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const monthCost = Object.entries(stats.byDay)
     .filter(([date]) => date.startsWith(today.slice(0, 7)))
     .reduce((sum, [, day]) => sum + day.cost, 0)
+  const todayCost = stats.byDay[today]?.cost ?? 0
+
+  // 预算偏好：开关与金额经框架 store 读取；用户金额优先，宿主 monthlyBudget
+  //（stats.budget）兜底为默认值。
+  const budgetEnabled = useStore(s => s.enabled)
+  const budgetAmount = useStore(s => s.amount)
+  const budgetAlertedDay = useStore(s => s.lastAlertDay)
+  const effectiveBudget = budgetAmount > 0 ? budgetAmount : (stats.budget ?? 0)
+  const toggleBudget = useCallback(() => {
+    const next = !budgetEnabled
+    actions.setEnabled(next)
+    // 开启预算的手势顺带申请通知权限：授权后超支才会弹系统通知。
+    if (next && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      void Notification.requestPermission()
+    }
+  }, [actions, budgetEnabled])
+
+  // 超支通知：预算开启且已超支时，每天最多弹一次系统通知（标记持久化，
+  // 跨重启不重复）；Notification 不可用或未授权时跳过——预算条已转红
+  // 并带脉冲动画，信息始终留在界面上。
+  useEffect(() => {
+    if (!budgetEnabled || effectiveBudget <= 0) return
+    const pct = (monthCost / effectiveBudget) * 100
+    if (pct < 100) return
+    const day = localDayStamp()
+    if (budgetAlertedDay === day) return
+    actions.markAlerted(day)
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    const body = t('billing.budgetOverBody')
+      .replace('{cost}', formatMoney(monthCost))
+      .replace('{budget}', formatMoney(effectiveBudget))
+      .replace('{pct}', pct.toFixed(0))
+    // 通知发送失败（部分平台限制）不影响标记：当天不再重试，避免轮询轰炸。
+    try {
+      new Notification(t('billing.budget'), { body })
+    } catch {
+      // 平台拒绝构造通知：静默跳过，界面红色进度条兜底。
+    }
+  }, [budgetEnabled, effectiveBudget, monthCost, budgetAlertedDay, actions, t])
+
+  // 余额不足告警：任一提供方余额低于阈值（折算人民币）时每天提醒一次；
+  // 与预算开关无关——余额是硬性约束，无论是否开启预算都要提醒。
+  const lastBalanceAlertDay = useStore(s => s.lastBalanceAlertDay)
+  const lowBalanceRow = useMemo(() => {
+    if (balances.length === 0) return undefined
+    const threshold = stats.lowBalanceThreshold ?? DEFAULT_LOW_BALANCE_THRESHOLD
+    const burn = dailyBurnRate(stats.byDay, today)
+    const rate = getRateInfo().rate
+    for (const balance of balances) {
+      if (balance.totalBalance === undefined || balance.error !== undefined) continue
+      // USD 余额按当前汇率折成人民币，与阈值同口径。
+      const cny = balance.currency === 'USD' ? balance.totalBalance * rate : balance.totalBalance
+      if (cny >= threshold) continue
+      // 天数仅在有消耗记录时提供；刚用或未用（无历史）时以金额告警为主。
+      const days = burn > 0 ? Math.floor(cny / burn) : undefined
+      return { name: balance.displayName, cny, days }
+    }
+    return undefined
+  }, [balances, stats.lowBalanceThreshold, stats.byDay, today])
+  useEffect(() => {
+    if (lowBalanceRow === undefined) return
+    const day = localDayStamp()
+    if (lastBalanceAlertDay === day) return
+    actions.markBalanceAlerted(day)
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    const body = t('billing.balanceLowBody')
+      .replace('{name}', lowBalanceRow.name)
+      .replace('{balance}', formatMoney(lowBalanceRow.cny))
+      .replace('{days}', lowBalanceRow.days === undefined ? '—' : String(lowBalanceRow.days))
+    // 通知发送失败（部分平台限制）不影响标记：当天不再重试，避免轮询轰炸。
+    try {
+      new Notification(t('billing.balance'), { body })
+    } catch {
+      // 平台拒绝构造通知：静默跳过。
+    }
+  }, [lowBalanceRow, lastBalanceAlertDay, actions, t])
+
+  // 费用摘要始终写入计费指标服务：服务与槽位一样按「无消费者即空转」设计，
+  // 主题插件（如 StickerPad）存在时自行读取，缺席时发布无害。
+  useEffect(() => {
+    publishCosts({ todayCost, monthCost })
+  }, [todayCost, monthCost, publishCosts])
+
+  // dashboard 打开回调同样始终注册，供主题插件（如 StickerPad）触发。
+  useEffect(() => registerOpen(openDashboard), [registerOpen, openDashboard])
 
   return (
     <>
+      {/* zine 模式下触发器由 CSS（body[data-zine-mode]）隐藏，入口交给主题贴纸层。 */}
       <UsageBillingTrigger
         {...props}
         onOpen={openDashboard}
         monthCost={monthCost}
-        todayCost={stats.byDay[today]?.cost ?? 0}
+        todayCost={todayCost}
       />
       {open && (
-        <BillingDashboard stats={stats} t={t} onClose={close} health={health} balances={balances} />
+        <BillingDashboard
+          stats={stats}
+          t={t}
+          onClose={close}
+          health={health}
+          balances={balances}
+          renderSlot={renderSlot}
+          budgetEnabled={budgetEnabled}
+          budgetAmount={effectiveBudget}
+          onToggleBudget={toggleBudget}
+          onBudgetAmount={actions.setAmount}
+        />
       )}
     </>
   )

@@ -1,7 +1,7 @@
 {
   "name": "@kenz1117/dsh-ui-usage-billing",
   "description": "Usage billing dashboard for DeepSeek Harness: sidebar cost metrics plus a full dashboard modal, priced from a current multi-provider catalog with real usage aggregated from session logs.",
-  "version": "0.2.6",
+  "version": "0.3.0",
   "publishConfig": {
     "access": "public"
   },
@@ -56,6 +56,7 @@
     "@deepseek-ai/dsh-client-ui-sidebar": "*",
     "@deepseek-ai/dsh-client-ui-primitives": "*",
     "@deepseek-ai/dsh-client-ui-slots": "*",
+    "@deepseek-ai/dsh-credentials": "*",
     "@deepseek-ai/dsh-invariants": "*",
     "@deepseek-ai/dsh-llm": "*",
     "@deepseek-ai/dsh-session": "*",

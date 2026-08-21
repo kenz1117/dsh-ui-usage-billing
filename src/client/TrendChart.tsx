@@ -1,9 +1,10 @@
 /**
  * TrendChart: dependency-free SVG chart of daily cost + calls.
  *
- * The columns are GROUPED per model — one bar per model per day, each in its
- * brand color, so per-model cost is directly comparable. The blue line is the
- * total call volume across all models, plotted on its own right-hand axis.
+ * The columns are STACKED per day — one bar per day, with each model's cost
+ * as a colored segment inside the bar, so the daily total reads at a glance
+ * and the model mix stays visible. The blue line is the total call volume
+ * across all models, plotted on its own right-hand axis.
  * A hover crosshair shows the day's model breakdown. No chart library — the
  * surface stays self-contained and offline.
  */
@@ -63,18 +64,22 @@ function tickIndexes(length: number, step: number): number[] {
 /** Single-color fallback identity used when the stats carry no per-model detail. */
 const TOTAL_MODEL: TrendSeriesModel = { key: '__total__', name: '总计', color: '' }
 
-/** One grouped bar: one model's cost on one day. */
+/** One stacked segment: one model's cost inside one day's bar. */
 interface Bar {
   date: string
   model: TrendSeriesModel
   /** Bar left edge x. */
   x: number
+  /** Cumulative cost of the segments below this one (stack base). */
+  base: number
   /** Cost value this model contributed that day. */
   value: number
+  /** Whether this segment is the day's top one (gets the rounded cap). */
+  topRounded: boolean
 }
 
 /**
- * Render the daily grouped cost bars plus the total-calls line.
+ * Render the daily stacked cost bars plus the total-calls line.
  * @param props.data - sorted daily rows (ascending date).
  * @param props.models - the model legend, in bar order.
  */
@@ -90,29 +95,38 @@ export function TrendChart({ data, models = [] }: { data: readonly TrendPoint[];
       if (n === 1) return PAD.left + plotW / 2
       return PAD.left + (plotW * i) / (n - 1)
     }
-    // 刻度按「单模型单日最大费用」：分组柱每根代表一个模型，直方更饱满。
-    const maxCost = Math.max(...data.flatMap(d => Object.values(d.byModel ?? {})), ...data.map(d => d.cost), 0.0001)
+    // 刻度按「单日总费用」：堆叠柱顶端即当日总费用，直方更饱满。
+    const maxCost = Math.max(
+      ...data.map(d => Math.max(d.cost, Object.values(d.byModel ?? {}).reduce((sum, v) => sum + v, 0))),
+      0.0001,
+    )
     const yCost = (value: number): number => PAD.top + plotH - (value / maxCost) * plotH
     // 调用量比例尺：独立右轴，柱（费用）与线（调用）各用各的刻度。
     const maxCalls = Math.max(...data.map(d => d.calls), 1)
     const yCalls = (value: number): number => PAD.top + plotH - (value / maxCalls) * plotH
 
     const groupW = plotW / n
-    const barCount = Math.max(models.length, 1)
-    const barW = Math.min(14, (groupW / barCount) * 0.7)
+    const barW = Math.min(18, groupW * 0.6)
 
-    // 分组柱：同一天内每个模型一根独立柱，并排排布。
+    // 堆叠柱：每天一根柱，各模型费用自下而上拼成色段；顶部段圆角收尾。
     const bars: Bar[] = data.flatMap((d, i) => {
+      const x = inner(i) - barW / 2
       if (models.length === 0) {
         // 无模型明细：单色总费用柱兜底。
-        return [{ date: d.date, model: TOTAL_MODEL, x: inner(i) - barW / 2, value: d.cost }]
+        return [{ date: d.date, model: TOTAL_MODEL, x, base: 0, value: d.cost, topRounded: true }]
       }
-      return models.map((model, k) => ({
-        date: d.date,
-        model,
-        x: inner(i) - groupW / 2 + (groupW * (k + 0.5)) / models.length - barW / 2,
-        value: d.byModel?.[model.key] ?? 0,
-      }))
+      // 顶部圆角给当天最后一个有量的模型段。
+      let topKey: string | null = null
+      for (const model of models) {
+        if ((d.byModel?.[model.key] ?? 0) > 0) topKey = model.key
+      }
+      let acc = 0
+      return models.map((model) => {
+        const value = d.byModel?.[model.key] ?? 0
+        const bar: Bar = { date: d.date, model, x, base: acc, value, topRounded: model.key === topKey }
+        acc += value
+        return bar
+      })
     })
 
     const costTicks = [0, 0.25, 0.5, 0.75, 1].map(f => maxCost * f).reverse()
@@ -162,15 +176,15 @@ export function TrendChart({ data, models = [] }: { data: readonly TrendPoint[];
           )
         })}
 
-        {/* Grouped per-model cost bars. */}
+        {/* Stacked per-day cost bars: one bar per day, per-model segments. */}
         {bars.map(bar => (bar.value > 0 ? (
           <rect
             key={`${bar.date}-${bar.model.key}`}
             x={bar.x}
-            y={yCost(bar.value)}
+            y={yCost(bar.base + bar.value)}
             width={barW}
-            height={yCost(0) - yCost(bar.value)}
-            rx={2}
+            height={yCost(bar.base) - yCost(bar.base + bar.value)}
+            rx={bar.topRounded ? 2 : 0}
             className={bar.model.color === '' ? css.chartBar : css.chartStack}
             style={bar.model.color === '' ? undefined : { fill: bar.model.color }}
           />

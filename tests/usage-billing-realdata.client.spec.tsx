@@ -66,6 +66,10 @@ describe('UsageBilling real-data surface', () => {
       checkModels: async () => ({
         checked: true, available: true, providers: 1, failures: 0, okProviders: [], badProviders: [],
       }),
+      // 装饰孔位在单测中无注册者：renderSlot 返回 null；数据桥 stub 空实现。
+      publishCosts: () => {},
+      registerOpen: () => () => {},
+      renderSlot: () => null,
     } as unknown as ComponentProps<typeof UsageBilling>
     const { container } = render(<UsageBilling {...props} />)
     const trigger = container.querySelector('button')
