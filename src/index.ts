@@ -18,7 +18,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-credentials'
-import { aggregateUsage } from './aggregate.ts'
+import { createUsageAggregator } from './aggregate.ts'
 import { queryBalances } from './balance.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
 import type { LivePricing } from './pricing-shared.ts'
@@ -31,6 +31,11 @@ export interface UsageBillingConfig {
   subscriptionProviders?: string[]
   /** 余额查询用的 DeepSeek 凭据引用（环境变量名）；默认 DEEPSEEK_API_KEY。 */
   balanceApiKeyEnv?: string
+  /** 月度预算（人民币元）；设置后随 usage-stats 下发，仪表盘显示预算进度条。 */
+  monthlyBudget?: number
+  /** 余额不足告警阈值（人民币元）：余额低于此值时仪表盘每天提醒一次；
+      不设置则客户端按默认阈值（50 元）兜底。 */
+  lowBalanceThreshold?: number
 }
 
 /** 实时定价的后台刷新间隔（毫秒）：汇率/模型价低频变化，6 小时一次足够。 */
@@ -48,6 +53,13 @@ export const inject = ['webServer', 'sessionPersistence', 'credentials']
  * @param config - optional statsPath override.
  */
 export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
+  // 常驻增量聚合器：按会话缓存折叠结果（日志 mtime+size 失效），
+  // 前端 30 秒轮询只重算写过的会话。
+  const aggregator = createUsageAggregator(ctx.sessionPersistence, {
+    ...(config.subscriptionProviders === undefined
+      ? {}
+      : { subscriptionProviders: config.subscriptionProviders }),
+  })
   const cwd = process.cwd()
   const candidates = [
     config.statsPath,
@@ -103,11 +115,14 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       handler: async (_req, res) => {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         try {
-          res.end(JSON.stringify(await aggregateUsage(ctx.sessionPersistence, {
-            ...(config.subscriptionProviders === undefined
-              ? {}
-              : { subscriptionProviders: config.subscriptionProviders }),
-          })))
+          const stats = await aggregator.aggregate()
+          // 宿主配置（月度预算 / 余额告警阈值）不是聚合产物：在响应边界
+          // 注入，两条路径一致。
+          const injected: Record<string, number> = {
+            ...(config.monthlyBudget === undefined ? {} : { budget: config.monthlyBudget }),
+            ...(config.lowBalanceThreshold === undefined ? {} : { lowBalanceThreshold: config.lowBalanceThreshold }),
+          }
+          res.end(JSON.stringify(Object.keys(injected).length === 0 ? stats : { ...stats, ...injected }))
           return
         } catch {
           // Persistence read failed; fall through to the JSON-file candidates.
@@ -117,8 +132,10 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
             const text = await readFile(candidate, 'utf8')
             // Accept only parseable JSON so a stale or partial file never
             // reaches the dashboard as if it were real.
-            JSON.parse(text)
-            res.end(text)
+            const doc = JSON.parse(text) as Record<string, unknown>
+            if (config.monthlyBudget !== undefined) doc['budget'] = config.monthlyBudget
+            if (config.lowBalanceThreshold !== undefined) doc['lowBalanceThreshold'] = config.lowBalanceThreshold
+            res.end(JSON.stringify(doc))
             return
           } catch {
             // Try the next candidate location.

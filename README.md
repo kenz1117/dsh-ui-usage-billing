@@ -10,11 +10,17 @@ DeepSeek Harness 计费仪表盘插件。从持久化会话日志实时聚合模
 ## 特性
 
 - **侧边栏入口**：设置按钮上方的触发胶囊，显示**当月费用 + 今日费用**；折叠栏自动切换为图标。
-- **计费仪表盘**：Hero 按 **当年 / 当月 / 当日** 三维展示费用，KPI 指标（缓存命中率 / Token 总量 / 单次平均成本 / 调用次数）、按模型分色的**堆叠趋势图**、按模型计费明细、可展开的单价表。
-- **真实用量**：服务端从会话日志实时聚合，无需手工维护统计文件。
+- **计费仪表盘**：Hero 按 **当年 / 当月 / 当日** 三维展示费用，KPI 指标（缓存命中率 / Token 总量 / 单次平均成本 / 调用次数）、按模型色段堆叠的**每日费用趋势图**（7 天 / 30 天窗口切换）、按模型计费明细、可展开的单价表。
+- **月度预算**：仪表盘内置预算条——开关控制显隐、金额可直接编辑（已用 / 总额 / 百分比进度，超支自动转红并脉冲提示），偏好持久化在浏览器本地；宿主配置 `monthlyBudget` 可作为默认金额。
+- **超支通知**：预算开启且当月花费超过预算时，自动弹出系统通知（浏览器 Notification，每天最多一次）；通知不可用时红色脉冲进度条兜底。
+- **会话明细**：可折叠面板按费用倒序列出每个会话的花费（标题 / 项目 / 调用数 / 费用 / 最后活跃），直接回答「钱花在哪」。
+- **真实用量**：服务端从会话日志实时聚合，无需手工维护统计文件；增量缓存保证只有写过的日志会被重新折叠，重度使用下轮询依然轻量。
 - **模型健康探测**：模型行的圆点反映各厂商接入状态（正常绿 / 异常红 / 未接入灰）。
 - **订阅计划豁免**：走 coding / token plan / opencode 订阅通道的模型照常统计 token、费用记 0（按**通道**判定，同一模型走按量通道时正常计费）。
 - **余额查询**：模型计费明细按厂商显示「余额」列，DeepSeek 通过官方余额 API 实时查询；未配置 / Key 无效 / 服务不可达均有状态提示，扩展点可接更多厂商。
+- **可用天数估算**：余额列按最近 7 天日均消耗折算「约可撑 N 天」，剩余不足 3 天红色强调。
+- **余额不足告警**：任一厂商余额（折算人民币）低于阈值时每天弹一次系统通知；阈值经宿主配置 `lowBalanceThreshold`（人民币元）下发，未配置默认 50 元。
+- **未收录模型标注**：真实模型 id 不在计费目录时，明细行显示真实 id 并标注「未收录」，费用按兜底档估算；厂商可从模型 id 自动推断（如 `mi-mimo-2.5` → 小米），健康圆点据此点亮。
 - **实时汇率与定价**：启动时自动拉取腾讯财经行情（USD→CNY）与 OpenRouter 官方模型价，失败自动降级内置默认值；此后每 6 小时自动刷新，单价表标注「今日汇率」与实时 / 内置徽标。
 - **动态刷新**：侧边栏入口与仪表盘每 30 秒自动更新，无需重启或手动刷新。
 - **更新时间**：模型计费明细表头显示最近一次统计的更新时间，精确到时分秒。
@@ -64,8 +70,12 @@ npm install @kenz1117/dsh-ui-usage-billing
   └─ 渲染仪表盘
 ```
 
-- **服务端**（`src/index.ts`）：注入 `webServer`、`sessionPersistence` 与 `credentials`，注册 `GET /api/billing/usage-stats`、`/api/billing/pricing`、`/api/billing/balance`。每次调用折叠全部持久化日志：一次 LLM 调用归属到其前置 `request/header` 记录的模型，token 拆分到缓存命中 / 未命中桶，日期按本机时区归天。聚合逻辑见 `src/aggregate.ts`。
+- **服务端**（`src/index.ts`）：注入 `webServer`、`sessionPersistence` 与 `credentials`，注册 `GET /api/billing/usage-stats`、`/api/billing/pricing`、`/api/billing/balance`。聚合器按会话缓存折叠结果：一次 LLM 调用归属到其前置 `request/header` 记录的模型，token 拆分到缓存命中 / 未命中桶，日期按本机时区归天；日志文件 mtime+size 不变则直接复用缓存，只有写过的会话重新折叠，整份文档另有 5 秒 TTL 合并密集轮询。聚合逻辑见 `src/aggregate.ts`。
 - **浏览器端**（`src/client/`）：请求上述接口渲染仪表盘，通过 `llm.models` 探测各厂商连接状态。真实数据到达前显示全零空快照，不展示伪造样本。
+
+## 主题协作
+
+本插件**不依赖任何主题包**，可独立安装运行。仪表盘弹窗声明 `billing.dashboard.decor` 装饰孔位（head / hero / trend / models / footer 锚点），并将实时费用摘要注册为 `ctx.billingMetrics` 服务：主题插件（如 acid-zine）主动注入 MacDots / 胶带 / 撕角便签等装饰视觉、订阅费用数据渲染自己的贴纸层。插件与主题各自独立装卸——主题不存在时走默认视觉，billing 不存在时主题照常运行。
 
 ## 计费引擎
 
@@ -175,7 +185,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 }
 ```
 
-字段含义：`input` 为总输入 token；`cacheHit` / `cacheMiss` 为缓存命中 / 未命中分桶；`cost` 为人民币估算费用。`byDayModels` 是 **模型 × 日期** 二维统计（`[date][modelKey]`），趋势图按模型堆叠的输入；当年 / 当月 / 当日三维费用由浏览器端按 `byDay` 日期前缀归并。`sessionPersistence` 不可用时回退到配置文件（见下）。
+字段含义：`input` 为总输入 token；`cacheHit` / `cacheMiss` 为缓存命中 / 未命中分桶；`cost` 为人民币估算费用。`byDayModels` 是 **模型 × 日期** 二维统计（`[date][modelKey]`），趋势图按模型堆叠的输入；当年 / 当月 / 当日三维费用由浏览器端按 `byDay` 日期前缀归并。`bySession` 为会话明细（按费用倒序，封顶 100 行）：`title` 取自日志中最新的 `session/title` 事件，`cwd` 为会话创建时的工作目录。配置 `monthlyBudget` 时响应额外携带 `budget` 字段（两条服务路径一致注入）。`sessionPersistence` 不可用时回退到配置文件（见下）。
 
 ## 配置
 
@@ -184,6 +194,8 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | `statsPath` | 未设置 | 回退统计文件 `.dsh-usage-stats.json` 的绝对路径（`sessionPersistence` 不可用时生效） |
 | `balanceApiKeyEnv` | `DEEPSEEK_API_KEY` | 余额查询使用的 DeepSeek 凭据引用（环境变量名），经 `ctx.credentials` 解析 |
 | `subscriptionProviders` | `kimi-coding`、`xiaomi-token-plan-cn` | 订阅制（coding / token 套餐）provider id 列表，照常统计 token、费用记 0 |
+| `monthlyBudget` | 未设置 | 月度预算默认金额（人民币元）；随 usage-stats 下发，作为仪表盘预算条的初始金额（用户在界面上的设置优先并本地持久化） |
+| `lowBalanceThreshold` | `50` | 余额不足告警阈值（人民币元）；随 usage-stats 下发，任一厂商余额折算人民币低于此值时每天提醒一次 |
 
 ## 开发
 
@@ -204,6 +216,22 @@ npm publish --access public
 ```
 
 宿主通过 `package.json` 的 `dsh.client` 声明（`platform: web`）与 `exports["./client"]` bundle 自动发现浏览器端，无需注册中心登记。
+
+## Model Experience
+
+无。本插件是纯 UI surface：不注册工具、不注入系统提示、不向会话日志写入任何模型可见事件。仪表盘读取的用量统计由服务端从既有会话日志聚合，日志内容由其他包各自负责。
+
+#### KV Cache effect
+
+无直接影响。插件不改变任何会话的提示前缀或历史，不触及 KV 缓存。
+
+## Known Limitations and Deferred Work
+
+- **余额查询仅接入 DeepSeek**：其他厂商一律显示「未配置」；扩展点在 `src/balance.ts`（按厂商余额 API 增加查询器）。
+- **超支通知依赖浏览器 Notification**：权限被拒绝或平台不支持时只有界面红色脉冲兜底，没有宿主级通知通道；通知上限为每天一次。
+- **会话明细不可跳转**：点击会话行不会打开对应会话（跨插件导航需要宿主会话选择通道）；会话数封顶 100 行、面板只显示前 20 行。
+- **费用为目录价估算**：讯飞 / 商汤 / 小米等未公布按量单价的模型使用估算价（特性表脚注 ¹），正式定价以厂商账单为准。
+- **30 天趋势受日志保留范围约束**：超出持久化日志保留期的日期在窗口内补零显示，不回溯历史。
 
 ## 许可证
 

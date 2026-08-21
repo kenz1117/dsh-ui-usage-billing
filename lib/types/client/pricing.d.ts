@@ -37,16 +37,6 @@ export declare function getRateInfo(): {
 };
 /** Default share of traffic assumed to fall in the peak band (0..1). */
 export declare const DEFAULT_PEAK_SHARE = 0.5;
-/**
- * Model keys served through a subscription plan (e.g. a coding plan or topic
- * plan) instead of metered per-token API billing. Usage through these routes
- * costs no tokens: the estimator treats them as ¥0 and the billing table
- * labels them 订阅包含. Add any model key your deployment serves through a
- * plan here; leave empty when every route is pay-as-you-go.
- */
-export declare const SUBSCRIPTION_PLAN_KEYS: readonly string[];
-/** Whether one stats model key is billed through a subscription plan. */
-export declare function isSubscriptionPlan(key: string): boolean;
 /** Usage buckets consumed by one model (counts in raw tokens). */
 export interface TokenUsageBuckets {
     /** Uncached input tokens. */

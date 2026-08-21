@@ -15,7 +15,15 @@ export type UsageBillingKey =
   | 'billing.outputTokens'
   | 'billing.avgCost'
   | 'billing.trend'
+  | 'billing.trend7d'
+  | 'billing.trend30d'
   | 'billing.trendEmpty'
+  | 'billing.budget'
+  | 'billing.sessions'
+  | 'billing.project'
+  | 'billing.lastActive'
+  | 'billing.sessionOverflow'
+  | 'billing.budgetOverBody'
   | 'billing.models'
   | 'billing.estimated'
   | 'billing.actual'
@@ -42,6 +50,9 @@ export type UsageBillingKey =
   | 'billing.balanceUnconfigured'
   | 'billing.balanceUnauthorized'
   | 'billing.balanceUnreachable'
+  | 'billing.uncatalogued'
+  | 'billing.balanceDays'
+  | 'billing.balanceLowBody'
 
 export const NS = 'usageBilling'
 
@@ -60,7 +71,15 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.outputTokens': '输出',
   'billing.avgCost': '平均成本',
   'billing.trend': '每日费用与调用趋势',
+  'billing.trend7d': '7 天',
+  'billing.trend30d': '30 天',
   'billing.trendEmpty': '暂无趋势数据',
+  'billing.budget': '本月预算',
+  'billing.sessions': '会话明细',
+  'billing.project': '项目',
+  'billing.lastActive': '最后活跃',
+  'billing.sessionOverflow': '仅显示花费前 {limit} 个，共 {total} 个会话',
+  'billing.budgetOverBody': '本月花费 {cost} 已超过预算 {budget}（{pct}%）',
   'billing.models': '模型计费明细',
   'billing.estimated': '估算',
   'billing.actual': '实际',
@@ -87,6 +106,9 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.balanceUnconfigured': '未配置',
   'billing.balanceUnauthorized': '密钥无效',
   'billing.balanceUnreachable': '查询失败',
+  'billing.uncatalogued': '未收录',
+  'billing.balanceDays': '约可撑 {days} 天',
+  'billing.balanceLowBody': '{name} 余额 {balance}，约可撑 {days} 天，请及时充值',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -104,7 +126,15 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.outputTokens': 'Output',
   'billing.avgCost': 'Avg cost',
   'billing.trend': 'Daily cost & calls',
+  'billing.trend7d': '7D',
+  'billing.trend30d': '30D',
   'billing.trendEmpty': 'No trend data yet',
+  'billing.budget': 'Monthly budget',
+  'billing.sessions': 'Sessions',
+  'billing.project': 'Project',
+  'billing.lastActive': 'Last active',
+  'billing.sessionOverflow': 'Top {limit} of {total} sessions by cost',
+  'billing.budgetOverBody': 'This month {cost} exceeded the budget {budget} ({pct}%)',
   'billing.models': 'Model billing',
   'billing.estimated': 'Est.',
   'billing.actual': 'Actual',
@@ -131,4 +161,7 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.balanceUnconfigured': 'Not set',
   'billing.balanceUnauthorized': 'Bad key',
   'billing.balanceUnreachable': 'Unavailable',
+  'billing.uncatalogued': 'Not catalogued',
+  'billing.balanceDays': '~{days} days left',
+  'billing.balanceLowBody': '{name} balance {balance}, ~{days} days left, please top up',
 }

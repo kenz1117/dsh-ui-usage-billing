@@ -363,6 +363,172 @@
   white-space: nowrap;
 }
 
+/* ── 趋势范围切换（7 天 / 30 天分段控件） ────────────────────────────── */
+
+.rangeToggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.rangeButton {
+  border: none;
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.rangeButtonActive {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+/* ── 月度预算进度条 ─────────────────────────────────────────────────── */
+
+.budget {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.budgetHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.budgetLabel {
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.budgetValue {
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 右侧控件组：金额输入 + 进度文本 + 开关。 */
+.budgetControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 预算金额输入框外壳：¥ 单位符号内嵌左側，边框在外壳上。 */
+.budgetInputWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.budgetInputWrap:focus-within {
+  border-color: var(--dsw-alias-border-l3);
+}
+
+.budgetUnit {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* 预算金额输入：无边框（外壳承担），以人民币元为单位。 */
+.budgetInput {
+  width: 64px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.budgetInput:focus-visible {
+  outline: none;
+}
+
+/* 开关：轨道 + 滑块；开启时轨道转主色、滑块右移。 */
+.switch {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-module-platform);
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.switchOn {
+  border-color: var(--dsw-static-blue-500);
+  background: var(--dsw-static-blue-500);
+}
+
+.switchKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--dsw-static-neutral-bluish-00);
+  transition: transform 160ms ease;
+}
+
+.switchOn .switchKnob {
+  transform: translateX(13px);
+}
+
+.budgetTrack {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-module-platform);
+  overflow: hidden;
+}
+
+.budgetFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--dsw-static-blue-500);
+  transition: width 200ms ease;
+}
+
+/* 超支：满格转红并缓慢脉冲（系统通知不可用时的界面兜底提示）。 */
+.budgetFillOver {
+  background: var(--dsw-static-red-500);
+  animation: budgetOverPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes budgetOverPulse {
+  50% { opacity: 0.55; }
+}
+
 /* ── Trend chart ────────────────────────────────────────────────────── */
 
 .chartWrap {
@@ -775,6 +941,178 @@
   font-weight: 500;
   color: var(--dsw-static-green-500);
   background: color-mix(in srgb, var(--dsw-static-green-500) 12%, transparent);
+}
+
+/* ── 未收录模型标签 ─────────────────────────────────────────────────── */
+
+/* 真实 model id 不在计费目录时的反馈标注：费用按兜底档估算，提醒用户。 */
+.uncataloguedTag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 600;
+  vertical-align: 1px;
+  color: var(--dsw-static-amber-500);
+  background: color-mix(in srgb, var(--dsw-static-amber-500) 12%, transparent);
+}
+
+/* ── 余额天数提示 ───────────────────────────────────────────────────── */
+
+/* 余额单元格：金额 + 次行「约可撑 N 天」预估。 */
+.balanceCell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.balanceDays {
+  font-size: 10.5px;
+  line-height: 14px;
+  color: var(--dsw-alias-label-caption);
+  white-space: nowrap;
+}
+
+/* 剩余不足 3 天：红色强调，提醒尽快充值。 */
+.balanceDaysLow {
+  color: var(--dsw-static-red-500);
+  font-weight: 600;
+}
+
+/* ── ZINE 模式覆盖 ──────────────────────────────────────────────────── */
+/* acid-zine 主题激活时在 body 上挂 data-zine-mode，以下规则据此把仪表盘
+   换成 ZINE 视觉并隐藏侧边栏触发器（入口交给主题贴纸层）；主题缺席时
+   全部不命中，保持上方的 token 默认视觉。颜色字面量仅存在于此段。 */
+
+/* 触发器：zine 模式的打开入口由主题贴纸层承担。 */
+:global(body[data-zine-mode]) .trigger,
+:global(body[data-zine-mode]) .railButton {
+  display: none;
+}
+
+:global(body[data-zine-mode]) .dashboardHead {
+  border-bottom: 2px solid #e8ff00;
+  background: #000;
+}
+
+/* 标题行：zine 模式下标题与胶带装饰孔位并排。 */
+:global(body[data-zine-mode]) .headTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+:global(body[data-zine-mode]) .dashboardTitle {
+  color: #e8ff00;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(232, 255, 0, 0.4);
+}
+
+:global(body[data-zine-mode]) .dashboardSubtitle {
+  color: #c9d98a;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:global(body[data-zine-mode]) .closeButton {
+  border: 1.5px solid #ff2d95;
+  border-radius: 0;
+  background: #ff2d95;
+  color: #0a0a05;
+  box-shadow: 0 0 10px rgba(255, 45, 149, 0.45);
+}
+
+:global(body[data-zine-mode]) .hero {
+  position: relative;
+  border: 2.5px solid #e8ff00;
+  border-radius: 0;
+  background: #000;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 24px rgba(232, 255, 0, 0.18);
+}
+
+:global(body[data-zine-mode]) .heroLabel {
+  color: #c9d98a;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+:global(body[data-zine-mode]) .heroValue {
+  color: #e8ff00;
+  font-size: 38px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  text-shadow: 0 0 12px rgba(232, 255, 0, 0.45);
+}
+
+:global(body[data-zine-mode]) .heroMeta {
+  color: #c9d98a;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+:global(body[data-zine-mode]) .heroSideLabel {
+  color: #c9d98a;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+:global(body[data-zine-mode]) .heroSideValue {
+  color: #e8ff00;
+  text-shadow: 0 0 6px rgba(232, 255, 0, 0.35);
+}
+
+:global(body[data-zine-mode]) .delta {
+  font-weight: 900;
+}
+
+:global(body[data-zine-mode]) .deltaUp { color: #ff2d95; }
+
+:global(body[data-zine-mode]) .deltaDown { color: #c9d98a; }
+
+:global(body[data-zine-mode]) .panel {
+  border: 2px solid #e8ff00;
+  border-radius: 0;
+  background: #000;
+}
+
+/* 趋势面板：装饰锚点（撕角便签）需要定位上下文。 */
+:global(body[data-zine-mode]) .trendPanel {
+  position: relative;
+}
+
+:global(body[data-zine-mode]) .panelTitle {
+  color: #e8ff00;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 0 6px rgba(232, 255, 0, 0.4);
+}
+
+:global(body[data-zine-mode]) .panelHint {
+  color: #c9d98a;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* 仅模型账单表的滚动框加 ZINE 描边（定价表保持无框，与迁移前一致）。 */
+:global(body[data-zine-mode]) .modelTableScroll {
+  border: 1.5px solid rgba(232, 255, 0, 0.5);
+  border-radius: 0;
+  background: #000;
 }
 
 /* ── Responsive ─────────────────────────────────────────────────────── */
