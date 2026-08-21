@@ -42,6 +42,20 @@ describe('modelOf', () => {
   })
 })
 
+describe('estimated-price marker', () => {
+  it('flags catalog entries whose price is an estimate rather than official', () => {
+    // 小米/讯飞/商汤未公布官方按量单价（公测/套餐制），表内为估算价：应带 estimated 标记。
+    expect(modelOf('mimo-v2.5').estimated).toBe(true)
+    expect(modelOf('spark').estimated).toBe(true)
+    expect(modelOf('sensenova').estimated).toBe(true)
+  })
+
+  it('leaves officially priced models unflagged', () => {
+    expect(modelOf('flash').estimated).toBeUndefined()
+    expect(modelOf('glm').estimated).toBeUndefined()
+  })
+})
+
 describe('computeCost', () => {
   const MILLION = 1_000_000
 

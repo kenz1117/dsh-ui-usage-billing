@@ -7,6 +7,9 @@ export type UsageBillingKey =
   | 'billing.todayCost'
   | 'billing.monthCost'
   | 'billing.yearCost'
+  | 'billing.monthProjected'
+  | 'billing.liveTurn'
+  | 'billing.liveSession'
   | 'billing.totalCost'
   | 'billing.calls'
   | 'billing.cacheHitRate'
@@ -52,6 +55,7 @@ export type UsageBillingKey =
   | 'billing.balanceUnauthorized'
   | 'billing.balanceUnreachable'
   | 'billing.uncatalogued'
+  | 'billing.estimatedPricing'
   | 'billing.balanceDays'
   | 'billing.balanceLowBody'
   | 'billing.subscriptions'
@@ -92,6 +96,9 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.todayCost': '今日费用',
   'billing.monthCost': '本月费用',
   'billing.yearCost': '本年费用',
+  'billing.monthProjected': '本月预计',
+  'billing.liveTurn': '本轮',
+  'billing.liveSession': '会话',
   'billing.totalCost': '总费用',
   'billing.calls': '调用',
   'billing.cacheHitRate': '缓存命中率',
@@ -137,6 +144,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.balanceUnauthorized': '密钥无效',
   'billing.balanceUnreachable': '查询失败',
   'billing.uncatalogued': '未收录',
+  'billing.estimatedPricing': '估算价',
   'billing.balanceDays': '约可撑 {days} 天',
   'billing.balanceLowBody': '{name} 余额 {balance}，约可撑 {days} 天，请及时充值',
   'billing.subscriptions': '订阅套餐',
@@ -176,6 +184,9 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.todayCost': 'Today',
   'billing.monthCost': 'This month',
   'billing.yearCost': 'This year',
+  'billing.monthProjected': 'Projected',
+  'billing.liveTurn': 'Turn',
+  'billing.liveSession': 'Session',
   'billing.totalCost': 'Total',
   'billing.calls': 'Calls',
   'billing.cacheHitRate': 'Cache Hit',
@@ -221,6 +232,7 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.balanceUnauthorized': 'Bad key',
   'billing.balanceUnreachable': 'Unavailable',
   'billing.uncatalogued': 'Not catalogued',
+  'billing.estimatedPricing': 'Estimated',
   'billing.balanceDays': '~{days} days left',
   'billing.balanceLowBody': '{name} balance {balance}, ~{days} days left, please top up',
   'billing.subscriptions': 'Subscriptions',

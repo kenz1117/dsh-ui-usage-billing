@@ -18,7 +18,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the connection service face (ctx.connection.api) for the model-health probe.
 import type {} from '@deepseek-ai/dsh-client-connection/client'
+// Type-only: pulls the ui-conversation SlotMap merge (the composer.dock entry the live cost bar rides).
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { UsageBilling, type ModelHealth, type UsageBillingInjected } from './UsageBilling.tsx'
+import { LiveCostBar } from './live-cost.tsx'
 import { en, NS, zh, type UsageBillingKey } from './locales.ts'
 import { createBillingMetrics, type BillingMetricsService } from './billing-service.ts'
 import { createBillingBudgetStore } from './budget-store.ts'
@@ -110,4 +113,15 @@ export function apply(ctx: ClientContext): void {
       registerOpen: (handler) => metrics.registerOpen(handler),
     }),
   }, UsageBilling))
+
+  // 即时代费用条：挂在会话 composer 的 dock（stats-line 家族座位），随输入框
+  // 常驻显示当前会话累计费用与最新一轮费用，无需打开完整仪表盘。
+  // 组件经框架标准 kit 注入 useSession（取当前 sessionId），与 StatsLine 同姿态。
+  // 用 inject 往宿主（ui-conversation）已声明的 composer.dock 注入条目，而非 register 声明。
+  ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
+    name: 'conversation.composer.dock',
+    id: 'usage-billing-cost',
+    order: 0,
+    locale: NS,
+  }, LiveCostBar))
 }

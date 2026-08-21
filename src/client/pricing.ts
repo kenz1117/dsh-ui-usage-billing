@@ -125,6 +125,11 @@ export interface ModelEntry {
   price: ModelPrice
   /** Peak-hour window label for time-of-day priced models. */
   peakHours?: string
+  /**
+   * 单价为估算价：厂商未公布按量官方单价（公测 / 套餐制），表内价格为估算，
+   * 展示时标注以免误当正式定价；正式定价公布后移除。
+   */
+  estimated?: boolean
 }
 
 /**
@@ -298,6 +303,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     provider: '小米',
     colorVar: 'dsw-static-green-400',
     price: { currency: 'CNY', input: 4, cacheHit: 0.4, output: 12 },
+    estimated: true,
   },
   // MiniMax (OpenAI-compatible, TokenHub 2026-08-14).
   {
@@ -353,6 +359,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     provider: '科大讯飞',
     colorVar: 'dsw-static-green-400',
     price: { currency: 'CNY', input: 5, cacheHit: 0.5, output: 10 },
+    estimated: true,
   },
   // 商汤日日新 (OpenAI-compatible, 2026-07 汇总; 公测中，价格约)。
   {
@@ -361,6 +368,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     provider: '商汤',
     colorVar: 'dsw-static-red-400',
     price: { currency: 'CNY', input: 4.5, cacheHit: 0.45, output: 9 },
+    estimated: true,
   },
   // 百川智能 (OpenAI-compatible, 2026-07 汇总)。
   {
