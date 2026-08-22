@@ -134,6 +134,19 @@ export interface UsageStatsDocument {
   byTurn?: TurnUsageRow[]
   /** 工作区聚合：按 cwd 末级目录归并，按费用倒序；旧快照可能缺失。 */
   byWorkspace?: WorkspaceUsageRow[]
+  /**
+   * 按角色费用归因（人民币元）：助手输出成本为实测计价；输入成本按会话内
+   * 用户消息 / 工具结果的文本长度占比启发式摊分（日志无角色级 token 实测，
+   * 属估算口径，UI 需标注）。旧快照可能缺失。
+   */
+  byRole?: RoleCost
+}
+
+/** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
+export interface RoleCost {
+  user: number
+  assistant: number
+  tool: number
 }
 
 /** 会话明细行：仪表盘「会话明细」面板的数据源。 */
@@ -204,10 +217,39 @@ interface SessionFold {
   planCalls: Map<string, number>
   /** 每轮费用明细（按轮次号升序，不含 sessionId）；sessionId 在合并时补齐。 */
   turns: SessionTurnRow[]
+  /** 角色归因中间量：消息文本长度（user/tool）与输入/输出成本实测拆分。 */
+  roles: RoleFold
   /** 日志里最新的 session/title 文本（无标题事件时 undefined）。 */
   title?: string
   /** 最后一个事件的时间戳（毫秒）；空日志为 0。 */
   lastActive: number
+}
+
+/** 角色归因的会话级中间量：字符占比用于把输入成本摊到 user/tool。 */
+interface RoleFold {
+  userChars: number
+  toolChars: number
+  /** 输入侧成本（缓存命中 + 未命中 + 缓存写入，人民币元）。 */
+  inputCost: number
+  /** 输出侧成本（人民币元）。 */
+  outputCost: number
+}
+
+/**
+ * 消息文本长度：user/tool 角色分摊输入成本的启发式依据。字符串内容取其
+ * 长度；内容块数组累计文本块长度；其余形状按 0 计（durable 边界收窄）。
+ */
+export function messageTextLength(message: unknown): number {
+  if (message === null || typeof message !== 'object') return 0
+  const content = (message as { content?: unknown }).content
+  if (typeof content === 'string') return content.length
+  if (!Array.isArray(content)) return 0
+  let total = 0
+  for (const block of content) {
+    const text = (block as { text?: unknown } | null)?.text
+    if (typeof text === 'string') total += text.length
+  }
+  return total
 }
 
 /** Get-or-create one model cell inside a usage map (avoids non-null assertions). */
@@ -267,6 +309,7 @@ export function foldSession(events: readonly { type: string; time: number; data:
     byDayModels: new Map(),
     planCalls: new Map(),
     turns: [],
+    roles: { userChars: 0, toolChars: 0, inputCost: 0, outputCost: 0 },
     lastActive: 0,
   }
   let key = 'other'
@@ -279,6 +322,15 @@ export function foldSession(events: readonly { type: string; time: number; data:
     if (event.type === 'session/title') {
       const title = (event.data as { title?: unknown }).title
       if (typeof title === 'string' && title.length > 0) fold.title = title
+      continue
+    }
+    // 角色归因：用户消息与工具结果的文本长度（输入成本摊分的启发式依据）。
+    if (event.type === 'user/message') {
+      fold.roles.userChars += messageTextLength((event.data as { message?: unknown }).message)
+      continue
+    }
+    if (event.type === 'tool/result') {
+      fold.roles.toolChars += messageTextLength((event.data as { message?: unknown }).message)
       continue
     }
     if (event.type === 'turn/start') {
@@ -321,12 +373,19 @@ export function foldSession(events: readonly { type: string; time: number; data:
     state.cacheHit += usage.cacheReadTokens ?? 0
     state.cacheMiss += usage.inputTokens + (usage.cacheWriteTokens ?? 0)
     if (!subscription && MODEL_CATALOG.some(entry => entry.key === modelKey)) {
-      state.cost += computeCostAt(modelOf(modelKey), {
+      const buckets = {
         input: (usage.cacheReadTokens ?? 0) + usage.inputTokens + (usage.cacheWriteTokens ?? 0),
         cacheHit: usage.cacheReadTokens ?? 0,
         cacheMiss: usage.inputTokens + (usage.cacheWriteTokens ?? 0),
         output: usage.outputTokens,
-      }, event.time)
+      }
+      const fullCost = computeCostAt(modelOf(modelKey), buckets, event.time)
+      state.cost += fullCost
+      // 角色归因：输出成本实测计价；输入成本 = 整次成本 - 输出部分，合并时
+      // 再按 user/tool 消息字符占比摊分。
+      const outputCost = computeCostAt(modelOf(modelKey), { input: 0, cacheHit: 0, cacheMiss: 0, output: usage.outputTokens }, event.time)
+      fold.roles.outputCost += outputCost
+      fold.roles.inputCost += fullCost - outputCost
     }
     if (state.startedAt === Number.MAX_SAFE_INTEGER) state.startedAt = event.time
   }
@@ -427,9 +486,15 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const sessionRows: SessionUsageRow[] = []
       const turnRows: TurnUsageRow[] = []
       const workspaceMap = new Map<string, WorkspaceUsageRow>()
+      // 角色归因跨会话累加：字符占比与输入/输出成本分别求和后再摊分。
+      const roles: RoleFold = { userChars: 0, toolChars: 0, inputCost: 0, outputCost: 0 }
       for (const { meta, fold } of folds) {
         const sessionId = String(meta.id)
         mergeUsageInto(total, fold.total)
+        roles.userChars += fold.roles.userChars
+        roles.toolChars += fold.roles.toolChars
+        roles.inputCost += fold.roles.inputCost
+        roles.outputCost += fold.roles.outputCost
         for (const [modelKey, cell] of fold.byModel) mergeUsageInto(usageCell(byModel, modelKey), cell)
         for (const [day, cell] of fold.byDay) mergeUsageInto(usageCell(byDay, day), cell)
         for (const [day, models] of fold.byDayModels) {
@@ -488,6 +553,17 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         bySession: sessionRows.slice(0, SESSION_ROW_LIMIT),
         byTurn: turnRows.slice(0, TURN_ROW_LIMIT),
         byWorkspace: workspaces.slice(0, SESSION_ROW_LIMIT),
+        // 角色归因：输出成本为实测；输入成本按 user/tool 消息字符占比摊分
+        //（无任何消息内容的日志按五五均分兜底，整体属估算口径）。
+        byRole: (() => {
+          const chars = roles.userChars + roles.toolChars
+          const userShare = chars > 0 ? roles.userChars / chars : 0.5
+          return {
+            user: roles.inputCost * userShare,
+            assistant: roles.outputCost,
+            tool: roles.inputCost * (1 - userShare),
+          }
+        })(),
       }
       lastAt = now
       return lastDoc

@@ -2,8 +2,8 @@
 
 DeepSeek Harness 计费仪表盘插件。从持久化会话日志实时聚合模型用量，按多厂商最新官方价格估算费用，在侧边栏一键查看完整仪表盘。
 
-[![GitHub license](https://img.shields.io/github/license/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing)
+
+[![GitHub license](https://img.shields.io/github/license/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/LICENSE)[![GitHub stars](https://img.shields.io/github/stars/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing)
 [![GitHub last commit](https://img.shields.io/github/last-commit/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing)
 [![npm version](https://img.shields.io/npm/v/@kenz1117/dsh-ui-usage-billing)](https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing)
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
@@ -13,15 +13,14 @@ DeepSeek Harness 计费仪表盘插件。从持久化会话日志实时聚合模
 - **侧边栏入口**：设置按钮上方的玻璃拟态渐变触发卡，显示**当月费用 + 今日费用**，hover 光晕上浮；折叠栏自动切换为渐变徽章图标。
 - **计费仪表盘（分区 Tab）**：弹窗按 **概览 / 趋势 / 明细 / 统计 / 费率** 五个分区组织——概览（Hero 本月大数字 + 本年 / 今日环比 / **本月预计** + 预算条 + KPI×4 + 用量热力图）、趋势（每日费用趋势图 7/30 天 + 每轮费用）、明细（厂商计费与订阅）、统计（工作区 + 会话明细）、费率（模型单价表）。渐变描边卡片 + 毛玻璃遮罩 + 进入动画，全部用设计令牌派生渐变色，深色/浅色主题自适应。
 - **即时代费用条**：会话输入框下方常驻一行「本轮 ¥x · 会话 ¥y」，30 秒轮询刷新，无需打开仪表盘。
-- **月度预算**：仪表盘内置预算条——开关控制显隐、金额可直接编辑（已用 / 总额 / 百分比进度，超支自动转红并脉冲提示），偏好持久化在浏览器本地；宿主配置 `monthlyBudget` 可作为默认金额。
-- **超支通知**：预算开启且当月花费超过预算时，自动弹出系统通知（浏览器 Notification，每天最多一次）；通知不可用时红色脉冲进度条兜底。
+- **月度预算**：仪表盘内置预算条——开关控制显隐、金额可直接编辑（已用 / 总额 / 百分比进度，≥80% 转琥珀、超支转红并脉冲提示），偏好持久化在浏览器本地；宿主配置 `monthlyBudget` 可作为默认金额。
+- **分档提醒**：跨过预算 50% / 80% / 100% 时各弹一次系统通知（每档每天最多一次，一次跨多档只发最高档）；通知不可用时进度条分档变色兜底。余额不足告警独立：任一厂商余额（折算人民币）低于阈值时每天提醒一次，阈值经宿主配置 `lowBalanceThreshold` 下发（默认 50 元）。
 - **会话明细**：统计 Tab 内按费用倒序列出每个会话的花费（标题 / 项目 / 调用数 / 费用 / 最后活跃），直接回答「钱花在哪」。
 - **真实用量**：服务端从会话日志实时聚合，无需手工维护统计文件；增量缓存保证只有写过的日志会被重新折叠，重度使用下轮询依然轻量。
 - **模型健康探测**：模型行的圆点反映各厂商接入状态（正常绿 / 异常红 / 未接入灰）。
 - **订阅计划豁免**：走 coding / token plan / opencode 订阅通道的模型照常统计 token、费用记 0（按**通道**判定，同一模型走按量通道时正常计费）。
 - **余额查询**：厂商组头部显示该厂商余额（只显示一次，不再随每行重复）。DeepSeek、月之暗面（Kimi）、阶跃星辰（StepFun）用官方余额接口**实时查询**；API Key 复用 `llm-pi-ai` 设置的 `apiKeyEnv`（DeepSeek 另有 `balanceApiKeyEnv` 特例），未配置 / Key 无效 / 服务不可达均有状态提示，扩展点可接更多厂商。
 - **可用天数估算**：余额列按最近 7 天日均消耗折算「约可撑 N 天」，剩余不足 3 天红色强调。
-- **余额不足告警**：任一厂商余额（折算人民币）低于阈值时每天弹一次系统通知；阈值经宿主配置 `lowBalanceThreshold`（人民币元）下发，未配置默认 50 元。
 - **未收录模型标注**：真实模型 id 不在计费目录时，明细行显示真实 id 并标注「未收录」，费用按兜底档估算；厂商可从模型 id 自动推断（如 `mi-mimo-2.5` → 小米），健康圆点据此点亮。目录单价为估算价的模型（讯飞 / 商汤 / 小米）行内标注「估算价」，避免误当正式定价。
 - **实时汇率与定价**：启动时自动拉取腾讯财经行情（USD→CNY）与 OpenRouter 官方模型价，失败自动降级内置默认值；此后每 6 小时自动刷新，单价表标注「今日汇率」与实时 / 内置徽标。
 - **动态刷新**：侧边栏入口与仪表盘每 30 秒自动更新，无需重启或手动刷新。
@@ -35,6 +34,12 @@ DeepSeek Harness 计费仪表盘插件。从持久化会话日志实时聚合模
 - **每轮费用与成本突增**：按会话轮次折叠的每轮费用图（最近 40 轮），位于趋势 Tab；每根柱子顶部标注该轮费用数字，相对近 6 轮成本超 2 倍的轮次红色标注并归因（输出增长 / 上下文膨胀 / 缓存命中率下降）。
 - **工作区统计**：按会话工作目录（cwd 末级）归并的花费 / 调用 / Token 汇总表。
 - **双币种显示**：仪表盘右上角 ¥ / $ 切换，美元金额按当前汇率换算显示。
+- **触发卡 hover 速览**：悬停侧边栏触发卡即浮现速览卡（今日 / 本周 / 当月 + 近 7 天迷你柱），无需点开仪表盘。
+- **峰谷时段占比**：趋势 Tab 内按每轮起始时刻（北京时间高峰 9-12 / 14-18）精确分摊高峰 / 空闲费用，堆叠条 + 金额百分比图例。
+- **费用构成（估算）**：统计 Tab 内按角色归因的三段堆叠条（用户输入 / 助手输出 / 工具结果）——输出成本实测计价，输入成本按消息文本长度占比摊分（日志无角色级实测 token，标注估算口径）。
+- **数据导出**：统计 Tab 顶部一键导出按日 CSV、按会话 CSV 与全量 JSON（文件名带日期范围），便于对账。
+- **模型自查用量（`usage_stats` 动态工具）**：模型可在对话中直接查询用量费用（`today` / `month` / `session` / `all` 四档），例如"今天花了多少钱"；tools 服务缺席时自动跳过注册。
+- **统计快照落盘**：聚合结果原子写（temp+rename，权限 600）到 `~/.dsh/.dsh-usage-stats.json`，重启首屏与聚合异常都有最近数据可看；启动时检测到另一实例的新鲜快照会告警（双实例会导致提醒重复）。
 - **离线自包含**：无图表库、无外部 CDN，全部使用设计令牌，适配深色/浅色主题。
 
 ## 截图
@@ -215,7 +220,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | 字段                      | 默认                                   | 说明                                                                                                           |
 | ----------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
 | `statsPath`             | 未设置                                  | 回退统计文件 `.dsh-usage-stats.json` 的绝对路径（`sessionPersistence` 不可用时生效）                                            |
-| `balanceApiKeyEnv`      | `DEEPSEEK_API_KEY`                   | DeepSeek 余额查询的凭据引用；仅在 llm-pi-ai 未配置 deepseek 的 `apiKeyEnv` 时兜底使用                                                      |
+| `balanceApiKeyEnv`      | `DEEPSEEK_API_KEY`                   | DeepSeek 余额查询的凭据引用；仅在 llm-pi-ai 未配置 deepseek 的 `apiKeyEnv` 时兜底使用                                             |
 | `subscriptionProviders` | `kimi-coding`、`xiaomi-token-plan-cn` | 订阅制（coding / token 套餐）provider id 列表，照常统计 token、费用记 0                                                        |
 | `monthlyBudget`         | 未设置                                  | 月度预算默认金额（人民币元）；随 usage-stats 下发，作为仪表盘预算条的初始金额（用户在界面上的设置优先并本地持久化）                                             |
 | `lowBalanceThreshold`   | `50`                                 | 余额不足告警阈值（人民币元）；随 usage-stats 下发，任一厂商余额折算人民币低于此值时每天提醒一次                                                       |

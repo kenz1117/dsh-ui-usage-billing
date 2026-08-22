@@ -32,7 +32,7 @@ export interface ModelHealth {
 export type DashboardTab = 'overview' | 'trends' | 'providers' | 'details' | 'pricing';
 /**
  * Tab 定义（顺序即渲染顺序）：概览=主数字/预算/KPI/热力图，趋势=趋势图/每轮费用，
- * 厂商=厂商计费与订阅，明细=工作区/会话明细，单价=模型单价表。导出供测试断言
+ * 明细=厂商计费与订阅，统计=工作区/会话明细，费率=模型单价表。导出供测试断言
  * tab 与文案 key 对齐、decor 锚点落在正确分区。
  */
 export declare const DASHBOARD_TABS: readonly {
@@ -67,6 +67,31 @@ export declare function providerFromModelKey(modelKey: string): string | undefin
 export declare function projectMonthCost(byDay: Record<string, {
     cost: number;
 }>, monthPrefix: string, today: string): number;
+/**
+ * 峰谷时段费用分摊：按每轮的起始时刻（北京时间高峰 9-12 / 14-18）把费用
+ * 归入高峰 / 空闲两档。导出供测试：纯函数。
+ * @param turns - 每轮费用行（需带 startedAt 与 cost）。
+ * @returns 两档费用合计（人民币元）。
+ */
+export declare function peakOffpeakCost(turns: readonly {
+    startedAt: number;
+    cost: number;
+}[]): {
+    peak: number;
+    offPeak: number;
+};
+/**
+ * 近 7 天费用序列（含今天，缺日补 0）：触发卡 hover 速览的迷你柱数据源。
+ * 导出供测试：纯函数（日期取本地时区）。
+ * @param byDay - 按日费用表。
+ * @returns 7 个 `{ date, cost }`，最旧在前。
+ */
+export declare function lastSevenDays(byDay: Record<string, {
+    cost: number;
+}>): readonly {
+    date: string;
+    cost: number;
+}[];
 /** 组件注入面：探活 + 计费指标写入（billing 自身写入，主题插件经服务读取）。 */
 export interface UsageBillingInjected {
     checkModels: () => Promise<ModelHealth>;

@@ -143,6 +143,90 @@
   white-space: nowrap;
 }
 
+/* 触发卡外壳：hover 速览卡的定位上下文。 */
+.triggerWrap {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+/* hover 速览卡：玻璃拟态浮层，悬停触发卡时向上浮现；不抢点击。 */
+.triggerPop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--dsw-static-blue-500) 22%, var(--dsw-alias-border-l1));
+  border-radius: 12px;
+  background:
+    radial-gradient(130% 180% at 0% 0%, color-mix(in srgb, var(--dsw-static-blue-500) 12%, transparent), transparent 55%),
+    var(--dsw-alias-bg-layer-2);
+  box-shadow: 0 12px 32px -12px color-mix(in srgb, var(--dsw-alias-label-primary) 30%, transparent);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 10;
+}
+
+@supports ((backdrop-filter: blur(1px))) {
+  .triggerPop {
+    background:
+      radial-gradient(130% 180% at 0% 0%, color-mix(in srgb, var(--dsw-static-blue-500) 14%, transparent), transparent 55%),
+      color-mix(in srgb, var(--dsw-alias-bg-layer-2) 82%, transparent);
+    backdrop-filter: blur(14px);
+  }
+}
+
+.triggerWrap:hover .triggerPop,
+.triggerWrap:focus-within .triggerPop {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.triggerPopRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.triggerPopLabel {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.triggerPopValue {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 近 7 天迷你柱：底对齐，渐变蓝。 */
+.triggerPopBars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 22px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.triggerPopBar {
+  flex: 1;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--dsw-static-blue-400), var(--dsw-static-blue-500));
+  transition: height 200ms ease;
+}
+
 /* ── Dashboard modal ────────────────────────────────────────────────── */
 
 /* 渐变描边 + 柔光阴影 + 进入动画：padding-box 内填充 layer-2，border-box
@@ -536,6 +620,105 @@
   font-weight: 600;
 }
 
+/* ── 数据导出工具条（统计 Tab 顶部） ────────────────────────────────── */
+
+.exportBar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.exportLabel {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.exportButton {
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11.5px;
+  line-height: 16px;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
+}
+
+.exportButton:hover,
+.exportButton:focus-visible {
+  border-color: color-mix(in srgb, var(--dsw-static-blue-500) 40%, var(--dsw-alias-border-l1));
+  color: var(--dsw-static-blue-500);
+  outline: none;
+}
+
+/* ── 峰谷时段占比（趋势 Tab） ───────────────────────────────────────── */
+
+.shareTrack {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-module-platform);
+  overflow: hidden;
+}
+
+.shareSeg {
+  height: 100%;
+  transition: width 200ms ease;
+}
+
+.shareSegPeak {
+  background: linear-gradient(90deg, var(--dsw-static-blue-500), var(--dsw-static-blue-400));
+}
+
+.shareSegOff {
+  background: color-mix(in srgb, var(--dsw-static-blue-500) 30%, var(--dsw-alias-bg-module-platform));
+}
+
+/* 费用构成三段：用户输入（蓝）/ 助手输出（绿）/ 工具结果（琥珀）。 */
+.shareSegUser {
+  background: linear-gradient(90deg, var(--dsw-static-blue-500), var(--dsw-static-blue-400));
+}
+
+.shareSegAssistant {
+  background: linear-gradient(90deg, var(--dsw-static-green-500), color-mix(in srgb, var(--dsw-static-green-500) 70%, var(--dsw-static-blue-400)));
+}
+
+.shareSegTool {
+  background: color-mix(in srgb, var(--dsw-static-amber-500) 80%, var(--dsw-alias-bg-module-platform));
+}
+
+.shareLegend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.shareItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.shareDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  align-self: center;
+  flex: none;
+}
+
+.shareValue {
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── 月度预算进度条 ─────────────────────────────────────────────────── */
 
 .budget {
@@ -661,6 +844,11 @@
   border-radius: 999px;
   background: var(--dsw-static-blue-500);
   transition: width 200ms ease;
+}
+
+/* 接近超支（≥80%）：琥珀色警示档。 */
+.budgetFillWarn {
+  background: var(--dsw-static-amber-500);
 }
 
 /* 超支：满格转红并缓慢脉冲（系统通知不可用时的界面兜底提示）。 */
@@ -1168,6 +1356,7 @@
 
 /* 触发器：zine 模式的打开入口由主题贴纸层承担。 */
 :global(body[data-zine-mode]) .trigger,
+:global(body[data-zine-mode]) .triggerPop,
 :global(body[data-zine-mode]) .railButton {
   display: none;
 }

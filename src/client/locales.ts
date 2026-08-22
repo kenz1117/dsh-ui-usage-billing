@@ -26,7 +26,7 @@ export type UsageBillingKey =
   | 'billing.project'
   | 'billing.lastActive'
   | 'billing.sessionOverflow'
-  | 'billing.budgetOverBody'
+  | 'billing.budgetTierBody'
   | 'billing.models'
   | 'billing.providerBilling'
   | 'billing.estimated'
@@ -91,6 +91,18 @@ export type UsageBillingKey =
   | 'billing.tabProviders'
   | 'billing.tabDetails'
   | 'billing.tabPricing'
+  | 'billing.export'
+  | 'billing.exportCsvDay'
+  | 'billing.exportCsvSession'
+  | 'billing.exportJson'
+  | 'billing.peakShare'
+  | 'billing.peakShareHint'
+  | 'billing.weekCost'
+  | 'billing.roleCost'
+  | 'billing.roleUser'
+  | 'billing.roleAssistant'
+  | 'billing.roleTool'
+  | 'billing.roleHint'
 
 export const NS = 'usageBilling'
 
@@ -120,7 +132,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.project': '项目',
   'billing.lastActive': '最后活跃',
   'billing.sessionOverflow': '仅显示花费前 {limit} 个，共 {total} 个会话',
-  'billing.budgetOverBody': '本月花费 {cost} 已超过预算 {budget}（{pct}%）',
+  'billing.budgetTierBody': '本月花费 {cost} 已达预算 {budget} 的 {pct}%',
   'billing.models': '模型计费明细',
   'billing.providerBilling': '厂商计费与订阅',
   'billing.estimated': '估算',
@@ -185,6 +197,18 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.tabProviders': '明细',
   'billing.tabDetails': '统计',
   'billing.tabPricing': '费率',
+  'billing.export': '导出',
+  'billing.exportCsvDay': '按日 CSV',
+  'billing.exportCsvSession': '按会话 CSV',
+  'billing.exportJson': '全量 JSON',
+  'billing.peakShare': '峰谷时段占比',
+  'billing.peakShareHint': '近 {count} 轮',
+  'billing.weekCost': '本周',
+  'billing.roleCost': '费用构成',
+  'billing.roleUser': '用户输入',
+  'billing.roleAssistant': '助手输出',
+  'billing.roleTool': '工具结果',
+  'billing.roleHint': '估算：输出按实测计价，输入按消息长度摊分',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -213,7 +237,7 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.project': 'Project',
   'billing.lastActive': 'Last active',
   'billing.sessionOverflow': 'Top {limit} of {total} sessions by cost',
-  'billing.budgetOverBody': 'This month {cost} exceeded the budget {budget} ({pct}%)',
+  'billing.budgetTierBody': 'This month {cost} reached {pct}% of the budget {budget}',
   'billing.models': 'Model billing',
   'billing.providerBilling': 'Provider billing & subscriptions',
   'billing.estimated': 'Est.',
@@ -278,4 +302,16 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.tabProviders': 'Details',
   'billing.tabDetails': 'Stats',
   'billing.tabPricing': 'Rates',
+  'billing.export': 'Export',
+  'billing.exportCsvDay': 'Daily CSV',
+  'billing.exportCsvSession': 'Sessions CSV',
+  'billing.exportJson': 'Full JSON',
+  'billing.peakShare': 'Peak vs off-peak',
+  'billing.peakShareHint': 'last {count} turns',
+  'billing.weekCost': 'This week',
+  'billing.roleCost': 'Cost breakdown',
+  'billing.roleUser': 'User input',
+  'billing.roleAssistant': 'Assistant output',
+  'billing.roleTool': 'Tool results',
+  'billing.roleHint': 'Estimated: output priced exactly, input split by message size',
 }

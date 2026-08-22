@@ -12,8 +12,8 @@ export interface BudgetPrefsState {
     enabled: boolean;
     /** 用户设置的月度预算（人民币元）；0 = 未设置（回退到宿主默认值）。 */
     amount: number;
-    /** 最近一次超支通知的日期戳（YYYY-MM-DD）：超支通知每天最多一次，跨重启生效。 */
-    lastAlertDay: string;
+    /** 各档提醒的最后通知日期戳（档位百分比字符串 → YYYY-MM-DD）：每档每天最多一次。 */
+    tierAlertDays: Record<string, string>;
     /** 最近一次余额不足通知的日期戳（YYYY-MM-DD）：余额告警同样每天最多一次。 */
     lastBalanceAlertDay: string;
 }
@@ -21,7 +21,7 @@ export interface BudgetPrefsState {
 export type BudgetPrefsActions = {
     setEnabled: (d: BudgetPrefsState, on: boolean) => void;
     setAmount: (d: BudgetPrefsState, value: number) => void;
-    markAlerted: (d: BudgetPrefsState, day: string) => void;
+    markTierAlerted: (d: BudgetPrefsState, tiers: readonly number[], day: string) => void;
     markBalanceAlerted: (d: BudgetPrefsState, day: string) => void;
 };
 /**
