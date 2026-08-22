@@ -20,6 +20,10 @@
 
 > **Peak/off-peak pricing update (from 2026-08-23 (Sun) 00:00 Beijing)**: DeepSeek models follow the new official rule — **weekdays (Mon–Fri)** keep the original peak/off-peak split (peak 09:00–12:00 / 14:00–18:00, ×2); **weekends (Sat/Sun)** are no longer split and are billed at the **off-peak price** all day. The plugin's billing engine, rate table and per-turn peak/off-peak bands all reflect this.
 
+### Demo GIF
+
+![Demo](screenshots/demo.gif)
+
 ## Features
 
 - **Sidebar entry**: a dashboard-style trigger card above the Settings button — month cost as the headline number (monospace) with a 7-day sparkline mini-trend, second line "Today / This week"; collapses to an icon button; hover reveals a quick-look card.
@@ -48,10 +52,6 @@
 ![Stats: export, cost breakdown, workspaces and session detail](screenshots/4.png)
 
 ![Rates: model rate table (peak/off-peak split and live rate)](screenshots/5.png)
-
-### Demo GIF
-
-![Demo](screenshots/demo.gif)
 
 ## Quick start
 
