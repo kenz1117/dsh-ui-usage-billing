@@ -26,6 +26,7 @@ import { LiveCostBar } from './live-cost.tsx'
 import { en, NS, zh, type UsageBillingKey } from './locales.ts'
 import { createBillingMetrics, type BillingMetricsService } from './billing-service.ts'
 import { createBillingBudgetStore } from './budget-store.ts'
+import { installCompletionNotifier, loadNotifyConfig } from './completion-notify.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -61,7 +62,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Required services for the usage billing surface. */
-export const inject = ['slots', 'locale', 'connection']
+export const inject = ['slots', 'locale', 'connection', 'sessions']
 
 /**
  * Client plugin body: the UsageBilling entry in the sidebar footer.
@@ -134,4 +135,11 @@ export function apply(ctx: ClientContext): void {
     order: 0,
     locale: NS,
   }, LiveCostBar))
+
+  // 对话完成提醒：会话 running→completed 迁移时弹一条桌面通知（默认关闭，
+  // 用户到面板设置开启）。配置持久化在 localStorage，跨 tab 由 notifier 去重。
+  ctx.effect(() => {
+    // sessions 服务在 runtime 全局 provide：apply 期可直接订阅会话列表快照。
+    return installCompletionNotifier(ctx.sessions.list, loadNotifyConfig)
+  }, 'ui-usage-billing: completion notifier')
 }

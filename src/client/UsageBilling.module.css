@@ -34,24 +34,24 @@
   stroke-width: 2;
 }
 
-/* Wide mode: solid-surface data card — icon badge, today total, divider, month total. */
+/* Wide mode: dashboard-style data card — icon badge, month figure, sparkline. */
 .trigger {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
   /* 允许卡片在 footer 横向 flex 行（无 wrap）里收缩，不靠 nowrap 金额撑开兄弟按钮。 */
   min-width: 0;
-  padding: 10px 14px;
+  padding: 9px 12px;
   overflow: hidden;
   border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
   text-align: left;
-  transition: border-color 160ms ease;
+  transition: border-color 160ms ease, background-color 160ms ease;
 }
 
 .trigger:hover,
@@ -60,68 +60,93 @@
   outline: none;
 }
 
-/* 图标徽章：实色蓝底，无渐变。 */
+/* 图标徽章：渐变蓝底 + 细线描边，整卡唯一色彩焦点。 */
 .triggerIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: var(--dsw-static-blue-500);
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--dsw-static-blue-500), var(--dsw-static-blue-400));
   color: var(--dsw-static-neutral-bluish-00);
+  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--dsw-static-blue-500) 55%, transparent);
 }
 
 .triggerIcon svg {
-  width: 15px;
-  height: 15px;
-  stroke-width: 1.8;
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
 }
 
-/* 左块（今日，主）与右块（当月，次）：单行「标签 + 金额」 */
-.triggerToday,
-.triggerMonth {
+/* 文本主体：本月主数字 + 今日/本周副行。 */
+.triggerBody {
+  flex: 1;
+  min-width: 0;
   display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.triggerRow {
+  display: inline-flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
 }
 
-/* 分隔线：左右两块之间，极淡不抢戏 */
-.triggerDivider {
-  width: 1px;
-  align-self: stretch;
-  background: var(--dsw-alias-border-l1);
-}
-
-/* 今日主金额：最大、中性主色、等宽数字 */
+/* 本月主金额：等宽数字，主色。 */
 .triggerAmount {
-  font-size: 18px;
-  line-height: 22px;
-  font-weight: 600;
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: 700;
   color: var(--dsw-alias-label-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-/* 当月次金额：次层级 */
-.triggerAmountSub {
-  font-size: 13px;
-  line-height: 18px;
-  font-weight: 600;
-  color: var(--dsw-alias-label-secondary);
-  font-variant-numeric: tabular-nums;
+/* 副行：今日 / 本周 费用，次层级。 */
+.triggerSub {
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--dsw-alias-label-tertiary);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 维度标签 */
 .triggerMeta {
-  font-size: 10.5px;
-  line-height: 14px;
+  font-size: 9.5px;
+  line-height: 12px;
   color: var(--dsw-alias-label-tertiary);
   white-space: nowrap;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* 近 7 天 sparkline：常驻迷你趋势，底对齐。 */
+.triggerSpark {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 20px;
+  flex: none;
+}
+
+.triggerSparkBar,
+.triggerSparkHot {
+  width: 3px;
+  border-radius: 1px 1px 0 0;
+  background: var(--dsw-static-blue-500);
+  opacity: 0.6;
+}
+
+.triggerSparkHot {
+  opacity: 1;
 }
 
 /* 触发卡外壳：hover 速览卡的定位上下文。
@@ -343,47 +368,78 @@
 
 /* ── Hero ───────────────────────────────────────────────────────────── */
 
-/* 实底 Hero：1px 边框 + 实色底，无径向光晕。 */
+/* 液晶读数大屏：整块面板像一个仪表盘屏幕。
+   左上「本月费用」液晶大数字，右上环形仪表盘，底部一条「本年/今日/本月预计」读数组。
+   用一层深色屏幕底 + 内嵌读数格营造仪表质感，深浅主题各走令牌。 */
 .hero {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px 24px;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, var(--dsw-alias-bg-layer-2), var(--dsw-alias-bg-layer-1));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 30%, transparent);
+}
+
+/* 顶部：左侧液晶读数 + 右侧环形仪表盘，同排。 */
+.heroTop {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 20px 24px;
-  overflow: hidden;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 16px;
-  background: var(--dsw-alias-bg-layer-1);
 }
 
-/* 左区：本月主数字 */
+/* 液晶读数区（标签 + 大数字 + 副信息）。 */
 .heroMain {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
 .heroLabel {
-  font-size: 12px;
-  line-height: 17px;
+  font-size: 11px;
+  line-height: 16px;
   color: var(--dsw-alias-label-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   white-space: nowrap;
 }
 
-/* 本月主数字：44px 实色，无渐变。 */
-.heroValue {
-  font-size: 44px;
-  line-height: 52px;
+/* 液晶读数：单位小号、数字超大，等宽数码感。 */
+.heroReadout {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+/* 币种符号：小号，弱化为读数前缀，突出右侧大数字。 */
+.heroCurrency {
+  font-size: 20px;
+  line-height: 30px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 本月主数字：56px 超大等宽数字，液晶显示感。 */
+.heroValue {
+  font-size: 56px;
+  line-height: 64px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: var(--dsw-alias-label-primary);
 }
 
 .heroMeta {
+  margin-top: 4px;
   font-size: 12px;
   line-height: 17px;
   color: var(--dsw-alias-label-caption);
@@ -394,8 +450,8 @@
 .heroGauge {
   position: relative;
   flex: none;
-  width: 108px;
-  height: 108px;
+  width: 96px;
+  height: 96px;
 }
 
 .heroGaugeSvg {
@@ -408,13 +464,13 @@
 .heroGaugeTrack {
   fill: none;
   stroke: var(--dsw-alias-bg-module-platform);
-  stroke-width: 10;
+  stroke-width: 9;
 }
 
 .heroGaugeArc {
   fill: none;
   stroke: var(--dsw-static-blue-500);
-  stroke-width: 10;
+  stroke-width: 9;
   stroke-linecap: round;
   transition: stroke-dasharray 260ms ease;
 }
@@ -434,8 +490,8 @@
 }
 
 .heroGaugePct {
-  font-size: 22px;
-  line-height: 26px;
+  font-size: 18px;
+  line-height: 22px;
   font-weight: 700;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
@@ -447,25 +503,30 @@
 }
 
 .heroGaugeLabel {
-  font-size: 10.5px;
+  font-size: 10px;
   line-height: 14px;
   color: var(--dsw-alias-label-tertiary);
 }
 
-/* 右区：本年 / 今日 / 本月预计，左缘细分隔线与主数字区隔开 */
+/* 底部读数排：本年 / 今日 / 本月预计 三等分，上缘细分隔线与顶层区隔。 */
 .heroSide {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex: none;
-  padding-left: 24px;
-  border-left: 1px solid var(--dsw-alias-border-l1);
+  align-items: stretch;
+  padding-top: 14px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
 }
 
 .heroSideItem {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  min-width: 0;
+  padding-left: 16px;
+}
+
+.heroSideItem:first-child {
+  padding-left: 0;
 }
 
 .heroSideLabel {
@@ -479,13 +540,19 @@
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
-  font-size: 17px;
-  line-height: 23px;
+  font-size: 18px;
+  line-height: 24px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   white-space: nowrap;
+}
+
+/* 无本月预计时的等高分隔占位，保持三等分节奏。 */
+.heroSideSpacer {
+  display: block;
+  flex: 1;
 }
 
 .delta {
@@ -702,6 +769,67 @@
   font-size: 12px;
   line-height: 17px;
   color: var(--dsw-alias-label-secondary);
+}
+
+/* 官方/三方费用分桶（明细表费用列：混合时用 官方 / 三方 分解展示）。 */
+.bucketCost {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.bucketOfficial {
+  color: var(--dsw-static-blue-500);
+  font-weight: 600;
+}
+
+.bucketSep {
+  color: var(--dsw-alias-label-dimmed);
+}
+
+.bucketThird {
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 官方 vs 三方汇总卡片：两个并列统计块。 */
+.bucketSummary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.bucketStat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.bucketStatLabel {
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--dsw-alias-label-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.bucketStatValue {
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.bucketStatSub {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption);
+  font-variant-numeric: tabular-nums;
 }
 
 .shareDot {
@@ -1936,40 +2064,27 @@
   }
 
   .hero {
-    flex-direction: column;
-    align-items: flex-start;
     gap: 14px;
   }
 
-  /* 窄屏：主数字与环形仪表盘同排（左大数字、右圆环），次统计下移。 */
+  /* 窄屏：顶部「液晶读数 + 圆环」纵向堆叠，圆环收为装饰端点。 */
+  .heroTop {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
   .heroGauge {
-    position: absolute;
-    top: 20px;
-    right: 24px;
-    width: 96px;
-    height: 96px;
+    width: 72px;
+    height: 72px;
   }
 
-  /* 主数字右侧留出环形空间，避免重叠。 */
-  .heroMain {
-    padding-right: 112px;
-  }
-
-  /* 纵向布局时分隔线转为顶缘横线。 */
+  /* 窄屏：底部读数排仍三等分。 */
   .heroSide {
-    flex-direction: row;
-    gap: 20px;
-    padding-left: 0;
-    padding-top: 14px;
-    border-left: none;
-    border-top: 1px solid var(--dsw-alias-border-l1);
-    align-self: stretch;
+    gap: 12px;
   }
 
-  /* 窄屏：右侧三项回归「标签 + 数值」同行，避免纵向堆叠占高。 */
-  .heroSideItem {
-    flex-direction: row;
-    align-items: baseline;
-    gap: 8px;
+  .heroSideSpacer {
+    display: none;
   }
 }
