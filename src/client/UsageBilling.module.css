@@ -1326,6 +1326,28 @@
   color: var(--dsw-static-neutral-300);
 }
 
+/* 峰谷档位 chip：峰时蓝、平价青绿（token 派生，明暗自适应）。 */
+.liveTierPeak {
+  color: var(--dsw-static-blue-500);
+  font-weight: 600;
+}
+
+.liveTierOff {
+  color: var(--dsw-static-green-500);
+  font-weight: 600;
+}
+
+/* 额度预警 chips：剩余 ≤20% 警报，≤10% 红色。 */
+.liveQuotaWarn {
+  color: var(--dsw-static-amber-500);
+  font-weight: 600;
+}
+
+.liveQuotaCrit {
+  color: var(--dsw-static-red-500);
+  font-weight: 600;
+}
+
 /* ── 余额天数提示 ───────────────────────────────────────────────────── */
 
 /* 余额单元格：金额 + 次行「约可撑 N 天」预估。 */
@@ -1610,6 +1632,17 @@
   height: 100%;
   border-radius: 3px;
   background: var(--dsw-alias-accent, #3b82f6);
+  transition: width 200ms ease;
+}
+
+/* ≥80% 已用：琥珀警示。 */
+.subscriptionFillWarn {
+  background: var(--dsw-static-amber-500);
+}
+
+/* 用尽（≥100% 已用）：满格红。 */
+.subscriptionFillOver {
+  background: var(--dsw-static-red-500);
 }
 
 .subscriptionPct {
@@ -1617,6 +1650,13 @@
   min-width: 52px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* 已用尽：红色强调文案。 */
+.subscriptionExhausted {
+  color: var(--dsw-static-red-500);
+  font-weight: 600;
+  min-width: 52px;
 }
 
 .subscriptionReset {

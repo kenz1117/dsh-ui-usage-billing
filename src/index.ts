@@ -28,10 +28,10 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import { createUsageAggregator, dayStamp } from './aggregate.ts'
-import { formatMoney, formatTokens } from './client/pricing.ts'
-import { queryBalances } from './balance.ts'
+import { applyLivePricing, formatMoney, formatTokens } from './client/pricing.ts'
+import { queryBalances, queryCustomBalances } from './balance.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
-import type { LivePricing, SubscriptionPlanConfig, SubscriptionQuota } from './pricing-shared.ts'
+import type { CustomBalanceConfig, LivePricing, SubscriptionPlanConfig, SubscriptionQuota } from './pricing-shared.ts'
 import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts'
 
 /** Plugin configuration. */
@@ -49,6 +49,8 @@ export interface UsageBillingConfig {
   /** 余额不足告警阈值（人民币元）：余额低于此值时仪表盘每天提醒一次；
       不设置则客户端按默认阈值（50 元）兜底。 */
   lowBalanceThreshold?: number
+  /** 自定义 Provider 余额查询（任意 HTTP 端点 + extract 规则，适配 NewApi/LiteLLM 等）。 */
+  customBalances?: readonly CustomBalanceConfig[]
 }
 
 /** 实时定价的后台刷新间隔（毫秒）：汇率/模型价低频变化，6 小时一次足够。 */
@@ -256,11 +258,13 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     }))
   })
 
-  // 后台拉取实时定价（汇率 + OpenRouter 模型价），失败自动降级内置目录；
-  // 之后每 6 小时刷新一次，汇率/价格无需重启进程就能保持最新。
+  // 后台拉取实时定价（汇率 + OpenRouter 模型价 + models.dev 目录外补充），
+  // 失败自动降级内置目录；之后每 6 小时刷新一次，汇率/价格无需重启进程就能
+  // 保持最新。host 侧同步应用：聚合计价与客户端展示同源（含目录外补充条目）。
   let live: LivePricing = { source: 'builtin' }
   const refreshPricing = async (): Promise<void> => {
     live = await fetchLivePricing()
+    applyLivePricing(live)
   }
   void refreshPricing()
   ctx.effect(
@@ -297,7 +301,9 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
           providers['deepseek'] = { apiKeyEnv: config.balanceApiKeyEnv ?? DEFAULT_BALANCE_API_KEY_ENV }
         }
         const balances = await queryBalances(ctx, providers)
-        res.end(JSON.stringify({ balances }))
+        // 自定义 Provider 余额（任意 HTTP 端点）：独立于内置三家，逐个成败。
+        const custom = await queryCustomBalances(ctx, config.customBalances ?? [])
+        res.end(JSON.stringify({ balances: [...balances, ...custom] }))
       },
     }),
     'usage-billing: balance route',

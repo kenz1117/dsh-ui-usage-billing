@@ -8,7 +8,8 @@
  * catalog for the rest — a total outage answers `{ source: 'builtin' }`.
  */
 
-import type { LivePrice, LivePricing } from './pricing-shared.ts'
+import type { ExtraModelPrice, LivePrice, LivePricing } from './pricing-shared.ts'
+import { MODEL_CATALOG, MODEL_KEY_ALIASES } from './client/pricing.ts'
 
 /** Abort a fetch when the upstream hangs beyond this budget. */
 const FETCH_TIMEOUT_MS = 8000
@@ -43,6 +44,43 @@ const RATE_SOURCES: readonly { url: string; parse: (text: string) => number | un
 
 /** OpenRouter's public model list: per-token USD prices, no key needed. */
 const ROUTER_URL = 'https://openrouter.ai/api/v1/models'
+
+/** models.dev 公开目录：pi-ai 预制提供方的上游数据源（USD / 1M tokens）。
+ * 接入它即与宿主「系统设置里预制的提供方模型」对齐——预制条目来自同一份数据。 */
+const MODELS_DEV_URL = 'https://models.dev/api.json'
+
+/**
+ * models.dev provider id → 仪表盘厂商显示名。探测到的模型若其厂商显示名与此
+ * 映射命中则用之；未命中的回退为探活模型自带的厂商名（系统配置里的显示名）。
+ * 不作为过滤条件——只用于给 models.dev 条目补一个可读的厂商名。
+ */
+const MODELS_DEV_PROVIDERS: Readonly<Record<string, string>> = {
+  deepseek: 'DeepSeek',
+  zhipu: '智谱 AI',
+  zhipuai: '智谱 AI',
+  zai: '智谱 AI',
+  qwen: '阿里通义',
+  alibaba: '阿里通义',
+  moonshot: '月之暗面',
+  moonshotai: '月之暗面',
+  volcengine: '字节豆包',
+  doubao: '字节豆包',
+  minimax: 'MiniMax',
+  baidu: '百度文心',
+  tencent: '腾讯混元',
+  hunyuan: '腾讯混元',
+  stepfun: '阶跃星辰',
+  iflytek: '科大讯飞',
+  sensetime: '商汤',
+  baichuan: '百川智能',
+  '01.ai': '零一万物',
+  openai: 'OpenAI',
+  google: 'Google',
+  xai: 'xAI',
+  meta: 'Meta',
+  anthropic: 'Anthropic',
+  mistral: 'Mistral',
+}
 
 /**
  * Built-in catalog key → OpenRouter model-id candidates. Matching prefers an
@@ -155,18 +193,69 @@ function buildPrices(models: readonly RouterModel[]): Record<string, LivePrice> 
   return Object.keys(result).length > 0 ? result : undefined
 }
 
+/** 有限正数收窄（models.dev cost 字段的 durable 边界）。 */
+function asPrice(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
+}
+
+/**
+ * models.dev 响应 → 目录外补充条目。不再按厂商白名单过滤：凡是有有效
+ * cost 的模型都纳入（探活模型可能来自任何预制厂商，白名单会漏掉）。厂商
+ * 显示名优先取映射，未命中用 provider id。导出供测试：纯函数。
+ * @param data - `https://models.dev/api.json` 的响应体。
+ * @returns 补充条目（按 provider 顺序稳定；仅含可计价的模型）。
+ */
+export function buildExtraModels(data: unknown): ExtraModelPrice[] {
+  if (data === null || typeof data !== 'object') return []
+  // 已在内置目录收录（含别名表归一化后的目录键）：跳过，走内置价/别名避免重复。
+  const catalogKeys = new Set<string>([
+    ...MODEL_CATALOG.map(entry => entry.key.toLowerCase()),
+    ...Object.keys(MODEL_KEY_ALIASES).map(key => MODEL_KEY_ALIASES[key]?.toLowerCase() ?? key.toLowerCase()),
+  ])
+  const extras: ExtraModelPrice[] = []
+  for (const [providerId, providerDoc] of Object.entries(data as Record<string, unknown>)) {
+    if (providerDoc === null || typeof providerDoc !== 'object') continue
+    const models = (providerDoc as { models?: unknown }).models
+    if (models === null || typeof models !== 'object') continue
+    for (const [modelId, modelDoc] of Object.entries(models as Record<string, unknown>)) {
+      // models.dev 的 key 是厂商原始 id（deepseek-v4-flash）；先按别名归一化为
+      // 目录键（flash），命中内置目录则跳过。
+      const catalogKey = (MODEL_KEY_ALIASES[modelId] ?? modelId).toLowerCase()
+      if (catalogKeys.has(catalogKey)) continue
+      const key = catalogKey
+      if (modelDoc === null || typeof modelDoc !== 'object') continue
+      const cost = (modelDoc as { cost?: unknown }).cost
+      if (cost === null || typeof cost !== 'object') continue
+      const input = asPrice((cost as { input?: unknown }).input)
+      const output = asPrice((cost as { output?: unknown }).output)
+      if (input === undefined || output === undefined) continue
+      const cacheRead = asPrice((cost as { cache_read?: unknown }).cache_read) ?? input * 0.1
+      const name = (modelDoc as { name?: unknown }).name
+      extras.push({
+        key,
+        name: typeof name === 'string' && name !== '' ? name : modelId,
+        provider: MODELS_DEV_PROVIDERS[providerId.toLowerCase()] ?? providerId,
+        price: { input, cacheHit: cacheRead, output },
+      })
+    }
+  }
+  return extras
+}
+
 /**
  * Fetch the live pricing once at boot. Both upstreams run in parallel; a
  * failure in either degrades independently to the built-in value.
  * @returns the live pricing snapshot (builtin when everything failed).
  */
 export async function fetchLivePricing(): Promise<LivePricing> {
-  const [rate, models] = await Promise.all([fetchRate(), fetchRouterModels()])
+  const [rate, models, modelsDev] = await Promise.all([fetchRate(), fetchRouterModels(), fetchJson(MODELS_DEV_URL)])
   const prices = models === undefined ? undefined : buildPrices(models)
-  if (rate === undefined && prices === undefined) return { source: 'builtin' }
+  const extraModels = modelsDev === null ? undefined : buildExtraModels(modelsDev)
+  if (rate === undefined && prices === undefined && (extraModels === undefined || extraModels.length === 0)) return { source: 'builtin' }
   return {
     source: 'live',
     ...(rate !== undefined ? { rate } : {}),
     ...(prices !== undefined ? { prices } : {}),
+    ...(extraModels !== undefined && extraModels.length > 0 ? { extraModels } : {}),
   }
 }

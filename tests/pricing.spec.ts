@@ -6,7 +6,7 @@
 
 import { describe, expect, it, afterEach } from 'vitest'
 import {
-  applyLivePricing, cnyToUsd, computeCost, computeCostAt, formatMoney, formatPercent, formatTokens, formatUnitPrice,
+  applyLiveCatalogModels, applyLivePricing, catalogEntries, cnyToUsd, computeCost, computeCostAt, formatMoney, formatPercent, formatTokens, formatUnitPrice,
   getRateInfo, isPeakHour, modelOf, MODEL_CATALOG, tierAt,
 } from '../src/client/pricing.ts'
 import { PROVIDER_ALIASES } from '../src/client/UsageBilling.tsx'
@@ -247,5 +247,29 @@ describe('currency display (P2-3)', () => {
     expect(formatMoney(0, 'usd')).toBe('$0')
     expect(formatMoney(Number.NaN, 'usd')).toBe('$0')
     expect(formatMoney(6.79)).toBe('¥6.79') // 默认仍是人民币
+  })
+})
+
+describe('catalogEntries (model health parity)', () => {
+  it('merges probed config models, pricing the known ones and flagging unknown ones', () => {
+    // 重置状态后再注入探活模型，避免污染其他用例（applyLivePricing 覆盖为 undefined）。
+    applyLivePricing({ source: 'builtin' })
+    applyLiveCatalogModels([
+      // 内置目录已有（flash）→ 去重不重复。
+      { id: 'deepseek-v4-flash', name: 'V4 Flash', provider: 'DeepSeek' },
+      // models.dev 补充已有 → 用补充价，不重复。
+      { id: 'kimi-k3', name: 'Kimi K3', provider: '月之暗面' },
+      // 两者皆无 → 保留并标记未收录。
+      { id: 'acme-model-x', name: 'Acme X', provider: 'Acme' },
+    ])
+    const entries = catalogEntries()
+    const keys = entries.map(entry => entry.key)
+    // 内置目录 + 补充外，追加探活未收录模型。
+    expect(keys).toContain('acme-model-x')
+    // 探活的 flash / kimi-k3 去重：不产生重复行。
+    expect(keys.filter(k => k === 'flash')).toHaveLength(1)
+    expect(keys.filter(k => k === 'kimi-k3')).toHaveLength(1)
+    const acme = entries.find(entry => entry.key === 'acme-model-x')
+    expect(acme).toMatchObject({ provider: 'Acme', uncatalogued: true })
   })
 })

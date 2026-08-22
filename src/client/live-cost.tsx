@@ -9,18 +9,31 @@
  * the current session id off the framework snapshot (`useSession` parent of
  * `sessionId`) and matches `bySession` (session total) and `byTurn` (latest
  * turn cost). Rendering is a pure function of the snapshot, never a side effect.
+ *
+ * The bar also carries two ambient signals: the current peak/off-peak pricing
+ * tier with a switch countdown (DeepSeek time-of-day pricing), and quota chips
+ * for subscription plans running low (≤20% remaining), so cost pressure is
+ * visible without opening the dashboard.
  */
 
 import { useEffect, useMemo, useState } from 'react'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
-import { formatMoney } from './pricing.ts'
+import { formatMoney, formatSwitchCountdown, tierCountdown } from './pricing.ts'
+import type { UsageBillingKey } from './locales.ts'
 import css from './UsageBilling.module.css'
 
 /** The usage-stats shape the composer bar needs (a thin slice, not the whole doc). */
 export interface LiveStats {
   bySession?: readonly { id: string; cost: number }[]
   byTurn?: readonly { sessionId: string; turn: number; cost: number }[]
+}
+
+/** 订阅额度的薄切片（/api/billing/subscriptions 响应的行）。 */
+export interface QuotaSlice {
+  displayName: string
+  status: string
+  windows: readonly { kind: string; remainingPercent: number }[]
 }
 
 /**
@@ -58,8 +71,32 @@ export function turnCostOf(stats: LiveStats | null, sessionId: string | undefine
   return latest
 }
 
+/**
+ * 低额度预警 chips：查询成功（ok）且任一窗口剩余 ≤ threshold 的套餐，
+ * 按剩余升序、最多 3 枚。导出供测试：纯函数。
+ * @param quotas - 订阅额度行切片。
+ * @param threshold - 剩余百分比阈值（默认 20%）。
+ */
+export function lowQuotaChips(
+  quotas: readonly QuotaSlice[],
+  threshold = 20,
+): readonly { name: string; kind: string; pct: number }[] {
+  const chips: { name: string; kind: string; pct: number }[] = []
+  for (const quota of quotas) {
+    if (quota.status !== 'ok') continue
+    for (const win of quota.windows) {
+      if (win.remainingPercent > threshold) continue
+      chips.push({ name: quota.displayName, kind: win.kind, pct: win.remainingPercent })
+    }
+  }
+  return chips.sort((a, b) => a.pct - b.pct).slice(0, 3)
+}
+
 /** Endpoint the node half serves (same constant the dashboard uses). */
 const USAGE_STATS_PATH = '/api/billing/usage-stats'
+
+/** 订阅额度端点（额度预警 chips 的数据源）。 */
+const SUBSCRIPTIONS_PATH = '/api/billing/subscriptions'
 
 /** Refresh cadence (ms): matching the dashboard so the bar stays current. */
 const REFRESH_INTERVAL_MS = 30_000
@@ -82,11 +119,35 @@ async function loadLiveStats(): Promise<LiveStats | null> {
   }
 }
 
+/** Load subscription quota slices; empty list on any failure. */
+async function loadQuotas(): Promise<readonly QuotaSlice[]> {
+  try {
+    const response = await fetch(SUBSCRIPTIONS_PATH)
+    if (!response.ok) return []
+    const parsed = JSON.parse(await response.text()) as unknown
+    if (parsed === null || typeof parsed !== 'object' || !('quotas' in parsed)) return []
+    const quotas = (parsed as { quotas: unknown }).quotas
+    return Array.isArray(quotas) ? quotas as QuotaSlice[] : []
+  } catch {
+    return []
+  }
+}
+
+/** 额度窗口类型 → 文案 key（本次 / 本周 / 本月 / 计费周期）。 */
+function windowLabelKey(kind: string): UsageBillingKey {
+  switch (kind) {
+    case 'session': return 'billing.subscriptionSession'
+    case 'weekly': return 'billing.subscriptionWeekly'
+    case 'monthly': return 'billing.subscriptionMonthly'
+    default: return 'billing.subscriptionBilling'
+  }
+}
+
 /** Props: the session-scope snapshot selector the framework injects. */
 export interface LiveCostBarProps {
   useSession: SnapshotSelectorHook<ConversationSnapshot>
   /** The owning dock's locale seat (bound to the billing NS). */
-  t: (key: 'billing.liveTurn' | 'billing.liveSession') => string
+  t: (key: UsageBillingKey) => string
 }
 
 /**
@@ -97,12 +158,19 @@ export function LiveCostBar({ useSession, t }: LiveCostBarProps): React.ReactNod
   const sessionId = useSession(s => s.sessionId)
   // 拉取即时代费数据：挂载时一次 + 周期刷新（与仪表盘同频）。
   const [stats, setStats] = useState<LiveStats | null>(null)
+  const [quotas, setQuotas] = useState<readonly QuotaSlice[]>([])
+  // 峰谷倒计时独立跳动（30 秒粒度足够，与数据轮询同频但无数据时也刷新）。
+  const [nowMs, setNowMs] = useState(() => Date.now())
   useEffect(() => {
     let cancelled = false
     const load = (): void => {
       void loadLiveStats().then((data) => {
         if (!cancelled && data !== null) setStats(data)
       })
+      void loadQuotas().then((list) => {
+        if (!cancelled) setQuotas(list)
+      })
+      if (!cancelled) setNowMs(Date.now())
     }
     load()
     const timer = setInterval(load, REFRESH_INTERVAL_MS)
@@ -116,19 +184,47 @@ export function LiveCostBar({ useSession, t }: LiveCostBarProps): React.ReactNod
   // 当前会话累计费用与当前轮费用：由纯函数派生，便于测试。
   const sessionCost = useMemo(() => sessionCostOf(stats, sessionId), [stats, sessionId])
   const turnCost = useMemo(() => turnCostOf(stats, sessionId), [stats, sessionId])
+  const tier = tierCountdown(nowMs)
+  const chips = useMemo(() => lowQuotaChips(quotas), [quotas])
 
   const money = (cny: number): string => formatMoney(cny, 'cny')
 
-  if (sessionId === undefined || (sessionCost <= 0 && turnCost <= 0)) return null
+  if (sessionId === undefined) return null
+  const hasCost = sessionCost > 0 || turnCost > 0
   return (
     <span className={css.liveCostBar} data-testid="billing-live-cost-bar">
-      <span className={css.liveCostItem} data-testid="billing-live-turn">
-        {t('billing.liveTurn')} {money(turnCost)}
+      {/* 峰谷档位 + 切换倒计时：无费用数据也常驻（平价时段提示省钱窗口）。 */}
+      <span
+        className={tier.tier === 'peak' ? css.liveTierPeak : css.liveTierOff}
+        data-testid="billing-live-tier"
+      >
+        {tier.tier === 'peak' ? t('billing.tierPeak') : t('billing.tierOff')}
+        {' · '}
+        {formatSwitchCountdown(tier.nextSwitchInMs)}
+        {' '}
+        {tier.tier === 'peak' ? t('billing.tierToOff') : t('billing.tierToPeak')}
       </span>
-      <span className={css.liveCostSep} aria-hidden="true">·</span>
-      <span className={css.liveCostItem} data-testid="billing-live-session">
-        {t('billing.liveSession')} {money(sessionCost)}
-      </span>
+      {hasCost && (
+        <>
+          <span className={css.liveCostSep} aria-hidden="true">·</span>
+          <span className={css.liveCostItem} data-testid="billing-live-turn">
+            {t('billing.liveTurn')} {money(turnCost)}
+          </span>
+          <span className={css.liveCostSep} aria-hidden="true">·</span>
+          <span className={css.liveCostItem} data-testid="billing-live-session">
+            {t('billing.liveSession')} {money(sessionCost)}
+          </span>
+        </>
+      )}
+      {/* 额度预警 chips：套餐窗口剩余 ≤20% 时浮现（剩余最少者优先，最多 3 枚）。 */}
+      {chips.map(chip => (
+        <span key={`${chip.name}:${chip.kind}`}>
+          <span className={css.liveCostSep} aria-hidden="true">·</span>
+          <span className={chip.pct <= 10 ? css.liveQuotaCrit : css.liveQuotaWarn} data-testid="billing-live-quota">
+            {chip.name} {t(windowLabelKey(chip.kind))} {chip.pct}%
+          </span>
+        </span>
+      ))}
     </span>
   )
 }

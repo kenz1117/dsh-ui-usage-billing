@@ -12,6 +12,7 @@
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots';
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client';
 import type { createBillingBudgetStore } from './budget-store.ts';
+import { type CatalogModel } from './pricing.ts';
 import { NS, type UsageBillingKey } from './locales.ts';
 /** Model-connectivity health reported by the host model directory probe. */
 export interface ModelHealth {
@@ -27,6 +28,8 @@ export interface ModelHealth {
     okProviders: readonly string[];
     /** Display names of providers whose catalog probe failed. */
     badProviders: readonly string[];
+    /** 探活得到的模型清单（系统里实际配置/预制的模型；无价格，费率表据此对标）。 */
+    catalog?: readonly CatalogModel[];
 }
 /** 仪表盘分区 Tab id。 */
 export type DashboardTab = 'overview' | 'trends' | 'providers' | 'details' | 'pricing';

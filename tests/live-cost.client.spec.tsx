@@ -1,11 +1,12 @@
 /**
  * LiveCostBar derivation unit test: the pure helpers `sessionCostOf` and
  * `turnCostOf` map the usage-stats slice onto the current session's cumulative
- * and latest-turn cost, degrading to 0 when the session or its spend is absent.
+ * and latest-turn cost; `lowQuotaChips` picks the subscription windows running
+ * low. All degrade cleanly on missing input.
  */
 
 import { describe, expect, it } from 'vitest'
-import { sessionCostOf, turnCostOf, type LiveStats } from '../src/client/live-cost.tsx'
+import { lowQuotaChips, sessionCostOf, turnCostOf, type LiveStats, type QuotaSlice } from '../src/client/live-cost.tsx'
 
 const BASE: LiveStats = {
   bySession: [
@@ -42,5 +43,26 @@ describe('turnCostOf', () => {
     expect(turnCostOf({ bySession: BASE.bySession, byTurn: [] }, 'sess-1')).toBe(0)
     expect(turnCostOf(null, 'sess-1')).toBe(0)
     expect(turnCostOf(BASE, undefined)).toBe(0)
+  })
+})
+
+describe('lowQuotaChips', () => {
+  const quotas: QuotaSlice[] = [
+    { displayName: 'Kimi For Coding', status: 'ok', windows: [{ kind: 'monthly', remainingPercent: 70 }] },
+    { displayName: 'Z.ai GLM', status: 'ok', windows: [{ kind: 'monthly', remainingPercent: 12 }, { kind: 'weekly', remainingPercent: 5 }] },
+    { displayName: '小米 Token', status: 'ok', windows: [{ kind: 'monthly', remainingPercent: 25 }] },
+  ]
+
+  it('keeps only windows at or below the threshold, sorted ascending, capped at 3', () => {
+    const chips = lowQuotaChips(quotas)
+    expect(chips.map(c => c.pct)).toEqual([5, 12])
+  })
+
+  it('skips failed / unconfigured plans and takes the default threshold', () => {
+    const bad: QuotaSlice[] = [
+      { displayName: 'Unconfigured', status: 'not-configured', windows: [{ kind: 'monthly', remainingPercent: 0 }] },
+      { displayName: 'Healthy', status: 'ok', windows: [{ kind: 'monthly', remainingPercent: 80 }] },
+    ]
+    expect(lowQuotaChips(bad)).toEqual([])
   })
 })
