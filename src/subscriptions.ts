@@ -171,19 +171,27 @@ function kimiWindow(value: unknown, kind: 'session' | 'weekly'): SubscriptionWin
   const record = value as Record<string, unknown>
   const limit = numberOrNull(record.limit ?? record.total)
   const remaining = numberOrNull(record.remaining)
-  // 只要接口报告了剩余额度就保留窗口——用尽（remaining=0）时 `limit` 可能
-  // 为非正数，此前 `limit <= 0` 会把它当作无效丢掉，导致「本次」行消失。
-  if (remaining === null) return null
+  // 用尽（remaining=0）时 `limit` 可能为非正数；同时 Kimi 可能在用尽后把
+  // `remaining` 置为 null/缺省。此时只要有 resetTime 或 limit 就仍保留窗口，
+  // 并回退用 percentage / used 字段推断已用比例，避免「本次」行消失。
+  if (remaining === null && limit === null && numberOrNull(record.percentage ?? record.usedPercent ?? record.used_percent) === null) {
+    return null
+  }
   const hasLimit = limit !== null && limit > 0
-  const usedPercent = hasLimit
-    ? round1(clampPercent(((limit - remaining) / limit) * 100) ?? 0)
-    : remaining > 0 ? 0 : 100
+  let usedPercent: number
+  if (hasLimit) {
+    usedPercent = round1(clampPercent(((limit - (remaining ?? 0)) / limit) * 100) ?? 0)
+  } else {
+    // limit 不可用：remaining 缺失视为用尽（0），或直接用 percentage 字段。
+    const percent = numberOrNull(record.percentage ?? record.usedPercent ?? record.used_percent)
+    usedPercent = percent !== null ? round1(clampPercent(percent) ?? 0) : remaining === null || remaining <= 0 ? 100 : 0
+  }
   const resetsAt = toIso(record.resetTime ?? record.reset_time ?? record.resetsAt)
   return {
     kind,
     usedPercent,
     remainingPercent: round1(100 - usedPercent),
-    remaining,
+    ...(remaining !== null ? { remaining } : {}),
     ...(resetsAt === null ? {} : { resetsAt }),
   }
 }

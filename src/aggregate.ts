@@ -458,6 +458,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const metas = await persistence.list()
       const seen = new Set<string>()
       const folds: { meta: SessionHeader; fold: SessionFold }[] = []
+      // skipped：记录未能读取的会话 id，聚合末尾统一告警。
+      const skipped: string[] = []
       for (const meta of metas) {
         const id = String(meta.id)
         seen.add(id)
@@ -467,15 +469,26 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           folds.push({ meta, fold: hit.fold })
           continue
         }
-        const { events } = await persistence.readFrom(meta.id, 0)
-        // durable 边界：日志事件是外部 JSON，foldSession 内做运行时收窄。
-        const fold = foldSession(events as { type: string; time: number; data: never }[], subscriptionProviders)
-        cache.set(id, { stamp, fold })
-        folds.push({ meta, fold })
+        // 单个损坏/不可读的会话日志（如 zstd torn frame）不能拖垮整份聚合：
+        // 跳到下一个会话，避免面板整体归零。失败会话放进 skipped 末尾告警。
+        try {
+          const { events } = await persistence.readFrom(meta.id, 0)
+          // durable 边界：日志事件是外部 JSON，foldSession 内做运行时收窄。
+          const fold = foldSession(events as { type: string; time: number; data: never }[], subscriptionProviders)
+          cache.set(id, { stamp, fold })
+          folds.push({ meta, fold })
+        } catch (error) {
+          skipped.push(id)
+          console.warn('[usage-billing] skip unreadable session', id, error)
+        }
       }
       // 已删除会话的缓存一并清除，避免内存随历史膨胀。
       for (const key of [...cache.keys()]) {
         if (!seen.has(key)) cache.delete(key)
+      }
+      // 只读路径无坏会话时无需区分：stampOf 命中或新会话，失败均已在上面跳过。
+      if (skipped.length > 0) {
+        console.warn(`[usage-billing] aggregated ${folds.length} sessions, skipped ${skipped.length} unreadable:`, skipped)
       }
 
       const total = emptyUsage()

@@ -14,6 +14,7 @@
  */
 
 import type { ExtraModelPrice, LivePrice, LivePricing } from '../pricing-shared.ts'
+import { FALLBACK_RATES } from './plan-knowledge.ts'
 
 /**
  * USD → CNY rate for display. Source: China Foreign Exchange Trade System
@@ -371,14 +372,20 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     price: { currency: 'CNY', input: 20, cacheHit: 2, output: 100 },
   },
   // 小米 MiMo (OpenAI-compatible; token plan 通道 model id 为 mimo-v2.5，
-  // 按订阅豁免计费；按量单价未公布，表内为估算价，正式定价公布后校准).
+  // 按订阅豁免计费；按量单价 2026-08 官方公布：命中缓存 / 未命中 / 输出).
   {
     key: 'mimo-v2.5',
     name: 'MiMo V2.5',
     provider: '小米',
     colorVar: 'dsw-static-green-400',
-    price: { currency: 'CNY', input: 4, cacheHit: 0.4, output: 12 },
-    estimated: true,
+    price: { currency: 'CNY', input: 1, cacheHit: 0.02, output: 2 },
+  },
+  {
+    key: 'mimo-v2.5-pro',
+    name: 'MiMo V2.5 Pro',
+    provider: '小米',
+    colorVar: 'dsw-static-green-400',
+    price: { currency: 'CNY', input: 3, cacheHit: 0.025, output: 6 },
   },
   // MiniMax (OpenAI-compatible, TokenHub 2026-08-14).
   {
@@ -570,6 +577,16 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'kimi-k3': 'kimi-k3',
 }
 
+/** 取一个计费键的实时单价（实时覆盖 > dsh-spend 官方价兜底）。 */
+function livePriceOf(key: string): LivePrice | undefined {
+  const resolved = MODEL_KEY_ALIASES[key] ?? key
+  const live = livePrices?.[resolved]
+  if (live !== undefined) return live
+  const fallback = FALLBACK_RATES.find(rate => rate.key.toLowerCase() === resolved.toLowerCase())
+  if (fallback === undefined) return undefined
+  return { input: fallback.input, cacheHit: fallback.cacheHit, output: fallback.output }
+}
+
 /** Lookup a model by its stats key; falls back to the generic `other` entry. */
 export function modelOf(key: string): ModelEntry {
   // 先按别名归并为目录键（catalog key 本身不在别名表里，原样通过）。
@@ -582,7 +599,7 @@ export function modelOf(key: string): ModelEntry {
     if (fallback !== undefined) return fallback
     throw new Error('MODEL_CATALOG must not be empty')
   })())
-  const live = livePrices?.[resolved]
+  const live = livePriceOf(resolved)
   if (live === undefined) return base
   // 实时价是路由器的美元单价（平档、无时段区分）：整表替换并走汇率换算。
   return { ...base, price: { currency: 'USD', input: live.input, cacheHit: live.cacheHit, output: live.output } }
@@ -605,13 +622,14 @@ function extraEntryOf(extra: ExtraModelPrice): ModelEntry {
 }
 
 /**
- * 模型是否可计价：内置目录或 models.dev 补充条目命中。聚合层的计价闸门
- * （目录外模型不产生费用，避免兜底档误估）。
+ * 模型是否可计价：内置目录、models.dev 补充、或 dsh-spend 官方价兜底命中。
+ * 聚合层的计价闸门（目录外模型不产生费用，避免兜底档误估）。
  */
 export function isPriced(key: string): boolean {
   const resolved = MODEL_KEY_ALIASES[key] ?? key
   if (MODEL_CATALOG.some(entry => entry.key === resolved)) return true
-  return (liveExtraModels ?? []).some(item => item.key === resolved)
+  if ((liveExtraModels ?? []).some(item => item.key === resolved)) return true
+  return FALLBACK_RATES.some(rate => rate.key.toLowerCase() === resolved.toLowerCase())
 }
 
 /**
@@ -634,9 +652,19 @@ export function catalogEntries(): readonly ModelEntry[] {
     if (builtin !== undefined) continue
     if (known.has(rawKey)) continue
     const extra = (liveExtraModels ?? []).find(item => item.key === rawKey)
+    // models.dev 补充之外，再查 dsh-spend 官方价兜底——命中则按兜底价计。
+    const fallbackLive = extra === undefined ? livePriceOf(rawKey) : undefined
     let entry: ModelEntry
     if (extra !== undefined) {
       entry = { ...extraEntryOf(extra) }
+    } else if (fallbackLive !== undefined) {
+      entry = {
+        key: rawKey,
+        name: model.name ?? model.id,
+        provider: model.provider,
+        colorVar: 'dsw-static-neutral-400',
+        price: { currency: 'USD', input: fallbackLive.input, cacheHit: fallbackLive.cacheHit, output: fallbackLive.output },
+      }
     } else {
       const aliasKey = MODEL_KEY_ALIASES[model.id] ?? model.id
       entry = {
@@ -645,7 +673,7 @@ export function catalogEntries(): readonly ModelEntry[] {
         provider: model.provider,
         colorVar: 'dsw-static-neutral-400',
         price: { currency: 'USD', input: 0, cacheHit: 0, output: 0 },
-        // 探活命中但无内置/models.dev 价：标记未收录，费率表显示「未收录」。
+        // 探活命中但无内置/models.dev/dsh-spend 价：标记未收录，费率表显示「未收录」。
         uncatalogued: true,
       }
     }

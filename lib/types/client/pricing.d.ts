@@ -169,8 +169,8 @@ export declare const MODEL_KEY_ALIASES: Readonly<Record<string, string>>;
 /** Lookup a model by its stats key; falls back to the generic `other` entry. */
 export declare function modelOf(key: string): ModelEntry;
 /**
- * 模型是否可计价：内置目录或 models.dev 补充条目命中。聚合层的计价闸门
- * （目录外模型不产生费用，避免兜底档误估）。
+ * 模型是否可计价：内置目录、models.dev 补充、或 dsh-spend 官方价兜底命中。
+ * 聚合层的计价闸门（目录外模型不产生费用，避免兜底档误估）。
  */
 export declare function isPriced(key: string): boolean;
 /**

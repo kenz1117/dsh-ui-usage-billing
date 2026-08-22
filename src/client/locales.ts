@@ -110,6 +110,9 @@ export type UsageBillingKey =
   | 'billing.tierToOff'
   | 'billing.tierAlertEnterPeak'
   | 'billing.tierAlertEnterOff'
+  | 'billing.planTypeCode'
+  | 'billing.planTypeToken'
+  | 'billing.subscriptionFeePerMonth'
 
 export const NS = 'usageBilling'
 
@@ -223,6 +226,9 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.tierToOff': '后转平价',
   'billing.tierAlertEnterPeak': '{minutes} 分钟后进入峰时（DeepSeek 高峰价 ×2），不急的调用可稍等',
   'billing.tierAlertEnterOff': '{minutes} 分钟后进入平价（价格减半）',
+  'billing.planTypeCode': '订阅制',
+  'billing.planTypeToken': '按量',
+  'billing.subscriptionFeePerMonth': '{amount}/月',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -335,4 +341,7 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.tierToOff': 'until off-peak',
   'billing.tierAlertEnterPeak': 'Peak pricing (2x) starts in {minutes} min — non-urgent calls can wait',
   'billing.tierAlertEnterOff': 'Off-peak pricing (50% off) starts in {minutes} min',
+  'billing.planTypeCode': 'Subscription',
+  'billing.planTypeToken': 'Usage',
+  'billing.subscriptionFeePerMonth': '{amount}/mo',
 }
