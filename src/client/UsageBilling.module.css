@@ -1,9 +1,9 @@
 /* Usage billing dashboard: sidebar trigger + centered modal dashboard.
-   Every color rides the --dsw-* token system (light/dark aware). */
+   Refined-tech palette: token-driven surfaces, 1px borders, no gradients. */
 
 /* ── Sidebar footer trigger ─────────────────────────────────────────── */
 
-/* Rail mode: compact icon button with a gradient badge treatment. */
+/* Rail mode: compact icon button with a subtle accent tint. */
 .railButton {
   display: flex;
   align-items: center;
@@ -12,25 +12,19 @@
   flex: none;
   width: 36px;
   height: 36px;
-  border: 1px solid color-mix(in srgb, var(--dsw-static-blue-500) 28%, var(--dsw-alias-border-l2));
-  border-radius: 10px;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--dsw-static-blue-500) 14%, var(--dsw-alias-bg-layer-1)),
-    var(--dsw-alias-bg-layer-1)
-  );
-  color: var(--dsw-static-blue-500);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   padding: 0;
-  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, color 160ms ease;
+  transition: border-color 160ms ease, color 160ms ease;
 }
 
 .railButton:hover,
 .railButton:focus-visible {
-  border-color: color-mix(in srgb, var(--dsw-static-blue-500) 48%, var(--dsw-alias-border-l2));
-  box-shadow: 0 4px 14px -6px color-mix(in srgb, var(--dsw-static-blue-500) 55%, transparent);
-  transform: translateY(-1px);
-  color: var(--dsw-static-blue-400);
+  border-color: var(--dsw-static-blue-500);
+  color: var(--dsw-static-blue-500);
   outline: none;
 }
 
@@ -40,7 +34,7 @@
   stroke-width: 2;
 }
 
-/* Wide mode: glass-gradient data card — icon badge, today total, divider, month total. */
+/* Wide mode: solid-surface data card — icon badge, today total, divider, month total. */
 .trigger {
   position: relative;
   display: flex;
@@ -51,38 +45,22 @@
   min-width: 0;
   padding: 10px 14px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--dsw-static-blue-500) 20%, var(--dsw-alias-border-l1));
-  border-radius: 12px;
-  background:
-    radial-gradient(130% 180% at 0% 0%, color-mix(in srgb, var(--dsw-static-blue-500) 12%, transparent), transparent 55%),
-    radial-gradient(150% 200% at 100% 110%, color-mix(in srgb, var(--dsw-static-blue-400) 9%, transparent), transparent 60%),
-    var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
   text-align: left;
-  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
-}
-
-/* 玻璃拟态：支持 backdrop-filter 时换半透明底 + 背景模糊。 */
-@supports ((backdrop-filter: blur(1px))) {
-  .trigger {
-    background:
-      radial-gradient(130% 180% at 0% 0%, color-mix(in srgb, var(--dsw-static-blue-500) 14%, transparent), transparent 55%),
-      radial-gradient(150% 200% at 100% 110%, color-mix(in srgb, var(--dsw-static-blue-400) 10%, transparent), transparent 60%),
-      color-mix(in srgb, var(--dsw-alias-bg-layer-1) 72%, transparent);
-    backdrop-filter: blur(12px);
-  }
+  transition: border-color 160ms ease;
 }
 
 .trigger:hover,
 .trigger:focus-visible {
-  border-color: color-mix(in srgb, var(--dsw-static-blue-500) 42%, var(--dsw-alias-border-l1));
-  box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--dsw-static-blue-500) 45%, transparent);
-  transform: translateY(-1px);
+  border-color: var(--dsw-static-blue-500);
   outline: none;
 }
 
-/* 渐变底图标徽章：计费语义入口的视觉锚点。 */
+/* 图标徽章：实色蓝底，无渐变。 */
 .triggerIcon {
   display: inline-flex;
   align-items: center;
@@ -90,10 +68,9 @@
   flex: none;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--dsw-static-blue-500), var(--dsw-static-blue-400));
+  border-radius: 6px;
+  background: var(--dsw-static-blue-500);
   color: var(--dsw-static-neutral-bluish-00);
-  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--dsw-static-blue-500) 60%, transparent);
 }
 
 .triggerIcon svg {
@@ -159,7 +136,7 @@
   width: 100%;
 }
 
-/* hover 速览卡：玻璃拟态浮层，悬停触发卡时向上浮现；不抢点击。 */
+/* hover 速览卡：实底浮层，悬停触发卡时向上浮现；不抢点击。 */
 .triggerPop {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -169,26 +146,15 @@
   flex-direction: column;
   gap: 6px;
   padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, var(--dsw-static-blue-500) 22%, var(--dsw-alias-border-l1));
-  border-radius: 12px;
-  background:
-    radial-gradient(130% 180% at 0% 0%, color-mix(in srgb, var(--dsw-static-blue-500) 12%, transparent), transparent 55%),
-    var(--dsw-alias-bg-layer-2);
-  box-shadow: 0 12px 32px -12px color-mix(in srgb, var(--dsw-alias-label-primary) 30%, transparent);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-shadow-lv2);
   opacity: 0;
   transform: translateY(4px);
   pointer-events: none;
   transition: opacity 160ms ease, transform 160ms ease;
   z-index: 10;
-}
-
-@supports ((backdrop-filter: blur(1px))) {
-  .triggerPop {
-    background:
-      radial-gradient(130% 180% at 0% 0%, color-mix(in srgb, var(--dsw-static-blue-500) 14%, transparent), transparent 55%),
-      color-mix(in srgb, var(--dsw-alias-bg-layer-2) 82%, transparent);
-    backdrop-filter: blur(14px);
-  }
 }
 
 .triggerWrap:hover .triggerPop,
@@ -232,30 +198,19 @@
 .triggerPopBar {
   flex: 1;
   border-radius: 2px;
-  background: linear-gradient(180deg, var(--dsw-static-blue-400), var(--dsw-static-blue-500));
+  background: var(--dsw-static-blue-500);
   transition: height 200ms ease;
 }
 
 /* ── Dashboard modal ────────────────────────────────────────────────── */
 
-/* 渐变描边 + 柔光阴影 + 进入动画：padding-box 内填充 layer-2，border-box
-   走蓝色系渐变（color-mix 派生自 token，明暗主题自适应）。
-   dsh-billing-modal 是稳定全局类：供下方遮罩增强选择器定位。 */
+/* 实底弹窗：1px 边框 + 阴影，无渐变描边。 */
 .dashboardModal {
   width: min(760px, calc(100vw - 48px));
   max-height: min(760px, 88vh);
-  border: 1px solid transparent;
-  background:
-    linear-gradient(var(--dsw-alias-bg-layer-2), var(--dsw-alias-bg-layer-2)) padding-box,
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--dsw-static-blue-500) 55%, transparent),
-      color-mix(in srgb, var(--dsw-static-blue-400) 22%, transparent) 45%,
-      color-mix(in srgb, var(--dsw-static-blue-500) 38%, transparent)
-    ) border-box;
-  box-shadow:
-    var(--dsw-shadow-lv3),
-    0 24px 80px -24px color-mix(in srgb, var(--dsw-static-blue-500) 35%, transparent);
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: var(--dsw-shadow-lv3);
   animation: dashboardIn 180ms ease-out;
 }
 
@@ -364,18 +319,13 @@
   outline: none;
 }
 
-/* 激活项：蓝色系渐变胶囊 + 柔光阴影。 */
+/* 激活项：实色蓝底 + 白字，无渐变。 */
 .tabButtonActive,
 .tabButtonActive:hover,
 .tabButtonActive:focus-visible {
-  background: linear-gradient(
-    135deg,
-    var(--dsw-static-blue-500),
-    color-mix(in srgb, var(--dsw-static-blue-500) 72%, var(--dsw-static-blue-400))
-  );
+  background: var(--dsw-static-blue-500);
   color: var(--dsw-static-neutral-bluish-00);
   font-weight: 600;
-  box-shadow: 0 2px 10px -3px color-mix(in srgb, var(--dsw-static-blue-500) 55%, transparent);
 }
 
 /* Tab 内容分区：切换时 140ms 淡入上移。 */
@@ -393,8 +343,7 @@
 
 /* ── Hero ───────────────────────────────────────────────────────────── */
 
-/* 渐变光晕 Hero：浅色卡叠加蓝色系径向光晕（color-mix 派生，明暗自适应），
-   本月超大主数字 + 右侧本年/今日/本月预计次统计（细分隔线）。 */
+/* 实底 Hero：1px 边框 + 实色底，无径向光晕。 */
 .hero {
   position: relative;
   display: flex;
@@ -403,12 +352,9 @@
   gap: 24px;
   padding: 20px 24px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--dsw-static-blue-500) 16%, var(--dsw-alias-border-l1));
+  border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 16px;
-  background:
-    radial-gradient(90% 150% at 6% 0%, color-mix(in srgb, var(--dsw-static-blue-500) 10%, transparent), transparent 60%),
-    radial-gradient(70% 130% at 96% 100%, color-mix(in srgb, var(--dsw-static-blue-400) 8%, transparent), transparent 55%),
-    var(--dsw-alias-bg-layer-1);
+  background: var(--dsw-alias-bg-layer-1);
 }
 
 /* 左区：本月主数字 */
@@ -426,7 +372,7 @@
   white-space: nowrap;
 }
 
-/* 本月主数字：44px 渐变文字（主色 → 蓝），ZINE 覆盖段负责还原为纯色。 */
+/* 本月主数字：44px 实色，无渐变。 */
 .heroValue {
   font-size: 44px;
   line-height: 52px;
@@ -434,15 +380,7 @@
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  background: linear-gradient(
-    120deg,
-    var(--dsw-alias-label-primary) 25%,
-    color-mix(in srgb, var(--dsw-static-blue-500) 85%, var(--dsw-alias-label-primary))
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
+  color: var(--dsw-alias-label-primary);
 }
 
 .heroMeta {
@@ -475,7 +413,7 @@
 
 .heroGaugeArc {
   fill: none;
-  stroke: url(#heroGaugeGradient);
+  stroke: var(--dsw-static-blue-500);
   stroke-width: 10;
   stroke-linecap: round;
   transition: stroke-dasharray 260ms ease;
@@ -581,28 +519,11 @@
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 14px;
   background: var(--dsw-alias-bg-layer-1);
-  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
-}
-
-/* 顶部 2px 渐变强调条：命中率瓷砖绿色系，其余蓝色系（:has 不支持时不显示，纯装饰）。 */
-.kpiTile::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--dsw-static-blue-500) 70%, transparent), transparent);
-  opacity: 0.7;
-}
-
-.kpiTile:has(.kpiGreen)::before {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--dsw-static-green-500) 70%, transparent), transparent);
+  transition: border-color 160ms ease;
 }
 
 .kpiTile:hover {
   border-color: var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-interactive-bg-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--dsw-alias-label-primary) 35%, transparent);
 }
 
 .kpiLabel {
@@ -727,8 +648,8 @@
 
 .exportButton:hover,
 .exportButton:focus-visible {
-  border-color: color-mix(in srgb, var(--dsw-static-blue-500) 40%, var(--dsw-alias-border-l1));
-  color: var(--dsw-static-blue-500);
+  border-color: var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-primary);
   outline: none;
 }
 
@@ -748,24 +669,24 @@
 }
 
 .shareSegPeak {
-  background: linear-gradient(90deg, var(--dsw-static-blue-500), var(--dsw-static-blue-400));
+  background: var(--dsw-static-blue-500);
 }
 
 .shareSegOff {
-  background: color-mix(in srgb, var(--dsw-static-blue-500) 30%, var(--dsw-alias-bg-module-platform));
+  background: color-mix(in srgb, var(--dsw-static-blue-500) 25%, var(--dsw-alias-bg-module-platform));
 }
 
 /* 费用构成三段：用户输入（蓝）/ 助手输出（绿）/ 工具结果（琥珀）。 */
 .shareSegUser {
-  background: linear-gradient(90deg, var(--dsw-static-blue-500), var(--dsw-static-blue-400));
+  background: var(--dsw-static-blue-500);
 }
 
 .shareSegAssistant {
-  background: linear-gradient(90deg, var(--dsw-static-green-500), color-mix(in srgb, var(--dsw-static-green-500) 70%, var(--dsw-static-blue-400)));
+  background: var(--dsw-static-green-500);
 }
 
 .shareSegTool {
-  background: color-mix(in srgb, var(--dsw-static-amber-500) 80%, var(--dsw-alias-bg-module-platform));
+  background: var(--dsw-static-amber-500);
 }
 
 .shareLegend {
@@ -891,8 +812,8 @@
 }
 
 .switchOn {
-  border-color: var(--dsw-static-blue-500);
-  background: var(--dsw-static-blue-500);
+  border-color: var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-label-primary);
 }
 
 .switchKnob {
@@ -981,11 +902,11 @@
 
 .chartBar {
   fill: var(--dsw-static-blue-500);
-  opacity: 0.35;
+  opacity: 0.7;
 }
 
 .chartBar:hover {
-  opacity: 0.6;
+  opacity: 1;
 }
 
 /* Stacked per-model segment: fill rides each model's brand color inline. */
@@ -995,7 +916,7 @@
 }
 
 .chartStack:hover {
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 .chartLine {
@@ -1014,7 +935,7 @@
 .chartDot {
   fill: var(--dsw-static-neutral-bluish-00);
   stroke: var(--dsw-static-blue-500);
-  stroke-width: 2.5;
+  stroke-width: 2;
 }
 
 .chartTooltip {
@@ -1024,9 +945,9 @@
   z-index: 2;
   padding: 8px 10px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-3);
-  box-shadow: var(--dsw-shadow-lv2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: none;
   white-space: nowrap;
 }
 
@@ -1131,9 +1052,11 @@
 .modelTable thead th,
 .pricingTable thead th {
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--dsw-alias-label-tertiary);
-  background: var(--dsw-alias-bg-module-platform);
+  background: transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .modelTable tbody tr,
@@ -1143,7 +1066,7 @@
 
 .modelTable tbody tr:hover,
 .pricingTable tbody tr:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: transparent;
 }
 
 .numCol {
@@ -1152,7 +1075,7 @@
 }
 
 .costCol {
-  color: var(--dsw-static-blue-500);
+  color: var(--dsw-alias-label-primary);
   font-weight: 600;
 }
 
@@ -1171,7 +1094,6 @@
   height: 9px;
   flex: none;
   border-radius: 50%;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-bg-layer-1) 60%, transparent);
 }
 
 .modelName {
@@ -1205,7 +1127,7 @@
 
 .pricingToggle:hover .panelTitle,
 .pricingToggle:focus-visible .panelTitle {
-  color: var(--dsw-static-blue-500);
+  color: var(--dsw-alias-label-primary);
 }
 
 /* 汇率来源徽标：实时（绿）/ 内置（中性灰） */
@@ -1224,12 +1146,12 @@
 
 .rateBadgeLive {
   color: var(--dsw-static-green-500);
-  background: color-mix(in srgb, var(--dsw-static-green-500) 10%, transparent);
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 .rateBadgeBuiltin {
   color: var(--dsw-alias-label-tertiary);
-  background: var(--dsw-alias-bg-module-platform);
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 .pricingToggleText {
@@ -1307,12 +1229,10 @@
 
 .healthOk {
   background: var(--dsw-static-green-500);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-static-green-500) 18%, transparent);
 }
 
 .healthBad {
   background: var(--dsw-static-red-500);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-static-red-500) 18%, transparent);
 }
 
 .healthIdle {
@@ -1339,12 +1259,12 @@
 
 .healthBadgeOk {
   color: var(--dsw-static-green-500);
-  background: color-mix(in srgb, var(--dsw-static-green-500) 10%, transparent);
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 .healthBadgeBad {
   color: var(--dsw-static-red-500);
-  background: color-mix(in srgb, var(--dsw-static-red-500) 10%, transparent);
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 .planTag {
@@ -1356,7 +1276,7 @@
   line-height: 17px;
   font-weight: 500;
   color: var(--dsw-static-green-500);
-  background: color-mix(in srgb, var(--dsw-static-green-500) 12%, transparent);
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 /* ── 未收录模型标签 ─────────────────────────────────────────────────── */
@@ -1372,7 +1292,7 @@
   font-weight: 600;
   vertical-align: 1px;
   color: var(--dsw-static-amber-500);
-  background: color-mix(in srgb, var(--dsw-static-amber-500) 12%, transparent);
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 /* 估算价标记：厂商未公布官方按量单价，用量青色系区分于「未收录」的琥珀色。 */
@@ -1386,7 +1306,7 @@
   font-weight: 600;
   vertical-align: 1px;
   color: var(--dsw-static-blue-500);
-  background: color-mix(in srgb, var(--dsw-static-blue-500) 12%, transparent);
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 /* ── 即时代费用条（composer dock）──────────────────────────────────── */
@@ -1628,16 +1548,16 @@
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border: 1px solid var(--dsw-alias-border-muted, #3a4250);
+  border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 6px;
-  background: var(--dsw-alias-bg-layer-2, #232a33);
+  background: var(--dsw-alias-bg-layer-2);
   margin-right: 8px;
 }
 
 .currencyButton {
   border: 0;
   background: transparent;
-  color: var(--dsw-alias-text-secondary, #9aa5b1);
+  color: var(--dsw-alias-label-secondary);
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
@@ -1647,8 +1567,8 @@
 }
 
 .currencyButtonActive {
-  background: var(--dsw-alias-accent-muted, #2f6fed);
-  color: #fff;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
 }
 
 /* ── 订阅套餐额度 ──────────────────────────────────────────────────── */
@@ -1661,10 +1581,10 @@
 }
 
 .subscriptionCard {
-  border: 1px solid var(--dsw-alias-border-muted, #3a4250);
+  border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 10px;
   padding: 12px 14px;
-  background: var(--dsw-alias-bg-layer-2, #232a33);
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 .subscriptionHead {
@@ -1682,7 +1602,7 @@
 
 .subscriptionPlan {
   font-size: 11px;
-  color: var(--dsw-alias-text-secondary, #9aa5b1);
+  color: var(--dsw-alias-label-secondary);
 }
 
 /* plan 类型徽标（订阅制/按量）：与厂商组徽标同款圆角胶囊。 */
@@ -1692,12 +1612,12 @@
   border-radius: 999px;
   font-weight: 500;
   color: var(--dsw-alias-label-secondary);
-  background: color-mix(in srgb, var(--dsw-alias-label-secondary) 12%, transparent);
+  background: var(--dsw-alias-bg-layer-3);
 }
 
 .subscriptionStatus {
   font-size: 11px;
-  color: var(--dsw-alias-warning, #e0a63c);
+  color: var(--dsw-alias-label-secondary);
   margin-bottom: 6px;
 }
 
@@ -1711,14 +1631,14 @@
 
 .subscriptionWindowLabel {
   flex: 0 0 44px;
-  color: var(--dsw-alias-text-secondary, #9aa5b1);
+  color: var(--dsw-alias-label-secondary);
 }
 
 .subscriptionTrack {
   flex: 1;
   height: 5px;
   border-radius: 3px;
-  background: var(--dsw-alias-bg-layer-3, #1a2028);
+  background: var(--dsw-alias-bg-layer-3);
   overflow: hidden;
 }
 
@@ -1726,7 +1646,7 @@
   display: block;
   height: 100%;
   border-radius: 3px;
-  background: var(--dsw-alias-accent, #3b82f6);
+  background: var(--dsw-static-blue-500);
   transition: width 200ms ease;
 }
 
@@ -1756,7 +1676,7 @@
 
 .subscriptionReset {
   flex: 0 0 auto;
-  color: var(--dsw-alias-text-secondary, #9aa5b1);
+  color: var(--dsw-alias-label-secondary);
 }
 
 /* ── 厂商计费与订阅（按厂商聚合） ──────────────────────────────────── */
@@ -1814,7 +1734,7 @@
   line-height: 17px;
   font-weight: 500;
   color: var(--dsw-static-green-500);
-  background: color-mix(in srgb, var(--dsw-static-green-500) 12%, transparent);
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 .providerGroupBalance {
@@ -1842,8 +1762,8 @@
   border-radius: 999px;
   font-size: 10px;
   font-weight: 800;
-  color: #fff;
-  background: #ef4444;
+  color: var(--dsw-static-neutral-bluish-00);
+  background: var(--dsw-static-red-500);
 }
 
 .rounds {
@@ -1874,7 +1794,7 @@
   line-height: 1;
   text-align: center;
   margin-bottom: 2px;
-  color: var(--dsw-alias-text-secondary, #9aa5b1);
+  color: var(--dsw-alias-label-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1893,7 +1813,7 @@
   width: 100%;
   min-height: 2px;
   border-radius: 2px 2px 0 0;
-  background: var(--dsw-alias-accent, #3b82f6);
+  background: var(--dsw-static-blue-500);
   position: relative;
 }
 
@@ -1901,9 +1821,7 @@
   width: 100%;
   min-height: 2px;
   border-radius: 2px 2px 0 0;
-  background: #ef4444;
-  outline: 1.5px solid #ef4444;
-  outline-offset: 1px;
+  background: var(--dsw-static-red-500);
   position: relative;
 }
 
@@ -1914,8 +1832,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #ef4444;
-  box-shadow: 0 0 4px #ef4444;
+  background: var(--dsw-static-red-500);
 }
 
 .roundsAxis {
@@ -1923,13 +1840,13 @@
   justify-content: space-between;
   margin-top: 6px;
   font-size: 10px;
-  color: var(--dsw-alias-text-secondary, #9aa5b1);
+  color: var(--dsw-alias-label-secondary);
 }
 
 .roundsEmpty {
   margin-top: 10px;
   font-size: 12px;
-  color: var(--dsw-alias-text-secondary, #9aa5b1);
+  color: var(--dsw-alias-label-secondary);
 }
 
 /* ── 用量热力图（月度活跃地图：每天一格大圆角卡片，周日开头 7 列） ──── */
@@ -1954,7 +1871,7 @@
   height: 30px;
   border-radius: 8px;
   background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-dimmed, #6b7480);
+  color: var(--dsw-alias-label-dimmed);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
@@ -1982,7 +1899,7 @@
 
 .heatmapCell[data-level='3'],
 .heatmapCell[data-level='4'] {
-  color: var(--dsw-static-neutral-bluish-00, #ffffff);
+  color: var(--dsw-static-neutral-bluish-00);
 }
 
 .heatmapFooter {
@@ -1991,7 +1908,7 @@
   gap: 8px;
   margin-top: 10px;
   font-size: 10px;
-  color: var(--dsw-alias-text-secondary, #9aa5b1);
+  color: var(--dsw-alias-label-secondary);
 }
 
 .heatmapLegend {
