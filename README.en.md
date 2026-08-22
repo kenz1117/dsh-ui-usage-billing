@@ -28,30 +28,29 @@
 
 - **Sidebar entry**: a dashboard-style trigger card above the Settings button — month cost as the headline number (monospace) with a 7-day sparkline mini-trend, second line "Today / This week"; collapses to an icon button; hover reveals a quick-look card.
 - **Billing dashboard (tabbed)**: Overview / Trends / Providers / Stats / Rates / Settings — hero figures + YoY/DoD + month projection + KPI×4 + heatmap; 7/30-day trend; provider billing & subscriptions; export / cost breakdown / workspaces / session detail; model rate table; budget & peak alerts. Restrained tones, `--dsw-*` tokens, dark/light adaptive.
+
+  ![Overview: month cost hero, budget progress, KPIs and usage heatmap](screenshots/1.png)
 - **Live cost bar**: below the composer, persistent "This turn ¥x · Session ¥y" plus the peak/off-peak tier & switch countdown and subscription low-quota chips (≤20% appear, ≤10% red).
 - **Peak/off-peak switch alert**: a popover before a tier switch plus an optional system notification (lead time / position / mode / preview configurable), distinguishing "About to enter peak ×2 — can wait" / "About to enter off-peak, price halves".
 - **Live-priced rate table**: models.dev fetched pricing + live-model alignment — the models actually configured are all included; peak/off-peak split (weekdays 9-12 / 14-18 peak ×2, weekends off-peak all day) plus a live USD→CNY rate, refreshed every 6 hours.
+
+  ![Rates: model rate table (peak/off-peak split and live rate)](screenshots/5.png)
 - **Official vs third-party buckets**: the detail cost column is split by official DeepSeek direct / third-party relay ("official x / third y" when mixed); the Stats tab has an official/third-party summary card.
 - **Monthly budget + tier alerts**: a budget bar (on/off / amount / progress, ≥80% amber, over red pulse); notifies once per tier crossing 50/80/100%; a balance below the threshold (in CNY) alerts once a day.
 - **Subscription quota**: detects subscription providers in `llm-pi-ai` (Kimi / Z.ai / OpenCode Go / MiniMax / OpenRouter / Xiaomi / Volcano…); those with a quota API show remaining % and reset time live, exhausted in red, no API shown as "not wired"; subscription-channel model cost is 0.
+
+  ![Providers: provider billing & subscriptions (balance, plan quota, model usage)](screenshots/3.png)
 - **Custom provider balance**: configure any HTTP endpoint for balance (`extract` supports constant / dot-path / add-subtract / divide, header `{{ENV}}` via the credentials seam); DeepSeek / Kimi / StepFun / SiliconFlow have built-in official balances, and the balance column estimates "≈N days" from the 7-day daily burn.
 - **Real usage aggregation**: the server aggregates from session logs on demand (incremental cache recomputes only written sessions), with per-session corruption tolerance and snapshot fallback; the `usage_stats` tool lets the model query today / month spend.
 - **Multi-language + dual currency**: the ¥/$ switch is bilingual (USD→English, CNY→Chinese, this plugin only); the rate table converts to the selected currency.
 - **Model health + uncatalogued annotation**: provider connection dots (green / red / grey); a model id not in the catalog is marked "uncatalogued" priced at the fallback, with provider inferred (e.g. `mi-mimo-2.5` → Xiaomi); estimated-price models are marked "estimated".
 - **Session detail + cost spikes + heatmap**: sessions sorted by cost (title / project / calls / cost / last active); per-turn cost bars (last 40 turns, amount at bar top, peak/off-peak background bands, >2× spike flagged with attribution); a monthly calendar heatmap (5-color scale, hover detail).
+
+  ![Trends: daily cost trend, per-turn costs and peak/off-peak share](screenshots/2.png)
+
 - **Export + offline self-contained**: the Stats tab exports daily / per-session CSV and full JSON; no chart library, no external CDN, pure design tokens.
 
-## Screenshots
-
-![Overview: month cost hero, budget progress, KPIs and usage heatmap](screenshots/1.png)
-
-![Trends: daily cost trend, per-turn costs and peak/off-peak share](screenshots/2.png)
-
-![Providers: provider billing & subscriptions (balance, plan quota, model usage)](screenshots/3.png)
-
-![Stats: export, cost breakdown, workspaces and session detail](screenshots/4.png)
-
-![Rates: model rate table (peak/off-peak split and live rate)](screenshots/5.png)
+  ![Stats: export, cost breakdown, workspaces and session detail](screenshots/4.png)
 
 ## Quick start
 
