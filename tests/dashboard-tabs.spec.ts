@@ -9,8 +9,8 @@ import { DASHBOARD_TABS } from '../src/client/UsageBilling.tsx'
 import { en, zh } from '../src/client/locales.ts'
 
 describe('DASHBOARD_TABS', () => {
-  it('defines the five sections in display order', () => {
-    expect(DASHBOARD_TABS.map(tab => tab.id)).toEqual(['overview', 'trends', 'providers', 'details', 'pricing'])
+  it('defines the six sections in display order', () => {
+    expect(DASHBOARD_TABS.map(tab => tab.id)).toEqual(['overview', 'trends', 'providers', 'details', 'pricing', 'settings'])
   })
 
   it('has zh and en copy for every tab label', () => {

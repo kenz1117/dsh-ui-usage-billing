@@ -23,12 +23,14 @@ import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv } from './expo
 import type { createBillingBudgetStore } from './budget-store.ts'
 import {
   applyLiveCatalogModels, applyLivePricing, catalogEntries, cnyToUsd, computeCost, convertUnitPrice, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
-  modelOf, resolveToken, tierAt, upcomingTierSwitch, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
+  modelOf, resolveToken, tierAt, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
 import { localizeProviderName } from './provider-display.ts'
+import { computePeakAlert, loadPeakAlertConfig, savePeakAlertConfig, type PeakAlertConfig, type PeakAlertHit } from './peak-alert.ts'
+import { PeakAlertBanner } from './PeakAlertBanner.tsx'
 import css from './UsageBilling.module.css'
 
 /** Model-connectivity health reported by the host model directory probe. */
@@ -53,12 +55,12 @@ export interface ModelHealth {
 const SESSION_DISPLAY_LIMIT = 20
 
 /** 仪表盘分区 Tab id。 */
-export type DashboardTab = 'overview' | 'trends' | 'providers' | 'details' | 'pricing'
+export type DashboardTab = 'overview' | 'trends' | 'providers' | 'details' | 'pricing' | 'settings'
 
 /**
- * Tab 定义（顺序即渲染顺序）：概览=主数字/预算/KPI/热力图，趋势=趋势图/每轮费用，
- * 明细=厂商计费与订阅，统计=工作区/会话明细，费率=模型单价表。导出供测试断言
- * tab 与文案 key 对齐、decor 锚点落在正确分区。
+ * Tab 定义（顺序即渲染顺序）：概览=主数字/KPI/热力图，趋势=趋势图/每轮费用，
+ * 明细=厂商计费与订阅，统计=工作区/会话明细，费率=模型单价表，设置=预算与峰谷提醒。
+ * 导出供测试断言 tab 与文案 key 对齐、decor 锚点落在正确分区。
  */
 export const DASHBOARD_TABS: readonly { id: DashboardTab; labelKey: UsageBillingKey }[] = [
   { id: 'overview', labelKey: 'billing.tabOverview' },
@@ -66,6 +68,7 @@ export const DASHBOARD_TABS: readonly { id: DashboardTab; labelKey: UsageBilling
   { id: 'providers', labelKey: 'billing.tabProviders' },
   { id: 'details', labelKey: 'billing.tabDetails' },
   { id: 'pricing', labelKey: 'billing.tabPricing' },
+  { id: 'settings', labelKey: 'billing.tabSettings' },
 ]
 
 /** 项目名取 cwd 的末级目录；无 cwd 时由调用方回退为 em dash。 */
@@ -673,7 +676,7 @@ function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; mo
           <span className={css.triggerPopValue}>{formatMoney(monthCost)}</span>
         </span>
         <span className={css.triggerPopBars}>
-          {sparkHeights.map((h, index) => (
+          {sparkHeights.map((_h, index) => (
             <span
               key={days[index]?.date ?? String(index)}
               className={css.triggerPopBar}
@@ -709,13 +712,19 @@ interface BillingDashboardProps {
   budgetAmount: number
   onToggleBudget: () => void
   onBudgetAmount: (value: number) => void
+  /** 峰谷提醒偏好（由父组件从 localStorage 读下传）。 */
+  peakConfig: PeakAlertConfig
+  /** 峰谷提醒偏好更新（父组件持久化）。 */
+  onPeakConfig: (config: PeakAlertConfig) => void
+  /** 预览峰谷提醒浮层（不触真实去重）。 */
+  onPreviewPeak: () => void
 }
 
 /**
  * The centered billing dashboard modal.
  * @param props - stats, locale function, close handler, model health, balances, renderSlot.
  */
-function BillingDashboard({ stats, t, onClose, health, balances, quotas, currency, onCurrency, turns, renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount }: BillingDashboardProps): React.ReactNode {
+function BillingDashboard({ stats, t, onClose, health, balances, quotas, currency, onCurrency, turns, renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount, peakConfig, onPeakConfig, onPreviewPeak }: BillingDashboardProps): React.ReactNode {
   const { total, byModel, byDay } = stats
   // 分区 Tab：默认概览；各区块已进入二级 Tab，全部默认展开（无折叠交互）。
   const [tab, setTab] = useState<DashboardTab>('overview')
@@ -925,7 +934,6 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
     let thirdCalls = 0
     for (const row of modelRows) {
       const official = row.officialCost
-      const actual = row.actual ?? 0
       if (official > 0) officialCost += official
       officialCalls += row.officialCalls
       thirdCalls += Math.max(0, row.calls - row.officialCalls)
@@ -1167,6 +1175,52 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
             </div>
           </section>
 
+          {/* KPI grid */}
+          <section className={css.kpiGrid} data-testid="billing-kpi-grid">
+            <div className={css.kpiTile} data-testid="billing-kpi-tile">
+              <span className={css.kpiLabel}>{t('billing.cacheHitRate')}</span>
+              <span className={clsx(css.kpiValue, css.kpiGreen)}>{formatPercent(cacheHitRate)}</span>
+              <span className={css.kpiDetail}>
+                {formatTokens(total.cacheHit)} / {formatTokens(total.cacheHit + total.cacheMiss)}
+              </span>
+            </div>
+            <div className={css.kpiTile}>
+              <span className={css.kpiLabel}>{t('billing.tokens')}</span>
+              <span className={css.kpiValue}>{formatTokens(total.input + total.output)}</span>
+              <span className={css.kpiDetail}>
+                {t('billing.inputTokens')} {formatTokens(total.input)} · {t('billing.outputTokens')} {formatTokens(total.output)}
+              </span>
+            </div>
+            <div className={css.kpiTile}>
+              <span className={css.kpiLabel}>{t('billing.avgCost')}</span>
+              <span className={css.kpiValue}>{money(avgPerCall)}</span>
+              <span className={css.kpiDetail}>{t('billing.calls')} {total.calls.toLocaleString()}</span>
+            </div>
+            <div className={css.kpiTile}>
+              <span className={css.kpiLabel}>{t('billing.calls')}</span>
+              <span className={css.kpiValue}>{total.calls.toLocaleString()}</span>
+              <span className={css.kpiDetail}>{modelRows.length} {t('billing.models')}</span>
+            </div>
+          </section>
+
+          {/* 用量热力图：概览常驻区块（月历信息密度高，进入二级 Tab 后不再折叠）。 */}
+          <section className={css.panel} data-testid="billing-panel-heatmap">
+            <div className={css.panelHead}>
+              <h3 className={css.panelTitle}>
+                {t('billing.heatmap')}
+              </h3>
+            </div>
+            <UsageHeatmap days={heatmapDays} currency={currency} t={t} />
+          </section>
+          </div>
+          )}
+
+          {tab === 'settings' && (
+          <div className={css.tabPanel} data-testid="billing-tab-panel-settings">
+          <div className={css.settingsHead}>
+            <h3 className={css.settingsTitle}>{t('billing.settingsHead')}</h3>
+            <p className={css.settingsHint}>{t('billing.settingsHint')}</p>
+          </div>
           {/* 月度预算：开关控制显隐（持久化到 localStorage），金额可编辑，宿主 monthlyBudget 作为默认值；超支进度条转红。 */}
           <section className={css.budget} data-testid="billing-budget">
             <div className={css.budgetHead}>
@@ -1211,6 +1265,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                 </button>
               </span>
             </div>
+            <p className={css.budgetHint}>{t('billing.budgetHint')}</p>
             {budgetEnabled && budgetAmount > 0 && (() => {
               const pct = (monthCost / budgetAmount) * 100
               return (
@@ -1225,42 +1280,80 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
             })()}
           </section>
 
-          {/* KPI grid */}
-          <section className={css.kpiGrid} data-testid="billing-kpi-grid">
-            <div className={css.kpiTile} data-testid="billing-kpi-tile">
-              <span className={css.kpiLabel}>{t('billing.cacheHitRate')}</span>
-              <span className={clsx(css.kpiValue, css.kpiGreen)}>{formatPercent(cacheHitRate)}</span>
-              <span className={css.kpiDetail}>
-                {formatTokens(total.cacheHit)} / {formatTokens(total.cacheHit + total.cacheMiss)}
-              </span>
+          {/* 峰谷切换提醒：开关 + 提前量/位置/模式/系统通知 + 预览（偏好持久化到 localStorage）。 */}
+          <section className={css.peakAlertPanel} data-testid="billing-peak-alert-settings">
+            <div className={css.peakAlertPanelHead}>
+              <span className={css.peakAlertPanelLabel}>{t('billing.peakAlert')}</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={peakConfig.enabled}
+                aria-label={t('billing.peakAlert')}
+                data-testid="billing-peak-alert-toggle"
+                className={clsx(css.switch, peakConfig.enabled && css.switchOn)}
+                onClick={() => { onPeakConfig({ ...peakConfig, enabled: !peakConfig.enabled }) }}
+              >
+                <span className={css.switchKnob} />
+              </button>
             </div>
-            <div className={css.kpiTile}>
-              <span className={css.kpiLabel}>{t('billing.tokens')}</span>
-              <span className={css.kpiValue}>{formatTokens(total.input + total.output)}</span>
-              <span className={css.kpiDetail}>
-                {t('billing.inputTokens')} {formatTokens(total.input)} · {t('billing.outputTokens')} {formatTokens(total.output)}
-              </span>
-            </div>
-            <div className={css.kpiTile}>
-              <span className={css.kpiLabel}>{t('billing.avgCost')}</span>
-              <span className={css.kpiValue}>{money(avgPerCall)}</span>
-              <span className={css.kpiDetail}>{t('billing.calls')} {total.calls.toLocaleString()}</span>
-            </div>
-            <div className={css.kpiTile}>
-              <span className={css.kpiLabel}>{t('billing.calls')}</span>
-              <span className={css.kpiValue}>{total.calls.toLocaleString()}</span>
-              <span className={css.kpiDetail}>{modelRows.length} {t('billing.models')}</span>
-            </div>
-          </section>
-
-          {/* 用量热力图：概览常驻区块（月历信息密度高，进入二级 Tab 后不再折叠）。 */}
-          <section className={css.panel} data-testid="billing-panel-heatmap">
-            <div className={css.panelHead}>
-              <h3 className={css.panelTitle}>
-                {t('billing.heatmap')}
-              </h3>
-            </div>
-            <UsageHeatmap days={heatmapDays} currency={currency} t={t} />
+            <p className={css.peakAlertHint}>{t('billing.peakAlertHint')}</p>
+            {peakConfig.enabled && (
+              <div className={css.peakAlertPanelBody}>
+                <label className={css.peakAlertField}>
+                  <span>{t('billing.peakAlertLeadMin')}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    step={1}
+                    value={peakConfig.leadMin}
+                    className={css.peakAlertNum}
+                    aria-label={t('billing.peakAlertLeadMin')}
+                    onChange={(e) => {
+                      const v = Number(e.target.valueAsNumber)
+                      onPeakConfig({ ...peakConfig, leadMin: Number.isFinite(v) ? Math.min(30, Math.max(1, Math.round(v))) : peakConfig.leadMin })
+                    }}
+                  />
+                </label>
+                <label className={css.peakAlertField}>
+                  <span>{t('billing.peakAlertPosCorner')}</span>
+                  <select
+                    value={peakConfig.position}
+                    className={css.peakAlertSelect}
+                    onChange={(e) => { onPeakConfig({ ...peakConfig, position: e.target.value === 'center' ? 'center' : 'bottom-right' }) }}
+                  >
+                    <option value="bottom-right">{t('billing.peakAlertPosCorner')}</option>
+                    <option value="center">{t('billing.peakAlertPosCenter')}</option>
+                  </select>
+                </label>
+                <label className={css.peakAlertField}>
+                  <span>{t('billing.peakAlert')}</span>
+                  <select
+                    value={peakConfig.mode}
+                    className={css.peakAlertSelect}
+                    onChange={(e) => {
+                      const m = e.target.value
+                      onPeakConfig({ ...peakConfig, mode: m === 'peak' || m === 'offPeak' ? m : 'both' })
+                    }}
+                  >
+                    <option value="both">{t('billing.peakAlertModeBoth')}</option>
+                    <option value="peak">{t('billing.peakAlertModePeak')}</option>
+                    <option value="offPeak">{t('billing.peakAlertModeOff')}</option>
+                  </select>
+                </label>
+                <label className={css.peakAlertCheck}>
+                  <input
+                    type="checkbox"
+                    checked={peakConfig.webNotify}
+                    onChange={(e) => { onPeakConfig({ ...peakConfig, webNotify: e.target.checked }) }}
+                  />
+                  <span>{t('billing.peakAlertWebNotify')}</span>
+                </label>
+                <button type="button" className={css.peakAlertPreview} onClick={onPreviewPeak}>
+                  {t('billing.peakAlertPreview')}
+                </button>
+              </div>
+            )}
           </section>
           </div>
           )}
@@ -1741,6 +1834,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                 </span>
               </span>
             </div>
+            <p className={css.pricingTip}>{t('billing.pricingTip')}</p>
             <div className={css.tableScroll}>
                 <table className={css.pricingTable}>
                   <thead>
@@ -1930,6 +2024,18 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const budgetAmount = useStore(s => s.amount)
   const tierAlertDays = useStore(s => s.tierAlertDays)
   const lastTierSwitchAt = useStore(s => s.lastTierSwitchAt)
+  // 峰谷提醒偏好：localStorage 持久化；「同一切换点只提醒一次」由 budget store 去重。
+  const [peakConfig, setPeakConfig] = useState<PeakAlertConfig>(() => loadPeakAlertConfig())
+  const [peakHit, setPeakHit] = useState<PeakAlertHit | null>(null)
+  const [peakPreview, setPeakPreview] = useState<PeakAlertHit | null>(null)
+  const updatePeakConfig = useCallback((config: PeakAlertConfig) => {
+    setPeakConfig(config)
+    savePeakAlertConfig(config)
+  }, [])
+  const previewPeak = useCallback(() => {
+    // 预览：3 分钟后进入与当前相反的档位（不触真实去重，关闭即消失）。
+    setPeakPreview({ entering: tierAt(Date.now()) === 'peak' ? 'offPeak' : 'peak', atMs: Date.now() + 3 * 60_000 })
+  }, [])
   const effectiveBudget = budgetAmount > 0 ? budgetAmount : (stats.budget ?? 0)
   const toggleBudget = useCallback(() => {
     const next = !budgetEnabled
@@ -1965,28 +2071,27 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     }
   }, [budgetEnabled, effectiveBudget, monthCost, tierAlertDays, actions, t])
 
-  // 峰/谷切换前提醒：距进入下一档不足 2 分钟且该切换点未提醒过时，桌面通知
-  // 一次（Notification 授权后生效；未授权/发送失败静默跳过，LiveCostBar 的
-  // 倒计时始终可见兜底）。处于平价时段进入峰时提醒「可稍等」，峰时进入平价
-  // 提醒「价格减半」。
+  // 峰/谷切换前提醒（增强版）：距进入下一档不足提前量且该切换点未提醒过时，
+  // 弹可视化浮层 +（可选的）系统通知。`lastTierSwitchAt` 去重跨重启生效，
+  // 与旧的系统通知共用同一份去重，避免一条切换提醒弹两次。
   useEffect(() => {
-    const leadMs = 2 * 60_000
-    const now = Date.now()
-    const upcoming = upcomingTierSwitch(now, leadMs)
+    const upcoming = computePeakAlert(Date.now(), peakConfig, lastTierSwitchAt)
     if (upcoming === null) return
-    if (upcoming.atMs === lastTierSwitchAt) return
     actions.markTierSwitchAlerted(upcoming.atMs)
+    setPeakHit(upcoming)
+    if (!peakConfig.webNotify) return
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
-    const minutes = Math.max(1, Math.round((upcoming.atMs - now) / 60_000))
+    const minutes = Math.max(1, Math.round((upcoming.atMs - Date.now()) / 60_000))
+    const title = upcoming.entering === 'peak' ? t('billing.peakAlertTitlePeak') : t('billing.peakAlertTitleOff')
     const body = upcoming.entering === 'peak'
       ? t('billing.tierAlertEnterPeak').replace('{minutes}', String(minutes))
       : t('billing.tierAlertEnterOff').replace('{minutes}', String(minutes))
     try {
-      new Notification(t('billing.budget'), { body })
+      new Notification(title, { body })
     } catch {
-      // 平台拒绝构造通知：静默跳过，LiveCostBar 倒计时兜底。
+      // 平台拒绝构造通知：静默跳过，浮层始终可见。
     }
-  }, [lastTierSwitchAt, actions, t])
+  }, [lastTierSwitchAt, peakConfig, actions, t])
 
   // 余额不足告警：任一提供方余额低于阈值（折算人民币）时每天提醒一次；
   // 与预算开关无关——余额是硬性约束，无论是否开启预算都要提醒。
@@ -2065,6 +2170,17 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           budgetAmount={effectiveBudget}
           onToggleBudget={toggleBudget}
           onBudgetAmount={actions.setAmount}
+          peakConfig={peakConfig}
+          onPeakConfig={updatePeakConfig}
+          onPreviewPeak={previewPeak}
+        />
+      )}
+      {(peakHit !== null || peakPreview !== null) && (
+        <PeakAlertBanner
+          hit={(peakHit ?? peakPreview)!}
+          config={peakConfig}
+          t={t}
+          onDismiss={() => { setPeakHit(null); setPeakPreview(null) }}
         />
       )}
     </>

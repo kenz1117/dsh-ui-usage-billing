@@ -11,8 +11,8 @@
  */
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence';
 import type { TokenUsage } from '@deepseek-ai/dsh-llm';
-import { MODEL_KEY_ALIASES } from './client/pricing.ts';
-export { MODEL_KEY_ALIASES };
+import { MODEL_KEY_ALIASES, resolveCatalogKey } from './client/pricing.ts';
+export { MODEL_KEY_ALIASES, resolveCatalogKey };
 /**
  * 走订阅套餐（coding / token plan / opencode 订阅）的 provider id：这些通道的
  * 调用按套餐计费，不再按 token 计费，因此即使模型 id 与计费表撞名也一律豁免。
@@ -21,10 +21,18 @@ export { MODEL_KEY_ALIASES };
  * 中覆盖。
  */
 export declare const DEFAULT_SUBSCRIPTION_PROVIDERS: readonly string[];
+/**
+ * 官方渠道 provider id 判定：`deepseek` 前缀（DeepSeek 官方直连）视为官方，
+ * 其余 provider（第三方中转/代理）视为「三方」。用于「官方 vs 三方」token、
+ * 调用与费用分桶展示；部署可由配置覆盖（见 {@link AggregateOptions}）。
+ */
+export declare function isOfficialProvider(provider: string): boolean;
 /** Aggregation tuning options. */
 export interface AggregateOptions {
     /** 订阅制 provider id 列表；默认 {@link DEFAULT_SUBSCRIPTION_PROVIDERS}。 */
     subscriptionProviders?: readonly string[];
+    /** 官方渠道 provider id 列表；默认按 {@link isOfficialProvider} 判定（DeepSeek 官方直连）。 */
+    officialProviderIds?: readonly string[];
 }
 /** One model's aggregated usage plus estimated cost in CNY. */
 export interface ModelUsage {
@@ -36,6 +44,10 @@ export interface ModelUsage {
     cost: number;
     /** 该模型本次统计的所有调用是否都走订阅通道（coding/token plan）；混合通道不置位。 */
     plan?: boolean;
+    /** 走官方渠道的调用数（DeepSeek 官方直连；其余为三方）。 */
+    officialCalls: number;
+    /** 走官方渠道的费用（CNY）；三方费用 = cost - officialCost。 */
+    officialCost: number;
 }
 /** Zeroed usage accumulator. */
 export declare function emptyUsage(): ModelUsage;
@@ -48,8 +60,9 @@ export declare function emptyUsage(): ModelUsage;
  * @param key - the billing-catalog key this call belongs to.
  * @param subscription - whether the call went through a subscription plan; such calls never cost money.
  * @param timeMs - the call's wall-clock time (epoch ms); drives peak/off-peak pricing.
+ * @param official - whether the call went through the official DeepSeek channel (vs a third-party relay).
  */
-export declare function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number): void;
+export declare function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number, official?: boolean): void;
 /** Local-time date stamp (the host runs in the user's timezone). */
 export declare function dayStamp(time: number): string;
 /** cwd 未知时工作区聚合的占位名（UI 显示 em dash，保持语言无关）。 */
@@ -180,13 +193,15 @@ export declare function messageTextLength(message: unknown): number;
  * 并按轮次折叠每轮费用明细（turn/start → turn/end；调用按 (turn) 归组）。
  * @param events - the session's persisted events in log order.
  * @param subscriptionProviders - provider ids billed through subscription plans.
+ * @param officialProviderIds - provider ids treated as the official DeepSeek channel
+ *   (default: any `deepseek`-prefixed id). Others count as third-party.
  * @returns the per-session fold (cached by the incremental aggregator).
  */
 export declare function foldSession(events: readonly {
     type: string;
     time: number;
     data: never;
-}[], subscriptionProviders: ReadonlySet<string>): SessionFold;
+}[], subscriptionProviders: ReadonlySet<string>, officialProviderIds?: ReadonlySet<string>): SessionFold;
 /**
  * 增量聚合器：按会话缓存折叠结果，用日志文件的 mtime+size 作失效键——
  * 日志没动的会话直接复用，只有写过的会话重新折叠；整份文档另有短 TTL

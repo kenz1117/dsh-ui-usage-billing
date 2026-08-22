@@ -145,6 +145,8 @@ describe('UsageBilling real-data surface', () => {
   it('toggles the budget strip on and edits the amount visually', async () => {
     const { container } = render(<UsageBilling {...makeProps()} />)
     fireEvent.click(container.querySelector('button')!)
+    // 预算设置在设置 Tab：先切换再操作。
+    fireEvent.click(await screen.findByTestId('billing-tab-settings'))
     const toggle = await screen.findByTestId('billing-budget-toggle')
     // 默认关闭：无进度条。
     expect(screen.queryByTestId('billing-budget-track')).toBeNull()
@@ -197,6 +199,8 @@ describe('UsageBilling real-data surface', () => {
     }))
     const { container } = render(<UsageBilling {...makeProps()} />)
     fireEvent.click(container.querySelector('button')!)
+    // 预算设置在设置 Tab：先切换再操作。
+    fireEvent.click(await screen.findByTestId('billing-tab-settings'))
     // 开启预算（默认 10 元）：5/10 = 50%，跨 50% 档 → 第一次通知。
     fireEvent.click(await screen.findByTestId('billing-budget-toggle'))
     await waitFor(() => { expect(notify).toHaveBeenCalledTimes(1) })
@@ -235,6 +239,8 @@ describe('UsageBilling real-data surface', () => {
     }))
     const { container } = render(<UsageBilling {...makeProps()} />)
     fireEvent.click(container.querySelector('button')!)
+    // 预算设置在设置 Tab：先切换再操作。
+    fireEvent.click(await screen.findByTestId('billing-tab-settings'))
     fireEvent.click(await screen.findByTestId('billing-budget-toggle'))
     await waitFor(() => { expect(notify).toHaveBeenCalledTimes(1) })
     expect(notify.mock.calls[0]?.[1]?.body).toContain('50%')

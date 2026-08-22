@@ -79,6 +79,9 @@ const SUBSCRIPTION_KEY_SOURCES: ReadonlyArray<{ provider: string; key: Exclude<k
   { provider: 'zai-coding-cn', key: 'zaiApiKey' },
   { provider: 'opencode', key: 'opencodeApiKey' },
   { provider: 'opencode-go', key: 'opencodeApiKey' },
+  { provider: 'minimax', key: 'minmaxApiKey' },
+  { provider: 'minimax-token-plan', key: 'minmaxApiKey' },
+  { provider: 'openrouter', key: 'openrouterApiKey' },
 ]
 
 /**

@@ -42,6 +42,8 @@ export const PLAN_KNOWLEDGE: Readonly<Record<string, PlanKnowledgeEntry>> = {
   'volcengine-token-plan': { type: 'code', subscriptionCny: 0 },
   'ark-token-plan': { type: 'code', subscriptionCny: 0 },
   'doubao-token-plan': { type: 'code', subscriptionCny: 0 },
+  'minimax': { type: 'code', subscriptionCny: 0 },
+  'minimax-token-plan': { type: 'code', subscriptionCny: 0 },
 }
 
 /** provider id（llm-pi-ai 设置键）→ plan 知识；未命中默认 token。 */

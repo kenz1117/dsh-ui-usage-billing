@@ -8,9 +8,10 @@
  */
 
 import { useMemo } from 'react'
+import clsx from 'clsx'
 import type { AnomalyFlag } from './anomaly.ts'
 import css from './UsageBilling.module.css'
-import { cnyToUsd, formatMoney, type CostCurrency } from './pricing.ts'
+import { cnyToUsd, formatMoney, tierAt, type CostCurrency } from './pricing.ts'
 
 /** 每轮费用图的一行（TurnUsageRow 的展示子集）。 */
 export interface RoundChartRow {
@@ -68,10 +69,12 @@ export function RoundCostChart({ rounds, flags, currency, t }: {
         {visible.map(round => {
           const flagged = flagKey.has(`${round.sessionId}:${round.turn}`)
           const height = Math.max(1, (round.cost / maxCost) * 100)
+          // 该轮起始时刻落在峰时/平价的背景色带（峰=琥珀、平价=中性）。
+          const peak = tierAt(round.startedAt) === 'peak'
           return (
-            <div key={`${round.sessionId}:${round.turn}`} className={css.roundsBarCol}>
-              {/* 每根柱子顶部的费用数字，按需展示实际金额。 */}
-              <span className={css.roundsBarLabel}>{money(round.cost)}</span>
+            <div key={`${round.sessionId}:${round.turn}`} className={clsx(css.roundsBarCol, peak ? css.roundsBarColPeak : css.roundsBarColOff)}>
+              {/* 每根柱子顶部的费用数字：随柱高定位（bottom = height%），紧贴各自柱顶上方。 */}
+              <span className={css.roundsBarLabel} style={{ bottom: `${height}%` }}>{money(round.cost)}</span>
               <div className={css.roundsBarWrap}>
                 <div
                   className={flagged ? css.roundsBarFlagged : css.roundsBar}

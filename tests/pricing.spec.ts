@@ -6,8 +6,8 @@
 
 import { describe, expect, it, afterEach } from 'vitest'
 import {
-  applyLiveCatalogModels, applyLivePricing, catalogEntries, cnyToUsd, computeCost, computeCostAt, convertUnitPrice, formatMoney, formatPercent, formatTokens, formatUnitPrice,
-  getRateInfo, isPeakHour, modelOf, MODEL_CATALOG, tierAt,
+  applyLiveCatalogModels, applyLivePricing, canonModelId, catalogEntries, cnyToUsd, computeCost, computeCostAt, convertUnitPrice, formatMoney, formatPercent, formatTokens, formatUnitPrice,
+  getRateInfo, isPeakHour, modelOf, MODEL_CATALOG, resolveCatalogKey, tierAt, tierCountdown,
 } from '../src/client/pricing.ts'
 import { PROVIDER_ALIASES } from '../src/client/UsageBilling.tsx'
 
@@ -28,6 +28,26 @@ describe('provider alias completeness', () => {
     // 订阅通道的 provider id 是 xiaomi-token-plan-cn 等变体：经别名前缀子串匹配。
     const aliases = PROVIDER_ALIASES['小米'] ?? []
     expect(aliases.some(alias => 'xiaomitokenplancn'.includes(alias))).toBe(true)
+  })
+})
+
+describe('canonModelId / resolveCatalogKey', () => {
+  it('canonicalizes case, separators, and parenthetical annotations', () => {
+    expect(canonModelId('DeepSeek V4 PRO')).toBe('deepseekv4pro')
+    expect(canonModelId('glm-5.2')).toBe('glm52')
+    expect(canonModelId('gpt5.6 luna(go)')).toBe('gpt56luna')
+    expect(canonModelId('deepseek.v4.flash')).toBe('deepseekv4flash')
+  })
+
+  it('resolves a normalized-but-not-exactly-aliased id to the catalog key', () => {
+    // 'DeepSeek V4 PRO' 归一化后命中 'deepseek-v4-pro' → 'pro'（此前未收录）。
+    expect(resolveCatalogKey('DeepSeek V4 PRO')).toBe('pro')
+    // 已在内置目录的键原样返回。
+    expect(resolveCatalogKey('glm')).toBe('glm')
+    // 已知别名仍走原逻辑。
+    expect(resolveCatalogKey('k3')).toBe('kimi-k3')
+    // 完全未知 id 原样返回（回退 other，不计费）。
+    expect(resolveCatalogKey('no-such-model')).toBe('no-such-model')
   })
 })
 
@@ -206,6 +226,24 @@ describe('peak/off-peak tier (P0-1)', () => {
     expect(tierAt(at(15))).toBe('peak')
     expect(tierAt(at(20))).toBe('offPeak')
     expect(tierAt(null)).toBe('peak') // 未知时刻保守按高峰
+  })
+
+  it('charges the off-peak tier all day on Beijing weekends (Sat/Sun)', () => {
+    // 2026-08-22 = 周六、2026-08-23 = 周日；周末即使落工作日的峰时窗口也按低谷。
+    expect(tierAt(Date.UTC(2026, 7, 22, 4, 0))).toBe('offPeak') // 周六北京 12:00
+    expect(tierAt(Date.UTC(2026, 7, 23, 7, 0))).toBe('offPeak') // 周日北京 15:00
+    expect(tierAt(Date.UTC(2026, 7, 24, 2, 0))).toBe('peak')    // 周一北京 10:00（工作日峰时）
+  })
+
+  it('counts down to the next weekday peak on weekends', () => {
+    // 周六北京 12:00：全天低谷，下一档是周一 09:00 峰时（45 小时后）。
+    const sat = tierCountdown(Date.UTC(2026, 7, 22, 4, 0))
+    expect(sat.tier).toBe('offPeak')
+    expect(sat.nextSwitchInMs).toBe(45 * 3_600_000)
+    // 工作日照常：周一北京 10:00 → 2 小时后进入 12:00 平价边界。
+    const mon = tierCountdown(Date.UTC(2026, 7, 24, 2, 0))
+    expect(mon.tier).toBe('peak')
+    expect(mon.nextSwitchInMs).toBe(2 * 3_600_000)
   })
 })
 

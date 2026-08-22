@@ -7,12 +7,10 @@
 import { describe, expect, it } from 'vitest'
 import { formatSwitchCountdown, tierCountdown, upcomingTierSwitch } from '../src/client/pricing.ts'
 
-/** 北京时间某小时某分钟的 epoch 毫秒。 */
+/** 北京时间某小时某分钟的 epoch 毫秒（固定取周五，避免周末全天低谷规则）。 */
 function beijing(hour: number, minute = 0): number {
-  // 构造一个「北京时间」时刻：换算成 UTC 再取时间戳。
-  const date = new Date()
-  date.setUTCHours(hour - 8, minute, 0, 0)
-  return date.getTime()
+  // 北京时间 = UTC+8：北京 hour → UTC (hour-8) 小时；日期固定为工作日（2026-08-21 周五）。
+  return Date.UTC(2026, 7, 21, (hour + 24 - 8) % 24, minute, 0, 0)
 }
 
 describe('tierCountdown', () => {

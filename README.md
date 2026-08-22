@@ -1,53 +1,41 @@
+<div align="center">
+
 # dsh-ui-usage-billing
 
-DeepSeek Harness 计费仪表盘插件。从持久化会话日志实时聚合模型用量，按多厂商最新官方价格估算费用，在侧边栏一键查看完整仪表盘。
+<p align="center">DeepSeek Harness 计费仪表盘插件 — 从持久化会话日志实时聚合模型用量，按多厂商最新官方价格估算费用，侧边栏一键查看完整仪表盘。</p>
 
+<p align="center">
+  [![GitHub license](https://img.shields.io/github/license/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/LICENSE)
+  [![GitHub stars](https://img.shields.io/github/stars/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing)
+  [![GitHub last commit](https://img.shields.io/github/last-commit/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing)
+  [![npm version](https://img.shields.io/npm/v/@kenz1117/dsh-ui-usage-billing)](https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing)
+  [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+</p>
 
-[![GitHub license](https://img.shields.io/github/license/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/LICENSE)[![GitHub stars](https://img.shields.io/github/stars/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing)
-[![GitHub last commit](https://img.shields.io/github/last-commit/kenz1117/dsh-ui-usage-billing)](https://github.com/kenz1117/dsh-ui-usage-billing)
-[![npm version](https://img.shields.io/npm/v/@kenz1117/dsh-ui-usage-billing)](https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing)
-[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+[中文](README.md) · [English](README.en.md)
+
+</div>
+
+---
+
+> **峰谷计费规则更新（自 2026-08-23（周日）00:00 起）**：DeepSeek 模型按官方新规计费——**工作日（周一至周五）** 继续执行原峰谷分段计费（高峰 09:00–12:00 / 14:00–18:00，×2）；**周末（周六、周日）** 全天不再区分峰谷时段，统一按**低谷价**计费。插件计费引擎、费率表与每轮费用峰谷分带均已同步生效。
 
 ## 特性
 
-- **侧边栏入口（0.9.1 重设计）**：设置按钮上方的仪表盘式触发卡——**本月费用**为主数字（等宽字体）+ 右侧**近 7 天 sparkline** 迷你趋势，副行「今日 / 本周」；渐变蓝图标 + 克制冷调，无需点开即可一眼看趋势；折叠栏自动切换为渐变图标钮。
-- **官方 vs 三方分桶（0.9.1）**：明细模型费用列按**官方 DeepSeek 直连 / 第三方中转**分解显示（混合时「官 x / 三 y」），统计 Tab 新增「官方/三方」汇总卡片，快速分辨 token 与费用走官方还是中转。
-- **对话完成提醒（0.9.1）**：会话 `running→completed` 迁移时可选弹一条桌面通知（默认关闭，面板设置开启），同批完成合并为一条、跳过初始基线。
-- **低调科技风视觉（0.9.0 重构）**：面板全面去「AI 味」——移除渐变描边、毛玻璃、径向光晕与渐变文字大数字，改为令牌实底 + 1px 描边 + 明度分层图表的克制冷调；Tab 收敛为下划线 + 单色强调，图表与热力图按明度分层，配色全部走 `--dsw-*` 令牌、深浅主题自适应。
-- **计费仪表盘（分区 Tab）**：弹窗按 **概览 / 趋势 / 明细 / 统计 / 费率** 五个分区组织——概览（Hero 本月大数字 + 本年 / 今日环比 / **本月预计** + 预算条 + KPI×4 + 用量热力图）、趋势（每日费用趋势图 7/30 天 + 每轮费用）、明细（厂商计费与订阅）、统计（工作区 + 会话明细）、费率（模型单价表）。渐变描边卡片 + 毛玻璃遮罩 + 进入动画，全部用设计令牌派生渐变色，深色/浅色主题自适应。
-- **即时代费用条**：会话输入框下方常驻一行「本轮 ¥x · 会话 ¥y」，30 秒轮询刷新；同时显示**峰谷当前档位与切换倒计时**（峰时 / 平价 + 距下次切档时间），以及订阅套餐低额度预警 chips（剩余 ≤20% 时浮现，≤10% 变红），无需打开仪表盘。
-- **峰/谷切换提醒**：距进入下一计费档（北京时间高峰 9-12 / 14-18）不足 2 分钟时系统通知一次（同一切换点只提醒一次，`lastTierSwitchAt` 持久化），文案区分「即将进峰时 ×2 可稍等」/「即将进平价 价格减半」。
-- **价格目录抓取（models.dev）**：费率表不再只靠内置目录——启动时抓取 models.dev 公开目录（pi-ai 预制提供方的上游数据源，USD / 1M tokens），**所有有价模型都纳入**费率表，探测到的系统预制模型据此对标定价。定价失败自动降级内置目录。
-- **探活模型对标**：费率表按宿主 `llm.models` 探活到的「系统设置里实际配置/预制的模型」补齐——有价的显示价格（内置目录 / models.dev），无价的标注「未收录」，不参与计价（不误估）。
-- **自定义 Provider 余额**：除内置 DeepSeek / Kimi / 阶跃星辰外，可经 config `customBalances` 配置任意 HTTP 端点查询余额，`extract` 规则支持常量 / 点路径 / add-subtract / divide（适配 NewApi、LiteLLM 等 quota 端点），请求头 `{{ENV_NAME}}` 占位符经凭据 seam 解析，独立厂商组展示。
-- **月度预算**：仪表盘内置预算条——开关控制显隐、金额可直接编辑（已用 / 总额 / 百分比进度，≥80% 转琥珀、超支转红并脉冲提示），偏好持久化在浏览器本地；宿主配置 `monthlyBudget` 可作为默认金额。
-- **分档提醒**：跨过预算 50% / 80% / 100% 时各弹一次系统通知（每档每天最多一次，一次跨多档只发最高档）；通知不可用时进度条分档变色兜底。余额不足告警独立：任一厂商余额（折算人民币）低于阈值时每天提醒一次，阈值经宿主配置 `lowBalanceThreshold` 下发（默认 50 元）。
-- **会话明细**：统计 Tab 内按费用倒序列出每个会话的花费（标题 / 项目 / 调用数 / 费用 / 最后活跃），直接回答「钱花在哪」。
-- **真实用量**：服务端从会话日志实时聚合，无需手工维护统计文件；增量缓存保证只有写过的日志会被重新折叠，重度使用下轮询依然轻量。
-- **模型健康探测**：模型行的圆点反映各厂商接入状态（正常绿 / 异常红 / 未接入灰）。
-- **订阅计划豁免**：走 coding / token plan / opencode 订阅通道的模型照常统计 token、费用记 0（按**通道**判定，同一模型走按量通道时正常计费）。
-- **余额查询**：厂商组头部显示该厂商余额（只显示一次，不再随每行重复）。DeepSeek、月之暗面（Kimi）、阶跃星辰（StepFun）用官方余额接口**实时查询**；API Key 复用 `llm-pi-ai` 设置的 `apiKeyEnv`（DeepSeek 另有 `balanceApiKeyEnv` 特例），未配置 / Key 无效 / 服务不可达均有状态提示，扩展点可接更多厂商。
-- **可用天数估算**：余额列按最近 7 天日均消耗折算「约可撑 N 天」，剩余不足 3 天红色强调。
-- **未收录模型标注**：真实模型 id 不在计费目录时，明细行显示真实 id 并标注「未收录」，费用按兜底档估算；厂商可从模型 id 自动推断（如 `mi-mimo-2.5` → 小米），健康圆点据此点亮。目录单价为估算价的模型（讯飞 / 商汤 / 小米）行内标注「估算价」，避免误当正式定价。
-- **实时汇率与定价**：启动时自动拉取腾讯财经行情（USD→CNY）与 OpenRouter 官方模型价，失败自动降级内置默认值；此后每 6 小时自动刷新，单价表标注「今日汇率」与实时 / 内置徽标。
-- **动态刷新**：侧边栏入口与仪表盘每 30 秒自动更新，无需重启或手动刷新。
-- **更新时间**：模型计费明细表头显示最近一次统计的更新时间，精确到时分秒。
-- **北京时间统一**：统计聚合与仪表盘日期一律按北京时间归天，跨零点不漂移。
-- **精确时段计费**：每笔调用的费用按实际发生时刻（北京时间）精确判定高峰 / 低谷档，替代固定比例混合——凌晨调用不再被按高峰价估算。
-- **订阅套餐额度**：自动识别你在 dsh `llm-pi-ai` 设置里配置的订阅类 provider（kimi-coding、zai-coding-cn、opencode、qwen/xiaomi/火山 token-plan、百度/GLM 等 coding/agent plan），只显示识别到的套餐；有额度 API 的（Kimi / Z.ai / OpenCode Go）实时显示剩余百分比与重置时间，无公开额度接口的标注「额度接口未接入」。进度条按**已用**比例填充（与预算条同语义）：已用 ≥80% 转琥珀、**用尽满格红 +「已用尽」**（窗口恒可见，不再因剩余 0% 消失）。面板默认展开，打开即见。
-- **厂商计费与订阅（按厂商聚合）**：模型计费明细与订阅套餐合并为**单一容器**，按厂商作为一级分组——同厂商的非订阅按量模型（显示实际费用）与订阅套餐（显示额度卡片）落在同一组，避免散乱；余额与健康圆点只在厂商组头部显示一次（**余额是厂商的余额**，不再随每行重复）。订阅 provider 通过内置别名归并到对应模型厂商（如 `kimi-coding` → 月之暗面），无模型厂商的跨厂商通道（如 opencode）按自身名独立成组。
-- **模型可用数按模型统计**：侧边栏入口右上角「N 模型可用」按**模型数量**统计（各厂商成功接入的模型之和），而非厂商数量，口径与文案一致。
-- **用量热力图**：当月日历热力图（本月 1 号到今天每天一格，周日开头 7 列），按日费用分 5 档色阶，悬停显示日期与金额。概览 Tab 常驻。
-- **每轮费用与成本突增**：按会话轮次折叠的每轮费用图（最近 40 轮），位于趋势 Tab；每根柱子顶部标注该轮费用数字，相对近 6 轮成本超 2 倍的轮次红色标注并归因（输出增长 / 上下文膨胀 / 缓存命中率下降）。
-- **工作区统计**：按会话工作目录（cwd 末级）归并的花费 / 调用 / Token 汇总表。
-- **双币种显示 & 多语种联动**：仪表盘右上角 ¥ / $ 切换——美元金额按当前汇率换算显示；面板文案同时随币种切换（USD → 英文、CNY → 中文，仅本插件生效，不影响宿主全局语言）。费率表的单价也按所选币种换算（切 USD 时人民币计价模型换算为 $，不再固定显示 ¥）。
-- **触发卡 hover 速览**：悬停侧边栏触发卡即浮现速览卡（今日 / 本周 / 当月 + 近 7 天迷你柱），无需点开仪表盘。
-- **峰谷时段占比**：趋势 Tab 内按每轮起始时刻（北京时间高峰 9-12 / 14-18）精确分摊高峰 / 空闲费用，堆叠条 + 金额百分比图例。
-- **费用构成（估算）**：统计 Tab 内按角色归因的三段堆叠条（用户输入 / 助手输出 / 工具结果）——输出成本实测计价，输入成本按消息文本长度占比摊分（日志无角色级实测 token，标注估算口径）。
-- **数据导出**：统计 Tab 顶部一键导出按日 CSV、按会话 CSV 与全量 JSON（文件名带日期范围），便于对账。
-- **模型自查用量（`usage_stats` 动态工具）**：模型可在对话中直接查询用量费用（`today` / `month` / `session` / `all` 四档），例如"今天花了多少钱"；tools 服务缺席时自动跳过注册。
-- **统计快照落盘**：聚合结果原子写（temp+rename，权限 600）到 `~/.dsh/.dsh-usage-stats.json`，重启首屏与聚合异常都有最近数据可看；启动时检测到另一实例的新鲜快照会告警（双实例会导致提醒重复）。
-- **离线自包含**：无图表库、无外部 CDN，全部使用设计令牌，适配深色/浅色主题。
+- **侧边栏入口**：设置按钮上方的仪表盘式触发卡——本月费用主数字（等宽字体）+ 近 7 天 sparkline 迷你趋势，副行「今日 / 本周」；折叠栏自动切为图标钮；悬停浮现速览卡。
+- **计费仪表盘（分区 Tab）**：概览 / 趋势 / 明细 / 统计 / 费率 / 设置 六区——Hero 大数字 + 本年/今日环比 + 本月预计 + KPI×4 + 热力图；趋势图 7/30 天；厂商计费与订阅；导出 / 费用构成 / 工作区 / 会话明细；模型单价表；预算与峰谷提醒。克制冷调、`--dsw-*` 令牌、深浅主题自适应。
+- **即时代费用条**：输入框下方常驻「本轮 ¥x · 会话 ¥y」+ 峰谷档位与切换倒计时 + 订阅额度预警 chips（≤20% 浮现、≤10% 红）。
+- **峰/谷切换提醒**：切档前弹窗 + 可选系统通知（提前量 / 位置 / 模式 / 预览可配），区分「即将进峰时 ×2 可稍等」/「即将进平价 价格减半」。
+- **实时定价费率表**：models.dev 抓价 + 探活模型对标——系统实际配置模型全纳入；峰谷分时（工作日 9-12 / 14-18 高峰 ×2，周末全天低谷）+ 实时汇率（USD→CNY），每 6 小时刷新。
+- **官方 vs 三方分桶**：明细费用列按官方 DeepSeek 直连 / 第三方中转分解（混合时「官 x / 三 y」），统计 Tab 有「官方/三方」汇总卡。
+- **月度预算 + 分档提醒**：预算条（开关 / 金额 / 进度，≥80% 琥珀、超支红脉）；跨 50 / 80 / 100% 各提醒一次；余额折算 CNY 低于阈值每天提醒一次。
+- **订阅套餐额度**：识别 `llm-pi-ai` 里的订阅类 provider（Kimi / Z.ai / OpenCode Go / MiniMax / OpenRouter / 小米 / 火山…），有额度 API 的实时显示剩余%与重置时间、用尽标红，无 API 标「未接入」；订阅通道模型费用记 0。
+- **自定义 Provider 余额**：配置任意 HTTP 端点查余额（`extract` 支持常量 / 点路径 / add-subtract / divide，请求头 `{{ENV}}` 经凭据 seam）；DeepSeek / Kimi / 阶跃星辰 / 硅基流动内置官方余额，余额列按近 7 天日均折算「约可撑 N 天」。
+- **真实用量聚合**：服务端从会话日志实时聚合（增量缓存只重算写过的会话），单会话损坏容错、快照落盘回退；`usage_stats` 工具让模型自查今天 / 本月花费。
+- **多语种 + 双币种**：¥ / $ 切换随币种双语（USD→英文、CNY→中文，仅本插件生效）；费率表按所选币种换算。
+- **模型健康 + 未收录标注**：厂商接入状态圆点（绿 / 红 / 灰）；模型 id 不在目录时标「未收录」按兜底价估算、厂商自动推断（如 `mi-mimo-2.5` → 小米）；估算价模型标注「估算价」。
+- **会话明细 + 成本突增 + 热力图**：按会话费用倒序（标题 / 项目 / 调用 / 费用 / 最后活跃）；每轮费用柱状图（最近 40 轮、金额贴柱顶、峰谷背景分带、超 2 倍红标归因）；当月日历热力图（5 档色阶、悬停明细）。
+- **数据导出 + 离线自包含**：统计 Tab 导出按日 / 按会话 CSV 与全量 JSON；无图表库、无外部 CDN、纯设计令牌。
 
 ## 截图
 
@@ -60,6 +48,10 @@ DeepSeek Harness 计费仪表盘插件。从持久化会话日志实时聚合模
 ![统计：导出、费用构成、工作区与会话明细](screenshots/4.png)
 
 ![费率：模型单价表（峰谷分时与实时汇率）](screenshots/5.png)
+
+### 演示视频
+
+<video src="screenshots/demo.mp4" poster="screenshots/1.png" controls width="100%"></video>
 
 ## 快速开始
 
@@ -112,13 +104,13 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
            —— 价格为原生币种；美元模型按实时 USD → CNY 汇率折算
 ```
 
-统计中的 `input` 为总输入（cacheHit + cacheMiss），估算按命中 / 未命中分拆计价，避免重复计费。支持双档计费的模型按 `DEFAULT_PEAK_SHARE`（默认 0.5）混合高峰与低谷档。
+统计中的 `input` 为总输入（cacheHit + cacheMiss），估算按命中 / 未命中分拆计价，避免重复计费。支持双档计费的模型按 `DEFAULT_PEAK_SHARE`（默认 0.5）混合高峰与低谷档；周末（北京时间周六 / 周日）全天按低谷价计费。
 
 ### 支持模型（2026-08-21 主流阵容，OpenAI 兼容系列）
 
 | 厂商       | 模型                                                                                      |
 | -------- | --------------------------------------------------------------------------------------- |
-| DeepSeek | V4 Flash、V4 Flash Vision (Exp)、V4 Pro（按时段峰谷计费：高峰 09:00-12:00 / 14:00-18:00 北京 = 低谷 2 倍） |
+| DeepSeek | V4 Flash、V4 Flash Vision (Exp)、V4 Pro（按时段峰谷计费：工作日高峰 09:00-12:00 / 14:00-18:00 北京 = 低谷 2 倍；周末全天低谷） |
 | 智谱 AI    | GLM-5.3、GLM-5.2、GLM-4.6                                                                 |
 | 阿里通义     | Qwen3.8 Max、Qwen3.7-Max、Qwen3.5-Plus、Qwen3.5-Flash                                      |
 | 字节豆包     | Doubao Seed-2.0 Pro、Seed-2.0 Mini、Seed-1.6                                              |
@@ -144,87 +136,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 
 ## HTTP API
 
-### `GET /api/billing/pricing`
-
-实时定价文档（汇率 + 模型价，6 小时后台刷新），浏览器端单价表数据源：
-
-```json
-{
-  "source": "live",
-  "rate": 7.11,
-  "rateTime": "2026-08-16T12:00:00+08:00",
-  "models": {
-    "flash": { "input": 3, "output": 9, "cacheHit": 0.1 }
-  }
-}
-```
-
-`source` 为 `live`（腾讯财经 / OpenRouter 拉到）或 `builtin`（全部降级内置默认值）；`rate` 为 USD→CNY 实时汇率。
-
-### `GET /api/billing/balance`
-
-各接入厂商账户余额。API Key 复用 `llm-pi-ai` 设置的 `providers.<id>.apiKeyEnv`（DeepSeek 未在 llm-pi-ai 配置时回退到 `balanceApiKeyEnv`）：
-
-```json
-{
-  "balances": [
-    {
-      "provider": "deepseek",
-      "displayName": "DeepSeek",
-      "currency": "CNY",
-      "totalBalance": 12.34
-    },
-    {
-      "provider": "月之暗面",
-      "displayName": "月之暗面",
-      "currency": "CNY",
-      "totalBalance": 49.59,
-      "grantedBalance": 46.59,
-      "toppedUpBalance": 3.0
-    },
-    {
-      "provider": "阶跃星辰",
-      "displayName": "阶跃星辰",
-      "currency": "CNY",
-      "totalBalance": 150.0,
-      "toppedUpBalance": 200.0,
-      "grantedBalance": 50.0
-    }
-  ]
-}
-```
-
-查询失败时对应条目带 `error`（`unconfigured` / `unauthorized` / `unreachable`），表格按此渲染状态提示。
-
-### `GET /api/billing/usage-stats`
-
-聚合统计文档，浏览器端数据源：
-
-```json
-{
-  "total": {
-    "calls": 733,
-    "input": 255931033,
-    "output": 414286,
-    "cacheHit": 255525760,
-    "cacheMiss": 405273,
-    "cost": 22.87
-  },
-  "byModel": {
-    "flash": { "calls": 733, "input": 255931033, "output": 414286, "cacheHit": 255525760, "cacheMiss": 405273, "cost": 22.87 }
-  },
-  "byDay": {
-    "2026-08-15": { "calls": 74, "input": 32593373, "output": 35375, "cacheHit": 32558208, "cacheMiss": 35165, "cost": 0.52 }
-  },
-  "byDayModels": {
-    "2026-08-15": {
-      "flash": { "calls": 74, "input": 32593373, "output": 35375, "cacheHit": 32558208, "cacheMiss": 35165, "cost": 0.52 }
-    }
-  }
-}
-```
-
-字段含义：`input` 为总输入 token；`cacheHit` / `cacheMiss` 为缓存命中 / 未命中分桶；`cost` 为人民币估算费用。`byDayModels` 是 **模型 × 日期** 二维统计（`[date][modelKey]`），趋势图按模型堆叠的输入；当年 / 当月 / 当日三维费用由浏览器端按 `byDay` 日期前缀归并。`bySession` 为会话明细（按费用倒序，封顶 100 行）：`title` 取自日志中最新的 `session/title` 事件，`cwd` 为会话创建时的工作目录。配置 `monthlyBudget` 时响应额外携带 `budget` 字段（两条服务路径一致注入）。`sessionPersistence` 不可用时回退到配置文件（见下）。
+对外 HTTP 接口与字段定义详见源码：`GET /api/billing/pricing`、`/api/billing/balance`、`/api/billing/usage-stats`（见 `src/index.ts`、`src/aggregate.ts`）。
 
 ## 配置
 
@@ -259,11 +171,7 @@ npm publish --access public
 
 ## Model Experience
 
-无。本插件是纯 UI surface：不注册工具、不注入系统提示、不向会话日志写入任何模型可见事件。仪表盘读取的用量统计由服务端从既有会话日志聚合，日志内容由其他包各自负责。
-
-#### KV Cache effect
-
-无直接影响。插件不改变任何会话的提示前缀或历史，不触及 KV 缓存。
+无。本插件是纯 UI surface：不注册工具、不注入系统提示、不向会话日志写入模型可见事件，也不触及会话 KV 缓存；用量统计由服务端从既有会话日志聚合，日志内容由其他包各自负责。
 
 ## Known Limitations and Deferred Work
 
