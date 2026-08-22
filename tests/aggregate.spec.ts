@@ -80,7 +80,7 @@ describe('foldUsage', () => {
     // 同一桶、同一模型：北京时间 10 点（高峰）比 13 点（低谷）贵。
     const peak = emptyUsage()
     const off = emptyUsage()
-    const at = (beijingHour: number): number => Date.UTC(2026, 7, 15, (beijingHour + 24 - 8) % 24)
+    const at = (beijingHour: number): number => Date.UTC(2026, 7, 21, (beijingHour + 24 - 8) % 24)
     foldUsage(peak, USAGE, 'flash', false, at(10))
     foldUsage(off, USAGE, 'flash', false, at(13))
     expect(peak.cost).toBeGreaterThan(off.cost)

@@ -8,9 +8,10 @@
  * through the exchange rate, never domestic ones.
  *
  * Google-style two-band billing is modeled per model: Gemini's Flex tier
- * prices spare-capacity traffic at -50%; DeepSeek V4 splits peak
- * (09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate. The estimator
- * mixes both bands by a configured peak share ({@link DEFAULT_PEAK_SHARE}).
+ * prices spare-capacity traffic at -50%; DeepSeek splits peak
+ * (weekdays 09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate —
+ * weekends (Sat/Sun, Beijing) are charged at the off-peak rate all day.
+ * The estimator mixes both bands by a configured peak share ({@link DEFAULT_PEAK_SHARE}).
  */
 import type { LivePricing } from '../pricing-shared.ts';
 /**
@@ -58,13 +59,15 @@ export type PriceTierId = 'peak' | 'offPeak';
 /** 成本显示币种：人民币（国内模型直价）/ 美元（国外模型直价或换算显示）。 */
 export type CostCurrency = 'cny' | 'usd';
 /**
- * 高峰时段判定（北京时间，UTC+8，无夏令时）：09:00–12:00、14:00–18:00。
+ * 工作日高峰时段判定（北京时间，UTC+8，无夏令时）：09:00–12:00、14:00–18:00。
+ * 周末（周六/周日）北京全天为低谷，不调用本函数判定峰/平。
  * @param beijingHour - 北京时间的小时数（0–23）。
  */
 export declare function isPeakHour(beijingHour: number): boolean;
 /**
  * 由时刻（epoch 毫秒）推断计费时段；时刻未知/非法时按高峰计（保守：未知
  * 时刻不低估成本，与社区 dsh-usage-chart 的 tierAt 语义一致）。
+ * 周末（北京时间周六/周日）全天不区分峰谷，统一按低谷价。
  * @param timeMs - Unix epoch 毫秒；null/undefined/NaN 视为未知。
  */
 export declare function tierAt(timeMs: number | null | undefined): PriceTierId;
@@ -166,6 +169,23 @@ export declare const MODEL_CATALOG: readonly ModelEntry[];
  * 解析，两侧共用一份映射，避免同一模型两侧不一致导致「未收录」。
  */
 export declare const MODEL_KEY_ALIASES: Readonly<Record<string, string>>;
+/**
+ * 模型 id 归一化：小写、去括号附注（如 `gpt5.6 luna(go)` 只看主体）、再去所有
+ * 非字母数字分隔符（空格 / 横杠 / 点 / 下划线）。用于日志里的模型 id 与计费
+ * 目录键做宽松匹配，提升「大小写/分隔符差异导致未收录」的识别率。
+ * @param id - 原始模型 id（日志或目录键）。
+ * @returns 归一化键（字母数字小写串）。
+ */
+export declare function canonModelId(id: string): string;
+/**
+ * 解析真实日志模型 id → 计费目录键。先精确别名映射（既有行为）；未命中时做
+ * 归一化匹配（忽略大小写/分隔符/括号附注），命中内置目录 / 别名目标 / 兜底键 /
+ * models.dev 补充键即返回其真实键；完全未知时保持原样（回退 other，不计费）。
+ * 供聚合层折叠与客户端渲染共用，两侧一致。
+ * @param id - 真实模型 id（日志里出现的形式）。
+ * @returns 计费目录键。
+ */
+export declare function resolveCatalogKey(id: string): string;
 /** Lookup a model by its stats key; falls back to the generic `other` entry. */
 export declare function modelOf(key: string): ModelEntry;
 /**
@@ -221,6 +241,16 @@ export declare function formatMoney(amount: number, currency?: CostCurrency): st
  * zero): CNY for domestic models, USD for overseas ones.
  */
 export declare function formatUnitPrice(price: number, currency?: 'CNY' | 'USD'): string;
+/**
+ * 把一条「每百万 token」单价从原生币种换算到目标展示币种（按 USD→CNY 汇率）。
+ * 汇率缺失/非法时回退原值，避免 0 汇率把价格算没。
+ * @param price - 原生币种单价。
+ * @param native - 模型原生币种。
+ * @param target - 用户当前展示币种。
+ * @param rate - USD→CNY 汇率（1 USD = rate CNY）。
+ * @returns 换算到目标币种的单价；同币种或汇率不可用时原值。
+ */
+export declare function convertUnitPrice(price: number, native: 'CNY' | 'USD', target: CostCurrency, rate: number): number;
 /** Format a large token count with B/M/K suffix. */
 export declare function formatTokens(value: number): string;
 /** Format a percentage. */

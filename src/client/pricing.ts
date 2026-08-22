@@ -8,9 +8,10 @@
  * through the exchange rate, never domestic ones.
  *
  * Google-style two-band billing is modeled per model: Gemini's Flex tier
- * prices spare-capacity traffic at -50%; DeepSeek V4 splits peak
- * (09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate. The estimator
- * mixes both bands by a configured peak share ({@link DEFAULT_PEAK_SHARE}).
+ * prices spare-capacity traffic at -50%; DeepSeek splits peak
+ * (weekdays 09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate —
+ * weekends (Sat/Sun, Beijing) are charged at the off-peak rate all day.
+ * The estimator mixes both bands by a configured peak share ({@link DEFAULT_PEAK_SHARE}).
  */
 
 import type { ExtraModelPrice, LivePrice, LivePricing } from '../pricing-shared.ts'
@@ -85,7 +86,8 @@ export type PriceTierId = 'peak' | 'offPeak'
 export type CostCurrency = 'cny' | 'usd'
 
 /**
- * 高峰时段判定（北京时间，UTC+8，无夏令时）：09:00–12:00、14:00–18:00。
+ * 工作日高峰时段判定（北京时间，UTC+8，无夏令时）：09:00–12:00、14:00–18:00。
+ * 周末（周六/周日）北京全天为低谷，不调用本函数判定峰/平。
  * @param beijingHour - 北京时间的小时数（0–23）。
  */
 export function isPeakHour(beijingHour: number): boolean {
@@ -95,12 +97,30 @@ export function isPeakHour(beijingHour: number): boolean {
 /**
  * 由时刻（epoch 毫秒）推断计费时段；时刻未知/非法时按高峰计（保守：未知
  * 时刻不低估成本，与社区 dsh-usage-chart 的 tierAt 语义一致）。
+ * 周末（北京时间周六/周日）全天不区分峰谷，统一按低谷价。
  * @param timeMs - Unix epoch 毫秒；null/undefined/NaN 视为未知。
  */
 export function tierAt(timeMs: number | null | undefined): PriceTierId {
   if (timeMs === null || timeMs === undefined || !Number.isFinite(timeMs)) return 'peak'
+  if (isBeijingWeekend(timeMs)) return 'offPeak'
   const beijingHour = (new Date(timeMs).getUTCHours() + 8) % 24
   return isPeakHour(beijingHour) ? 'peak' : 'offPeak'
+}
+
+/** 时刻是否落在北京时间周末（周六/周日）。 */
+function isBeijingWeekend(timeMs: number): boolean {
+  const day = new Date(timeMs + 8 * 3_600_000).getUTCDay()
+  return day === 0 || day === 6
+}
+
+/** 距下一个工作日（周一）北京时间 09:00 峰时的毫秒数：周末全天低谷的下一档。 */
+function nextWeekdayPeakInMs(nowMs: number): number {
+  const bj = new Date(nowMs + 8 * 3_600_000)
+  const day = bj.getUTCDay()
+  const elapsed = bj.getUTCHours() * 3_600_000 + bj.getUTCMinutes() * 60_000 + bj.getUTCSeconds() * 1_000 + bj.getUTCMilliseconds()
+  // 到周一：周日(0)=1 天、周六(6)=2 天。
+  const toMonday = day === 0 ? 1 : 2
+  return toMonday * 86_400_000 - elapsed + 9 * 3_600_000
 }
 
 /** 峰谷切换边界（北京时间的当日分钟数）：09:00 / 12:00 / 14:00 / 18:00。 */
@@ -117,6 +137,10 @@ function beijingMillisOfDay(timeMs: number): number {
  * @returns 当前档位与到下一个切换边界的毫秒数。
  */
 export function tierCountdown(nowMs: number): { tier: PriceTierId; nextSwitchInMs: number } {
+  // 周末全天低谷：没有日内切换，下一档是下个工作日（周一）09:00 的峰时。
+  if (isBeijingWeekend(nowMs)) {
+    return { tier: 'offPeak', nextSwitchInMs: nextWeekdayPeakInMs(nowMs) }
+  }
   const dayMs = beijingMillisOfDay(nowMs)
   for (const boundary of TIER_BOUNDARY_MINUTES) {
     const boundaryMs = boundary * 60_000
@@ -577,9 +601,59 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'kimi-k3': 'kimi-k3',
 }
 
+/**
+ * 模型 id 归一化：小写、去括号附注（如 `gpt5.6 luna(go)` 只看主体）、再去所有
+ * 非字母数字分隔符（空格 / 横杠 / 点 / 下划线）。用于日志里的模型 id 与计费
+ * 目录键做宽松匹配，提升「大小写/分隔符差异导致未收录」的识别率。
+ * @param id - 原始模型 id（日志或目录键）。
+ * @returns 归一化键（字母数字小写串）。
+ */
+export function canonModelId(id: string): string {
+  return String(id).toLowerCase().replace(/\([^)]*\)/g, '').replace(/[^a-z0-9]+/g, '')
+}
+
+/**
+ * 目录常量键的归一化索引：归一化键 → 真实计费键。只索引静态来源（内置目录、
+ * 别名表、dsh-spend 兜底键）；models.dev 补充条目是运行时注入，单独实时匹配。
+ */
+const CATALOG_CANON_INDEX: ReadonlyMap<string, string> = (() => {
+  const map = new Map<string, string>()
+  const add = (candidate: string, target: string): void => {
+    const canon = canonModelId(candidate)
+    if (canon !== '' && !map.has(canon)) map.set(canon, target)
+  }
+  for (const entry of MODEL_CATALOG) add(entry.key, entry.key)
+  for (const [alias, key] of Object.entries(MODEL_KEY_ALIASES)) add(alias, key)
+  for (const rate of FALLBACK_RATES) add(rate.key, rate.key)
+  return map
+})()
+
+/**
+ * 解析真实日志模型 id → 计费目录键。先精确别名映射（既有行为）；未命中时做
+ * 归一化匹配（忽略大小写/分隔符/括号附注），命中内置目录 / 别名目标 / 兜底键 /
+ * models.dev 补充键即返回其真实键；完全未知时保持原样（回退 other，不计费）。
+ * 供聚合层折叠与客户端渲染共用，两侧一致。
+ * @param id - 真实模型 id（日志里出现的形式）。
+ * @returns 计费目录键。
+ */
+export function resolveCatalogKey(id: string): string {
+  const exact = MODEL_KEY_ALIASES[id] ?? id
+  if (exact === id) {
+    // 精确别名未命中：做归一化匹配；命中即返回目标键。
+    const canon = canonModelId(id)
+    if (canon !== '') {
+      const hit = CATALOG_CANON_INDEX.get(canon)
+      if (hit !== undefined) return hit
+      const extraHit = (liveExtraModels ?? []).find(item => canonModelId(item.key) === canon)
+      if (extraHit !== undefined) return extraHit.key
+    }
+  }
+  return exact
+}
+
 /** 取一个计费键的实时单价（实时覆盖 > dsh-spend 官方价兜底）。 */
 function livePriceOf(key: string): LivePrice | undefined {
-  const resolved = MODEL_KEY_ALIASES[key] ?? key
+  const resolved = resolveCatalogKey(key)
   const live = livePrices?.[resolved]
   if (live !== undefined) return live
   const fallback = FALLBACK_RATES.find(rate => rate.key.toLowerCase() === resolved.toLowerCase())
@@ -589,8 +663,8 @@ function livePriceOf(key: string): LivePrice | undefined {
 
 /** Lookup a model by its stats key; falls back to the generic `other` entry. */
 export function modelOf(key: string): ModelEntry {
-  // 先按别名归并为目录键（catalog key 本身不在别名表里，原样通过）。
-  const resolved = MODEL_KEY_ALIASES[key] ?? key
+  // 先按别名/归一化归并为目录键（catalog key 本身不在别名表里，原样通过）。
+  const resolved = resolveCatalogKey(key)
   const found = MODEL_CATALOG.find(entry => entry.key === resolved)
   // 目录未命中时查 models.dev 补充条目（与宿主预制提供方对齐的实时价）。
   const extra = liveExtraModels?.find(item => item.key === resolved)
@@ -626,7 +700,7 @@ function extraEntryOf(extra: ExtraModelPrice): ModelEntry {
  * 聚合层的计价闸门（目录外模型不产生费用，避免兜底档误估）。
  */
 export function isPriced(key: string): boolean {
-  const resolved = MODEL_KEY_ALIASES[key] ?? key
+  const resolved = resolveCatalogKey(key)
   if (MODEL_CATALOG.some(entry => entry.key === resolved)) return true
   if ((liveExtraModels ?? []).some(item => item.key === resolved)) return true
   return FALLBACK_RATES.some(rate => rate.key.toLowerCase() === resolved.toLowerCase())
@@ -645,7 +719,7 @@ export function catalogEntries(): readonly ModelEntry[] {
     // 匹配 models.dev 抓到的实时价，再按别名归一化匹配内置目录，两套键都对得上。
     const rawKey = model.id.toLowerCase()
     const builtin = (() => {
-      const aliasKey = MODEL_KEY_ALIASES[model.id] ?? model.id
+      const aliasKey = resolveCatalogKey(model.id)
       return MODEL_CATALOG.find(item => item.key === aliasKey)
     })()
     // 内置目录收录：跳过，避免与内置行重复（key 用内置目录键）。
@@ -666,7 +740,7 @@ export function catalogEntries(): readonly ModelEntry[] {
         price: { currency: 'USD', input: fallbackLive.input, cacheHit: fallbackLive.cacheHit, output: fallbackLive.output },
       }
     } else {
-      const aliasKey = MODEL_KEY_ALIASES[model.id] ?? model.id
+      const aliasKey = resolveCatalogKey(model.id)
       entry = {
         key: aliasKey,
         name: model.name ?? model.id,

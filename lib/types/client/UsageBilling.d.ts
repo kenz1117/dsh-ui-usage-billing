@@ -32,11 +32,11 @@ export interface ModelHealth {
     catalog?: readonly CatalogModel[];
 }
 /** 仪表盘分区 Tab id。 */
-export type DashboardTab = 'overview' | 'trends' | 'providers' | 'details' | 'pricing';
+export type DashboardTab = 'overview' | 'trends' | 'providers' | 'details' | 'pricing' | 'settings';
 /**
- * Tab 定义（顺序即渲染顺序）：概览=主数字/预算/KPI/热力图，趋势=趋势图/每轮费用，
- * 明细=厂商计费与订阅，统计=工作区/会话明细，费率=模型单价表。导出供测试断言
- * tab 与文案 key 对齐、decor 锚点落在正确分区。
+ * Tab 定义（顺序即渲染顺序）：概览=主数字/KPI/热力图，趋势=趋势图/每轮费用，
+ * 明细=厂商计费与订阅，统计=工作区/会话明细，费率=模型单价表，设置=预算与峰谷提醒。
+ * 导出供测试断言 tab 与文案 key 对齐、decor 锚点落在正确分区。
  */
 export declare const DASHBOARD_TABS: readonly {
     id: DashboardTab;

@@ -7,11 +7,9 @@
 import { describe, expect, it } from 'vitest'
 import { lastSevenDays, peakOffpeakCost } from '../src/client/UsageBilling.tsx'
 
-/** 北京时间某小时的当日时间戳（tierAt 口径：UTC 小时 + 8）。 */
+/** 北京时间某小时的当日时间戳（tierAt 口径：UTC 小时 + 8；固定周五工作日）。 */
 function atBeijingHour(hour: number): number {
-  const date = new Date()
-  date.setUTCHours(hour - 8, 0, 0, 0)
-  return date.getTime()
+  return Date.UTC(2026, 7, 21, (hour + 24 - 8) % 24)
 }
 
 describe('peakOffpeakCost', () => {

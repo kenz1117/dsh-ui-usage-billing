@@ -50,6 +50,7 @@ export type UsageBillingKey =
   | 'billing.todayRate'
   | 'billing.rateLive'
   | 'billing.rateBuiltin'
+  | 'billing.pricingTip'
   | 'billing.balance'
   | 'billing.balanceUnconfigured'
   | 'billing.balanceUnauthorized'
@@ -92,6 +93,13 @@ export type UsageBillingKey =
   | 'billing.tabProviders'
   | 'billing.tabDetails'
   | 'billing.tabPricing'
+  | 'billing.tabSettings'
+  | 'billing.settingsHead'
+  | 'billing.settingsHint'
+  | 'billing.budgetHint'
+  | 'billing.peakAlertHint'
+  | 'billing.peakAlertDescPeak'
+  | 'billing.peakAlertDescOff'
   | 'billing.export'
   | 'billing.exportCsvDay'
   | 'billing.exportCsvSession'
@@ -110,6 +118,17 @@ export type UsageBillingKey =
   | 'billing.tierToOff'
   | 'billing.tierAlertEnterPeak'
   | 'billing.tierAlertEnterOff'
+  | 'billing.peakAlertTitlePeak'
+  | 'billing.peakAlertTitleOff'
+  | 'billing.peakAlert'
+  | 'billing.peakAlertLeadMin'
+  | 'billing.peakAlertPosCorner'
+  | 'billing.peakAlertPosCenter'
+  | 'billing.peakAlertModePeak'
+  | 'billing.peakAlertModeOff'
+  | 'billing.peakAlertModeBoth'
+  | 'billing.peakAlertWebNotify'
+  | 'billing.peakAlertPreview'
   | 'billing.planTypeCode'
   | 'billing.planTypeToken'
   | 'billing.subscriptionFeePerMonth'
@@ -174,6 +193,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.todayRate': '今日汇率',
   'billing.rateLive': '实时',
   'billing.rateBuiltin': '内置',
+  'billing.pricingTip': 'DeepSeek 模型自北京时间 2026-08-23（周日）00:00 起：工作日高峰 9-12 / 14-18（×2），周末（周六 / 周日）全天低谷价；双价单元格按峰 / 谷展示，费用按调用时刻计。',
   'billing.balance': '余额',
   'billing.balanceUnconfigured': '未配置',
   'billing.balanceUnauthorized': '密钥无效',
@@ -216,6 +236,13 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.tabProviders': '明细',
   'billing.tabDetails': '统计',
   'billing.tabPricing': '费率',
+  'billing.tabSettings': '设置',
+  'billing.settingsHead': '偏好设置',
+  'billing.settingsHint': '管理与计费相关的偏好',
+  'billing.budgetHint': '设置月度上限，用于本月预计与超支分段提醒',
+  'billing.peakAlertHint': '在切档前弹窗提醒，可选同步系统通知',
+  'billing.peakAlertDescPeak': '高峰价生效，不急的调用可稍候',
+  'billing.peakAlertDescOff': '价格减半省钱窗口已开启',
   'billing.export': '导出',
   'billing.exportCsvDay': '按日 CSV',
   'billing.exportCsvSession': '按会话 CSV',
@@ -234,6 +261,17 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.tierToOff': '后转平价',
   'billing.tierAlertEnterPeak': '{minutes} 分钟后进入峰时（DeepSeek 高峰价 ×2），不急的调用可稍等',
   'billing.tierAlertEnterOff': '{minutes} 分钟后进入平价（价格减半）',
+  'billing.peakAlertTitlePeak': '即将进入高峰价',
+  'billing.peakAlertTitleOff': '即将进入平价',
+  'billing.peakAlert': '峰谷切换提醒',
+  'billing.peakAlertLeadMin': '提前量（分钟）',
+  'billing.peakAlertPosCorner': '右下角',
+  'billing.peakAlertPosCenter': '屏幕居中',
+  'billing.peakAlertModePeak': '仅进入峰时',
+  'billing.peakAlertModeOff': '仅进入平价',
+  'billing.peakAlertModeBoth': '峰与谷都提醒',
+  'billing.peakAlertWebNotify': '同时发系统通知',
+  'billing.peakAlertPreview': '预览提醒',
   'billing.planTypeCode': '订阅制',
   'billing.planTypeToken': '按量',
   'billing.subscriptionFeePerMonth': '{amount}/月',
@@ -297,6 +335,7 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.todayRate': 'Today rate',
   'billing.rateLive': 'Live',
   'billing.rateBuiltin': 'Built-in',
+  'billing.pricingTip': 'DeepSeek models: from 2026-08-23 (Sun) 00:00 Beijing, weekdays peak 9-12 / 14-18 (×2), weekends (Sat/Sun) all-day off-peak; cells show peak/off-peak price, billed at call time.',
   'billing.balance': 'Balance',
   'billing.balanceUnconfigured': 'Not set',
   'billing.balanceUnauthorized': 'Bad key',
@@ -339,6 +378,13 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.tabProviders': 'Details',
   'billing.tabDetails': 'Stats',
   'billing.tabPricing': 'Rates',
+  'billing.tabSettings': 'Settings',
+  'billing.settingsHead': 'Preferences',
+  'billing.settingsHint': 'Manage billing-related preferences',
+  'billing.budgetHint': 'Set a monthly cap for projections and tier alerts',
+  'billing.peakAlertHint': 'Alert before a tier switch, optionally via system notification',
+  'billing.peakAlertDescPeak': 'Peak pricing active — non-urgent calls can wait',
+  'billing.peakAlertDescOff': 'Off-peak savings window is on',
   'billing.export': 'Export',
   'billing.exportCsvDay': 'Daily CSV',
   'billing.exportCsvSession': 'Sessions CSV',
@@ -357,6 +403,17 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.tierToOff': 'until off-peak',
   'billing.tierAlertEnterPeak': 'Peak pricing (2x) starts in {minutes} min — non-urgent calls can wait',
   'billing.tierAlertEnterOff': 'Off-peak pricing (50% off) starts in {minutes} min',
+  'billing.peakAlertTitlePeak': 'Peak pricing incoming',
+  'billing.peakAlertTitleOff': 'Off-peak incoming',
+  'billing.peakAlert': 'Peak/off-peak alert',
+  'billing.peakAlertLeadMin': 'Lead time (min)',
+  'billing.peakAlertPosCorner': 'Bottom-right',
+  'billing.peakAlertPosCenter': 'Center',
+  'billing.peakAlertModePeak': 'Entering peak only',
+  'billing.peakAlertModeOff': 'Entering off-peak only',
+  'billing.peakAlertModeBoth': 'Both',
+  'billing.peakAlertWebNotify': 'Also send system notification',
+  'billing.peakAlertPreview': 'Preview alert',
   'billing.planTypeCode': 'Subscription',
   'billing.planTypeToken': 'Usage',
   'billing.subscriptionFeePerMonth': '{amount}/mo',

@@ -6,7 +6,6 @@
  * 避免多窗口同时弹同一条。配置持久化在 localStorage（默认关闭，用户在面板设置开启）。
  */
 
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 
@@ -103,7 +102,7 @@ export function installCompletionNotifier(list: ObservableSnapshot<SessionListSt
     if (finishedTitles.length > 0) {
       // 同批只弹一条：拼首条标题，避免多会话同时完成刷屏。
       queuedTitle = finishedTitles.length === 1 ? finishedTitles[0] : `${finishedTitles.length} 个会话已完成`
-      notify(queuedTitle)
+      if (queuedTitle !== undefined) notify(queuedTitle)
     }
   })
 

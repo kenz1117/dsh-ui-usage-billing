@@ -22,6 +22,10 @@ export interface SubscriptionKeys {
   zaiApiKey: string
   /** OpenCode Go API key。 */
   opencodeApiKey: string
+  /** MiniMax Token Plan API key。 */
+  minmaxApiKey: string
+  /** OpenRouter API key（credits 已用%）。 */
+  openrouterApiKey: string
   /** Z.ai 区域（global / bigmodel-cn）。 */
   zaiRegion: 'global' | 'bigmodel-cn'
 }
@@ -31,6 +35,8 @@ export const EMPTY_SUBSCRIPTION_KEYS: SubscriptionKeys = {
   kimiApiKey: '',
   zaiApiKey: '',
   opencodeApiKey: '',
+  minmaxApiKey: '',
+  openrouterApiKey: '',
   zaiRegion: 'global',
 }
 
@@ -65,10 +71,12 @@ const SUBSCRIPTION_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   'baidu': '百度文心 Plan',
   'wenxin': '百度文心 Plan',
   'minimax': 'MiniMax Coding Plan',
+  'minimax-token-plan': 'MiniMax Token Plan',
+  'openrouter': 'OpenRouter',
 }
 
 /** 订阅类 provider id 判定：带 coding / agent-plan / token-plan 后缀，或已知订阅通道。 */
-const SUBSCRIPTION_ID_RE = /(?:^|-)(?:coding|agent[-_]?plan|token[-_]?plan)(?:$|-|_)|^(?:opencode|opencode-go|kimi-coding|zai-coding|minimax)/i
+const SUBSCRIPTION_ID_RE = /(?:^|-)(?:coding|agent[-_]?plan|token[-_]?plan)(?:$|-|_)|^(?:opencode|opencode-go|kimi-coding|zai-coding|minimax|minimax-token-plan|openrouter)/i
 
 /** 是否是订阅类 provider id（如 kimi-coding、xiaomi-token-plan-cn）。 */
 export function isSubscriptionProviderId(providerId: string): boolean {
@@ -82,6 +90,9 @@ const SUBSCRIPTION_ADAPTERS: Readonly<Record<string, { collect: (keys: Subscript
   'zai-coding-cn': { collect: collectZai },
   'opencode': { collect: collectOpenCodeGo },
   'opencode-go': { collect: collectOpenCodeGo },
+  'minimax': { collect: collectMiniMax },
+  'minimax-token-plan': { collect: collectMiniMax },
+  'openrouter': { collect: collectOpenRouter },
 }
 
 /** 有额度适配器的 provider id 集合（识别用）。 */
@@ -399,6 +410,120 @@ async function collectOpenCodeGo(keys: SubscriptionKeys, config: SubscriptionPla
     return { provider: config.provider, displayName: 'OpenCode Go', status: windows.length > 0 ? 'ok' : 'invalid-response', windows }
   } catch (error) {
     return { provider: config.provider, displayName: 'OpenCode Go', status: statusOf(error), windows: [] }
+  }
+}
+
+// ── MiniMax Token Plan ───────────────────────────────────────────────────────
+
+/**
+ * 单条 MiniMax 记录抽一个窗口。`remaining_percent` 是剩余%;已用% = 100 - 剩余。
+ * `status === 3` 表示不限量档,跳过该窗。导出供测试:纯函数。
+ * @param record - 一条 model_remains 记录。
+ * @param kind - 窗口类型(session=5h 滚动 / weekly=7d)。
+ * @param remainPctKey - 剩余百分比字段。
+ * @param statusKey - 限量状态字段(3=不限量)。
+ * @param resetKey - 重置时刻字段(epoch 秒/毫秒/ISO)。
+ */
+function minmaxWindow(
+  record: Record<string, unknown> | undefined,
+  kind: 'session' | 'weekly',
+  remainPctKey: string,
+  statusKey: string,
+  resetKey: string,
+): SubscriptionWindow | null {
+  if (record === undefined) return null
+  if (Number(record[statusKey]) === 3) return null
+  const remain = numberOrNull(record[remainPctKey])
+  if (remain === null) return null
+  const usedPercent = round1(clampPercent(100 - (remain <= 1 ? remain * 100 : remain)) ?? 0)
+  const resetsAt = toIso(record[resetKey])
+  return {
+    kind,
+    usedPercent,
+    remainingPercent: round1(100 - usedPercent),
+    ...(resetsAt === null ? {} : { resetsAt }),
+  }
+}
+
+/**
+ * 解析 MiniMax Token Plan `/v1/token_plan/remains` 响应。取 general(或 MiniMax-M*)
+ * 一行抽出 5h/7d 窗口(total_count 常为 0,以 remaining_percent 为准),不按模型拆条。
+ * 导出供测试:纯函数。
+ * @param body - 接口响应 JSON。
+ * @returns 窗口列表;无可用窗口时为空数组。
+ */
+export function parseMiniMaxRemains(body: unknown): SubscriptionWindow[] {
+  const doc = (body ?? {}) as Record<string, unknown>
+  const payload = (doc.data ?? doc) as Record<string, unknown>
+  const rows = Array.isArray(payload.model_remains)
+    ? (payload.model_remains as unknown[])
+    : Array.isArray(doc.model_remains)
+      ? (doc.model_remains as unknown[])
+      : []
+  if (rows.length === 0) return []
+  const pick = rows.find(row => {
+    const name = String((row as Record<string, unknown>).model_name ?? '').toLowerCase()
+    return name === 'general' || /^minimax-m/i.test(name)
+  }) ?? rows[0]
+  const record = (pick ?? undefined) as Record<string, unknown> | undefined
+  const session = minmaxWindow(record, 'session', 'current_interval_remaining_percent', 'current_interval_status', 'end_time')
+  const weekly = minmaxWindow(record, 'weekly', 'current_weekly_remaining_percent', 'current_weekly_status', 'weekly_end_time')
+  return [session, weekly].filter((hit): hit is SubscriptionWindow => hit !== null)
+}
+
+/** Collect the MiniMax Token Plan quota. */
+async function collectMiniMax(keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number): Promise<SubscriptionQuota> {
+  const apiKey = keys.minmaxApiKey.trim()
+  const base = config.baseUrl ?? 'https://www.minimaxi.com'
+  if (apiKey === '') {
+    return { provider: config.provider, displayName: 'MiniMax Coding Plan', status: 'not-configured', windows: [] }
+  }
+  try {
+    const body = await requestJson(`${base}/v1/token_plan/remains`, { headers: { authorization: `Bearer ${apiKey}`, accept: 'application/json' } }, timeoutMs)
+    const windows = parseMiniMaxRemains(body)
+    return { provider: config.provider, displayName: 'MiniMax Coding Plan', status: windows.length > 0 ? 'ok' : 'invalid-response', windows }
+  } catch (error) {
+    return { provider: config.provider, displayName: 'MiniMax Coding Plan', status: statusOf(error), windows: [] }
+  }
+}
+
+// ── OpenRouter (预付 credits 已用%) ─────────────────────────────────────────
+
+/**
+ * 解析 OpenRouter `/api/v1/credits` 响应:已用% = total_usage / total_credits。
+ * 导出供测试:纯函数。
+ * @param body - 接口响应 JSON。
+ * @returns 窗口列表;无有效额度时为 []。
+ */
+export function parseOpenRouterCredits(body: unknown): SubscriptionWindow[] {
+  const doc = (body ?? {}) as Record<string, unknown>
+  const data = (doc.data ?? doc) as Record<string, unknown>
+  const total = numberOrNull(data.total_credits ?? data.credits)
+  const used = numberOrNull(data.total_usage ?? data.usage)
+  if (total === null || total <= 0 || used === null) return []
+  const usedPercent = round1(clampPercent((used / total) * 100) ?? 0)
+  const resetsAt = toIso(data.resets_at ?? data.next_reset_time)
+  return [{
+    kind: 'billing',
+    usedPercent,
+    remainingPercent: round1(100 - usedPercent),
+    ...(resetsAt === null ? {} : { resetsAt }),
+  }]
+}
+
+/** Collect the OpenRouter prepaid credits usage. */
+async function collectOpenRouter(keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number): Promise<SubscriptionQuota> {
+  const apiKey = keys.openrouterApiKey.trim()
+  const base = config.baseUrl ?? 'https://openrouter.ai'
+  if (apiKey === '') {
+    return { provider: config.provider, displayName: 'OpenRouter', status: 'not-configured', windows: [] }
+  }
+  try {
+    const body = await requestJson(`${base}/api/v1/credits`, { headers: { authorization: `Bearer ${apiKey}`, accept: 'application/json' } }, timeoutMs)
+    const windows = parseOpenRouterCredits(body)
+    return { provider: config.provider, displayName: 'OpenRouter', status: windows.length > 0 ? 'ok' : 'invalid-response', windows }
+  } catch (error) {
+    return { provider: config.provider, displayName: 'OpenRouter', status: statusOf(error), windows: [] }
   }
 }
 

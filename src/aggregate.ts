@@ -14,11 +14,11 @@ import { stat } from 'node:fs/promises'
 import type { SessionHeader } from '@deepseek-ai/dsh-session/types'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
-import { isPriced, MODEL_KEY_ALIASES, computeCostAt, modelOf } from './client/pricing.ts'
+import { isPriced, MODEL_KEY_ALIASES, resolveCatalogKey, computeCostAt, modelOf } from './client/pricing.ts'
 
 // 模型别名（真实 provider id → 计费目录键）统一定义在 client/pricing.ts，
 // 聚合层折叠与客户端渲染共用同一张表，避免两侧不一致导致「未收录」。
-export { MODEL_KEY_ALIASES }
+export { MODEL_KEY_ALIASES, resolveCatalogKey }
 
 /**
  * 走订阅套餐（coding / token plan / opencode 订阅）的 provider id：这些通道的
@@ -370,7 +370,7 @@ export function foldSession(events: readonly { type: string; time: number; data:
     }
     if (event.type === 'request/header') {
       const { model, provider } = (event.data as { header: { config: { model: string; provider: string } } }).header.config
-      key = MODEL_KEY_ALIASES[model] ?? model
+      key = resolveCatalogKey(model)
       // 订阅套餐 provider 的调用即使撞名计费表也一律免费。
       subscription = subscriptionProviders.has(provider)
       // 官方直连（DeepSeek 官方）vs 第三方中转/代理。

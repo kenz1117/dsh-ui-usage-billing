@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans } from '../src/subscriptions.ts'
+import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, parseMiniMaxRemains, parseOpenRouterCredits } from '../src/subscriptions.ts'
 
 /** A stubbed fetch answering one JSON body with the given status. */
 function stubFetch(body: unknown, status = 200): void {
@@ -130,5 +130,53 @@ describe('collectSubscriptions', () => {
     expect(quotas).toHaveLength(1)
     expect(quotas[0]).toMatchObject({ provider: 'not-a-real-provider', status: 'unavailable' })
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('parseMiniMaxRemains', () => {
+  it('extracts 5h/7d windows from the general model_remains row', () => {
+    const windows = parseMiniMaxRemains({
+      model_remains: [{
+        model_name: 'general',
+        current_interval_status: 1,
+        current_interval_remaining_percent: 60,
+        current_weekly_status: 1,
+        current_weekly_remaining_percent: 30,
+        end_time: '2026-08-22T12:00:00Z',
+        weekly_end_time: '2026-08-28T00:00:00Z',
+      }],
+    })
+    expect(windows).toHaveLength(2)
+    // 5h 档：剩余 60% → 已用 40%。
+    expect(windows[0]).toMatchObject({ kind: 'session', usedPercent: 40, remainingPercent: 60 })
+    // 7d 档：剩余 30% → 已用 70%。
+    expect(windows[1]).toMatchObject({ kind: 'weekly', usedPercent: 70, remainingPercent: 30 })
+  })
+
+  it('skips unlimited (status=3) windows', () => {
+    const windows = parseMiniMaxRemains({
+      model_remains: [{
+        model_name: 'general',
+        current_interval_status: 3,
+        current_interval_remaining_percent: 60,
+        current_weekly_status: 3,
+        current_weekly_remaining_percent: 30,
+      }],
+    })
+    expect(windows).toEqual([])
+  })
+})
+
+describe('parseOpenRouterCredits', () => {
+  it('maps credits usage to a used-percent billing window', () => {
+    const windows = parseOpenRouterCredits({ data: { total_credits: 100, total_usage: 25 } })
+    expect(windows).toHaveLength(1)
+    expect(windows[0]).toMatchObject({ kind: 'billing', usedPercent: 25, remainingPercent: 75 })
+  })
+
+  it('returns empty when credits are missing or zero', () => {
+    expect(parseOpenRouterCredits({ data: {} })).toEqual([])
+    expect(parseOpenRouterCredits({ data: { total_credits: 0, total_usage: 5 } })).toEqual([])
+    expect(parseOpenRouterCredits(null)).toEqual([])
   })
 })

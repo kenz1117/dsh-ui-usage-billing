@@ -11,7 +11,7 @@
  * "no quota API" marker rather than hidden. API keys come from the `llm-pi-ai`
  * settings namespace (`apiKeyEnv` refs) resolved through the credentials seam.
  */
-import type { SubscriptionPlanConfig, SubscriptionQuota } from './pricing-shared.ts';
+import type { SubscriptionPlanConfig, SubscriptionQuota, SubscriptionWindow } from './pricing-shared.ts';
 /** 订阅适配器需要的凭据（来自 llm-pi-ai 设置命名空间）。 */
 export interface SubscriptionKeys {
     /** Kimi For Coding API key。 */
@@ -20,6 +20,10 @@ export interface SubscriptionKeys {
     zaiApiKey: string;
     /** OpenCode Go API key。 */
     opencodeApiKey: string;
+    /** MiniMax Token Plan API key。 */
+    minmaxApiKey: string;
+    /** OpenRouter API key（credits 已用%）。 */
+    openrouterApiKey: string;
     /** Z.ai 区域（global / bigmodel-cn）。 */
     zaiRegion: 'global' | 'bigmodel-cn';
 }
@@ -46,6 +50,21 @@ export declare function isSubscriptionProviderId(providerId: string): boolean;
 export declare function identifySubscriptionPlans(providers: Record<string, {
     apiKeyEnv?: string;
 } | undefined> | undefined): IdentifiedSubscriptionPlan[];
+/**
+ * 解析 MiniMax Token Plan `/v1/token_plan/remains` 响应。取 general(或 MiniMax-M*)
+ * 一行抽出 5h/7d 窗口(total_count 常为 0,以 remaining_percent 为准),不按模型拆条。
+ * 导出供测试:纯函数。
+ * @param body - 接口响应 JSON。
+ * @returns 窗口列表;无可用窗口时为空数组。
+ */
+export declare function parseMiniMaxRemains(body: unknown): SubscriptionWindow[];
+/**
+ * 解析 OpenRouter `/api/v1/credits` 响应:已用% = total_usage / total_credits。
+ * 导出供测试:纯函数。
+ * @param body - 接口响应 JSON。
+ * @returns 窗口列表;无有效额度时为 []。
+ */
+export declare function parseOpenRouterCredits(body: unknown): SubscriptionWindow[];
 /**
  * Collect quota for the given plans concurrently (adapter-backed plans only;
  * identified plans without an adapter are surfaced by the caller as "no

@@ -657,6 +657,14 @@
   white-space: nowrap;
 }
 
+/* 费率表峰谷规则提示：标题下方的单行灰字说明。 */
+.pricingTip {
+  margin: 0 0 2px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption);
+}
+
 /* ── 趋势范围切换（7 天 / 30 天分段控件） ────────────────────────────── */
 
 .rangeToggle {
@@ -1902,8 +1910,8 @@
   display: flex;
   align-items: flex-end;
   gap: 3px;
-  height: 110px;
-  padding: 4px 2px 0;
+  height: 124px;
+  padding: 16px 2px 0;
   overflow-x: auto;
 }
 
@@ -1914,14 +1922,30 @@
   flex-direction: column;
   justify-content: flex-end;
   align-items: stretch;
+  position: relative;
+  border-radius: 5px 5px 0 0;
 }
 
-/* 每根柱子顶部的费用数字：加宽柱位以容纳金额，超长省略。 */
+/* 峰时列：琥珀淡色带（颜色映射背景，主题自适应）。 */
+.roundsBarColPeak {
+  background: color-mix(in srgb, var(--dsw-static-amber-500) 16%, transparent);
+}
+
+/* 平价列：中性淡色带。 */
+.roundsBarColOff {
+  background: var(--dsw-alias-bg-module-platform);
+}
+
+/* 每根柱子顶部的费用数字：随柱高定位（bottom = height%），紧贴各自柱顶上方。 */
 .roundsBarLabel {
-  font-size: 8px;
-  line-height: 1;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  transform: translateY(-100%);
+  font-size: 9px;
+  line-height: 1.2;
   text-align: center;
-  margin-bottom: 2px;
   color: var(--dsw-alias-label-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -2087,4 +2111,231 @@
   .heroSideSpacer {
     display: none;
   }
+}
+
+/* ── 峰谷切换提醒 ────────────────────────────────────────────────── */
+
+/* 浮层：档位徽标 + 大号等宽倒计时 + 说明 + 关闭；克制冷调、无重力阴影。 */
+.peakAlert {
+  position: fixed;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 300px;
+  max-width: 460px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  animation: peakAlertIn 200ms ease;
+}
+
+.peakAlertCorner {
+  right: 18px;
+  bottom: 18px;
+}
+
+.peakAlertCenter {
+  left: 50%;
+  top: 20%;
+  transform: translateX(-50%);
+}
+
+/* 档位徽标：小圆点 + 档位名；峰时琥珀 / 平价蓝。 */
+.peakAlertTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-layer-3);
+  white-space: nowrap;
+}
+
+.peakAlertTag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.peakAlertPeak .peakAlertTag {
+  color: var(--dsw-static-amber-500);
+}
+
+.peakAlertOff .peakAlertTag {
+  color: var(--dsw-static-blue-500);
+}
+
+/* 大号等宽倒计时：突出剩余分钟。 */
+.peakAlertCountdown {
+  flex: none;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
+
+.peakAlertText {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.peakAlertClose {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.peakAlertClose:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+@keyframes peakAlertIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 设置面板：与预算卡片同款。 */
+.peakAlertPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 16px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.peakAlertPanelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.peakAlertPanelLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.peakAlertPanelBody {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: center;
+}
+
+.peakAlertField {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.peakAlertNum {
+  width: 56px;
+  padding: 4px 6px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.peakAlertSelect {
+  padding: 4px 6px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+}
+
+.peakAlertCheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.peakAlertPreview {
+  padding: 5px 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.peakAlertPreview:hover {
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+/* ── 设置 Tab：分区标题 + 分组说明 ─────────────────────────────────── */
+
+.settingsHead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.settingsTitle {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  color: var(--dsw-alias-label-primary);
+}
+
+.settingsHint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* 收起态（关闭开关）时用说明文字填充，避免只剩标签+开关显得空。 */
+.budgetHint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.peakAlertHint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption);
 }

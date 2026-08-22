@@ -46,8 +46,10 @@ describe('UsageBilling surface', () => {
     const trigger = container.querySelector('button')
     expect(trigger).not.toBeNull()
     fireEvent.click(trigger!)
-    // 弹窗标题出现说明 BillingDashboard 成功渲染。
+    // 弹窗标题说明 BillingDashboard 成功渲染。
     expect(await screen.findByText('使用统计')).toBeTruthy()
+    // 预算设置在设置 Tab：先切换再操作。
+    fireEvent.click(await screen.findByTestId('billing-tab-settings'))
     // 预算开关默认关闭：开关存在但不渲染进度与金额。
     expect(screen.getByTestId('billing-budget-toggle').getAttribute('aria-checked')).toBe('false')
     expect(screen.queryByTestId('billing-budget-track')).toBeNull()

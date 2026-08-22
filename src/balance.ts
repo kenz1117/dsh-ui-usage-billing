@@ -30,6 +30,9 @@ const MOONSHOT_BALANCE_URL = 'https://api.moonshot.cn/v1/users/me/balance'
 /** 阶跃星辰 StepFun 官方账户信息接口（platform.stepfun.com/docs/api-reference/accounts/get）。 */
 const STEPFUN_BALANCE_URL = 'https://api.stepfun.com/v1/accounts'
 
+/** 硅基流动 SiliconFlow 官方用户信息接口（docs.siliconflow.cn/cn/api-reference/user/query-user-info）。 */
+const SILICONFLOW_BALANCE_URL = 'https://api.siliconflow.cn/v1/user/info'
+
 /** 数字归一化：接口返回的余额是字符串（如 `"110.00"`），统一转 number。 */
 function toNumber(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -161,6 +164,26 @@ function queryStepFun(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance>
 }
 
 /**
+ * Query the SiliconFlow (硅基流动) account balance.
+ * @param ctx - host context carrying the credentials seam.
+ * @param apiKeyEnv - credential reference resolving the SiliconFlow API key.
+ * @returns the balance row, or an error row when the key/endpoint misbehaves.
+ */
+function querySiliconFlow(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
+  return queryBearerBalance(ctx, SILICONFLOW_BALANCE_URL, apiKeyEnv, '硅基流动', '硅基流动', (data) => {
+    const doc = data as { data?: { balance?: unknown; balance_cny?: unknown }; balance?: unknown; balance_cny?: unknown }
+    const inner = doc.data ?? doc
+    const totalBalance = toNumber((inner as { balance?: unknown }).balance ?? (inner as { balance_cny?: unknown }).balance_cny)
+    return {
+      provider: '硅基流动',
+      displayName: '硅基流动',
+      currency: 'CNY',
+      ...(totalBalance !== undefined ? { totalBalance } : {}),
+    }
+  })
+}
+
+/**
  * One balance querier plus the llm-pi-ai provider route id it reads its key
  * from. The `provider` field is the model-table vendor display name, so
  * `balanceFor` matches by normalization; `route` is the llm-pi-ai providers
@@ -179,6 +202,7 @@ const QUERIERS: readonly BalanceQuerier[] = [
   { route: 'deepseek', displayName: 'deepseek', querier: queryDeepSeek },
   { route: 'moonshot', displayName: '月之暗面', querier: queryMoonshot },
   { route: 'stepfun', displayName: '阶跃星辰', querier: queryStepFun },
+  { route: 'siliconflow', displayName: '硅基流动', querier: querySiliconFlow },
 ]
 
 /**
