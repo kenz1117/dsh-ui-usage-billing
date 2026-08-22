@@ -117,6 +117,10 @@ export type UsageBillingKey =
   | 'billing.triggerMonth'
   | 'billing.subscriptionIncluded'
   | 'billing.free'
+  | 'billing.official'
+  | 'billing.thirdParty'
+  | 'billing.officialCost'
+  | 'billing.thirdPartyCost'
 
 export const NS = 'usageBilling'
 
@@ -237,6 +241,10 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.triggerMonth': '当月',
   'billing.subscriptionIncluded': '订阅包含',
   'billing.free': '免费',
+  'billing.official': '官方',
+  'billing.thirdParty': '三方',
+  'billing.officialCost': '官方费用',
+  'billing.thirdPartyCost': '三方费用',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -356,4 +364,8 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.triggerMonth': 'This month',
   'billing.subscriptionIncluded': 'Included',
   'billing.free': 'Free',
+  'billing.official': 'Official',
+  'billing.thirdParty': 'Third-party',
+  'billing.officialCost': 'Official cost',
+  'billing.thirdPartyCost': 'Third-party cost',
 }

@@ -67,6 +67,20 @@ const persistenceDouble = {
   },
 }
 
+/** 聚合失败替身：`list` 抛异常，模拟持久化后端整体不可读（aggregate() 的
+ *  list 在单会话容错之外，会让整份聚合抛错 → 路由走快照回退）。 */
+const corruptPersistenceDouble = {
+  name: 'test-billing-persistence',
+  apply(ctx: Context): void {
+    ctx.provide('sessionPersistence', {
+      list: async () => {
+        throw new Error('corrupt session store: persistence backend unreadable')
+      },
+      readFrom: async () => ({ meta: { id: 's1' as SessionId }, events: [] }),
+    } as unknown as SessionPersistence)
+  },
+}
+
 /** credentials 能力替身：任何引用都解析不到（余额走 unconfigured，不触网）。 */
 const credentialsDouble = {
   name: 'test-billing-credentials',
@@ -89,6 +103,12 @@ const settingsDouble = {
 
 /** Write the four-row cordis.yml, then boot it through the real Loader. */
 async function loadComposition(): Promise<Context> {
+  return loadCompositionWith({})
+}
+
+/** 参数化组装：默认用正常 persistence；`corrupt` 时注入 readFrom 抛错的替身，
+ *  `statsPath` 写入配置指向回退快照文件（聚合失败时走该文件）。 */
+async function loadCompositionWith(options: { corrupt?: boolean; statsPath?: string } = {}): Promise<Context> {
   root = await mkdtemp(join(tmpdir(), 'dsh-usage-billing-'))
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
@@ -102,6 +122,7 @@ async function loadComposition(): Promise<Context> {
     "- name: '@kenz1117/dsh-ui-usage-billing'",
     '  config:',
     '    monthlyBudget: 100',
+    ...(options.statsPath === undefined ? [] : [`    statsPath: '${options.statsPath}'`]),
     '',
   ].join('\n'))
 
@@ -111,7 +132,7 @@ async function loadComposition(): Promise<Context> {
   context.loader.builtins.include = Include
   const modules = new Map<string, unknown>([
     ['@deepseek-ai/dsh-host-webserver', HttpServer],
-    ['virtual:test-billing-persistence', persistenceDouble],
+    ['virtual:test-billing-persistence', options.corrupt ? corruptPersistenceDouble : persistenceDouble],
     ['virtual:test-billing-credentials', credentialsDouble],
     ['virtual:test-billing-settings', settingsDouble],
     ['@kenz1117/dsh-ui-usage-billing', UsageBilling],
@@ -194,5 +215,28 @@ describe('usage-billing real Loader composition', () => {
     expect((await getJson(port, '/api/billing/usage-stats')).status).toBe(404)
     expect((await getJson(port, '/api/billing/pricing')).status).toBe(404)
     expect((await getJson(port, '/api/billing/balance')).status).toBe(404)
+  })
+
+  it('falls back to the recent snapshot when the aggregation fails entirely', { timeout: 60_000 }, async () => {
+    // 聚合全挂（readFrom 抛异常）时路由不得打崩：回退到 statsPath 指向的最近快照。
+    // 预写一个合法快照（含客户端可识别的字段），验证回退数据可用。
+    const snapshotDir = await mkdtemp(join(tmpdir(), 'dsh-usage-billing-snap-'))
+    const statsFile = join(snapshotDir, 'usage-stats.snapshot.json')
+    const snapshot = JSON.stringify({
+      version: 3,
+      source: 'session-logs',
+      total: { calls: 42, input: 1, output: 1, cacheHit: 0, cacheMiss: 1, cost: 0 },
+      byModel: {}, byDay: {}, byDayModels: {}, bySession: [],
+    })
+    await writeFile(statsFile, snapshot)
+    const loaded = await loadCompositionWith({ corrupt: true, statsPath: statsFile })
+    const port = loaded.webServer.port
+    const stats = await getJson(port, '/api/billing/usage-stats')
+    expect(stats.status).toBe(200)
+    const doc = stats.json as { source: string; total: { calls: number; cost: number } }
+    expect(doc.source).toBe('session-logs')
+    expect(doc.total.calls).toBe(42)
+    expect(doc.total.cost).toBe(0)
+    await rm(snapshotDir, { recursive: true, force: true })
   })
 })

@@ -39,10 +39,21 @@ export const DEFAULT_SUBSCRIPTION_PROVIDERS: readonly string[] = [
   'xiaomi-token-plan-sgp',
 ]
 
+/**
+ * 官方渠道 provider id 判定：`deepseek` 前缀（DeepSeek 官方直连）视为官方，
+ * 其余 provider（第三方中转/代理）视为「三方」。用于「官方 vs 三方」token、
+ * 调用与费用分桶展示；部署可由配置覆盖（见 {@link AggregateOptions}）。
+ */
+export function isOfficialProvider(provider: string): boolean {
+  return /^deepseek(?:-[a-z0-9-]+)?$/i.test(provider.trim())
+}
+
 /** Aggregation tuning options. */
 export interface AggregateOptions {
   /** 订阅制 provider id 列表；默认 {@link DEFAULT_SUBSCRIPTION_PROVIDERS}。 */
   subscriptionProviders?: readonly string[]
+  /** 官方渠道 provider id 列表；默认按 {@link isOfficialProvider} 判定（DeepSeek 官方直连）。 */
+  officialProviderIds?: readonly string[]
 }
 
 /** One model's aggregated usage plus estimated cost in CNY. */
@@ -55,11 +66,15 @@ export interface ModelUsage {
   cost: number
   /** 该模型本次统计的所有调用是否都走订阅通道（coding/token plan）；混合通道不置位。 */
   plan?: boolean
+  /** 走官方渠道的调用数（DeepSeek 官方直连；其余为三方）。 */
+  officialCalls: number
+  /** 走官方渠道的费用（CNY）；三方费用 = cost - officialCost。 */
+  officialCost: number
 }
 
 /** Zeroed usage accumulator. */
 export function emptyUsage(): ModelUsage {
-  return { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0 }
+  return { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0, officialCalls: 0, officialCost: 0 }
 }
 
 /**
@@ -71,8 +86,9 @@ export function emptyUsage(): ModelUsage {
  * @param key - the billing-catalog key this call belongs to.
  * @param subscription - whether the call went through a subscription plan; such calls never cost money.
  * @param timeMs - the call's wall-clock time (epoch ms); drives peak/off-peak pricing.
+ * @param official - whether the call went through the official DeepSeek channel (vs a third-party relay).
  */
-export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number): void {
+export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number, official = false): void {
   const cacheHit = usage.cacheReadTokens ?? 0
   const cacheMiss = usage.inputTokens + (usage.cacheWriteTokens ?? 0)
   acc.calls += 1
@@ -80,16 +96,20 @@ export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subsc
   acc.output += usage.outputTokens
   acc.cacheHit += cacheHit
   acc.cacheMiss += cacheMiss
+  // 官方/三方分桶：官方直连调用数与其费用分别累加；三方=总量-官方。
+  if (official) acc.officialCalls += 1
   // 订阅套餐不计费；未定价的模型（目录与 models.dev 补充条目都没有）记 0。
   // 费用按本次调用增量累加（计价是线性的）：同一桶内混入订阅/未知调用时，
   // 后面免费调用不再把整个桶的 cost 覆盖成 0。时段按本次调用的实际时刻精确判定。
   if (!subscription && isPriced(key)) {
-    acc.cost += computeCostAt(modelOf(key), {
+    const thisCost = computeCostAt(modelOf(key), {
       input: cacheHit + cacheMiss,
       cacheHit,
       cacheMiss,
       output: usage.outputTokens,
     }, timeMs)
+    acc.cost += thisCost
+    if (official) acc.officialCost += thisCost
   }
 }
 
@@ -299,9 +319,11 @@ function turnState(turns: Map<number, TurnState>, turn: number): TurnState {
  * 并按轮次折叠每轮费用明细（turn/start → turn/end；调用按 (turn) 归组）。
  * @param events - the session's persisted events in log order.
  * @param subscriptionProviders - provider ids billed through subscription plans.
+ * @param officialProviderIds - provider ids treated as the official DeepSeek channel
+ *   (default: any `deepseek`-prefixed id). Others count as third-party.
  * @returns the per-session fold (cached by the incremental aggregator).
  */
-export function foldSession(events: readonly { type: string; time: number; data: never }[], subscriptionProviders: ReadonlySet<string>): SessionFold {
+export function foldSession(events: readonly { type: string; time: number; data: never }[], subscriptionProviders: ReadonlySet<string>, officialProviderIds?: ReadonlySet<string>): SessionFold {
   const fold: SessionFold = {
     total: emptyUsage(),
     byModel: new Map(),
@@ -314,6 +336,7 @@ export function foldSession(events: readonly { type: string; time: number; data:
   }
   let key = 'other'
   let subscription = false
+  let official = false
   const turns = new Map<number, TurnState>()
   for (const event of events) {
     fold.lastActive = Math.max(fold.lastActive, event.time)
@@ -350,6 +373,8 @@ export function foldSession(events: readonly { type: string; time: number; data:
       key = MODEL_KEY_ALIASES[model] ?? model
       // 订阅套餐 provider 的调用即使撞名计费表也一律免费。
       subscription = subscriptionProviders.has(provider)
+      // 官方直连（DeepSeek 官方）vs 第三方中转/代理。
+      official = officialProviderIds === undefined ? isOfficialProvider(provider) : officialProviderIds.has(provider)
       continue
     }
     if (event.type !== 'assistant/message') continue
@@ -359,10 +384,10 @@ export function foldSession(events: readonly { type: string; time: number; data:
     // 时段按本次调用的实际时刻（event.time）精确判定，不再按固定比例混合。
     const modelKey = key
     const day = dayStamp(event.time)
-    foldUsage(fold.total, usage, modelKey, subscription, event.time)
-    foldUsage(usageCell(fold.byModel, modelKey), usage, modelKey, subscription, event.time)
-    foldUsage(usageCell(fold.byDay, day), usage, modelKey, subscription, event.time)
-    foldUsage(modelDayCell(fold.byDayModels, day, modelKey), usage, modelKey, subscription, event.time)
+    foldUsage(fold.total, usage, modelKey, subscription, event.time, official)
+    foldUsage(usageCell(fold.byModel, modelKey), usage, modelKey, subscription, event.time, official)
+    foldUsage(usageCell(fold.byDay, day), usage, modelKey, subscription, event.time, official)
+    foldUsage(modelDayCell(fold.byDayModels, day, modelKey), usage, modelKey, subscription, event.time, official)
     if (subscription) fold.planCalls.set(modelKey, (fold.planCalls.get(modelKey) ?? 0) + 1)
     // 每轮明细：同一轮内的调用累加进该轮状态（模型取最近一次的归属）。
     const turn = (event.data as { turn?: number }).turn ?? -1
@@ -414,6 +439,8 @@ function mergeUsageInto(acc: ModelUsage, cell: ModelUsage): void {
   acc.cacheHit += cell.cacheHit
   acc.cacheMiss += cell.cacheMiss
   acc.cost += cell.cost
+  acc.officialCalls += cell.officialCalls
+  acc.officialCost += cell.officialCost
 }
 
 /**
@@ -434,6 +461,9 @@ export interface UsageAggregator {
  */
 export function createUsageAggregator(persistence: UsagePersistence, options: AggregateOptions = {}): UsageAggregator {
   const subscriptionProviders = new Set(options.subscriptionProviders ?? DEFAULT_SUBSCRIPTION_PROVIDERS)
+  const officialProviderIds = options.officialProviderIds === undefined
+    ? undefined
+    : new Set(options.officialProviderIds)
   const cache = new Map<string, { stamp: string | null; fold: SessionFold }>()
   let lastDoc: UsageStatsDocument | undefined
   let lastAt = 0
@@ -474,7 +504,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         try {
           const { events } = await persistence.readFrom(meta.id, 0)
           // durable 边界：日志事件是外部 JSON，foldSession 内做运行时收窄。
-          const fold = foldSession(events as { type: string; time: number; data: never }[], subscriptionProviders)
+          const fold = foldSession(events as { type: string; time: number; data: never }[], subscriptionProviders, officialProviderIds)
           cache.set(id, { stamp, fold })
           folds.push({ meta, fold })
         } catch (error) {

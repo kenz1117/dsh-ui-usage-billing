@@ -28,6 +28,7 @@ import {
 import type { BalanceResponse, LivePricing, ProviderBalance } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
+import { localizeProviderName } from './provider-display.ts'
 import css from './UsageBilling.module.css'
 
 /** Model-connectivity health reported by the host model directory probe. */
@@ -333,6 +334,10 @@ interface UsageStats {
     cost: number
     /** Billed through a subscription plan (no per-token cost). */
     plan?: boolean
+    /** 走官方 DeepSeek 直连的调用数（其余为第三方）；旧快照可能缺失。 */
+    officialCalls?: number
+    /** 走官方渠道的费用（CNY）；旧快照可能缺失。 */
+    officialCost?: number
   }>
   byDay: Record<string, {
     calls: number
@@ -563,6 +568,10 @@ interface ModelRow {
   uncatalogued: boolean
   /** 目录单价为估算价（厂商未公布官方按量价）：标注以免误当正式定价。 */
   estimatedPricing: boolean
+  /** 走官方 DeepSeek 直连的调用数（其余为第三方中转/代理）。 */
+  officialCalls: number
+  /** 走官方渠道的费用（CNY）；三方费用 = actual - officialCost。 */
+  officialCost: number
 }
 
 /**
@@ -591,12 +600,12 @@ interface ProviderBillingGroup {
 function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; monthCost: number; todayCost: number; weekCost: number; days: readonly { date: string; cost: number }[] }): React.ReactNode {
   const { wide, t, onOpen, monthCost, todayCost, weekCost, days } = props
 
-  // 银行卡 icon：计费语义，窄栏与宽栏共用。
+  // 计费 icon：圆角矩 + 细线描边，窄栏与宽栏共用。
   const cardIcon = (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-      <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
-      <path d="M2.5 9.5h19" />
-      <rect x="6" y="12" width="4" height="3.5" rx="0.75" />
+      <path d="M4 7h16v11H4z" />
+      <path d="M4 10h16" />
+      <path d="M8 14h3" />
     </svg>
   )
 
@@ -614,6 +623,10 @@ function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; mo
     )
   }
 
+  // 近 7 天 sparkline 高度：按当日费用归一化到 4~16px。
+  const sparkMax = Math.max(...days.map(d => d.cost), 0)
+  const sparkHeights = days.map(d => sparkMax > 0 ? 4 + (d.cost / sparkMax) * 12 : 4)
+
   return (
     <span className={css.triggerWrap}>
       <button
@@ -621,19 +634,27 @@ function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; mo
         className={css.trigger}
         data-testid="billing-trigger"
         onClick={onOpen}
-        title={`${t('billing.title')} · ${t('billing.triggerMonth')} ${formatMoney(monthCost)}`}
+        title={`${t('billing.title')} · ${formatMoney(monthCost)}`}
       >
         <span className={css.triggerIcon} data-testid="billing-trigger-icon">{cardIcon}</span>
-        {/* 左块：今日费用为重点 */}
-        <span className={css.triggerToday} data-testid="billing-trigger-today">
-          <span className={css.triggerMeta}>{t('billing.triggerToday')}</span>
-          <span className={css.triggerAmount}>{formatMoney(todayCost)}</span>
+        {/* 本月费用为主数字，右侧 sparkline 常驻（近 7 天趋势一眼可读）。 */}
+        <span className={css.triggerBody}>
+          <span className={css.triggerRow}>
+            <span className={css.triggerMeta}>{t('billing.triggerMonth')}</span>
+            <span className={css.triggerAmount}>{formatMoney(monthCost)}</span>
+          </span>
+          <span className={css.triggerSub} data-testid="billing-trigger-today">
+            {t('billing.triggerToday')} {formatMoney(todayCost)} · {weekCost > 0 ? `${t('billing.weekCost')} ${formatMoney(weekCost)}` : ''}
+          </span>
         </span>
-        <span className={css.triggerDivider} />
-        {/* 右块：当月费用为次要 */}
-        <span className={css.triggerMonth} data-testid="billing-trigger-month">
-          <span className={css.triggerMeta}>{t('billing.triggerMonth')}</span>
-          <span className={css.triggerAmountSub}>{formatMoney(monthCost)}</span>
+        <span className={css.triggerSpark} data-testid="billing-trigger-spark" aria-hidden="true">
+          {sparkHeights.map((h, index) => (
+            <span
+              key={days[index]?.date ?? String(index)}
+              className={index === sparkHeights.length - 1 ? css.triggerSparkHot : css.triggerSparkBar}
+              style={{ height: `${h}px` }}
+            />
+          ))}
         </span>
       </button>
       {/* hover 速览卡：今日/本周/当月 + 近 7 天迷你柱，不点开弹窗即可速览。
@@ -652,16 +673,13 @@ function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; mo
           <span className={css.triggerPopValue}>{formatMoney(monthCost)}</span>
         </span>
         <span className={css.triggerPopBars}>
-          {(() => {
-            const max = Math.max(...days.map(d => d.cost), 0)
-            return days.map(d => (
-              <span
-                key={d.date}
-                className={css.triggerPopBar}
-                style={{ height: `${max > 0 ? 4 + (d.cost / max) * 18 : 4}px` }}
-              />
-            ))
-          })()}
+          {sparkHeights.map((h, index) => (
+            <span
+              key={days[index]?.date ?? String(index)}
+              className={css.triggerPopBar}
+              style={{ height: `${sparkMax > 0 ? 4 + (days[index]!.cost / sparkMax) * 18 : 4}px` }}
+            />
+          ))}
         </span>
       </span>
     </span>
@@ -709,6 +727,10 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
 
   // 显示币种换算：usd 时把 CNY 金额按当前汇率换算显示。
   const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
+
+  // 界面语言跟随币种：USD→英文，CNY→中文；厂商显示名据此本地化。
+  const lang = currency === 'usd' ? 'en' : 'zh'
+  const providerName = (name: string): string => localizeProviderName(name, lang)
 
   // 费率表单价：按用户所选币种换算后再格式化（原生币种 × 汇率）；0 价显示"免费"。
   // 切 USD 时把 ¥ 计价模型换算成 $，费率表不再固定显示人民币。
@@ -883,6 +905,8 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
           uncatalogued,
           // 目录单价为估算价（未公布官方按量价）：行内标注，避免误当正式定价。
           estimatedPricing: entry.estimated === true,
+          officialCalls: data.officialCalls ?? 0,
+          officialCost: data.officialCost ?? 0,
         }
       })
       .sort((a, b) => (b.actual ?? b.estimated) - (a.actual ?? a.estimated))
@@ -892,6 +916,24 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
       })),
     [byModel],
   )
+
+  // 官方 vs 三方汇总：官方 = DeepSeek 官方直连（officialCost/officialCalls），
+  // 三方 = 总量 - 官方。仅当任一模型实际发生官方/三方费用时展示。
+  const bucketSummary = useMemo(() => {
+    let officialCost = 0
+    let officialCalls = 0
+    let thirdCalls = 0
+    for (const row of modelRows) {
+      const official = row.officialCost
+      const actual = row.actual ?? 0
+      if (official > 0) officialCost += official
+      officialCalls += row.officialCalls
+      thirdCalls += Math.max(0, row.calls - row.officialCalls)
+    }
+    const thirdCost = Math.max(0, (modelRows.reduce((sum, r) => sum + (r.actual ?? 0), 0)) - officialCost)
+    if (officialCost <= 0 && thirdCost <= 0 && officialCalls <= 0 && thirdCalls <= 0) return undefined
+    return { officialCost, officialCalls, thirdCost, thirdCalls }
+  }, [modelRows])
 
   // 按厂商聚合：模型用量与订阅额度都归并到同一厂商组，余额只在厂商头部显示一次。
   // 厂商组同时容纳非订阅按量模型（无订阅额度也成组）与订阅套餐（无用量也成组）。
@@ -1043,47 +1085,52 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
         <div className={css.dashboardBody}>
           {tab === 'overview' && (
           <div className={css.tabPanel} data-testid="billing-tab-panel-overview">
-          {/* Hero: 本月主数字 + 右侧 本年/今日/本月预计 次统计，渐变光晕质感 */}
+          {/* Hero: 液晶读数大屏 —— 左上「本月费用」大数字液晶表，右上环形仪表盘，底部一条「本年 / 今日 / 本月预计」读数排。 */}
           <section
             className={css.hero}
             data-testid="billing-hero"
           >
             {/* ZINE: 装饰孔位（hero 锚点：撕角便签角标） */}
             {renderSlot('billing.dashboard.decor', { position: 'hero' })}
-            <div className={css.heroMain}>
-              <span className={css.heroLabel}>
-                {t('billing.monthCost')}
-              </span>
-              <span className={css.heroValue}>
-                {money(monthCost)}
-              </span>
-              <span className={css.heroMeta}>
-                {monthCalls.toLocaleString()} {t('billing.calls')}
-              </span>
-            </div>
-            {/* 环形仪表盘：SVG stroke-dasharray 画弧，中心显示百分比与标签，
-                超支转红（预算口径下）。无预算时按本月占本年装饰。 */}
-            <div className={css.heroGauge} data-testid="billing-hero-gauge">
-              <svg
-                className={css.heroGaugeSvg}
-                viewBox="0 0 120 120"
-                aria-hidden="true"
-              >
-                <circle className={css.heroGaugeTrack} cx="60" cy="60" r="52" />
-                <circle
-                  className={clsx(css.heroGaugeArc, heroGauge.over && css.heroGaugeArcOver)}
-                  cx="60"
-                  cy="60"
-                  r="52"
-                  style={{ strokeDasharray: `${(heroGauge.pct / 100) * 326.7} 326.7` }}
-                />
-              </svg>
-              <span className={css.heroGaugeCenter}>
-                <span className={clsx(css.heroGaugePct, heroGauge.over && css.heroGaugePctOver)}>
-                  {heroGauge.pct.toFixed(0)}%
+            <div className={css.heroTop}>
+              <div className={css.heroMain}>
+                <span className={css.heroLabel}>
+                  {t('billing.monthCost')}
                 </span>
-                <span className={css.heroGaugeLabel}>{heroGauge.label}</span>
-              </span>
+                <div className={css.heroReadout}>
+                  <span className={css.heroCurrency} aria-hidden="true">{currency === 'usd' ? '$' : '¥'}</span>
+                  <span className={css.heroValue}>
+                    {money(monthCost).slice(1)}
+                  </span>
+                </div>
+                <span className={css.heroMeta}>
+                  {monthCalls.toLocaleString()} {t('billing.calls')}
+                </span>
+              </div>
+              {/* 环形仪表盘：SVG stroke-dasharray 画弧，中心显示百分比与标签，
+                  超支转红（预算口径下）。无预算时按本月占本年装饰。 */}
+              <div className={css.heroGauge} data-testid="billing-hero-gauge">
+                <svg
+                  className={css.heroGaugeSvg}
+                  viewBox="0 0 120 120"
+                  aria-hidden="true"
+                >
+                  <circle className={css.heroGaugeTrack} cx="60" cy="60" r="52" />
+                  <circle
+                    className={clsx(css.heroGaugeArc, heroGauge.over && css.heroGaugeArcOver)}
+                    cx="60"
+                    cy="60"
+                    r="52"
+                    style={{ strokeDasharray: `${(heroGauge.pct / 100) * 326.7} 326.7` }}
+                  />
+                </svg>
+                <span className={css.heroGaugeCenter}>
+                  <span className={clsx(css.heroGaugePct, heroGauge.over && css.heroGaugePctOver)}>
+                    {heroGauge.pct.toFixed(0)}%
+                  </span>
+                  <span className={css.heroGaugeLabel}>{heroGauge.label}</span>
+                </span>
+              </div>
             </div>
             <div className={css.heroSide}>
               <div className={css.heroSideItem}>
@@ -1115,11 +1162,12 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                   </span>
                 </div>
               )}
+              {/* 无本月预计时用占位行保持读数排三等分。 */}
+              {monthCostProjected <= 0 && <span className={css.heroSideSpacer} aria-hidden="true" />}
             </div>
           </section>
 
-          {/* 月度预算：开关控制显隐（持久化到 localStorage），金额可编辑，
-              宿主 monthlyBudget 作为默认值；超支进度条转红。 */}
+          {/* 月度预算：开关控制显隐（持久化到 localStorage），金额可编辑，宿主 monthlyBudget 作为默认值；超支进度条转红。 */}
           <section className={css.budget} data-testid="billing-budget">
             <div className={css.budgetHead}>
               <span className={css.budgetLabel}>{t('billing.budget')}</span>
@@ -1343,7 +1391,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                     <div className={css.providerGroupHead}>
                       <span className={css.providerGroupTitle}>
                         <span className={clsx(css.healthDot, group.dot)} aria-hidden="true" />
-                        <span className={css.providerGroupName}>{group.name}</span>
+                        <span className={css.providerGroupName}>{providerName(group.name)}</span>
                       </span>
                       <span className={css.providerGroupMeta}>
                         {group.subscriptions.length > 0 && (
@@ -1394,7 +1442,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                                           </span>
                                         )}
                                       </span>
-                                      <span className={css.modelProvider}>{row.provider}</span>
+                                      <span className={css.modelProvider}>{providerName(row.provider)}</span>
                                     </span>
                                   </span>
                                 </td>
@@ -1405,7 +1453,23 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                                 <td className={css.numCol}>
                                   {row.plan
                                     ? <span className={css.planTag}>{t('billing.subscriptionIncluded')}</span>
-                                    : row.actual !== undefined ? money(row.actual) : <span className={css.na}>—</span>}
+                                    : row.actual !== undefined
+                                      ? (() => {
+                                          const official = row.officialCost
+                                          const third = row.actual - official
+                                          // 纯官方 / 纯三方 / 混合三态：混合时分解展示。
+                                          if (official > 0 && third > 0) {
+                                            return (
+                                              <span className={css.bucketCost}>
+                                                <span className={css.bucketOfficial}>{money(official)}</span>
+                                                <span className={css.bucketSep}>/</span>
+                                                <span className={css.bucketThird}>{money(third)}</span>
+                                              </span>
+                                            )
+                                          }
+                                          return money(row.actual)
+                                        })()
+                                      : <span className={css.na}>—</span>}
                                 </td>
                               </tr>
                             ))}
@@ -1421,7 +1485,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                           return (
                             <div key={quota.provider} className={css.subscriptionCard} data-testid="billing-subscription-card">
                               <div className={css.subscriptionHead}>
-                                <span className={css.subscriptionName}>{quota.displayName}</span>
+                                <span className={css.subscriptionName}>{providerName(quota.displayName)}</span>
                                 {/* plan 双口径徽标（dsh-spend）：订阅制/按量；订阅制附月费。 */}
                                 {quota.planType === 'code' && (
                                   <span className={css.subscriptionPlan} data-kind="code">
@@ -1537,6 +1601,28 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                     </span>
                   </span>
                 ))}
+              </div>
+            </section>
+          )}
+          {/* 官方 vs 三方汇总：官方 = DeepSeek 官方直连，三方 = 其余中转/代理。 */}
+          {bucketSummary !== undefined && (
+            <section className={css.panel} data-testid="billing-panel-buckets">
+              <div className={css.panelHead}>
+                <h3 className={css.panelTitle}>
+                  {t('billing.official')} / {t('billing.thirdParty')}
+                </h3>
+              </div>
+              <div className={css.bucketSummary}>
+                <div className={css.bucketStat}>
+                  <span className={css.bucketStatLabel}>{t('billing.official')}</span>
+                  <span className={css.bucketStatValue}>{money(bucketSummary.officialCost)}</span>
+                  <span className={css.bucketStatSub}>{bucketSummary.officialCalls} {t('billing.calls')}</span>
+                </div>
+                <div className={css.bucketStat}>
+                  <span className={css.bucketStatLabel}>{t('billing.thirdParty')}</span>
+                  <span className={css.bucketStatValue}>{money(bucketSummary.thirdCost)}</span>
+                  <span className={css.bucketStatSub}>{bucketSummary.thirdCalls} {t('billing.calls')}</span>
+                </div>
               </div>
             </section>
           )}
@@ -1684,7 +1770,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                                     </span>
                                   )}
                                 </span>
-                                <span className={css.modelProvider}>{entry.provider}</span>
+                                <span className={css.modelProvider}>{providerName(entry.provider)}</span>
                               </span>
                             </span>
                           </td>

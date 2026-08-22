@@ -208,6 +208,24 @@ describe('aggregateUsage', () => {
     expect(Object.keys(stats.byDay)).toHaveLength(2)
   })
 
+  it('buckets DeepSeek-official calls as official and the rest as third-party', async () => {
+    // 官方 = provider 以 deepseek 为前缀；其余（如 openrouter 中转）计为三方。
+    const stats = await aggregateUsage(fakePersistence({
+      'session-a': [
+        header(1, 'deepseek-v4-flash', 'deepseek-official'),
+        message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE),
+        header(3, 'deepseek-v4-flash', 'openrouter'),
+        message(4, Date.UTC(2026, 7, 15, 5, 0, 0), USAGE),
+      ],
+    }))
+    const flash = stats.byModel.flash
+    expect(flash?.calls).toBe(2)
+    expect(flash?.officialCalls).toBe(1)
+    // 官方费用 = 官方那次调用的计价，>0 且小于总费用。
+    expect(flash?.officialCost ?? 0).toBeGreaterThan(0)
+    expect(flash?.officialCost ?? 0).toBeLessThan(flash?.cost ?? 0)
+  })
+
   it('keeps unknown (subscription) models free while counting their tokens', async () => {
     const stats = await aggregateUsage(fakePersistence({
       'session-a': [
