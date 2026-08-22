@@ -86,6 +86,11 @@ export type UsageBillingKey =
   | 'billing.model'
   | 'billing.currentRound'
   | 'billing.costAbbr'
+  | 'billing.tabOverview'
+  | 'billing.tabTrends'
+  | 'billing.tabProviders'
+  | 'billing.tabDetails'
+  | 'billing.tabPricing'
 
 export const NS = 'usageBilling'
 
@@ -175,6 +180,11 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.model': '模型',
   'billing.currentRound': '当前',
   'billing.costAbbr': '费用',
+  'billing.tabOverview': '概览',
+  'billing.tabTrends': '趋势',
+  'billing.tabProviders': '明细',
+  'billing.tabDetails': '统计',
+  'billing.tabPricing': '费率',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -263,4 +273,9 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.model': 'Model',
   'billing.currentRound': 'current',
   'billing.costAbbr': 'cost',
+  'billing.tabOverview': 'Overview',
+  'billing.tabTrends': 'Trends',
+  'billing.tabProviders': 'Details',
+  'billing.tabDetails': 'Stats',
+  'billing.tabPricing': 'Rates',
 }

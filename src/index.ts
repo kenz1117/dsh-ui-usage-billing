@@ -62,7 +62,8 @@ export const inject = ['webServer', 'sessionPersistence', 'credentials', 'settin
  * 订阅 provider id（llm-pi-ai 设置键）→ billing 适配器 key 的映射。
  * 复用 dsh 既有的 llm-pi-ai provider 配置（apiKeyEnv 引用），不引入新配置面。
  */
-const SUBSCRIPTION_KEY_SOURCES: ReadonlyArray<{ provider: string; key: keyof SubscriptionKeys }> = [
+/** key 只取字符串凭据字段：zaiRegion 是区域枚举，由下方区域逻辑单独赋值。 */
+const SUBSCRIPTION_KEY_SOURCES: ReadonlyArray<{ provider: string; key: Exclude<keyof SubscriptionKeys, 'zaiRegion'> }> = [
   { provider: 'kimi-coding', key: 'kimiApiKey' },
   { provider: 'zai-coding-cn', key: 'zaiApiKey' },
   { provider: 'opencode', key: 'opencodeApiKey' },

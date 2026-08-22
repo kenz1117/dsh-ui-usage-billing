@@ -98,16 +98,42 @@ describe('UsageBilling real-data surface', () => {
     const trigger = container.querySelector('button')
     expect(trigger).not.toBeNull()
     fireEvent.click(trigger!)
-    // 弹窗标题 + 真实数据渲染完成（趋势面板存在）。
+    // 弹窗标题 + 真实数据渲染完成（默认概览 Tab：Hero 与热力图面板）。
     expect(await screen.findByText('使用统计')).toBeTruthy()
     await waitFor(() => {
-      expect(screen.queryByText('每日费用与调用趋势')).not.toBeNull()
+      expect(screen.queryByTestId('billing-tab-panel-overview')).not.toBeNull()
+      expect(screen.queryByTestId('billing-panel-heatmap')).not.toBeNull()
     })
+  })
+
+  it('renders decor anchors: hero in overview, trend in trends, footer always', async () => {
+    const positions: string[] = []
+    const props = {
+      ...makeProps(),
+      renderSlot: (_slot: string, anchor: { position: string }) => {
+        positions.push(anchor.position)
+        return null
+      },
+    } as unknown as ComponentProps<typeof UsageBilling>
+    const { container } = render(<UsageBilling {...props} />)
+    fireEvent.click(container.querySelector('button')!)
+    await screen.findByTestId('billing-tab-panel-overview')
+    expect(positions).toContain('head')
+    expect(positions).toContain('headTitle')
+    expect(positions).toContain('hero')
+    expect(positions).toContain('footer')
+    expect(positions).not.toContain('trend')
+    // 切到趋势 Tab：trend 锚点出现。
+    fireEvent.click(screen.getByTestId('billing-tab-trends'))
+    await screen.findByTestId('billing-tab-panel-trends')
+    expect(positions).toContain('trend')
   })
 
   it('switches the trend window between 7 and 30 days', async () => {
     const { container } = render(<UsageBilling {...makeProps()} />)
     fireEvent.click(container.querySelector('button')!)
+    // 趋势图在趋势 Tab：先切 Tab。
+    fireEvent.click(await screen.findByTestId('billing-tab-trends'))
     const btn30 = await screen.findByTestId('billing-trend-30d')
     // 默认 7 天窗口。
     expect(screen.getByTestId('billing-trend-7d').getAttribute('aria-pressed')).toBe('true')
@@ -135,12 +161,11 @@ describe('UsageBilling real-data surface', () => {
     expect(screen.queryByTestId('billing-budget-track')).toBeNull()
   })
 
-  it('expands the sessions panel with title, project basename, and cost rows', async () => {
+  it('shows the sessions panel with title, project basename, and cost rows', async () => {
     const { container } = render(<UsageBilling {...makeProps()} />)
     fireEvent.click(container.querySelector('button')!)
-    const toggle = await screen.findByTestId('billing-sessions-toggle')
-    expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    fireEvent.click(toggle)
+    // 会话明细在明细 Tab 内默认展开：切 Tab 后表格直接可见。
+    fireEvent.click(await screen.findByTestId('billing-tab-details'))
     const table = await screen.findByTestId('billing-sessions-table')
     // 标题行按费用倒序；无标题会话回退为 id 前 8 位；项目取 cwd 末级目录。
     expect(table.textContent).toContain('修复登录 bug')
@@ -203,6 +228,8 @@ describe('UsageBilling real-data surface', () => {
     fireEvent.click(container.querySelector('button')!)
     // 未收录模型按厂商聚合：mi-mimo-2.5 反推出厂商为「小米」，落进小米厂商组。
     // 用厂商组 testid 定位（其他厂商组可能排在前，findByTestId 会取到第一个）。
+    // 厂商面板在厂商 Tab：先切 Tab。
+    fireEvent.click(await screen.findByTestId('billing-tab-providers'))
     const groups = await screen.findAllByTestId('billing-provider-group')
     const xiaomi = groups.find(group => group.textContent?.includes('小米'))
     expect(xiaomi).toBeDefined()
@@ -236,6 +263,8 @@ describe('UsageBilling real-data surface', () => {
     fireEvent.click(container.querySelector('button')!)
     // 余额按厂商匹配：目录里 flash / pro 与 deepseek-chat 同属 DeepSeek，归并到同一
     // 厂商组；余额只在厂商组头部显示一次（不再随每行重复），天数预估仍在头部。
+    // 厂商面板在厂商 Tab：先切 Tab。
+    fireEvent.click(await screen.findByTestId('billing-tab-providers'))
     const days = await screen.findAllByTestId('billing-balance-days')
     expect(days).toHaveLength(1)
     expect(days[0]?.textContent).toContain('约可撑 17 天')
@@ -288,7 +317,8 @@ describe('UsageBilling real-data surface', () => {
     }))
     const { container } = render(<UsageBilling {...makeProps()} />)
     fireEvent.click(container.querySelector('button')!)
-    // 单一容器按厂商聚合：模型用量与订阅额度同属一个面板。
+    // 单一容器按厂商聚合：模型用量与订阅额度同属一个面板（厂商 Tab）。
+    fireEvent.click(await screen.findByTestId('billing-tab-providers'))
     expect(await screen.findByTestId('billing-panel-providers')).toBeTruthy()
     const groups = await screen.findAllByTestId('billing-provider-group')
     // 月之暗面组：订阅卡片 + 套数徽标，无模型用量表（无该厂商模型）。
@@ -325,6 +355,8 @@ describe('UsageBilling real-data surface', () => {
     }))
     const { container } = render(<UsageBilling {...makeProps()} />)
     fireEvent.click(container.querySelector('button')!)
+    // 厂商面板在厂商 Tab：先切 Tab。
+    fireEvent.click(await screen.findByTestId('billing-tab-providers'))
     const groups = await screen.findAllByTestId('billing-provider-group')
     const xiaomi = groups.find(group => group.textContent?.includes('小米'))
     expect(xiaomi).toBeDefined()

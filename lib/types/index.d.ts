@@ -12,7 +12,8 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials';
 import type { SettingsProvider } from '@deepseek-ai/dsh-settings';
-import { type IdentifiedSubscriptionPlan, type SubscriptionKeys, type SubscriptionPlanConfig } from './subscriptions.ts';
+import type { SubscriptionPlanConfig } from './pricing-shared.ts';
+import { type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts';
 /** Plugin configuration. */
 export interface UsageBillingConfig {
     /** Absolute path to a `.dsh-usage-stats.json` fallback file. */
