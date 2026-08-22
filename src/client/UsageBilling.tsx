@@ -1069,12 +1069,6 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                 viewBox="0 0 120 120"
                 aria-hidden="true"
               >
-                <defs>
-                  <linearGradient id="heroGaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="var(--dsw-static-blue-500)" />
-                    <stop offset="100%" stopColor="var(--dsw-static-blue-400)" />
-                  </linearGradient>
-                </defs>
                 <circle className={css.heroGaugeTrack} cx="60" cy="60" r="52" />
                 <circle
                   className={clsx(css.heroGaugeArc, heroGauge.over && css.heroGaugeArcOver)}
