@@ -95,6 +95,11 @@ export interface ModelEntry {
     price: ModelPrice;
     /** Peak-hour window label for time-of-day priced models. */
     peakHours?: string;
+    /**
+     * 单价为估算价：厂商未公布按量官方单价（公测 / 套餐制），表内价格为估算，
+     * 展示时标注以免误当正式定价；正式定价公布后移除。
+     */
+    estimated?: boolean;
 }
 /**
  * Built-in catalog of current mainstream models as of 2026-08-16, priced from

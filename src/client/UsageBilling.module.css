@@ -3,26 +3,31 @@
 
 /* ── Sidebar footer trigger ─────────────────────────────────────────── */
 
-/* Rail mode: compact icon button. */
+/* Rail mode: compact icon button with a gradient badge treatment. */
 .railButton {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 36px;
   height: 36px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 1px solid color-mix(in srgb, var(--dsw-static-blue-500) 28%, var(--dsw-alias-border-l2));
   border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-1);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--dsw-static-blue-500) 14%, var(--dsw-alias-bg-layer-1)),
+    var(--dsw-alias-bg-layer-1)
+  );
   color: var(--dsw-static-blue-500);
   cursor: pointer;
   padding: 0;
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, color 160ms ease;
 }
 
 .railButton:hover,
 .railButton:focus-visible {
-  background: var(--dsw-alias-interactive-bg-hover);
-  border-color: var(--dsw-alias-border-l3);
+  border-color: color-mix(in srgb, var(--dsw-static-blue-500) 48%, var(--dsw-alias-border-l2));
+  box-shadow: 0 4px 14px -6px color-mix(in srgb, var(--dsw-static-blue-500) 55%, transparent);
+  transform: translateY(-1px);
   color: var(--dsw-static-blue-400);
   outline: none;
 }
@@ -33,38 +38,58 @@
   stroke-width: 2;
 }
 
-/* Wide mode: quiet data panel — icon, today total, divider, month total. */
+/* Wide mode: glass-gradient data card — icon badge, today total, divider, month total. */
 .trigger {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
   padding: 10px 14px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--dsw-static-blue-500) 20%, var(--dsw-alias-border-l1));
   border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-1);
+  background:
+    radial-gradient(130% 180% at 0% 0%, color-mix(in srgb, var(--dsw-static-blue-500) 12%, transparent), transparent 55%),
+    radial-gradient(150% 200% at 100% 110%, color-mix(in srgb, var(--dsw-static-blue-400) 9%, transparent), transparent 60%),
+    var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
   text-align: left;
-  transition: border-color 140ms ease, background-color 140ms ease;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+/* 玻璃拟态：支持 backdrop-filter 时换半透明底 + 背景模糊。 */
+@supports ((backdrop-filter: blur(1px))) {
+  .trigger {
+    background:
+      radial-gradient(130% 180% at 0% 0%, color-mix(in srgb, var(--dsw-static-blue-500) 14%, transparent), transparent 55%),
+      radial-gradient(150% 200% at 100% 110%, color-mix(in srgb, var(--dsw-static-blue-400) 10%, transparent), transparent 60%),
+      color-mix(in srgb, var(--dsw-alias-bg-layer-1) 72%, transparent);
+    backdrop-filter: blur(12px);
+  }
 }
 
 .trigger:hover,
 .trigger:focus-visible {
-  border-color: var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-interactive-bg-hover);
+  border-color: color-mix(in srgb, var(--dsw-static-blue-500) 42%, var(--dsw-alias-border-l1));
+  box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--dsw-static-blue-500) 45%, transparent);
+  transform: translateY(-1px);
   outline: none;
 }
 
-/* icon 无底座：安静标注计费语义，不与主数字抢层级 */
+/* 渐变底图标徽章：计费语义入口的视觉锚点。 */
 .triggerIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 16px;
-  height: 16px;
-  color: var(--dsw-alias-label-tertiary);
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--dsw-static-blue-500), var(--dsw-static-blue-400));
+  color: var(--dsw-static-neutral-bluish-00);
+  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--dsw-static-blue-500) 60%, transparent);
 }
 
 .triggerIcon svg {
@@ -91,7 +116,7 @@
 
 /* 今日主金额：最大、中性主色、等宽数字 */
 .triggerAmount {
-  font-size: 17px;
+  font-size: 18px;
   line-height: 22px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
@@ -120,9 +145,36 @@
 
 /* ── Dashboard modal ────────────────────────────────────────────────── */
 
+/* 渐变描边 + 柔光阴影 + 进入动画：padding-box 内填充 layer-2，border-box
+   走蓝色系渐变（color-mix 派生自 token，明暗主题自适应）。
+   dsh-billing-modal 是稳定全局类：供下方遮罩增强选择器定位。 */
 .dashboardModal {
   width: min(760px, calc(100vw - 48px));
   max-height: min(760px, 88vh);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--dsw-alias-bg-layer-2), var(--dsw-alias-bg-layer-2)) padding-box,
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--dsw-static-blue-500) 55%, transparent),
+      color-mix(in srgb, var(--dsw-static-blue-400) 22%, transparent) 45%,
+      color-mix(in srgb, var(--dsw-static-blue-500) 38%, transparent)
+    ) border-box;
+  box-shadow:
+    var(--dsw-shadow-lv3),
+    0 24px 80px -24px color-mix(in srgb, var(--dsw-static-blue-500) 35%, transparent);
+  animation: dashboardIn 180ms ease-out;
+}
+
+@keyframes dashboardIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 遮罩增强：原语遮罩自带 blur(2px)（--dsw-mask-blur），计费弹窗打开时加深
+   毛玻璃。:has 不支持的旧内核静默回退为原语默认遮罩，不破坏功能。 */
+:global(div[role="presentation"]:has(> .dsh-billing-modal) > div[aria-hidden="true"]:first-child) {
+  backdrop-filter: blur(8px) saturate(1.25);
 }
 
 .dashboard {
@@ -189,18 +241,81 @@
   overflow-y: auto;
 }
 
+/* ── Tab 导航（概览 / 趋势 / 厂商 / 明细） ──────────────────────────── */
+
+.tabNav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.tabButton {
+  border: none;
+  border-radius: 999px;
+  padding: 5px 14px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12.5px;
+  line-height: 18px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.tabButton:hover,
+.tabButton:focus-visible {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+  outline: none;
+}
+
+/* 激活项：蓝色系渐变胶囊 + 柔光阴影。 */
+.tabButtonActive,
+.tabButtonActive:hover,
+.tabButtonActive:focus-visible {
+  background: linear-gradient(
+    135deg,
+    var(--dsw-static-blue-500),
+    color-mix(in srgb, var(--dsw-static-blue-500) 72%, var(--dsw-static-blue-400))
+  );
+  color: var(--dsw-static-neutral-bluish-00);
+  font-weight: 600;
+  box-shadow: 0 2px 10px -3px color-mix(in srgb, var(--dsw-static-blue-500) 55%, transparent);
+}
+
+/* Tab 内容分区：切换时 140ms 淡入上移。 */
+.tabPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: tabPanelIn 140ms ease-out;
+}
+
+@keyframes tabPanelIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
 /* ── Hero ───────────────────────────────────────────────────────────── */
 
-/* 克制排版：浅色卡 + 本月超大主数字 + 右侧本年/今日次统计，无渐变无装饰。 */
+/* 渐变光晕 Hero：浅色卡叠加蓝色系径向光晕（color-mix 派生，明暗自适应），
+   本月超大主数字 + 右侧本年/今日/本月预计次统计（细分隔线）。 */
 .hero {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
   padding: 20px 24px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--dsw-static-blue-500) 16%, var(--dsw-alias-border-l1));
   border-radius: 16px;
-  background: var(--dsw-alias-bg-layer-1);
+  background:
+    radial-gradient(90% 150% at 6% 0%, color-mix(in srgb, var(--dsw-static-blue-500) 10%, transparent), transparent 60%),
+    radial-gradient(70% 130% at 96% 100%, color-mix(in srgb, var(--dsw-static-blue-400) 8%, transparent), transparent 55%),
+    var(--dsw-alias-bg-layer-1);
 }
 
 /* 左区：本月主数字 */
@@ -218,14 +333,23 @@
   white-space: nowrap;
 }
 
+/* 本月主数字：44px 渐变文字（主色 → 蓝），ZINE 覆盖段负责还原为纯色。 */
 .heroValue {
-  font-size: 40px;
-  line-height: 48px;
+  font-size: 44px;
+  line-height: 52px;
   font-weight: 600;
   letter-spacing: -0.02em;
-  color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  background: linear-gradient(
+    120deg,
+    var(--dsw-alias-label-primary) 25%,
+    color-mix(in srgb, var(--dsw-static-blue-500) 85%, var(--dsw-alias-label-primary))
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
 .heroMeta {
@@ -235,12 +359,14 @@
   white-space: nowrap;
 }
 
-/* 右区：本年 / 今日 两行次统计 */
+/* 右区：本年 / 今日 / 本月预计，左缘细分隔线与主数字区隔开 */
 .heroSide {
   display: flex;
   flex-direction: column;
   gap: 10px;
   flex: none;
+  padding-left: 24px;
+  border-left: 1px solid var(--dsw-alias-border-l1);
 }
 
 .heroSideItem {
@@ -287,19 +413,37 @@
 }
 
 .kpiTile {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 3px;
   padding: 14px 15px;
+  overflow: hidden;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 14px;
   background: var(--dsw-alias-bg-layer-1);
-  transition: border-color 140ms ease, background-color 140ms ease;
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+/* 顶部 2px 渐变强调条：命中率瓷砖绿色系，其余蓝色系（:has 不支持时不显示，纯装饰）。 */
+.kpiTile::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--dsw-static-blue-500) 70%, transparent), transparent);
+  opacity: 0.7;
+}
+
+.kpiTile:has(.kpiGreen)::before {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--dsw-static-green-500) 70%, transparent), transparent);
 }
 
 .kpiTile:hover {
   border-color: var(--dsw-alias-border-l2);
   background: var(--dsw-alias-interactive-bg-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--dsw-alias-label-primary) 35%, transparent);
 }
 
 .kpiLabel {
@@ -1086,6 +1230,9 @@
   font-weight: 900;
   letter-spacing: -0.02em;
   text-shadow: 0 0 12px rgba(232, 255, 0, 0.45);
+  /* 默认主题是渐变文字（background-clip: text），zine 还原为纯色。 */
+  background: none;
+  -webkit-text-fill-color: #e8ff00;
 }
 
 :global(body[data-zine-mode]) .heroMeta {
@@ -1115,6 +1262,35 @@
 :global(body[data-zine-mode]) .deltaUp { color: #ff2d95; }
 
 :global(body[data-zine-mode]) .deltaDown { color: #c9d98a; }
+
+/* Tab 导航：zine 模式下荧光黄描边、直角、大写加粗。 */
+:global(body[data-zine-mode]) .tabNav {
+  border-bottom: 2px solid #e8ff00;
+  background: #000;
+}
+
+:global(body[data-zine-mode]) .tabButton {
+  color: #c9d98a;
+  border-radius: 0;
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:global(body[data-zine-mode]) .tabButton:hover,
+:global(body[data-zine-mode]) .tabButton:focus-visible {
+  background: rgba(232, 255, 0, 0.12);
+  color: #e8ff00;
+}
+
+:global(body[data-zine-mode]) .tabButtonActive,
+:global(body[data-zine-mode]) .tabButtonActive:hover,
+:global(body[data-zine-mode]) .tabButtonActive:focus-visible {
+  background: #e8ff00;
+  color: #0a0a05;
+  box-shadow: 0 0 10px rgba(232, 255, 0, 0.45);
+}
 
 :global(body[data-zine-mode]) .panel {
   border: 2px solid #e8ff00;
@@ -1524,8 +1700,14 @@
     gap: 14px;
   }
 
+  /* 纵向布局时分隔线转为顶缘横线。 */
   .heroSide {
     flex-direction: row;
     gap: 20px;
+    padding-left: 0;
+    padding-top: 14px;
+    border-left: none;
+    border-top: 1px solid var(--dsw-alias-border-l1);
+    align-self: stretch;
   }
 }

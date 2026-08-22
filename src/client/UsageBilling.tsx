@@ -48,6 +48,22 @@ export interface ModelHealth {
 /** 会话明细面板最多展示的行数（完整长尾在服务端另有一层封顶）。 */
 const SESSION_DISPLAY_LIMIT = 20
 
+/** 仪表盘分区 Tab id。 */
+export type DashboardTab = 'overview' | 'trends' | 'providers' | 'details' | 'pricing'
+
+/**
+ * Tab 定义（顺序即渲染顺序）：概览=主数字/预算/KPI/热力图，趋势=趋势图/每轮费用，
+ * 明细=厂商计费与订阅，统计=工作区/会话明细，费率=模型单价表。导出供测试断言
+ * tab 与文案 key 对齐、decor 锚点落在正确分区。
+ */
+export const DASHBOARD_TABS: readonly { id: DashboardTab; labelKey: UsageBillingKey }[] = [
+  { id: 'overview', labelKey: 'billing.tabOverview' },
+  { id: 'trends', labelKey: 'billing.tabTrends' },
+  { id: 'providers', labelKey: 'billing.tabProviders' },
+  { id: 'details', labelKey: 'billing.tabDetails' },
+  { id: 'pricing', labelKey: 'billing.tabPricing' },
+]
+
 /** 项目名取 cwd 的末级目录；无 cwd 时由调用方回退为 em dash。 */
 function projectName(cwd: string | undefined): string | undefined {
   if (cwd === undefined) return undefined
@@ -608,16 +624,8 @@ interface BillingDashboardProps {
  */
 function BillingDashboard({ stats, t, onClose, health, balances, quotas, currency, onCurrency, turns, renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount }: BillingDashboardProps): React.ReactNode {
   const { total, byModel, byDay } = stats
-  // Pricing table starts collapsed; the billing table stays open.
-  const [pricingOpen, setPricingOpen] = useState(false)
-  // 会话明细同样默认折叠（长尾列表，按需展开）。
-  const [sessionsOpen, setSessionsOpen] = useState(false)
-  // 每轮费用默认收起：柱状图较长，按需展开。
-  const [roundsOpen, setRoundsOpen] = useState(false)
-  // 用量热力图默认展开：月度日历信息密度高，作为常驻概览。
-  const [heatmapOpen, setHeatmapOpen] = useState(true)
-  // 工作区统计默认收起：长尾列表，按需展开。
-  const [workspacesOpen, setWorkspacesOpen] = useState(false)
+  // 分区 Tab：默认概览；各区块已进入二级 Tab，全部默认展开（无折叠交互）。
+  const [tab, setTab] = useState<DashboardTab>('overview')
   // 趋势窗口：7 天 / 30 天切换（30 天窗口数据不足时按日补零）。
   const [trendDays, setTrendDays] = useState<7 | 30>(7)
 
@@ -824,7 +832,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
   const deltaPct = prevDayCost > 0 ? ((todayCost - prevDayCost) / prevDayCost) * 100 : 0
 
   return (
-    <Modal open onClose={onClose} title={t('billing.title')} headless className={css.dashboardModal ?? ''}>
+    <Modal open onClose={onClose} title={t('billing.title')} headless className={clsx(css.dashboardModal, 'dsh-billing-modal')}>
       <div className={css.dashboard} data-testid="billing-dashboard">
         {/* Header */}
         <div className={css.dashboardHead} data-testid="billing-dashboard-head">
@@ -881,9 +889,28 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
           </div>
         </div>
 
-        {/* Scrollable body */}
+        {/* Tab 导航：概览 / 趋势 / 厂商 / 明细（分区后各区块默认展开）。 */}
+        <nav className={css.tabNav} data-testid="billing-tab-nav" role="tablist" aria-label={t('billing.title')}>
+          {DASHBOARD_TABS.map(item => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.id}
+              className={clsx(css.tabButton, tab === item.id && css.tabButtonActive)}
+              data-testid={`billing-tab-${item.id}`}
+              onClick={() => { setTab(item.id) }}
+            >
+              {t(item.labelKey)}
+            </button>
+          ))}
+        </nav>
+
+        {/* Scrollable body: 按 Tab 条件渲染分区。 */}
         <div className={css.dashboardBody}>
-          {/* Hero: 本月主数字 + 右侧 本年/今日 次统计，克制排版无渐变 */}
+          {tab === 'overview' && (
+          <div className={css.tabPanel} data-testid="billing-tab-panel-overview">
+          {/* Hero: 本月主数字 + 右侧 本年/今日/本月预计 次统计，渐变光晕质感 */}
           <section
             className={css.hero}
             data-testid="billing-hero"
@@ -1020,6 +1047,20 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
             </div>
           </section>
 
+          {/* 用量热力图：概览常驻区块（月历信息密度高，进入二级 Tab 后不再折叠）。 */}
+          <section className={css.panel} data-testid="billing-panel-heatmap">
+            <div className={css.panelHead}>
+              <h3 className={css.panelTitle}>
+                {t('billing.heatmap')}
+              </h3>
+            </div>
+            <UsageHeatmap days={heatmapDays} currency={currency} t={t} />
+          </section>
+          </div>
+          )}
+
+          {tab === 'trends' && (
+          <div className={css.tabPanel} data-testid="billing-tab-panel-trends">
           {/* Trend chart */}
           <section
             className={clsx(css.panel, css.trendPanel)}
@@ -1051,6 +1092,32 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
             <TrendChart data={trend} models={chartModels} currency={currency} />
           </section>
 
+          {/* 每轮费用 + 成本突增异常（趋势 Tab 内默认展开）。 */}
+          {turns.length > 0 && (
+            <section className={css.panel} data-testid="billing-panel-rounds">
+              <div className={css.panelHead}>
+                <h3 className={css.panelTitle}>
+                  {t('billing.rounds')}
+                </h3>
+                {roundFlags.length > 0 && (
+                  <span className={css.roundsFlagBadge} data-testid="billing-rounds-flag-count">
+                    {roundFlags.length} {t('billing.anomaly')}
+                  </span>
+                )}
+              </div>
+              <RoundCostChart
+                rounds={turns}
+                flags={roundFlags}
+                currency={currency}
+                t={t}
+              />
+            </section>
+          )}
+          </div>
+          )}
+
+          {tab === 'providers' && (
+          <div className={css.tabPanel} data-testid="billing-tab-panel-providers">
           {/* 厂商计费与订阅：单一容器按厂商聚合模型用量与订阅额度。
               厂商组同时容纳非订阅按量模型（无订阅额度也成组）与订阅套餐
               （无用量也成组）；余额与健康点只在厂商头部显示一次。 */}
@@ -1189,89 +1256,21 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                 ))}
               </div>
             )}
-            {/* ZINE: 装饰孔位（footer 锚点：条码装饰底部） */}
-            {renderSlot('billing.dashboard.decor', { position: 'footer' })}
           </section>
-
-          {/* 用量热力图（P1-3）：按日费用，GitHub 风格日历。 */}
-          <section className={css.panel} data-testid="billing-panel-heatmap">
-            <button
-              type="button"
-              className={css.pricingToggle}
-              data-testid="billing-heatmap-toggle"
-              onClick={() => { setHeatmapOpen(prev => !prev) }}
-              aria-expanded={heatmapOpen}
-            >
-              <span className={css.pricingToggleText}>
-                <span className={css.panelTitle}>
-                  {t('billing.heatmap')}
-                </span>
-              </span>
-              <svg className={clsx(css.pricingChevron, heatmapOpen && css.pricingChevronOpen)} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </button>
-            {heatmapOpen && (
-              <UsageHeatmap days={heatmapDays} currency={currency} t={t} />
-            )}
-          </section>
-
-          {/* 每轮费用 + 成本突增异常（P1-1 / P1-2）。 */}
-          {turns.length > 0 && (
-            <section className={css.panel} data-testid="billing-panel-rounds">
-              <button
-                type="button"
-                className={css.pricingToggle}
-                data-testid="billing-rounds-toggle"
-                onClick={() => { setRoundsOpen(prev => !prev) }}
-                aria-expanded={roundsOpen}
-              >
-                <span className={css.pricingToggleText}>
-                  <span className={css.panelTitle}>
-                    {t('billing.rounds')}
-                  </span>
-                  {roundFlags.length > 0 && (
-                    <span className={css.roundsFlagBadge} data-testid="billing-rounds-flag-count">
-                      {roundFlags.length} {t('billing.anomaly')}
-                    </span>
-                  )}
-                </span>
-                <svg className={clsx(css.pricingChevron, roundsOpen && css.pricingChevronOpen)} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </button>
-              {roundsOpen && (
-                <RoundCostChart
-                  rounds={turns}
-                  flags={roundFlags}
-                  currency={currency}
-                  t={t}
-                />
-              )}
-            </section>
+          </div>
           )}
 
-          {/* 工作区统计（P2-2）：按 cwd 末级目录归并。 */}
+          {tab === 'details' && (
+          <div className={css.tabPanel} data-testid="billing-tab-panel-details">
+          {/* 工作区统计：按 cwd 末级目录归并（明细 Tab 内默认展开）。 */}
           {stats.byWorkspace !== undefined && stats.byWorkspace.length > 0 && (
             <section className={css.panel} data-testid="billing-panel-workspaces">
-              <button
-                type="button"
-                className={css.pricingToggle}
-                data-testid="billing-workspaces-toggle"
-                onClick={() => { setWorkspacesOpen(prev => !prev) }}
-                aria-expanded={workspacesOpen}
-              >
-                <span className={css.pricingToggleText}>
-                  <span className={css.panelTitle}>
-                    {t('billing.workspaces')}
-                  </span>
-                </span>
-                <svg className={clsx(css.pricingChevron, workspacesOpen && css.pricingChevronOpen)} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </button>
-              {workspacesOpen && (
-                <div className={css.tableScroll}>
+              <div className={css.panelHead}>
+                <h3 className={css.panelTitle}>
+                  {t('billing.workspaces')}
+                </h3>
+              </div>
+              <div className={css.tableScroll}>
                   <table className={css.modelTable}>
                     <thead>
                       <tr>
@@ -1299,40 +1298,27 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                     </tbody>
                   </table>
                 </div>
-              )}
             </section>
           )}
 
-          {/* 会话明细：按费用倒序的可折叠面板，回答「钱花在哪」。
+          {/* 会话明细：按费用倒序，回答「钱花在哪」（明细 Tab 内默认展开）。
               服务端聚合路径恒带 bySession（空数组时显示空态）；JSON 回退
               文件没有此字段，面板不出现。 */}
           {stats.bySession !== undefined && (
             <section className={css.panel} data-testid="billing-panel-sessions">
-              <button
-                type="button"
-                className={css.pricingToggle}
-                data-testid="billing-sessions-toggle"
-                onClick={() => { setSessionsOpen(prev => !prev) }}
-                aria-expanded={sessionsOpen}
-              >
-                <span className={css.pricingToggleText}>
-                  <span className={css.panelTitle}>
-                    {t('billing.sessions')}
-                  </span>
-                  <span className={css.panelHint}>
-                    {stats.bySession.length > SESSION_DISPLAY_LIMIT
-                      ? t('billing.sessionOverflow')
-                          .replace('{limit}', String(SESSION_DISPLAY_LIMIT))
-                          .replace('{total}', String(stats.bySession.length))
-                      : `${stats.bySession.length}`}
-                  </span>
+              <div className={css.panelHead}>
+                <h3 className={css.panelTitle}>
+                  {t('billing.sessions')}
+                </h3>
+                <span className={css.panelHint}>
+                  {stats.bySession.length > SESSION_DISPLAY_LIMIT
+                    ? t('billing.sessionOverflow')
+                        .replace('{limit}', String(SESSION_DISPLAY_LIMIT))
+                        .replace('{total}', String(stats.bySession.length))
+                    : `${stats.bySession.length}`}
                 </span>
-                <svg className={clsx(css.pricingChevron, sessionsOpen && css.pricingChevronOpen)} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </button>
-              {sessionsOpen && (
-                <div className={css.tableScroll} data-testid="billing-sessions-table">
+              </div>
+              <div className={css.tableScroll} data-testid="billing-sessions-table">
                   <table className={css.modelTable}>
                     <thead>
                       <tr>
@@ -1366,40 +1352,32 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                       ))}
                     </tbody>
                   </table>
-                </div>
-              )}
+              </div>
             </section>
           )}
 
-          {/* Pricing table — collapsed by default */}
+          </div>
+          )}
+
+          {tab === 'pricing' && (
+          <div className={css.tabPanel} data-testid="billing-tab-panel-pricing">
+          {/* 模型单价表：独立 Tab 常驻展开，附汇率来源徽标。 */}
           <section
             className={css.panel}
             data-testid="billing-panel-pricing"
           >
-            <button
-              type="button"
-              className={css.pricingToggle}
-              data-testid="billing-pricing-toggle"
-              onClick={() => { setPricingOpen(prev => !prev) }}
-              aria-expanded={pricingOpen}
-            >
-              <span className={css.pricingToggleText}>
-                <span className={css.panelTitle}>
-                  {t('billing.pricing')}
-                </span>
-                <span className={css.panelHint}>
-                  {t('billing.todayRate')} 1 USD = {formatMoney(rateInfo.rate)}
-                  <span className={clsx(css.rateBadge, rateInfo.live ? css.rateBadgeLive : css.rateBadgeBuiltin)}>
-                    {rateInfo.live ? t('billing.rateLive') : t('billing.rateBuiltin')}
-                  </span>
+            <div className={css.panelHead}>
+              <h3 className={css.panelTitle}>
+                {t('billing.pricing')}
+              </h3>
+              <span className={css.panelHint}>
+                {t('billing.todayRate')} 1 USD = {formatMoney(rateInfo.rate)}
+                <span className={clsx(css.rateBadge, rateInfo.live ? css.rateBadgeLive : css.rateBadgeBuiltin)}>
+                  {rateInfo.live ? t('billing.rateLive') : t('billing.rateBuiltin')}
                 </span>
               </span>
-              <svg className={clsx(css.pricingChevron, pricingOpen && css.pricingChevronOpen)} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </button>
-            {pricingOpen && (
-              <div className={css.tableScroll}>
+            </div>
+            <div className={css.tableScroll}>
                 <table className={css.pricingTable}>
                   <thead>
                     <tr>
@@ -1470,9 +1448,13 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
+            </div>
           </section>
+          </div>
+          )}
+
+          {/* ZINE: 装饰孔位（footer 锚点：条码装饰底部），所有 Tab 共享常驻。 */}
+          {renderSlot('billing.dashboard.decor', { position: 'footer' })}
         </div>
       </div>
     </Modal>

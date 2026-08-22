@@ -8,6 +8,7 @@
  * A hover crosshair shows the day's model breakdown. No chart library — the
  * surface stays self-contained and offline.
  */
+import { type CostCurrency } from './pricing.ts';
 /** One model's legend identity: key, display name, and brand color. */
 export interface TrendSeriesModel {
     /** Stats key (`byModel` key), also the `byModel` map key. */
@@ -32,9 +33,11 @@ export interface TrendPoint {
  * Render the daily stacked cost bars plus the total-calls line.
  * @param props.data - sorted daily rows (ascending date).
  * @param props.models - the model legend, in bar order.
+ * @param props.currency - display currency for the cost labels.
  */
-export declare function TrendChart({ data, models }: {
+export declare function TrendChart({ data, models, currency }: {
     data: readonly TrendPoint[];
     models?: readonly TrendSeriesModel[];
+    currency?: CostCurrency;
 }): React.ReactNode;
 //# sourceMappingURL=TrendChart.d.ts.map
