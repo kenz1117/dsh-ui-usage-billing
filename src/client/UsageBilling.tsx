@@ -779,12 +779,33 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
   const monthCalls = dates.reduce((sum, d) => sum + (d.startsWith(monthPrefix) ? (byDay[d]?.calls ?? 0) : 0), 0)
   const yearCost = dates.reduce((sum, d) => sum + (d.startsWith(yearPrefix) ? (byDay[d]?.cost ?? 0) : 0), 0)
 
-  // 本月预计总花费（forecast）：按本月已有记录的平均日消耗 × 本月天数外推，
-  // 无本月记录时回退为最近 7 天日均；无任何记录时为 0（不显示）。
-  const monthCostProjected = useMemo(
-    () => projectMonthCost(byDay, monthPrefix, today),
-    [byDay, monthPrefix, today],
-  )
+  // 本月预计总花费（forecast）：按本月已有记录的平均日消耗 × 本月天数外推的
+  // 按量部分 + 各订阅套餐（code 计划）的月度订阅费（dsh-spend 双口径：订阅制
+  // 按订阅费计入，按量按 token 估算）。无任何按量记录且无订阅费时为 0。
+  const monthCostProjected = useMemo(() => {
+    const usageProjected = projectMonthCost(byDay, monthPrefix, today)
+    const subscription = quotas.reduce(
+      (sum, quota) => sum + (quota.planType === 'code' ? (quota.subscriptionAmount ?? 0) : 0),
+      0,
+    )
+    return usageProjected + subscription
+  }, [byDay, monthPrefix, today, quotas])
+
+  // Hero 环形仪表盘：预算启用且有金额时显示「本月已用占预算」；否则回退为
+  // 「本月占本年累计」的装饰占比（始终有内容，视觉上是一个完整的仪表盘）。
+  const heroGauge = useMemo(() => {
+    const budgetPct = budgetEnabled && budgetAmount > 0 ? (monthCost / budgetAmount) * 100 : NaN
+    const pct = Number.isFinite(budgetPct)
+      ? Math.max(0, Math.min(100, budgetPct))
+      : yearCost > 0 ? Math.max(0, Math.min(100, (monthCost / yearCost) * 100)) : 0
+    return {
+      pct,
+      // 超支（>=100% 或用预算口径）时环形转红。
+      over: Number.isFinite(budgetPct) && budgetPct >= 100,
+      // 有预算时中心标签显示「预算」，否则显示「本月」。
+      label: t('billing.budget'),
+    }
+  }, [budgetEnabled, budgetAmount, monthCost, yearCost, t])
 
   // 最近 N 天窗口（含今天）：缺失的日期补零，图表固定为整段区间。
   const trendDates = useMemo(() => {
@@ -1033,6 +1054,36 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
               </span>
               <span className={css.heroMeta}>
                 {monthCalls.toLocaleString()} {t('billing.calls')}
+              </span>
+            </div>
+            {/* 环形仪表盘：SVG stroke-dasharray 画弧，中心显示百分比与标签，
+                超支转红（预算口径下）。无预算时按本月占本年装饰。 */}
+            <div className={css.heroGauge} data-testid="billing-hero-gauge">
+              <svg
+                className={css.heroGaugeSvg}
+                viewBox="0 0 120 120"
+                aria-hidden="true"
+              >
+                <defs>
+                  <linearGradient id="heroGaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="var(--dsw-static-blue-500)" />
+                    <stop offset="100%" stopColor="var(--dsw-static-blue-400)" />
+                  </linearGradient>
+                </defs>
+                <circle className={css.heroGaugeTrack} cx="60" cy="60" r="52" />
+                <circle
+                  className={clsx(css.heroGaugeArc, heroGauge.over && css.heroGaugeArcOver)}
+                  cx="60"
+                  cy="60"
+                  r="52"
+                  style={{ strokeDasharray: `${(heroGauge.pct / 100) * 326.7} 326.7` }}
+                />
+              </svg>
+              <span className={css.heroGaugeCenter}>
+                <span className={clsx(css.heroGaugePct, heroGauge.over && css.heroGaugePctOver)}>
+                  {heroGauge.pct.toFixed(0)}%
+                </span>
+                <span className={css.heroGaugeLabel}>{heroGauge.label}</span>
               </span>
             </div>
             <div className={css.heroSide}>
@@ -1372,6 +1423,15 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                             <div key={quota.provider} className={css.subscriptionCard} data-testid="billing-subscription-card">
                               <div className={css.subscriptionHead}>
                                 <span className={css.subscriptionName}>{quota.displayName}</span>
+                                {/* plan 双口径徽标（dsh-spend）：订阅制/按量；订阅制附月费。 */}
+                                {quota.planType === 'code' && (
+                                  <span className={css.subscriptionPlan} data-kind="code">
+                                    {quota.subscriptionAmount !== undefined && quota.subscriptionAmount > 0
+                                      ? t('billing.subscriptionFeePerMonth').replace('{amount}', money(quota.subscriptionAmount))
+                                      : t('billing.planTypeCode')}
+                                  </span>
+                                )}
+                                {quota.planType === 'token' && <span className={css.subscriptionPlan} data-kind="token">{t('billing.planTypeToken')}</span>}
                                 {quota.plan !== undefined && <span className={css.subscriptionPlan}>{quota.plan}</span>}
                               </div>
                               {statusText !== '' && <div className={css.subscriptionStatus}>{statusText}</div>}
@@ -1399,7 +1459,8 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                                     </span>
                                     {window.resetsAt !== undefined && (
                                       <span className={css.subscriptionReset}>
-                                        {t('billing.subscriptionReset').replace('{date}', window.resetsAt.slice(0, 10))}
+                                        {/* 重置时间精确到时分秒（本地时区）。 */}
+                                        {t('billing.subscriptionReset').replace('{date}', `${localDayStamp(new Date(window.resetsAt).getTime())} ${formatClock(new Date(window.resetsAt).getTime())}`)}
                                       </span>
                                     )}
                                   </div>

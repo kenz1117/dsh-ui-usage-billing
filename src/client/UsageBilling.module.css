@@ -443,11 +443,73 @@
   white-space: nowrap;
 }
 
+/* 环形仪表盘：中心百分比 + 标签，SVG 半径为 52（周长 ≈ 326.7）。 */
+.heroGauge {
+  position: relative;
+  flex: none;
+  width: 108px;
+  height: 108px;
+}
+
+.heroGaugeSvg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.heroGaugeTrack {
+  fill: none;
+  stroke: var(--dsw-alias-bg-module-platform);
+  stroke-width: 10;
+}
+
+.heroGaugeArc {
+  fill: none;
+  stroke: url(#heroGaugeGradient);
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dasharray 260ms ease;
+}
+
+.heroGaugeArcOver {
+  stroke: var(--dsw-static-red-500);
+}
+
+.heroGaugeCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+
+.heroGaugePct {
+  font-size: 22px;
+  line-height: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
+
+.heroGaugePctOver {
+  color: var(--dsw-static-red-500);
+}
+
+.heroGaugeLabel {
+  font-size: 10.5px;
+  line-height: 14px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 /* 右区：本年 / 今日 / 本月预计，左缘细分隔线与主数字区隔开 */
 .heroSide {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   flex: none;
   padding-left: 24px;
   border-left: 1px solid var(--dsw-alias-border-l1);
@@ -455,23 +517,27 @@
 
 .heroSideItem {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .heroSideLabel {
-  font-size: 12px;
-  line-height: 17px;
+  font-size: 11px;
+  line-height: 15px;
   color: var(--dsw-alias-label-tertiary);
   white-space: nowrap;
 }
 
 .heroSideValue {
-  font-size: 16px;
-  line-height: 22px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 17px;
+  line-height: 23px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   white-space: nowrap;
 }
 
@@ -537,11 +603,12 @@
 }
 
 .kpiValue {
-  font-size: 21px;
-  line-height: 27px;
+  font-size: 22px;
+  line-height: 28px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 .kpiGreen {
@@ -567,6 +634,7 @@
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 16px;
   background: var(--dsw-alias-bg-layer-1);
+  transition: border-color 160ms ease;
 }
 
 .panelHead {
@@ -581,6 +649,7 @@
   font-size: 14px;
   line-height: 20px;
   font-weight: 600;
+  letter-spacing: -0.005em;
   color: var(--dsw-alias-label-primary);
 }
 
@@ -1205,6 +1274,12 @@
   font-weight: 600;
 }
 
+/* 高峰/低谷两行：高峰主色、低谷绿色加粗，行距紧凑。 */
+.bandTag > span:first-child {
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
 .flatTag {
   font-size: 10.5px;
   line-height: 14px;
@@ -1578,16 +1653,17 @@
 
 .subscriptionCard {
   border: 1px solid var(--dsw-alias-border-muted, #3a4250);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: 10px;
+  padding: 12px 14px;
   background: var(--dsw-alias-bg-layer-2, #232a33);
 }
 
 .subscriptionHead {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  margin-bottom: 6px;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .subscriptionName {
@@ -1598,6 +1674,16 @@
 .subscriptionPlan {
   font-size: 11px;
   color: var(--dsw-alias-text-secondary, #9aa5b1);
+}
+
+/* plan 类型徽标（订阅制/按量）：与厂商组徽标同款圆角胶囊。 */
+.subscriptionPlan[data-kind='code'],
+.subscriptionPlan[data-kind='token'] {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+  background: color-mix(in srgb, var(--dsw-alias-label-secondary) 12%, transparent);
 }
 
 .subscriptionStatus {
@@ -1929,6 +2015,20 @@
     gap: 14px;
   }
 
+  /* 窄屏：主数字与环形仪表盘同排（左大数字、右圆环），次统计下移。 */
+  .heroGauge {
+    position: absolute;
+    top: 20px;
+    right: 24px;
+    width: 96px;
+    height: 96px;
+  }
+
+  /* 主数字右侧留出环形空间，避免重叠。 */
+  .heroMain {
+    padding-right: 112px;
+  }
+
   /* 纵向布局时分隔线转为顶缘横线。 */
   .heroSide {
     flex-direction: row;
@@ -1938,5 +2038,12 @@
     border-left: none;
     border-top: 1px solid var(--dsw-alias-border-l1);
     align-self: stretch;
+  }
+
+  /* 窄屏：右侧三项回归「标签 + 数值」同行，避免纵向堆叠占高。 */
+  .heroSideItem {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
   }
 }

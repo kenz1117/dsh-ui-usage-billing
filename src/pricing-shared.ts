@@ -99,6 +99,14 @@ export interface SubscriptionQuota {
   status: SubscriptionStatus
   /** Quota windows, newest-window first; empty when the query failed. */
   windows: readonly SubscriptionWindow[]
+  /**
+   * 计费计划类型（引用 dsh-spend 的双口径）：
+   * - `code` 订阅制：月度费用按订阅月费计入（dsh-spend 的 subscription）；
+   * - `token` 按量计费：按 token × 单价估算（dsh-spend 的 token plan）。
+   */
+  planType?: 'code' | 'token'
+  /** 订阅月费（人民币元；code 计划用，计入「本月预计」）。 */
+  subscriptionAmount?: number
 }
 
 /** Response of `/api/billing/subscriptions`. */

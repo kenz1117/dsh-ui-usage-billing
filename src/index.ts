@@ -33,6 +33,7 @@ import { queryBalances, queryCustomBalances } from './balance.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
 import type { CustomBalanceConfig, LivePricing, SubscriptionPlanConfig, SubscriptionQuota } from './pricing-shared.ts'
 import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts'
+import { planTypeOf, subscriptionCnyOf } from './client/plan-knowledge.ts'
 
 /** Plugin configuration. */
 export interface UsageBillingConfig {
@@ -319,9 +320,18 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       .filter(item => item.adapter)
       .map(item => ({ provider: item.provider, ...(item.region === undefined ? {} : { region: item.region }) }))
     const queried = await collectSubscriptions(keys, plans)
-    const rows: SubscriptionQuota[] = [...queried]
+    const rows: SubscriptionQuota[] = [...queried].map(row => {
+      // plan 双口径（引用 dsh-spend）：订阅通道标 code 并带月费，其余 token。
+      const planType = planTypeOf(row.provider)
+      const subscriptionAmount = subscriptionCnyOf(row.provider)
+      return {
+        ...row,
+        planType,
+        ...(planType === 'code' && subscriptionAmount > 0 ? { subscriptionAmount } : {}),
+      }
+    })
     for (const item of identified) {
-      if (!item.adapter) rows.push({ provider: item.provider, displayName: item.displayName, status: 'ok', windows: [] })
+      if (!item.adapter) rows.push({ provider: item.provider, displayName: item.displayName, status: 'ok', windows: [], planType: planTypeOf(item.provider) })
     }
     quotaCache = { at: Date.now(), quotas: rows }
   }
@@ -357,8 +367,11 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
           persistSnapshot(payload as unknown as Record<string, unknown>)
           res.end(JSON.stringify(payload))
           return
-        } catch {
+        } catch (error) {
           // Persistence read failed; fall through to the JSON-file candidates.
+          // 记录异常尾部（含已折叠会话数），避免「只能靠猜」——聚合失败时用户
+          // 至少能从日志看到原因（单会话损坏已在 aggregate 内跳过并告警）。
+          console.error('[usage-billing] usage-stats aggregate failed, falling back to snapshot:', error)
         }
         for (const candidate of candidates) {
           try {

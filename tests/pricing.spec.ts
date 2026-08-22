@@ -44,8 +44,7 @@ describe('modelOf', () => {
 
 describe('estimated-price marker', () => {
   it('flags catalog entries whose price is an estimate rather than official', () => {
-    // 小米/讯飞/商汤未公布官方按量单价（公测/套餐制），表内为估算价：应带 estimated 标记。
-    expect(modelOf('mimo-v2.5').estimated).toBe(true)
+    // 讯飞/商汤未公布官方按量单价（公测/套餐制），表内为估算价：应带 estimated 标记。
     expect(modelOf('spark').estimated).toBe(true)
     expect(modelOf('sensenova').estimated).toBe(true)
   })
@@ -53,6 +52,9 @@ describe('estimated-price marker', () => {
   it('leaves officially priced models unflagged', () => {
     expect(modelOf('flash').estimated).toBeUndefined()
     expect(modelOf('glm').estimated).toBeUndefined()
+    // 小米 MiMo 2026-08 官方公布按量价：不再标估算。
+    expect(modelOf('mimo-v2.5').estimated).toBeUndefined()
+    expect(modelOf('mimo-v2.5-pro').estimated).toBeUndefined()
   })
 })
 

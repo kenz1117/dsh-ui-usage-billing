@@ -94,6 +94,26 @@ describe('collectSubscriptions', () => {
     expect(kimi?.windows[1]).toMatchObject({ kind: 'weekly', remainingPercent: 60 })
   })
 
+  it('keeps the session window when Kimi omits the remaining field (exhausted)', async () => {
+    // 用尽后 Kimi 可能把 remaining 置为 null/缺省，只保留 limit 与 resetTime。
+    stubFetch({
+      data: {
+        plan: 'Kimi For Coding',
+        limits: [{ detail: { limit: 0, remaining: null, resetTime: '2026-08-22T00:00:00Z' } }],
+        usage: { limit: 5000, remaining: 3000 },
+      },
+    })
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, kimiApiKey: 'kimi-key' },
+      [{ provider: 'kimi-coding' }],
+    )
+    const kimi = quotas[0]
+    expect(kimi?.status).toBe('ok')
+    expect(kimi?.windows).toHaveLength(2)
+    // remaining 缺失时按用尽处理，窗口保留（剩余 0%）。
+    expect(kimi?.windows[0]).toMatchObject({ kind: 'session', usedPercent: 100, remainingPercent: 0 })
+  })
+
   it('maps an unauthorized upstream answer to the status', async () => {
     stubFetch({}, 401)
     const quotas = await collectSubscriptions(

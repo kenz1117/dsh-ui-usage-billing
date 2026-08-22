@@ -99,7 +99,7 @@ describe('workspaceNameOf (P2-2)', () => {
 describe('per-turn folding (P1-1)', () => {
   /** Fold-session event row helper (durable-shape cast like the aggregator). */
   const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
-    ({ type, seq, time, data }) as { type: string; time: number; data: never }
+    ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
 
   it('folds usage into per-turn rows with model, start, and end', () => {
     const fold = foldSession([
@@ -130,7 +130,7 @@ describe('per-turn folding (P1-1)', () => {
 describe('byRole attribution (estimated)', () => {
   /** Fold-session event row helper (durable-shape cast like the aggregator). */
   const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
-    ({ type, seq, time, data }) as { type: string; time: number; data: never }
+    ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
 
   it('splits input cost between user and tool by message text share; output goes to assistant', async () => {
     // user 消息 8 字符、tool 结果 24 字符：输入成本按 25% / 75% 摊分。
@@ -306,6 +306,32 @@ describe('aggregateUsage', () => {
       'session-b': [header(1, 'deepseek-v4-flash'), message(2, Date.UTC(2026, 7, 15, 5, 0, 0), USAGE)],
     }))
     expect(stats.total.calls).toBe(2)
+  })
+
+  it('skips a corrupt/unreadable session instead of failing the whole aggregation', async () => {
+    // 单个损坏会话（readFrom 抛异常，如 zstd torn frame）不得拖垮整份聚合：
+    // 其余正常会话仍被折叠，坏会话被跳过并告警（GitHub issue「仪表盘全部归零」）。
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const corruptReadFrom = async (id: SessionId, fromSeq: number) => {
+      if (String(id) === 'session-corrupt') {
+        throw new Error('corrupt Zstandard session log: complete frame contains a torn JSONL record')
+      }
+      return fakePersistence({
+        'session-good': [header(1, 'deepseek-v4-flash'), message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE)],
+      }).readFrom(id, fromSeq)
+    }
+    const persistence: UsagePersistence = {
+      list: async () => ['session-good', 'session-corrupt'].map(id => ({ id })),
+      readFrom: corruptReadFrom,
+    } as unknown as UsagePersistence
+
+    const stats = await aggregateUsage(persistence)
+    expect(stats.total.calls).toBe(1)
+    expect(stats.byModel.flash?.calls).toBe(1)
+    // 坏会话不入明细，正常会话保留。
+    expect(stats.bySession).toHaveLength(1)
+    expect(stats.bySession[0]?.id).toBe('session-good')
+    warn.mockRestore()
   })
 
   it('splits usage by model and day for the stacked trend chart', async () => {
