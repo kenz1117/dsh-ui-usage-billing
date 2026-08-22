@@ -44,11 +44,15 @@ DeepSeek Harness 计费仪表盘插件。从持久化会话日志实时聚合模
 
 ## 截图
 
-![计费仪表盘（概览 Tab）](screenshots/dashboard1.png)
+![概览：本月费用 Hero、预算进度、KPI 与用量热力图](screenshots/1.png)
 
-![计费仪表盘（费率 Tab）](screenshots/dashboard2.png)
+![趋势：每日费用趋势、每轮费用与峰谷时段占比](screenshots/2.png)
 
-![侧边栏入口](screenshots/trigger.png)
+![明细：厂商计费与订阅（余额、套餐额度、模型用量）](screenshots/3.png)
+
+![统计：导出、费用构成、工作区与会话明细](screenshots/4.png)
+
+![费率：模型单价表（峰谷分时与实时汇率）](screenshots/5.png)
 
 ## 快速开始
 
