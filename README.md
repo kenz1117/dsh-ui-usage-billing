@@ -49,9 +49,9 @@
 
 ![费率：模型单价表（峰谷分时与实时汇率）](screenshots/5.png)
 
-### 演示视频
+### 演示动图
 
-<video src="screenshots/demo.mp4" poster="screenshots/1.png" controls width="100%"></video>
+![演示](screenshots/demo.gif)
 
 ## 快速开始
 

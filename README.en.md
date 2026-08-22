@@ -49,9 +49,9 @@
 
 ![Rates: model rate table (peak/off-peak split and live rate)](screenshots/5.png)
 
-### Demo video
+### Demo GIF
 
-<video src="screenshots/demo.mp4" poster="screenshots/1.png" controls width="100%"></video>
+![Demo](screenshots/demo.gif)
 
 ## Quick start
 
