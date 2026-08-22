@@ -20,10 +20,15 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 // Type-only: merges the ctx.settings / ctx.credentials service declarations.
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-credentials'
+// Type-only: merges the ctx.tools service declaration（usage_stats 动态工具）。
+import type {} from '@deepseek-ai/dsh-tools'
+import { defineTool } from '@deepseek-ai/dsh-tools'
+import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { SettingsProvider } from '@deepseek-ai/dsh-settings'
-import { createUsageAggregator } from './aggregate.ts'
+import { createUsageAggregator, dayStamp } from './aggregate.ts'
+import { formatMoney, formatTokens } from './client/pricing.ts'
 import { queryBalances } from './balance.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
 import type { LivePricing, SubscriptionPlanConfig, SubscriptionQuota } from './pricing-shared.ts'
@@ -54,6 +59,9 @@ const SUBSCRIPTION_CACHE_MS = 5 * 60 * 1000
 
 /** DeepSeek 余额查询的默认凭据引用（与 llm-deepseek 的默认引用一致）。 */
 const DEFAULT_BALANCE_API_KEY_ENV = 'DEEPSEEK_API_KEY'
+
+/** 统计快照的落盘节流（毫秒）：前端 30 秒轮询，快照最多每 30 秒写一次。 */
+const SNAPSHOT_INTERVAL_MS = 30_000
 
 /** Required services: the web server, the persisted session log store, and user settings. */
 export const inject = ['webServer', 'sessionPersistence', 'credentials', 'settings']
@@ -136,12 +144,117 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       : { subscriptionProviders: config.subscriptionProviders }),
   })
   const cwd = process.cwd()
+  const snapshotPath = join(homedir(), '.dsh/.dsh-usage-stats.json')
   const candidates = [
     config.statsPath,
     process.env.DSH_USAGE_STATS,
     join(cwd, '.dsh-usage-stats.json'),
-    join(homedir(), '.dsh/.dsh-usage-stats.json'),
+    snapshotPath,
   ].filter((path): path is string => typeof path === 'string' && path.length > 0)
+
+  // 统计快照持久化：聚合成功即原子写（temp+rename，读者只见完整新旧内容），
+  // 快照同时就是聚合失败时的回退文件——重启首屏与聚合异常都有最近数据可看。
+  let lastSnapshotAt = 0
+  const persistSnapshot = (doc: Record<string, unknown>): void => {
+    const now = Date.now()
+    if (now - lastSnapshotAt < SNAPSHOT_INTERVAL_MS) return
+    lastSnapshotAt = now
+    // _writer 供双实例检测；客户端忽略未知字段。
+    void writeFileAtomic(snapshotPath, JSON.stringify({ ...doc, _writer: { pid: process.pid, at: now } }), { mode: 0o600, dirMode: 0o700 }).catch(() => {
+      // 快照写失败不影响服务：内存聚合值已下发。
+    })
+  }
+
+  // 双实例检测：启动时快照新鲜（60 秒内）且写入者不是本进程 → 另一实例在跑，
+  // 双实例会造成余额/预算提醒重复，提示一次。
+  void (async () => {
+    try {
+      const text = await readFile(snapshotPath, 'utf8')
+      const doc = JSON.parse(text) as { _writer?: { pid?: number; at?: number } }
+      const writer = doc._writer
+      if (writer?.pid !== undefined && writer.pid !== process.pid && writer.at !== undefined && Date.now() - writer.at < 60_000) {
+        console.warn(`[usage-billing] 检测到另一实例（pid ${writer.pid}）正在提供用量统计，双实例可能导致提醒重复。`)
+      }
+    } catch {
+      // 无快照或快照损坏：首次运行 / 旧版本的常态，静默跳过。
+    }
+  })()
+
+  // usage_stats 动态工具：模型可主动查询用量费用（今天 / 本月 / 当前会话 / 累计）。
+  // tools 服务缺席时整个注册跳过（机会性组合，不阻断插件加载）。
+  ctx.inject(['tools'], (toolsCtx) => {
+    toolsCtx.tools.register(defineTool({
+      name: 'usage_stats',
+      description: '查询本机 DeepSeek Harness 的模型用量与估算费用（人民币，按官方目录价估算，非账单）。range 取值：today=今天，month=本月，session=当前会话，all=累计。',
+      parameters: {
+        range: {
+          type: 'string',
+          enum: ['today', 'month', 'session', 'all'],
+          required: true,
+          description: '统计范围：today / month / session / all',
+        },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            range: { type: 'string', required: true },
+            cost: { type: 'number', required: true, description: '估算费用（人民币元）' },
+            calls: { type: 'number', required: true },
+            input: { type: 'number', required: true, description: '输入 tokens' },
+            output: { type: 'number', required: true, description: '输出 tokens' },
+          },
+        },
+        render: (_args, value) => [{
+          type: 'text',
+          text: `用量（${value.range}）：估算费用 ${formatMoney(value.cost)}，调用 ${value.calls} 次，输入 ${formatTokens(value.input)} tokens，输出 ${formatTokens(value.output)} tokens`,
+        }],
+      },
+      async execute(args, exec) {
+        const stats = await aggregator.aggregate()
+        const zero = { range: args.range, cost: 0, calls: 0, input: 0, output: 0 }
+        if (args.range === 'all') {
+          return { range: args.range, cost: stats.total.cost, calls: stats.total.calls, input: stats.total.input, output: stats.total.output }
+        }
+        if (args.range === 'today') {
+          const day = stats.byDay[dayStamp(Date.now())]
+          return day === undefined ? zero : { range: args.range, cost: day.cost, calls: day.calls, input: day.input, output: day.output }
+        }
+        if (args.range === 'month') {
+          const prefix = dayStamp(Date.now()).slice(0, 7)
+          let cost = 0
+          let calls = 0
+          let input = 0
+          let output = 0
+          for (const [date, day] of Object.entries(stats.byDay)) {
+            if (!date.startsWith(prefix)) continue
+            cost += day.cost
+            calls += day.calls
+            input += day.input
+            output += day.output
+          }
+          return { range: args.range, cost, calls, input, output }
+        }
+        // session：按当前会话 id 从每轮明细汇总（byTurn 封顶 200 行，当前会话
+        // 恒为最近轮次，覆盖完整）。
+        const sessionId = exec.agent?.id
+        if (sessionId === undefined) throw new Error('usage_stats 的 session 范围需要 agent 会话上下文')
+        let cost = 0
+        let calls = 0
+        let input = 0
+        let output = 0
+        for (const turn of stats.byTurn ?? []) {
+          if (turn.sessionId !== String(sessionId)) continue
+          cost += turn.cost
+          calls += 1
+          input += turn.input
+          output += turn.output
+        }
+        return { range: args.range, cost, calls, input, output }
+      },
+    }))
+  })
 
   // 后台拉取实时定价（汇率 + OpenRouter 模型价），失败自动降级内置目录；
   // 之后每 6 小时刷新一次，汇率/价格无需重启进程就能保持最新。
@@ -233,7 +346,10 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
             ...(config.monthlyBudget === undefined ? {} : { budget: config.monthlyBudget }),
             ...(config.lowBalanceThreshold === undefined ? {} : { lowBalanceThreshold: config.lowBalanceThreshold }),
           }
-          res.end(JSON.stringify(Object.keys(injected).length === 0 ? stats : { ...stats, ...injected }))
+          const payload = Object.keys(injected).length === 0 ? stats : { ...stats, ...injected }
+          // 快照落盘（节流 30 秒）：聚合失败路径的回退文件因此始终保持新鲜。
+          persistSnapshot(payload as unknown as Record<string, unknown>)
+          res.end(JSON.stringify(payload))
           return
         } catch {
           // Persistence read failed; fall through to the JSON-file candidates.

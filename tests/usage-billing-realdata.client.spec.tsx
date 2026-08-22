@@ -175,13 +175,13 @@ describe('UsageBilling real-data surface', () => {
     expect(table.querySelectorAll('tbody tr')).toHaveLength(2)
   })
 
-  it('notifies once per day when spend crosses the budget', async () => {
+  it('notifies once per tier per day as spend crosses budget tiers', async () => {
     const notify = vi.fn()
     vi.stubGlobal('Notification', Object.assign(notify, {
       permission: 'granted' as NotificationPermission,
       requestPermission: async () => 'granted' as NotificationPermission,
     }))
-    // 今日花费 5 元（动态日期戳，任何月份跑都成立），预算将被设为 1 元。
+    // 今日花费 5 元（动态日期戳，任何月份跑都成立）。
     const dynamicStats = {
       budget: 10,
       total: day(1, 1000, 100, 0, 1000, 5),
@@ -197,16 +197,47 @@ describe('UsageBilling real-data surface', () => {
     }))
     const { container } = render(<UsageBilling {...makeProps()} />)
     fireEvent.click(container.querySelector('button')!)
+    // 开启预算（默认 10 元）：5/10 = 50%，跨 50% 档 → 第一次通知。
     fireEvent.click(await screen.findByTestId('billing-budget-toggle'))
-    fireEvent.change(await screen.findByTestId('billing-budget-input'), { target: { value: '1' } })
-    // 超支（5 > 1）：弹一次系统通知。
     await waitFor(() => { expect(notify).toHaveBeenCalledTimes(1) })
-    // 同一天内金额再变仍超支：不重复通知。
+    expect(notify.mock.calls[0]?.[1]?.body).toContain('50%')
+    // 预算改 1 元：500% 跨 80%/100% 两档 → 只发最高档（100%），第二次通知。
+    fireEvent.change(await screen.findByTestId('billing-budget-input'), { target: { value: '1' } })
+    await waitFor(() => { expect(notify).toHaveBeenCalledTimes(2) })
+    expect(notify.mock.calls[1]?.[1]?.body).toContain('100%')
+    // 同一天内金额再变（2 元，250%）：各档当日均已提醒，不再通知。
     fireEvent.change(screen.getByTestId('billing-budget-input'), { target: { value: '2' } })
     await waitFor(() => {
       expect(screen.getByTestId('billing-budget-value').textContent).toContain('¥2')
     })
-    expect(notify).toHaveBeenCalledTimes(1)
+    expect(notify).toHaveBeenCalledTimes(2)
+  })
+
+  it('notifies the highest newly crossed budget tier once per day', async () => {
+    // 今日花费 5.5 元 / 预算 10 元 = 55%：跨 50% 档，通知一次且文案带 50%。
+    const notify = vi.fn()
+    vi.stubGlobal('Notification', Object.assign(notify, {
+      permission: 'granted' as NotificationPermission,
+      requestPermission: async () => 'granted' as NotificationPermission,
+    }))
+    const dynamicStats = {
+      budget: 10,
+      total: day(1, 1000, 100, 0, 1000, 5.5),
+      byModel: { flash: day(1, 1000, 100, 0, 1000, 5.5) },
+      byDay: { [todayStamp()]: day(1, 1000, 100, 0, 1000, 5.5) },
+      byDayModels: {},
+      bySession: [],
+    }
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      const body = url.includes('/api/billing/pricing') ? { source: 'builtin' } : dynamicStats
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+    }))
+    const { container } = render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(container.querySelector('button')!)
+    fireEvent.click(await screen.findByTestId('billing-budget-toggle'))
+    await waitFor(() => { expect(notify).toHaveBeenCalledTimes(1) })
+    expect(notify.mock.calls[0]?.[1]?.body).toContain('50%')
   })
 
   it('marks uncatalogued models and infers their provider from the model id', async () => {

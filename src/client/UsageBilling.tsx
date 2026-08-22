@@ -19,10 +19,11 @@ import { TrendChart, type TrendPoint } from './TrendChart.tsx'
 import { RoundCostChart, type RoundChartRow } from './round-chart.tsx'
 import { UsageHeatmap, type HeatmapDay } from './heatmap.tsx'
 import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
+import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv } from './export.ts'
 import type { createBillingBudgetStore } from './budget-store.ts'
 import {
   applyLivePricing, cnyToUsd, computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
-  MODEL_CATALOG, modelOf, resolveToken, type CostCurrency, type TokenUsageBuckets,
+  MODEL_CATALOG, modelOf, resolveToken, tierAt, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
@@ -69,6 +70,9 @@ function projectName(cwd: string | undefined): string | undefined {
   if (cwd === undefined) return undefined
   return cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd
 }
+
+/** 预算提醒档位（百分比）：跨档时桌面通知，每档每天最多一次。 */
+const BUDGET_ALERT_TIERS: readonly number[] = [50, 80, 100]
 
 /** Idle health state before the probe settles. */
 const IDLE_HEALTH: ModelHealth = {
@@ -227,6 +231,39 @@ export function projectMonthCost(byDay: Record<string, { cost: number }>, monthP
   return avg * monthLen
 }
 
+/**
+ * 峰谷时段费用分摊：按每轮的起始时刻（北京时间高峰 9-12 / 14-18）把费用
+ * 归入高峰 / 空闲两档。导出供测试：纯函数。
+ * @param turns - 每轮费用行（需带 startedAt 与 cost）。
+ * @returns 两档费用合计（人民币元）。
+ */
+export function peakOffpeakCost(turns: readonly { startedAt: number; cost: number }[]): { peak: number; offPeak: number } {
+  let peak = 0
+  let offPeak = 0
+  for (const turn of turns) {
+    if (tierAt(turn.startedAt) === 'peak') peak += turn.cost
+    else offPeak += turn.cost
+  }
+  return { peak, offPeak }
+}
+
+/**
+ * 近 7 天费用序列（含今天，缺日补 0）：触发卡 hover 速览的迷你柱数据源。
+ * 导出供测试：纯函数（日期取本地时区）。
+ * @param byDay - 按日费用表。
+ * @returns 7 个 `{ date, cost }`，最旧在前。
+ */
+export function lastSevenDays(byDay: Record<string, { cost: number }>): readonly { date: string; cost: number }[] {
+  const out: { date: string; cost: number }[] = []
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const day = new Date()
+    day.setDate(day.getDate() - offset)
+    const stamp = localDayStamp(day.getTime())
+    out.push({ date: stamp, cost: byDay[stamp]?.cost ?? 0 })
+  }
+  return out
+}
+
 /** Resolve one provider's dot state: green when live, red when failed, gray when unknown. */
 function providerDot(health: ModelHealth, provider: string): string | undefined {
   if (!health.checked) return css.healthIdle
@@ -334,6 +371,8 @@ interface UsageStats {
     output: number
     lastActive: number
   }[]
+  /** 按角色费用归因（估算口径：输出实测，输入按消息长度摊分）；旧快照可能缺失。 */
+  byRole?: { user: number; assistant: number; tool: number }
 }
 
 /** Path to the usage-stats endpoint served by this plugin's node half. */
@@ -409,6 +448,10 @@ async function loadUsageStats(): Promise<UsageStats | null> {
       ...(Array.isArray(candidate.bySession) ? { bySession: candidate.bySession } : {}),
       ...(Array.isArray(candidate.byTurn) ? { byTurn: candidate.byTurn } : {}),
       ...(Array.isArray(candidate.byWorkspace) ? { byWorkspace: candidate.byWorkspace } : {}),
+      // 角色归因：旧快照缺失；仅接受对象形状（durable 边界，字段值由渲染处数值化兜底）。
+      ...(candidate.byRole !== null && typeof candidate.byRole === 'object'
+        ? { byRole: candidate.byRole as { user: number; assistant: number; tool: number } }
+        : {}),
     }
   } catch {
     return null
@@ -543,8 +586,8 @@ interface ProviderBillingGroup {
  * （body[data-zine-mode] 选择器）隐藏，组件本身无 zine 分支。
  * @param props - framework props plus `wide` column state.
  */
-function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; monthCost: number; todayCost: number }): React.ReactNode {
-  const { wide, t, onOpen, monthCost, todayCost } = props
+function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; monthCost: number; todayCost: number; weekCost: number; days: readonly { date: string; cost: number }[] }): React.ReactNode {
+  const { wide, t, onOpen, monthCost, todayCost, weekCost, days } = props
 
   // 银行卡 icon：计费语义，窄栏与宽栏共用。
   const cardIcon = (
@@ -570,26 +613,56 @@ function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; mo
   }
 
   return (
-    <button
-      type="button"
-      className={css.trigger}
-      data-testid="billing-trigger"
-      onClick={onOpen}
-      title={`${t('billing.title')} · 本月 ${formatMoney(monthCost)}`}
-    >
-      <span className={css.triggerIcon} data-testid="billing-trigger-icon">{cardIcon}</span>
-      {/* 左块：今日费用为重点 */}
-      <span className={css.triggerToday} data-testid="billing-trigger-today">
-        <span className={css.triggerMeta}>今日</span>
-        <span className={css.triggerAmount}>{formatMoney(todayCost)}</span>
+    <span className={css.triggerWrap}>
+      <button
+        type="button"
+        className={css.trigger}
+        data-testid="billing-trigger"
+        onClick={onOpen}
+        title={`${t('billing.title')} · 本月 ${formatMoney(monthCost)}`}
+      >
+        <span className={css.triggerIcon} data-testid="billing-trigger-icon">{cardIcon}</span>
+        {/* 左块：今日费用为重点 */}
+        <span className={css.triggerToday} data-testid="billing-trigger-today">
+          <span className={css.triggerMeta}>今日</span>
+          <span className={css.triggerAmount}>{formatMoney(todayCost)}</span>
+        </span>
+        <span className={css.triggerDivider} />
+        {/* 右块：当月费用为次要 */}
+        <span className={css.triggerMonth} data-testid="billing-trigger-month">
+          <span className={css.triggerMeta}>当月</span>
+          <span className={css.triggerAmountSub}>{formatMoney(monthCost)}</span>
+        </span>
+      </button>
+      {/* hover 速览卡：今日/本周/当月 + 近 7 天迷你柱，不点开弹窗即可速览。
+          纯 CSS 悬停呈现（pointer-events 关闭，不抢点击）。 */}
+      <span className={css.triggerPop} data-testid="billing-trigger-pop" aria-hidden="true">
+        <span className={css.triggerPopRow}>
+          <span className={css.triggerPopLabel}>{t('billing.todayCost')}</span>
+          <span className={css.triggerPopValue}>{formatMoney(todayCost)}</span>
+        </span>
+        <span className={css.triggerPopRow}>
+          <span className={css.triggerPopLabel}>{t('billing.weekCost')}</span>
+          <span className={css.triggerPopValue}>{formatMoney(weekCost)}</span>
+        </span>
+        <span className={css.triggerPopRow}>
+          <span className={css.triggerPopLabel}>{t('billing.monthCost')}</span>
+          <span className={css.triggerPopValue}>{formatMoney(monthCost)}</span>
+        </span>
+        <span className={css.triggerPopBars}>
+          {(() => {
+            const max = Math.max(...days.map(d => d.cost), 0)
+            return days.map(d => (
+              <span
+                key={d.date}
+                className={css.triggerPopBar}
+                style={{ height: `${max > 0 ? 4 + (d.cost / max) * 18 : 4}px` }}
+              />
+            ))
+          })()}
+        </span>
       </span>
-      <span className={css.triggerDivider} />
-      {/* 右块：当月费用为次要 */}
-      <span className={css.triggerMonth} data-testid="billing-trigger-month">
-        <span className={css.triggerMeta}>当月</span>
-        <span className={css.triggerAmountSub}>{formatMoney(monthCost)}</span>
-      </span>
-    </button>
+    </span>
   )
 }
 
@@ -640,6 +713,22 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
     () => flagAnomalies([...turns].reverse()),
     [turns],
   )
+
+  // 峰谷时段费用分摊：按每轮起始时刻精确判定（北京时间高峰 9-12 / 14-18）。
+  const peakShare = useMemo(() => peakOffpeakCost(turns), [turns])
+
+  // 费用构成（估算）：角色归因三段（用户输入 / 助手输出 / 工具结果）。
+  const roleRows = useMemo(() => {
+    const role = stats.byRole
+    if (role === undefined) return []
+    const total = role.user + role.assistant + role.tool
+    if (total <= 0) return []
+    return [
+      { label: t('billing.roleUser'), value: role.user, seg: css.shareSegUser },
+      { label: t('billing.roleAssistant'), value: role.assistant, seg: css.shareSegAssistant },
+      { label: t('billing.roleTool'), value: role.tool, seg: css.shareSegTool },
+    ].map(row => ({ ...row, pct: (row.value / total) * 100 }))
+  }, [stats.byRole, t])
 
   // A1: 日均消耗（最近 7 天）——余额列据此估算可用天数；无消耗记录时 0（不显示天数）。
   const dailyBurn = dailyBurnRate(byDay, localDayStamp())
@@ -1010,8 +1099,9 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
               const pct = (monthCost / budgetAmount) * 100
               return (
                 <div className={css.budgetTrack} data-testid="billing-budget-track">
+                  {/* 分档变色：≥80% 琥珀警示，≥100% 红色脉冲。 */}
                   <div
-                    className={clsx(css.budgetFill, pct >= 100 && css.budgetFillOver)}
+                    className={clsx(css.budgetFill, pct >= 100 && css.budgetFillOver, pct >= 80 && pct < 100 && css.budgetFillWarn)}
                     style={{ width: `${Math.min(pct, 100)}%` }}
                   />
                 </div>
@@ -1113,6 +1203,45 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
               />
             </section>
           )}
+
+          {/* 峰谷时段占比：近 N 轮费用按北京时间高峰/空闲分摊（精确到轮）。 */}
+          {turns.length > 0 && (() => {
+            const shareTotal = peakShare.peak + peakShare.offPeak
+            if (shareTotal <= 0) return null
+            const peakPct = (peakShare.peak / shareTotal) * 100
+            return (
+              <section className={css.panel} data-testid="billing-panel-share">
+                <div className={css.panelHead}>
+                  <h3 className={css.panelTitle}>
+                    {t('billing.peakShare')}
+                  </h3>
+                  <span className={css.panelHint}>
+                    {t('billing.peakShareHint').replace('{count}', String(turns.length))}
+                  </span>
+                </div>
+                <div className={css.shareTrack} data-testid="billing-share-track">
+                  <div className={clsx(css.shareSeg, css.shareSegPeak)} style={{ width: `${peakPct}%` }} />
+                  <div className={clsx(css.shareSeg, css.shareSegOff)} style={{ width: `${100 - peakPct}%` }} />
+                </div>
+                <div className={css.shareLegend}>
+                  <span className={css.shareItem}>
+                    <span className={css.shareDot} style={{ background: 'var(--dsw-static-blue-500)' }} />
+                    {t('billing.peak')}
+                    <span className={css.shareValue} data-testid="billing-share-peak">
+                      {money(peakShare.peak)} · {peakPct.toFixed(1)}%
+                    </span>
+                  </span>
+                  <span className={css.shareItem}>
+                    <span className={css.shareDot} style={{ background: 'color-mix(in srgb, var(--dsw-static-blue-500) 30%, var(--dsw-alias-bg-module-platform))' }} />
+                    {t('billing.offPeak')}
+                    <span className={css.shareValue} data-testid="billing-share-offpeak">
+                      {money(peakShare.offPeak)} · {(100 - peakPct).toFixed(1)}%
+                    </span>
+                  </span>
+                </div>
+              </section>
+            )
+          })()}
           </div>
           )}
 
@@ -1262,6 +1391,66 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
 
           {tab === 'details' && (
           <div className={css.tabPanel} data-testid="billing-tab-panel-details">
+          {/* 数据导出：按日 / 按会话 CSV 与全量 JSON（对账用），文件名带日期范围。 */}
+          <div className={css.exportBar} data-testid="billing-export-bar" role="group" aria-label={t('billing.export')}>
+            <span className={css.exportLabel}>{t('billing.export')}</span>
+            <button
+              type="button"
+              className={css.exportButton}
+              data-testid="billing-export-day"
+              onClick={() => { downloadText(exportFileName('usage-daily', 'csv', Object.keys(byDay)), dayRowsCsv(byDay), 'text/csv') }}
+            >
+              {t('billing.exportCsvDay')}
+            </button>
+            {stats.bySession !== undefined && (
+              <button
+                type="button"
+                className={css.exportButton}
+                data-testid="billing-export-sessions"
+                onClick={() => { downloadText(exportFileName('usage-sessions', 'csv', Object.keys(byDay)), sessionRowsCsv(stats.bySession ?? []), 'text/csv') }}
+              >
+                {t('billing.exportCsvSession')}
+              </button>
+            )}
+            <button
+              type="button"
+              className={css.exportButton}
+              data-testid="billing-export-json"
+              onClick={() => { downloadText(exportFileName('usage-stats', 'json', Object.keys(byDay)), JSON.stringify(stats, null, 2), 'application/json') }}
+            >
+              {t('billing.exportJson')}
+            </button>
+          </div>
+          {/* 费用构成（估算）：输出成本实测计价，输入成本按 user/tool 消息
+              文本长度占比摊分（日志无角色级 token 实测，标注估算口径）。 */}
+          {roleRows.length > 0 && (
+            <section className={css.panel} data-testid="billing-panel-roles">
+              <div className={css.panelHead}>
+                <h3 className={css.panelTitle}>
+                  {t('billing.roleCost')}
+                </h3>
+                <span className={css.panelHint}>
+                  {t('billing.roleHint')}
+                </span>
+              </div>
+              <div className={css.shareTrack} data-testid="billing-role-track">
+                {roleRows.map(row => (
+                  <div key={row.label} className={clsx(css.shareSeg, row.seg)} style={{ width: `${row.pct}%` }} />
+                ))}
+              </div>
+              <div className={css.shareLegend}>
+                {roleRows.map(row => (
+                  <span key={row.label} className={css.shareItem}>
+                    <span className={clsx(css.shareDot, row.seg)} />
+                    {row.label}
+                    <span className={css.shareValue}>
+                      {money(row.value)} · {row.pct.toFixed(1)}%
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
           {/* 工作区统计：按 cwd 末级目录归并（明细 Tab 内默认展开）。 */}
           {stats.byWorkspace !== undefined && stats.byWorkspace.length > 0 && (
             <section className={css.panel} data-testid="billing-panel-workspaces">
@@ -1527,44 +1716,49 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     .filter(([date]) => date.startsWith(today.slice(0, 7)))
     .reduce((sum, [, day]) => sum + day.cost, 0)
   const todayCost = stats.byDay[today]?.cost ?? 0
+  // 触发卡 hover 速览：本周累计 + 近 7 天迷你柱。
+  const weekCost = lastSevenDays(stats.byDay).reduce((sum, d) => sum + d.cost, 0)
+  const last7 = useMemo(() => lastSevenDays(stats.byDay), [stats.byDay])
 
   // 预算偏好：开关与金额经框架 store 读取；用户金额优先，宿主 monthlyBudget
   //（stats.budget）兜底为默认值。
   const budgetEnabled = useStore(s => s.enabled)
   const budgetAmount = useStore(s => s.amount)
-  const budgetAlertedDay = useStore(s => s.lastAlertDay)
+  const tierAlertDays = useStore(s => s.tierAlertDays)
   const effectiveBudget = budgetAmount > 0 ? budgetAmount : (stats.budget ?? 0)
   const toggleBudget = useCallback(() => {
     const next = !budgetEnabled
     actions.setEnabled(next)
-    // 开启预算的手势顺带申请通知权限：授权后超支才会弹系统通知。
+    // 开启预算的手势顺带申请通知权限：授权后跨档才会弹系统通知。
     if (next && typeof Notification !== 'undefined' && Notification.permission === 'default') {
       void Notification.requestPermission()
     }
   }, [actions, budgetEnabled])
 
-  // 超支通知：预算开启且已超支时，每天最多弹一次系统通知（标记持久化，
-  // 跨重启不重复）；Notification 不可用或未授权时跳过——预算条已转红
-  // 并带脉冲动画，信息始终留在界面上。
+  // 预算分档提醒：跨过 50% / 80% / 100% 时桌面通知（每档每天最多一次，标记
+  // 持久化跨重启生效）。一次检查跨多档时只发最高档，并把跨过的档全部标记为
+  // 当日已提醒；Notification 不可用或未授权时跳过——进度条分档变色（琥珀/红）
+  // 始终留在界面上兜底。
   useEffect(() => {
     if (!budgetEnabled || effectiveBudget <= 0) return
     const pct = (monthCost / effectiveBudget) * 100
-    if (pct < 100) return
     const day = localDayStamp()
-    if (budgetAlertedDay === day) return
-    actions.markAlerted(day)
+    const crossed = BUDGET_ALERT_TIERS.filter(tier => pct >= tier && tierAlertDays?.[String(tier)] !== day)
+    if (crossed.length === 0) return
+    const top = crossed[crossed.length - 1] ?? 100
+    actions.markTierAlerted(crossed, day)
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
-    const body = t('billing.budgetOverBody')
+    const body = t('billing.budgetTierBody')
       .replace('{cost}', formatMoney(monthCost))
       .replace('{budget}', formatMoney(effectiveBudget))
-      .replace('{pct}', pct.toFixed(0))
+      .replace('{pct}', String(top))
     // 通知发送失败（部分平台限制）不影响标记：当天不再重试，避免轮询轰炸。
     try {
       new Notification(t('billing.budget'), { body })
     } catch {
-      // 平台拒绝构造通知：静默跳过，界面红色进度条兜底。
+      // 平台拒绝构造通知：静默跳过，进度条分档变色兜底。
     }
-  }, [budgetEnabled, effectiveBudget, monthCost, budgetAlertedDay, actions, t])
+  }, [budgetEnabled, effectiveBudget, monthCost, tierAlertDays, actions, t])
 
   // 余额不足告警：任一提供方余额低于阈值（折算人民币）时每天提醒一次；
   // 与预算开关无关——余额是硬性约束，无论是否开启预算都要提醒。
@@ -1623,6 +1817,8 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
         onOpen={openDashboard}
         monthCost={monthCost}
         todayCost={todayCost}
+        weekCost={weekCost}
+        days={last7}
       />
       {open && (
         <BillingDashboard

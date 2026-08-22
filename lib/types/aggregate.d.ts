@@ -79,6 +79,18 @@ export interface UsageStatsDocument {
     byTurn?: TurnUsageRow[];
     /** 工作区聚合：按 cwd 末级目录归并，按费用倒序；旧快照可能缺失。 */
     byWorkspace?: WorkspaceUsageRow[];
+    /**
+     * 按角色费用归因（人民币元）：助手输出成本为实测计价；输入成本按会话内
+     * 用户消息 / 工具结果的文本长度占比启发式摊分（日志无角色级 token 实测，
+     * 属估算口径，UI 需标注）。旧快照可能缺失。
+     */
+    byRole?: RoleCost;
+}
+/** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
+export interface RoleCost {
+    user: number;
+    assistant: number;
+    tool: number;
 }
 /** 会话明细行：仪表盘「会话明细」面板的数据源。 */
 export interface SessionUsageRow {
@@ -141,11 +153,27 @@ interface SessionFold {
     planCalls: Map<string, number>;
     /** 每轮费用明细（按轮次号升序，不含 sessionId）；sessionId 在合并时补齐。 */
     turns: SessionTurnRow[];
+    /** 角色归因中间量：消息文本长度（user/tool）与输入/输出成本实测拆分。 */
+    roles: RoleFold;
     /** 日志里最新的 session/title 文本（无标题事件时 undefined）。 */
     title?: string;
     /** 最后一个事件的时间戳（毫秒）；空日志为 0。 */
     lastActive: number;
 }
+/** 角色归因的会话级中间量：字符占比用于把输入成本摊到 user/tool。 */
+interface RoleFold {
+    userChars: number;
+    toolChars: number;
+    /** 输入侧成本（缓存命中 + 未命中 + 缓存写入，人民币元）。 */
+    inputCost: number;
+    /** 输出侧成本（人民币元）。 */
+    outputCost: number;
+}
+/**
+ * 消息文本长度：user/tool 角色分摊输入成本的启发式依据。字符串内容取其
+ * 长度；内容块数组累计文本块长度；其余形状按 0 计（durable 边界收窄）。
+ */
+export declare function messageTextLength(message: unknown): number;
 /**
  * Fold one session's events into a {@link SessionFold}. 每个 LLM 调用归属到
  * 其前置 request/header 记录的模型；同时提取最新会话标题、最后活跃时间，

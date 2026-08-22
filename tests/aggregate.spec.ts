@@ -127,6 +127,54 @@ describe('per-turn folding (P1-1)', () => {
   })
 })
 
+describe('byRole attribution (estimated)', () => {
+  /** Fold-session event row helper (durable-shape cast like the aggregator). */
+  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
+    ({ type, seq, time, data }) as { type: string; time: number; data: never }
+
+  it('splits input cost between user and tool by message text share; output goes to assistant', async () => {
+    // user 消息 8 字符、tool 结果 24 字符：输入成本按 25% / 75% 摊分。
+    const stats = await aggregateUsage(fakePersistence({
+      s1: [
+        header(1, 'deepseek-v4-flash'),
+        ev('user/message', 2, 900, { message: { role: 'user', content: 'aaaaaaaa' } }) as unknown as SessionEvent,
+        ev('tool/result', 3, 950, { turn: 1, step: 1, message: { role: 'tool', content: 'a'.repeat(24) } }) as unknown as SessionEvent,
+        message(4, 1_000, USAGE),
+      ],
+    }))
+    const role = stats.byRole
+    expect(role).toBeDefined()
+    if (role === undefined) return
+    const inputCost = role.user + role.tool
+    // 三段合计 = 总成本（口径自洽）。
+    expect(inputCost + role.assistant).toBeCloseTo(stats.total.cost, 10)
+    // 输入成本按字符占比 1:3 摊分。
+    expect(role.tool).toBeCloseTo(role.user * 3, 10)
+    // 助手输出成本 = 输出 tokens 的实测计价（>0 且小于总成本）。
+    expect(role.assistant).toBeGreaterThan(0)
+    expect(role.assistant).toBeLessThan(stats.total.cost)
+  })
+
+  it('splits input cost evenly when no message content is recorded', async () => {
+    const stats = await aggregateUsage(fakePersistence({
+      s1: [header(1, 'deepseek-v4-flash'), message(2, 1_000, USAGE)],
+    }))
+    const role = stats.byRole
+    expect(role).toBeDefined()
+    if (role === undefined) return
+    expect(role.user).toBeCloseTo(role.tool, 10)
+    expect(role.user + role.assistant + role.tool).toBeCloseTo(stats.total.cost, 10)
+  })
+
+  it('keeps subscription calls at zero across all roles', async () => {
+    const stats = await aggregateUsage(
+      fakePersistence({ s1: [header(1, 'k3', 'kimi-coding'), message(2, 1_000, USAGE)] }),
+      { subscriptionProviders: ['kimi-coding'] },
+    )
+    expect(stats.byRole).toEqual({ user: 0, assistant: 0, tool: 0 })
+  })
+})
+
 describe('dayStamp', () => {
   it('formats the local date of a timestamp', () => {
     // 2026-08-15 12:00 UTC 在 UTC+8 是 2026-08-15 20:00。
