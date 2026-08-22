@@ -784,6 +784,22 @@ export function formatUnitPrice(price: number, currency: 'CNY' | 'USD' = 'CNY'):
   return `¥${price.toFixed(2)}`
 }
 
+/**
+ * 把一条「每百万 token」单价从原生币种换算到目标展示币种（按 USD→CNY 汇率）。
+ * 汇率缺失/非法时回退原值，避免 0 汇率把价格算没。
+ * @param price - 原生币种单价。
+ * @param native - 模型原生币种。
+ * @param target - 用户当前展示币种。
+ * @param rate - USD→CNY 汇率（1 USD = rate CNY）。
+ * @returns 换算到目标币种的单价；同币种或汇率不可用时原值。
+ */
+export function convertUnitPrice(price: number, native: 'CNY' | 'USD', target: CostCurrency, rate: number): number {
+  if (rate <= 0 || !Number.isFinite(rate)) return price
+  const targetCurrency: 'CNY' | 'USD' = target === 'usd' ? 'USD' : 'CNY'
+  if (native === targetCurrency) return price
+  return target === 'usd' ? price / rate : price * rate
+}
+
 /** Format a large token count with B/M/K suffix. */
 export function formatTokens(value: number): string {
   if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`

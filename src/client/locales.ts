@@ -113,6 +113,10 @@ export type UsageBillingKey =
   | 'billing.planTypeCode'
   | 'billing.planTypeToken'
   | 'billing.subscriptionFeePerMonth'
+  | 'billing.triggerToday'
+  | 'billing.triggerMonth'
+  | 'billing.subscriptionIncluded'
+  | 'billing.free'
 
 export const NS = 'usageBilling'
 
@@ -229,6 +233,10 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.planTypeCode': '订阅制',
   'billing.planTypeToken': '按量',
   'billing.subscriptionFeePerMonth': '{amount}/月',
+  'billing.triggerToday': '今日',
+  'billing.triggerMonth': '当月',
+  'billing.subscriptionIncluded': '订阅包含',
+  'billing.free': '免费',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -344,4 +352,8 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.planTypeCode': 'Subscription',
   'billing.planTypeToken': 'Usage',
   'billing.subscriptionFeePerMonth': '{amount}/mo',
+  'billing.triggerToday': 'Today',
+  'billing.triggerMonth': 'This month',
+  'billing.subscriptionIncluded': 'Included',
+  'billing.free': 'Free',
 }

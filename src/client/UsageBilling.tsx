@@ -22,12 +22,12 @@ import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
 import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv } from './export.ts'
 import type { createBillingBudgetStore } from './budget-store.ts'
 import {
-  applyLiveCatalogModels, applyLivePricing, catalogEntries, cnyToUsd, computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
+  applyLiveCatalogModels, applyLivePricing, catalogEntries, cnyToUsd, computeCost, convertUnitPrice, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
   modelOf, resolveToken, tierAt, upcomingTierSwitch, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
-import { NS, type UsageBillingKey } from './locales.ts'
+import { NS, zh, en, type UsageBillingKey } from './locales.ts'
 import css from './UsageBilling.module.css'
 
 /** Model-connectivity health reported by the host model directory probe. */
@@ -621,18 +621,18 @@ function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; mo
         className={css.trigger}
         data-testid="billing-trigger"
         onClick={onOpen}
-        title={`${t('billing.title')} · 本月 ${formatMoney(monthCost)}`}
+        title={`${t('billing.title')} · ${t('billing.triggerMonth')} ${formatMoney(monthCost)}`}
       >
         <span className={css.triggerIcon} data-testid="billing-trigger-icon">{cardIcon}</span>
         {/* 左块：今日费用为重点 */}
         <span className={css.triggerToday} data-testid="billing-trigger-today">
-          <span className={css.triggerMeta}>今日</span>
+          <span className={css.triggerMeta}>{t('billing.triggerToday')}</span>
           <span className={css.triggerAmount}>{formatMoney(todayCost)}</span>
         </span>
         <span className={css.triggerDivider} />
         {/* 右块：当月费用为次要 */}
         <span className={css.triggerMonth} data-testid="billing-trigger-month">
-          <span className={css.triggerMeta}>当月</span>
+          <span className={css.triggerMeta}>{t('billing.triggerMonth')}</span>
           <span className={css.triggerAmountSub}>{formatMoney(monthCost)}</span>
         </span>
       </button>
@@ -709,6 +709,11 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
 
   // 显示币种换算：usd 时把 CNY 金额按当前汇率换算显示。
   const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
+
+  // 费率表单价：按用户所选币种换算后再格式化（原生币种 × 汇率）；0 价显示"免费"。
+  // 切 USD 时把 ¥ 计价模型换算成 $，费率表不再固定显示人民币。
+  const unitMoney = (price: number, native: 'CNY' | 'USD'): string =>
+    price === 0 ? t('billing.free') : formatUnitPrice(convertUnitPrice(price, native, currency, rateInfo.rate), currency === 'usd' ? 'USD' : 'CNY')
 
   // 每轮成本异常标记：按起始时间升序传给 flagAnomalies（最近的在末尾）。
   const roundFlags: AnomalyFlag[] = useMemo(
@@ -1137,8 +1142,8 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                       step={1}
                       value={budgetAmount === 0 ? '' : budgetAmount}
                       placeholder={stats.budget !== undefined ? String(stats.budget) : '0'}
-                      aria-label={`${t('billing.budget')}（元）`}
-                      title={`${t('billing.budget')}（元）`}
+                      aria-label={`${t('billing.budget')}（${currency === 'usd' ? 'USD' : 'CNY'}）`}
+                      title={`${t('billing.budget')}（${currency === 'usd' ? 'USD' : 'CNY'}）`}
                       onChange={(e) => { onBudgetAmount(e.target.valueAsNumber) }}
                     />
                   </span>
@@ -1405,7 +1410,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                                 <td className={css.numCol}>{formatPercent(row.cacheHitRate)}</td>
                                 <td className={css.numCol}>
                                   {row.plan
-                                    ? <span className={css.planTag}>订阅包含</span>
+                                    ? <span className={css.planTag}>{t('billing.subscriptionIncluded')}</span>
                                     : row.actual !== undefined ? money(row.actual) : <span className={css.na}>—</span>}
                                 </td>
                               </tr>
@@ -1693,37 +1698,37 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                             {hasPrice ? entry.price.offPeak !== undefined
                               ? (
                                 <span className={css.bandPrice}>
-                                  <span>{formatUnitPrice(entry.price.input, entry.price.currency)}</span>
-                                  <span className={css.bandPriceOff}>{formatUnitPrice(entry.price.offPeak.input, entry.price.currency)}</span>
+                                  <span>{unitMoney(entry.price.input, entry.price.currency)}</span>
+                                  <span className={css.bandPriceOff}>{unitMoney(entry.price.offPeak.input, entry.price.currency)}</span>
                                 </span>
                               )
-                              : formatUnitPrice(entry.price.input, entry.price.currency)
+                              : unitMoney(entry.price.input, entry.price.currency)
                               : <span className={css.na}>—</span>}
                           </td>
                           <td className={css.numCol}>
                             {hasPrice ? entry.price.offPeak !== undefined
                               ? (
                                 <span className={css.bandPrice}>
-                                  <span>{formatUnitPrice(entry.price.cacheHit, entry.price.currency)}</span>
+                                  <span>{unitMoney(entry.price.cacheHit, entry.price.currency)}</span>
                                   <span className={css.bandPriceOff}>
-                                    {formatUnitPrice(entry.price.offPeak.cacheHit, entry.price.currency)}
+                                    {unitMoney(entry.price.offPeak.cacheHit, entry.price.currency)}
                                   </span>
                                 </span>
                               )
-                              : formatUnitPrice(entry.price.cacheHit, entry.price.currency)
+                              : unitMoney(entry.price.cacheHit, entry.price.currency)
                               : <span className={css.na}>—</span>}
                           </td>
                           <td className={css.numCol}>
                             {hasPrice ? entry.price.offPeak !== undefined
                               ? (
                                 <span className={css.bandPrice}>
-                                  <span>{formatUnitPrice(entry.price.output, entry.price.currency)}</span>
+                                  <span>{unitMoney(entry.price.output, entry.price.currency)}</span>
                                   <span className={css.bandPriceOff}>
-                                    {formatUnitPrice(entry.price.offPeak.output, entry.price.currency)}
+                                    {unitMoney(entry.price.offPeak.output, entry.price.currency)}
                                   </span>
                                 </span>
                               )
-                              : formatUnitPrice(entry.price.output, entry.price.currency)
+                              : unitMoney(entry.price.output, entry.price.currency)
                               : <span className={css.na}>—</span>}
                           </td>
                           <td>
@@ -1759,13 +1764,25 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
  * @param props - framework-provided sidebar and locale props.
  */
 export function UsageBilling(props: UsageBillingProps): React.ReactNode {
-  const { t, checkModels, publishCosts, registerOpen, renderSlot, useStore, actions } = props
+  const { t: hostT, checkModels, publishCosts, registerOpen, renderSlot, useStore, actions } = props
   // Start empty; swap in real host data when the server serves valid JSON.
   const [stats, setStats] = useState<UsageStats>(EMPTY_STATS)
   const [health, setHealth] = useState<ModelHealth>(IDLE_HEALTH)
   const [balances, setBalances] = useState<readonly ProviderBalance[]>([])
   const [quotas, setQuotas] = useState<readonly SubscriptionQuota[]>([])
   const [currency, setCurrency] = useState<CostCurrency>('cny')
+  // 严格联动（仅本插件，不影响宿主全局语言）：币种=USD 时面板文案切英文，CNY 时切中文。
+  // 用本包自带 zh/en 字典构建本地 t；key 未覆盖时回退宿主 t。
+  const lang = currency === 'usd' ? 'en' : 'zh'
+  const t = useCallback((key: Parameters<typeof hostT>[0], params?: Record<string, unknown>): string => {
+    const dict = lang === 'en' ? en : zh
+    // LocaleKeysOf 可能带额外 key，字典查找时收窄为本包声明的 UsageBillingKey。
+    const text = dict[key as UsageBillingKey] ?? hostT(key)
+    if (params === undefined) return text
+    let out = text
+    for (const [k, v] of Object.entries(params)) out = out.replaceAll(`{${k}}`, String(v))
+    return out
+  }, [lang, hostT])
   const [open, setOpen] = useState(false)
   const close = useCallback(() => { setOpen(false) }, [])
 
@@ -1945,6 +1962,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       {/* zine 模式下触发器由 CSS（body[data-zine-mode]）隐藏，入口交给主题贴纸层。 */}
       <UsageBillingTrigger
         {...props}
+        t={t}
         onOpen={openDashboard}
         monthCost={monthCost}
         todayCost={todayCost}

@@ -23,10 +23,10 @@ afterEach(() => {
 const t = (key: string): string => (zh as Record<string, string>)[key] ?? key
 
 describe('UsageBilling surface', () => {
-  it('opens the dashboard modal on trigger click without throwing', async () => {
-    // 预算 store 份额：测试经 create().create() 的 sanctioned 路径提供真实实例。
+  // 共享 props：预算 store 真实实例、装饰孔位空实现、zh 字典 t。
+  const makeProps = (): ComponentProps<typeof UsageBilling> => {
     const budgetStore = createBillingBudgetStore().create()
-    const props = {
+    return {
       wide: true,
       t,
       checkModels: async () => ({
@@ -39,7 +39,10 @@ describe('UsageBilling surface', () => {
       useStore: bindSnapshotSelector(budgetStore),
       actions: budgetStore.actions,
     } as unknown as ComponentProps<typeof UsageBilling>
-    const { container } = render(<UsageBilling {...props} />)
+  }
+
+  it('opens the dashboard modal on trigger click without throwing', async () => {
+    const { container } = render(<UsageBilling {...makeProps()} />)
     const trigger = container.querySelector('button')
     expect(trigger).not.toBeNull()
     fireEvent.click(trigger!)
@@ -48,6 +51,18 @@ describe('UsageBilling surface', () => {
     // 预算开关默认关闭：开关存在但不渲染进度与金额。
     expect(screen.getByTestId('billing-budget-toggle').getAttribute('aria-checked')).toBe('false')
     expect(screen.queryByTestId('billing-budget-track')).toBeNull()
+  })
+
+  it('switches the dashboard copy to English when the currency is set to USD (strict bilingual binding)', async () => {
+    const { container } = render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(container.querySelector('button')!)
+    await screen.findByText('使用统计')
+    // 默认 CNY：面板为中文文案。
+    expect(screen.getByText('概览')).toBeTruthy()
+    // 切到 USD：本插件文案联动为英文（「概览」→「Overview」），不动宿主全局语言。
+    fireEvent.click(screen.getByTestId('billing-currency-usd'))
+    expect(await screen.findByText('Overview')).toBeTruthy()
+    expect(screen.queryByText('概览')).toBeNull()
   })
 })
 
