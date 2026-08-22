@@ -18,6 +18,8 @@ export interface BudgetPrefsState {
   tierAlertDays: Record<string, string>
   /** 最近一次余额不足通知的日期戳（YYYY-MM-DD）：余额告警同样每天最多一次。 */
   lastBalanceAlertDay: string
+  /** 最近一次峰谷切换提醒的切换点时刻（毫秒）：同一切换点只提醒一次。 */
+  lastTierSwitchAt: number
 }
 
 /** 预算偏好的完整写面（组件只能经这些 action 写入）；type 别名以兼容 ActionsDecl 的索引签名约束。 */
@@ -26,6 +28,7 @@ export type BudgetPrefsActions = {
   setAmount: (d: BudgetPrefsState, value: number) => void
   markTierAlerted: (d: BudgetPrefsState, tiers: readonly number[], day: string) => void
   markBalanceAlerted: (d: BudgetPrefsState, day: string) => void
+  markTierSwitchAlerted: (d: BudgetPrefsState, at: number) => void
 }
 
 /**
@@ -34,7 +37,7 @@ export type BudgetPrefsActions = {
  */
 export function createBillingBudgetStore(): EngineStoreHandle<BudgetPrefsState, BudgetPrefsActions> {
   return defineStore({
-    init: (): BudgetPrefsState => ({ enabled: false, amount: 0, tierAlertDays: {}, lastBalanceAlertDay: '' }),
+    init: (): BudgetPrefsState => ({ enabled: false, amount: 0, tierAlertDays: {}, lastBalanceAlertDay: '', lastTierSwitchAt: 0 }),
     persist: 'dsh.ui-usage-billing.budget',
     actions: {
       setEnabled: (d, on) => { d.enabled = on },
@@ -46,6 +49,7 @@ export function createBillingBudgetStore(): EngineStoreHandle<BudgetPrefsState, 
         for (const tier of tiers) d.tierAlertDays[String(tier)] = day
       },
       markBalanceAlerted: (d, day) => { d.lastBalanceAlertDay = day },
+      markTierSwitchAlerted: (d, at) => { d.lastTierSwitchAt = at },
     },
   })
 }

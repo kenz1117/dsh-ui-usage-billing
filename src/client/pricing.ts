@@ -13,7 +13,7 @@
  * mixes both bands by a configured peak share ({@link DEFAULT_PEAK_SHARE}).
  */
 
-import type { LivePrice, LivePricing } from '../pricing-shared.ts'
+import type { ExtraModelPrice, LivePrice, LivePricing } from '../pricing-shared.ts'
 
 /**
  * USD → CNY rate for display. Source: China Foreign Exchange Trade System
@@ -27,6 +27,8 @@ export const USD_TO_CNY = 6.79
 /** 运行时实时覆盖：undefined = 用内置目录与内置汇率（默认值降级）。 */
 let liveRate: number | undefined
 let livePrices: Readonly<Record<string, LivePrice>> | undefined
+let liveExtraModels: readonly ExtraModelPrice[] | undefined
+let liveCatalogModels: readonly CatalogModel[] | undefined
 
 /**
  * Apply the node half's live pricing snapshot. Absent fields keep the
@@ -36,6 +38,27 @@ let livePrices: Readonly<Record<string, LivePrice>> | undefined
 export function applyLivePricing(pricing: LivePricing): void {
   liveRate = pricing.rate
   livePrices = pricing.prices
+  liveExtraModels = pricing.extraModels
+}
+
+/**
+ * 注入探活得到的「系统里实际配置/预制的模型」清单（host 的 llm.models 返回
+ * groups[].models[]，含模型 id/name，无价格）。费率表据此对标现实可用模型——
+ * 有价的补价（内置目录 / models.dev 补充），无价的标「未收录」。纯内存状态，
+ * 供 `catalogEntries()` 渲染。
+ */
+export function applyLiveCatalogModels(models: readonly CatalogModel[]): void {
+  liveCatalogModels = models
+}
+
+/** 探活模型清单条目（host 的 ModelCatalogModel 投影出需要的字段）。 */
+export interface CatalogModel {
+  /** 模型 id（如 `deepseek-v4-flash`）。 */
+  id: string
+  /** 显示名；缺省用 id。 */
+  name?: string
+  /** 厂商显示名（探活 group 名）。 */
+  provider: string
 }
 
 /** 当前汇率：实时覆盖优先，缺省回退内置固定值。 */
@@ -77,6 +100,56 @@ export function tierAt(timeMs: number | null | undefined): PriceTierId {
   if (timeMs === null || timeMs === undefined || !Number.isFinite(timeMs)) return 'peak'
   const beijingHour = (new Date(timeMs).getUTCHours() + 8) % 24
   return isPeakHour(beijingHour) ? 'peak' : 'offPeak'
+}
+
+/** 峰谷切换边界（北京时间的当日分钟数）：09:00 / 12:00 / 14:00 / 18:00。 */
+const TIER_BOUNDARY_MINUTES: readonly number[] = [540, 720, 840, 1080]
+
+/** 北京时间的当日毫秒数（0–86,400,000）。 */
+function beijingMillisOfDay(timeMs: number): number {
+  return (((timeMs + 8 * 3_600_000) % 86_400_000) + 86_400_000) % 86_400_000
+}
+
+/**
+ * 当前峰谷档位与距下次切换的时长。导出供测试：纯函数。
+ * @param nowMs - 当前时刻（epoch 毫秒）。
+ * @returns 当前档位与到下一个切换边界的毫秒数。
+ */
+export function tierCountdown(nowMs: number): { tier: PriceTierId; nextSwitchInMs: number } {
+  const dayMs = beijingMillisOfDay(nowMs)
+  for (const boundary of TIER_BOUNDARY_MINUTES) {
+    const boundaryMs = boundary * 60_000
+    if (dayMs < boundaryMs) {
+      return { tier: tierAt(nowMs), nextSwitchInMs: boundaryMs - dayMs }
+    }
+  }
+  // 18:00 之后：下一边界是明天 09:00。
+  return { tier: tierAt(nowMs), nextSwitchInMs: 86_400_000 - dayMs + TIER_BOUNDARY_MINUTES[0]! * 60_000 }
+}
+
+/**
+ * 峰/谷切换预告：距下次切换不足 leadMs 时返回即将进入的档位与切换时刻，
+ * 否则 null。导出供测试：纯函数。
+ * @param nowMs - 当前时刻（epoch 毫秒）。
+ * @param leadMs - 提前量（毫秒）。
+ */
+export function upcomingTierSwitch(nowMs: number, leadMs: number): { entering: PriceTierId; atMs: number } | null {
+  const { nextSwitchInMs } = tierCountdown(nowMs)
+  if (nextSwitchInMs > leadMs) return null
+  const atMs = nowMs + nextSwitchInMs
+  // 边界另一侧的档位即即将进入的档位（边界时刻本身按新档位计）。
+  return { entering: tierAt(atMs), atMs }
+}
+
+/**
+ * 切换倒计时短格式：`1h23m` / `45m` / `3m`。导出供测试：纯函数。
+ * @param ms - 剩余毫秒数。
+ */
+export function formatSwitchCountdown(ms: number): string {
+  const minutes = Math.max(1, Math.ceil(ms / 60_000))
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return hours > 0 ? `${hours}h${String(rest).padStart(2, '0')}m` : `${rest}m`
 }
 
 /** Usage buckets consumed by one model (counts in raw tokens). */
@@ -130,6 +203,8 @@ export interface ModelEntry {
    * 展示时标注以免误当正式定价；正式定价公布后移除。
    */
   estimated?: boolean
+  /** 探活命中但无内置/models.dev 价：费率表标「未收录」，不参与计价。 */
+  uncatalogued?: boolean
 }
 
 /**
@@ -500,15 +575,84 @@ export function modelOf(key: string): ModelEntry {
   // 先按别名归并为目录键（catalog key 本身不在别名表里，原样通过）。
   const resolved = MODEL_KEY_ALIASES[key] ?? key
   const found = MODEL_CATALOG.find(entry => entry.key === resolved)
-  const base = found ?? (() => {
+  // 目录未命中时查 models.dev 补充条目（与宿主预制提供方对齐的实时价）。
+  const extra = liveExtraModels?.find(item => item.key === resolved)
+  const base = found ?? (extra !== undefined ? extraEntryOf(extra) : (() => {
     const fallback = MODEL_CATALOG.at(-1)
     if (fallback !== undefined) return fallback
     throw new Error('MODEL_CATALOG must not be empty')
-  })()
+  })())
   const live = livePrices?.[resolved]
   if (live === undefined) return base
   // 实时价是路由器的美元单价（平档、无时段区分）：整表替换并走汇率换算。
   return { ...base, price: { currency: 'USD', input: live.input, cacheHit: live.cacheHit, output: live.output } }
+}
+
+/** models.dev 补充条目转为目录条目：USD 直价（走汇率换算），无峰谷分档。 */
+function extraEntryOf(extra: ExtraModelPrice): ModelEntry {
+  return {
+    key: extra.key,
+    name: extra.name,
+    provider: extra.provider,
+    colorVar: 'dsw-static-neutral-400',
+    price: {
+      currency: 'USD',
+      input: extra.price.input,
+      cacheHit: extra.price.cacheHit,
+      output: extra.price.output,
+    },
+  }
+}
+
+/**
+ * 模型是否可计价：内置目录或 models.dev 补充条目命中。聚合层的计价闸门
+ * （目录外模型不产生费用，避免兜底档误估）。
+ */
+export function isPriced(key: string): boolean {
+  const resolved = MODEL_KEY_ALIASES[key] ?? key
+  if (MODEL_CATALOG.some(entry => entry.key === resolved)) return true
+  return (liveExtraModels ?? []).some(item => item.key === resolved)
+}
+
+/**
+ * 费率表渲染的完整目录：内置 + models.dev 补充条目 + 探活模型（无价标记）。
+ * 探活模型去重（按归一化 id）：内置/补充已有的不再重复；无价的保留并标记
+ * `uncatalogued`，费率表据此显示「未收录」。
+ */
+export function catalogEntries(): readonly ModelEntry[] {
+  const entries: ModelEntry[] = [...MODEL_CATALOG, ...(liveExtraModels ?? []).map(extraEntryOf)]
+  const known = new Set<string>(entries.map(entry => entry.key.toLowerCase()))
+  for (const model of liveCatalogModels ?? []) {
+    // 探活 id 是厂商原始模型 id（如 deepseek-v4.5-flash）；先按原始 id（小写）
+    // 匹配 models.dev 抓到的实时价，再按别名归一化匹配内置目录，两套键都对得上。
+    const rawKey = model.id.toLowerCase()
+    const builtin = (() => {
+      const aliasKey = MODEL_KEY_ALIASES[model.id] ?? model.id
+      return MODEL_CATALOG.find(item => item.key === aliasKey)
+    })()
+    // 内置目录收录：跳过，避免与内置行重复（key 用内置目录键）。
+    if (builtin !== undefined) continue
+    if (known.has(rawKey)) continue
+    const extra = (liveExtraModels ?? []).find(item => item.key === rawKey)
+    let entry: ModelEntry
+    if (extra !== undefined) {
+      entry = { ...extraEntryOf(extra) }
+    } else {
+      const aliasKey = MODEL_KEY_ALIASES[model.id] ?? model.id
+      entry = {
+        key: aliasKey,
+        name: model.name ?? model.id,
+        provider: model.provider,
+        colorVar: 'dsw-static-neutral-400',
+        price: { currency: 'USD', input: 0, cacheHit: 0, output: 0 },
+        // 探活命中但无内置/models.dev 价：标记未收录，费率表显示「未收录」。
+        uncatalogued: true,
+      }
+    }
+    known.add(entry.key.toLowerCase())
+    entries.push(entry)
+  }
+  return entries
 }
 
 /** Resolve a price-table row by its CSS variable name (theme token or fallback color). */

@@ -21,6 +21,7 @@ import type {} from '@deepseek-ai/dsh-client-connection/client'
 // Type-only: pulls the ui-conversation SlotMap merge (the composer.dock entry the live cost bar rides).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { UsageBilling, type ModelHealth, type UsageBillingInjected } from './UsageBilling.tsx'
+import type { CatalogModel } from './pricing.ts'
 import { LiveCostBar } from './live-cost.tsx'
 import { en, NS, zh, type UsageBillingKey } from './locales.ts'
 import { createBillingMetrics, type BillingMetricsService } from './billing-service.ts'
@@ -95,6 +96,14 @@ export function apply(ctx: ClientContext): void {
         try {
           const { result } = await ctx.connection.api.llm.models({})
           if (!result.ok) return { checked: true, available: false, models: 0, failures: 0, okProviders: [], badProviders: [] }
+          // 探活 groups[].models[] 投影为 CatalogModel（含 id/name/厂商名，无价格）：
+          // 费率表据此对标「系统设置里实际配置/预制的模型」。
+          const catalog: CatalogModel[] = []
+          for (const group of result.value.groups) {
+            for (const model of group.models) {
+              catalog.push({ id: model.id, ...(typeof model.name === 'string' && model.name !== '' ? { name: model.name } : {}), provider: group.name })
+            }
+          }
           return {
             checked: true,
             available: result.value.groups.length > 0,
@@ -104,6 +113,7 @@ export function apply(ctx: ClientContext): void {
             failures: result.value.failures.length,
             okProviders: result.value.groups.map(group => group.name),
             badProviders: result.value.failures.map(failure => failure.name),
+            catalog,
           }
         } catch {
           return { checked: true, available: false, models: 0, failures: 0, okProviders: [], badProviders: [] }

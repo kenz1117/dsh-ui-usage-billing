@@ -12,7 +12,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials';
 import type { SettingsProvider } from '@deepseek-ai/dsh-settings';
-import type { SubscriptionPlanConfig } from './pricing-shared.ts';
+import type { CustomBalanceConfig, SubscriptionPlanConfig } from './pricing-shared.ts';
 import { type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts';
 /** Plugin configuration. */
 export interface UsageBillingConfig {
@@ -29,6 +29,8 @@ export interface UsageBillingConfig {
     /** 余额不足告警阈值（人民币元）：余额低于此值时仪表盘每天提醒一次；
         不设置则客户端按默认阈值（50 元）兜底。 */
     lowBalanceThreshold?: number;
+    /** 自定义 Provider 余额查询（任意 HTTP 端点 + extract 规则，适配 NewApi/LiteLLM 等）。 */
+    customBalances?: readonly CustomBalanceConfig[];
 }
 /** Required services: the web server, the persisted session log store, and user settings. */
 export declare const inject: string[];

@@ -23,6 +23,23 @@ export interface LivePricing {
   rate?: number
   /** Overrides keyed by built-in catalog key (present when router matches succeeded). */
   prices?: Record<string, LivePrice>
+  /**
+   * models.dev 补充的目录外模型价（USD / 1M tokens）：与宿主预制提供方对齐——
+   * pi-ai 预制目录的上游就是 models.dev，补进来的条目让「提供方支持但我们的
+   * 内置目录未收录」的模型也能计价并出现在费率表。
+   */
+  extraModels?: readonly ExtraModelPrice[]
+}
+
+/** models.dev 补充的目录外模型价（USD / 1M tokens）。 */
+export interface ExtraModelPrice {
+  /** 归一化模型 id（计费键，如 `deepseek-v4.5-flash`）。 */
+  key: string
+  /** 显示名。 */
+  name: string
+  /** 厂商显示名（与仪表盘厂商组同口径）。 */
+  provider: string
+  price: LivePrice
 }
 
 /** 余额查询失败的原因，前端据此显示文案。 */
@@ -97,4 +114,40 @@ export interface SubscriptionPlanConfig {
   baseUrl?: string
   /** Z.ai region override; defaults to the settings-namespace `zaiRegion`. */
   region?: 'global' | 'bigmodel-cn'
+}
+
+// ── 自定义 Provider 余额（任意 HTTP 端点 + extract 规则）──────────────────
+
+/**
+ * 余额提取规则：从响应 JSON 取数。
+ * - `const`：数字常量；
+ * - `path`：点路径取值（如 `data.total_available`）；
+ * - `op: 'add' | 'subtract'` + `paths`：多路径加 / 减；
+ * - `op: 'divide'` + `path` + `by`：按除数缩放（适配 NewApi 等 quota 端点，
+ *   如 1 USD = 500000 quota）。
+ */
+export interface CustomBalanceExtract {
+  const?: number
+  path?: string
+  op?: 'add' | 'subtract' | 'divide'
+  paths?: readonly string[]
+  by?: number
+}
+
+/** 一个自定义 Provider 余额查询配置（插件 config 的 `customBalances` 条目）。 */
+export interface CustomBalanceConfig {
+  /** 显示名（中文）。 */
+  label: string
+  /** 显示名（英文）；缺省用 label。 */
+  labelEn?: string
+  /** 余额币种（如 CNY / USD）；缺省 CNY。 */
+  unit?: string
+  /** 查询端点（完整 URL）。 */
+  url: string
+  /** HTTP 方法；缺省 GET。 */
+  method?: string
+  /** 请求头；值支持 `{{ENV_NAME}}` 占位符，经凭据 seam 解析（仅请求头支持）。 */
+  headers?: Record<string, string>
+  /** 余额提取规则。 */
+  extract: { remaining: CustomBalanceExtract }
 }

@@ -28,6 +28,22 @@ export declare const USD_TO_CNY = 6.79;
  */
 export declare function applyLivePricing(pricing: LivePricing): void;
 /**
+ * 注入探活得到的「系统里实际配置/预制的模型」清单（host 的 llm.models 返回
+ * groups[].models[]，含模型 id/name，无价格）。费率表据此对标现实可用模型——
+ * 有价的补价（内置目录 / models.dev 补充），无价的标「未收录」。纯内存状态，
+ * 供 `catalogEntries()` 渲染。
+ */
+export declare function applyLiveCatalogModels(models: readonly CatalogModel[]): void;
+/** 探活模型清单条目（host 的 ModelCatalogModel 投影出需要的字段）。 */
+export interface CatalogModel {
+    /** 模型 id（如 `deepseek-v4-flash`）。 */
+    id: string;
+    /** 显示名；缺省用 id。 */
+    name?: string;
+    /** 厂商显示名（探活 group 名）。 */
+    provider: string;
+}
+/**
  * 当前生效的 USD → CNY 汇率及其来源：live = 启动时实时拉取成功，
  * builtin = 实时拉取失败、正在用内置默认值。
  */
@@ -52,6 +68,30 @@ export declare function isPeakHour(beijingHour: number): boolean;
  * @param timeMs - Unix epoch 毫秒；null/undefined/NaN 视为未知。
  */
 export declare function tierAt(timeMs: number | null | undefined): PriceTierId;
+/**
+ * 当前峰谷档位与距下次切换的时长。导出供测试：纯函数。
+ * @param nowMs - 当前时刻（epoch 毫秒）。
+ * @returns 当前档位与到下一个切换边界的毫秒数。
+ */
+export declare function tierCountdown(nowMs: number): {
+    tier: PriceTierId;
+    nextSwitchInMs: number;
+};
+/**
+ * 峰/谷切换预告：距下次切换不足 leadMs 时返回即将进入的档位与切换时刻，
+ * 否则 null。导出供测试：纯函数。
+ * @param nowMs - 当前时刻（epoch 毫秒）。
+ * @param leadMs - 提前量（毫秒）。
+ */
+export declare function upcomingTierSwitch(nowMs: number, leadMs: number): {
+    entering: PriceTierId;
+    atMs: number;
+} | null;
+/**
+ * 切换倒计时短格式：`1h23m` / `45m` / `3m`。导出供测试：纯函数。
+ * @param ms - 剩余毫秒数。
+ */
+export declare function formatSwitchCountdown(ms: number): string;
 /** Usage buckets consumed by one model (counts in raw tokens). */
 export interface TokenUsageBuckets {
     /** Uncached input tokens. */
@@ -100,6 +140,8 @@ export interface ModelEntry {
      * 展示时标注以免误当正式定价；正式定价公布后移除。
      */
     estimated?: boolean;
+    /** 探活命中但无内置/models.dev 价：费率表标「未收录」，不参与计价。 */
+    uncatalogued?: boolean;
 }
 /**
  * Built-in catalog of current mainstream models as of 2026-08-16, priced from
@@ -126,6 +168,17 @@ export declare const MODEL_CATALOG: readonly ModelEntry[];
 export declare const MODEL_KEY_ALIASES: Readonly<Record<string, string>>;
 /** Lookup a model by its stats key; falls back to the generic `other` entry. */
 export declare function modelOf(key: string): ModelEntry;
+/**
+ * 模型是否可计价：内置目录或 models.dev 补充条目命中。聚合层的计价闸门
+ * （目录外模型不产生费用，避免兜底档误估）。
+ */
+export declare function isPriced(key: string): boolean;
+/**
+ * 费率表渲染的完整目录：内置 + models.dev 补充条目 + 探活模型（无价标记）。
+ * 探活模型去重（按归一化 id）：内置/补充已有的不再重复；无价的保留并标记
+ * `uncatalogued`，费率表据此显示「未收录」。
+ */
+export declare function catalogEntries(): readonly ModelEntry[];
 /** Resolve a price-table row by its CSS variable name (theme token or fallback color). */
 export declare function resolveToken(name: string): string;
 /**

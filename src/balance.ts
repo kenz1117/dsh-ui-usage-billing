@@ -16,7 +16,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import type { ProviderBalance } from './pricing-shared.ts'
+import type { CustomBalanceConfig, CustomBalanceExtract, ProviderBalance } from './pricing-shared.ts'
 
 /** Abort a balance fetch when the upstream hangs beyond this budget. */
 const FETCH_TIMEOUT_MS = 8000
@@ -200,5 +200,110 @@ export async function queryBalances(
       return Promise.resolve({ provider: displayName, displayName, error: 'unconfigured' as const })
     }
     return querier(ctx, env)
+  }))
+}
+
+// ── 自定义 Provider 余额（任意 HTTP 端点 + extract 规则）──────────────────
+
+/** 点路径取值：`data.total_available` → 逐层下钻；任一缺失返回 undefined。 */
+function getPath(data: unknown, path: string): unknown {
+  let cursor = data
+  for (const segment of path.split('.')) {
+    if (cursor === null || typeof cursor !== 'object') return undefined
+    cursor = (cursor as Record<string, unknown>)[segment]
+  }
+  return cursor
+}
+
+/**
+ * 按 extract 规则从响应 JSON 求值。导出供测试：纯函数。
+ * @param rule - 提取规则（const / path / add / subtract / divide）。
+ * @param data - 响应 JSON。
+ * @returns 数值；取不到或结果非有限数返回 undefined。
+ */
+export function evalExtract(rule: CustomBalanceExtract, data: unknown): number | undefined {
+  if (typeof rule.const === 'number' && Number.isFinite(rule.const)) return rule.const
+  if (rule.op === 'add' || rule.op === 'subtract') {
+    const paths = rule.paths ?? []
+    if (paths.length === 0) return undefined
+    let total: number | undefined
+    for (const path of paths) {
+      const value = toNumber(getPath(data, path))
+      if (value === undefined) return undefined
+      total = total === undefined ? value : (rule.op === 'add' ? total + value : total - value)
+    }
+    return total
+  }
+  const base = typeof rule.path === 'string' ? toNumber(getPath(data, rule.path)) : undefined
+  if (base === undefined) return undefined
+  if (rule.op === 'divide') {
+    const by = rule.by
+    if (typeof by !== 'number' || !Number.isFinite(by) || by === 0) return undefined
+    return base / by
+  }
+  return base
+}
+
+/** 请求头占位符解析：`{{ENV_NAME}}` 经凭据 seam 替换；解析失败返回 null。 */
+async function resolveHeaders(ctx: Context, headers: Record<string, string>): Promise<Record<string, string> | null> {
+  const resolved: Record<string, string> = {}
+  for (const [key, value] of Object.entries(headers)) {
+    const match = /^\{\{([A-Z0-9_]+)\}\}$/i.exec(value.trim())
+    if (match === null) {
+      resolved[key] = value
+      continue
+    }
+    const hit = await ctx.credentials.resolve(credentialRef(match[1] ?? ''))
+    if (hit === undefined || hit.value === '') return null
+    resolved[key] = value.replace(match[0], hit.value)
+  }
+  return resolved
+}
+
+/**
+ * 查询自定义 Provider 余额（插件 config 的 `customBalances`）。每个条目独立
+ * 成败：占位符凭据缺失 → unconfigured；401/403 → unauthorized；网络或提取
+ * 失败 → unreachable。
+ * @param ctx - host context carrying the credentials seam.
+ * @param configs - 自定义余额配置列表。
+ * @returns 每个配置一行的余额结果。
+ */
+export async function queryCustomBalances(
+  ctx: Context,
+  configs: readonly CustomBalanceConfig[],
+): Promise<readonly ProviderBalance[]> {
+  return await Promise.all(configs.map(async (config): Promise<ProviderBalance> => {
+    const provider = `custom:${config.label}`
+    const displayName = config.label
+    if (typeof config.url !== 'string' || config.url === '') {
+      return { provider, displayName, error: 'unconfigured' }
+    }
+    const headers = await resolveHeaders(ctx, config.headers ?? {})
+    if (headers === null) return { provider, displayName, error: 'unconfigured' }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+    try {
+      const response = await fetch(config.url, {
+        method: config.method ?? 'GET',
+        headers: { accept: 'application/json', ...headers },
+        signal: controller.signal,
+      })
+      if (response.status === 401 || response.status === 403) {
+        return { provider, displayName, error: 'unauthorized' }
+      }
+      if (!response.ok) return { provider, displayName, error: 'unreachable' }
+      const remaining = evalExtract(config.extract.remaining, await response.json())
+      if (remaining === undefined) return { provider, displayName, error: 'unreachable' }
+      return {
+        provider,
+        displayName,
+        currency: config.unit ?? 'CNY',
+        totalBalance: remaining,
+      }
+    } catch {
+      return { provider, displayName, error: 'unreachable' }
+    } finally {
+      clearTimeout(timer)
+    }
   }))
 }

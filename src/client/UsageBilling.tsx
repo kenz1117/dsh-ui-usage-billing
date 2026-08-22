@@ -22,8 +22,8 @@ import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
 import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv } from './export.ts'
 import type { createBillingBudgetStore } from './budget-store.ts'
 import {
-  applyLivePricing, cnyToUsd, computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
-  MODEL_CATALOG, modelOf, resolveToken, tierAt, type CostCurrency, type TokenUsageBuckets,
+  applyLiveCatalogModels, applyLivePricing, catalogEntries, cnyToUsd, computeCost, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
+  modelOf, resolveToken, tierAt, upcomingTierSwitch, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
@@ -44,6 +44,8 @@ export interface ModelHealth {
   okProviders: readonly string[]
   /** Display names of providers whose catalog probe failed. */
   badProviders: readonly string[]
+  /** 探活得到的模型清单（系统里实际配置/预制的模型；无价格，费率表据此对标）。 */
+  catalog?: readonly CatalogModel[]
 }
 
 /** 会话明细面板最多展示的行数（完整长尾在服务端另有一层封顶）。 */
@@ -883,7 +885,7 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
       else list.push(row)
     }
     const names = new Set<string>([...modelsByVendor.keys(), ...subscriptionsByVendor.keys()])
-    return [...names]
+    const groups = [...names]
       .map(name => ({
         name,
         models: modelsByVendor.get(name) ?? [],
@@ -891,6 +893,22 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
         balance: balanceFor(name),
         dot: providerDot(health, name),
       }))
+    // 纯余额组：自定义 Provider（custom: 前缀）或无对应模型/订阅的余额行，
+    // 以独立厂商组呈现（内置厂商的「未配置」行不补组，避免噪音）。
+    const claimed = new Set(groups.map(group => normalizeProvider(group.name)))
+    for (const balance of balances) {
+      if (claimed.has(normalizeProvider(balance.provider))) continue
+      if (balance.error === undefined || balance.provider.startsWith('custom:')) {
+        groups.push({
+          name: balance.displayName,
+          models: [],
+          subscriptions: [],
+          balance,
+          dot: providerDot(health, balance.displayName),
+        })
+      }
+    }
+    return groups
       .sort((a, b) => {
         const costOf = (group: ProviderBillingGroup): number =>
           group.models.reduce((sum, m) => sum + (m.actual ?? m.estimated), 0)
@@ -1360,22 +1378,33 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                               {quota.windows.length === 0 && statusText === '' && (
                                 <div className={css.subscriptionStatus}>{t('billing.subscriptionNoApi')}</div>
                               )}
-                              {quota.windows.map(window => (
-                                <div key={window.kind} className={css.subscriptionWindow}>
-                                  <span className={css.subscriptionWindowLabel}>{subscriptionWindowLabel(window.kind, t)}</span>
-                                  <span className={css.subscriptionTrack} aria-hidden="true">
-                                    <span className={css.subscriptionFill} style={{ width: `${Math.min(100, Math.max(0, window.remainingPercent))}%` }} />
-                                  </span>
-                                  <span className={css.subscriptionPct}>
-                                    {t('billing.subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
-                                  </span>
-                                  {window.resetsAt !== undefined && (
-                                    <span className={css.subscriptionReset}>
-                                      {t('billing.subscriptionReset').replace('{date}', window.resetsAt.slice(0, 10))}
+                              {quota.windows.map(window => (() => {
+                                const used = Math.min(100, Math.max(0, window.usedPercent))
+                                const remaining = Math.min(100, Math.max(0, window.remainingPercent))
+                                const exhausted = remaining <= 0
+                                return (
+                                  <div key={window.kind} className={css.subscriptionWindow}>
+                                    <span className={css.subscriptionWindowLabel}>{subscriptionWindowLabel(window.kind, t)}</span>
+                                    <span className={css.subscriptionTrack} aria-hidden="true">
+                                      {/* 进度条按「已用」比例填充（与预算条同语义）：用尽时满格红，行恒可见。 */}
+                                      <span
+                                        className={clsx(css.subscriptionFill, used >= 100 && css.subscriptionFillOver, used >= 80 && used < 100 && css.subscriptionFillWarn)}
+                                        style={{ width: `${used}%` }}
+                                      />
                                     </span>
-                                  )}
-                                </div>
-                              ))}
+                                    <span className={clsx(css.subscriptionPct, exhausted && css.subscriptionExhausted)}>
+                                      {exhausted
+                                        ? t('billing.subscriptionExhausted')
+                                        : t('billing.subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
+                                    </span>
+                                    {window.resetsAt !== undefined && (
+                                      <span className={css.subscriptionReset}>
+                                        {t('billing.subscriptionReset').replace('{date}', window.resetsAt.slice(0, 10))}
+                                      </span>
+                                    )}
+                                  </div>
+                                )
+                              })())}
                             </div>
                           )
                         })}
@@ -1578,63 +1607,77 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
                     </tr>
                   </thead>
                   <tbody>
-                    {MODEL_CATALOG.map(entry => (
-                      <tr key={entry.key}>
-                        <td>
-                          <span className={css.modelCell}>
-                            <span className={css.modelDot} style={{ background: resolveToken(entry.colorVar) }} />
-                            <span>
-                              <span className={css.modelName}>{entry.name}</span>
-                              <span className={css.modelProvider}>{entry.provider}</span>
+                    {catalogEntries().map(entry => {
+                      const hasPrice = entry.price.input > 0 || entry.price.output > 0
+                      return (
+                        <tr key={entry.key}>
+                          <td>
+                            <span className={css.modelCell}>
+                              <span className={css.modelDot} style={{ background: resolveToken(entry.colorVar) }} />
+                              <span>
+                                <span className={css.modelName}>
+                                  {entry.name}
+                                  {/* 探活命中但无内置/models.dev 价：明确标注，不参与计价。 */}
+                                  {entry.uncatalogued && (
+                                    <span className={css.uncataloguedTag} data-testid="billing-price-uncatalogued">
+                                      {t('billing.uncatalogued')}
+                                    </span>
+                                  )}
+                                </span>
+                                <span className={css.modelProvider}>{entry.provider}</span>
+                              </span>
                             </span>
-                          </span>
-                        </td>
-                        <td className={css.numCol}>
-                          {entry.price.offPeak !== undefined
-                            ? (
-                              <span className={css.bandPrice}>
-                                <span>{formatUnitPrice(entry.price.input, entry.price.currency)}</span>
-                                <span className={css.bandPriceOff}>{formatUnitPrice(entry.price.offPeak.input, entry.price.currency)}</span>
-                              </span>
-                            )
-                            : formatUnitPrice(entry.price.input, entry.price.currency)}
-                        </td>
-                        <td className={css.numCol}>
-                          {entry.price.offPeak !== undefined
-                            ? (
-                              <span className={css.bandPrice}>
-                                <span>{formatUnitPrice(entry.price.cacheHit, entry.price.currency)}</span>
-                                <span className={css.bandPriceOff}>
-                                  {formatUnitPrice(entry.price.offPeak.cacheHit, entry.price.currency)}
+                          </td>
+                          <td className={css.numCol}>
+                            {hasPrice ? entry.price.offPeak !== undefined
+                              ? (
+                                <span className={css.bandPrice}>
+                                  <span>{formatUnitPrice(entry.price.input, entry.price.currency)}</span>
+                                  <span className={css.bandPriceOff}>{formatUnitPrice(entry.price.offPeak.input, entry.price.currency)}</span>
                                 </span>
-                              </span>
-                            )
-                            : formatUnitPrice(entry.price.cacheHit, entry.price.currency)}
-                        </td>
-                        <td className={css.numCol}>
-                          {entry.price.offPeak !== undefined
-                            ? (
-                              <span className={css.bandPrice}>
-                                <span>{formatUnitPrice(entry.price.output, entry.price.currency)}</span>
-                                <span className={css.bandPriceOff}>
-                                  {formatUnitPrice(entry.price.offPeak.output, entry.price.currency)}
+                              )
+                              : formatUnitPrice(entry.price.input, entry.price.currency)
+                              : <span className={css.na}>—</span>}
+                          </td>
+                          <td className={css.numCol}>
+                            {hasPrice ? entry.price.offPeak !== undefined
+                              ? (
+                                <span className={css.bandPrice}>
+                                  <span>{formatUnitPrice(entry.price.cacheHit, entry.price.currency)}</span>
+                                  <span className={css.bandPriceOff}>
+                                    {formatUnitPrice(entry.price.offPeak.cacheHit, entry.price.currency)}
+                                  </span>
                                 </span>
-                              </span>
-                            )
-                            : formatUnitPrice(entry.price.output, entry.price.currency)}
-                        </td>
-                        <td>
-                          {entry.price.offPeak !== undefined && entry.peakHours !== undefined
-                            ? (
-                              <span className={css.bandTag}>
-                                <span>{t('billing.peak')} {entry.peakHours}</span>
-                                <span className={css.bandTagOff}>{t('billing.offPeak')} 50%</span>
-                              </span>
-                            )
-                            : <span className={css.flatTag}>{t('billing.flat')}</span>}
-                        </td>
+                              )
+                              : formatUnitPrice(entry.price.cacheHit, entry.price.currency)
+                              : <span className={css.na}>—</span>}
+                          </td>
+                          <td className={css.numCol}>
+                            {hasPrice ? entry.price.offPeak !== undefined
+                              ? (
+                                <span className={css.bandPrice}>
+                                  <span>{formatUnitPrice(entry.price.output, entry.price.currency)}</span>
+                                  <span className={css.bandPriceOff}>
+                                    {formatUnitPrice(entry.price.offPeak.output, entry.price.currency)}
+                                  </span>
+                                </span>
+                              )
+                              : formatUnitPrice(entry.price.output, entry.price.currency)
+                              : <span className={css.na}>—</span>}
+                          </td>
+                          <td>
+                            {entry.price.offPeak !== undefined && entry.peakHours !== undefined
+                              ? (
+                                <span className={css.bandTag}>
+                                  <span>{t('billing.peak')} {entry.peakHours}</span>
+                                  <span className={css.bandTagOff}>{t('billing.offPeak')} 50%</span>
+                                </span>
+                              )
+                              : <span className={css.flatTag}>{t('billing.flat')}</span>}
+                          </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
             </div>
@@ -1701,11 +1744,14 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   }, [reloadStats])
 
   // Probe connected models: the sidebar dot turns green when any provider
-  // answers its model catalog (live credentials), red when none do.
+  // answers its model catalog (live credentials), red when none do. 探活的
+  // 模型清单（系统里实际配置/预制）同步注入 pricing，费率表据此对标显示。
   useEffect(() => {
     let mounted = true
     void checkModels().then((result) => {
-      if (mounted) setHealth(result)
+      if (!mounted) return
+      setHealth(result)
+      applyLiveCatalogModels(result.catalog ?? [])
     })
     return () => { mounted = false }
   }, [checkModels])
@@ -1725,6 +1771,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const budgetEnabled = useStore(s => s.enabled)
   const budgetAmount = useStore(s => s.amount)
   const tierAlertDays = useStore(s => s.tierAlertDays)
+  const lastTierSwitchAt = useStore(s => s.lastTierSwitchAt)
   const effectiveBudget = budgetAmount > 0 ? budgetAmount : (stats.budget ?? 0)
   const toggleBudget = useCallback(() => {
     const next = !budgetEnabled
@@ -1759,6 +1806,29 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       // 平台拒绝构造通知：静默跳过，进度条分档变色兜底。
     }
   }, [budgetEnabled, effectiveBudget, monthCost, tierAlertDays, actions, t])
+
+  // 峰/谷切换前提醒：距进入下一档不足 2 分钟且该切换点未提醒过时，桌面通知
+  // 一次（Notification 授权后生效；未授权/发送失败静默跳过，LiveCostBar 的
+  // 倒计时始终可见兜底）。处于平价时段进入峰时提醒「可稍等」，峰时进入平价
+  // 提醒「价格减半」。
+  useEffect(() => {
+    const leadMs = 2 * 60_000
+    const now = Date.now()
+    const upcoming = upcomingTierSwitch(now, leadMs)
+    if (upcoming === null) return
+    if (upcoming.atMs === lastTierSwitchAt) return
+    actions.markTierSwitchAlerted(upcoming.atMs)
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    const minutes = Math.max(1, Math.round((upcoming.atMs - now) / 60_000))
+    const body = upcoming.entering === 'peak'
+      ? t('billing.tierAlertEnterPeak').replace('{minutes}', String(minutes))
+      : t('billing.tierAlertEnterOff').replace('{minutes}', String(minutes))
+    try {
+      new Notification(t('billing.budget'), { body })
+    } catch {
+      // 平台拒绝构造通知：静默跳过，LiveCostBar 倒计时兜底。
+    }
+  }, [lastTierSwitchAt, actions, t])
 
   // 余额不足告警：任一提供方余额低于阈值（折算人民币）时每天提醒一次；
   // 与预算开关无关——余额是硬性约束，无论是否开启预算都要提醒。
