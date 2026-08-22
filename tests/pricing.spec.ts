@@ -6,7 +6,7 @@
 
 import { describe, expect, it, afterEach } from 'vitest'
 import {
-  applyLiveCatalogModels, applyLivePricing, catalogEntries, cnyToUsd, computeCost, computeCostAt, formatMoney, formatPercent, formatTokens, formatUnitPrice,
+  applyLiveCatalogModels, applyLivePricing, catalogEntries, cnyToUsd, computeCost, computeCostAt, convertUnitPrice, formatMoney, formatPercent, formatTokens, formatUnitPrice,
   getRateInfo, isPeakHour, modelOf, MODEL_CATALOG, tierAt,
 } from '../src/client/pricing.ts'
 import { PROVIDER_ALIASES } from '../src/client/UsageBilling.tsx'
@@ -249,6 +249,28 @@ describe('currency display (P2-3)', () => {
     expect(formatMoney(0, 'usd')).toBe('$0')
     expect(formatMoney(Number.NaN, 'usd')).toBe('$0')
     expect(formatMoney(6.79)).toBe('¥6.79') // 默认仍是人民币
+  })
+})
+
+describe('convertUnitPrice (rate table follows display currency)', () => {
+  const RATE = 6.79
+
+  it('keeps the value when native and target currencies match', () => {
+    expect(convertUnitPrice(2, 'CNY', 'cny', RATE)).toBe(2)
+    expect(convertUnitPrice(0.5, 'USD', 'usd', RATE)).toBe(0.5)
+  })
+
+  it('converts CNY to USD by dividing the rate', () => {
+    expect(convertUnitPrice(6.79, 'CNY', 'usd', RATE)).toBeCloseTo(1, 10)
+  })
+
+  it('converts USD to CNY by multiplying the rate', () => {
+    expect(convertUnitPrice(1, 'USD', 'cny', RATE)).toBeCloseTo(6.79, 10)
+  })
+
+  it('falls back to the native value when the rate is missing or invalid', () => {
+    expect(convertUnitPrice(6.79, 'CNY', 'usd', 0)).toBe(6.79)
+    expect(convertUnitPrice(6.79, 'CNY', 'usd', Number.NaN)).toBe(6.79)
   })
 })
 
