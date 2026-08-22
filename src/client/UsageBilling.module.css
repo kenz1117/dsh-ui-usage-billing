@@ -8,6 +8,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* 图标钮固定尺寸、不参与 footer flex 行的伸缩，避免与同槽位按钮挤占。 */
+  flex: none;
   width: 36px;
   height: 36px;
   border: 1px solid color-mix(in srgb, var(--dsw-static-blue-500) 28%, var(--dsw-alias-border-l2));
@@ -45,6 +47,8 @@
   align-items: center;
   gap: 12px;
   width: 100%;
+  /* 允许卡片在 footer 横向 flex 行（无 wrap）里收缩，不靠 nowrap 金额撑开兄弟按钮。 */
+  min-width: 0;
   padding: 10px 14px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--dsw-static-blue-500) 20%, var(--dsw-alias-border-l1));
@@ -143,10 +147,15 @@
   white-space: nowrap;
 }
 
-/* 触发卡外壳：hover 速览卡的定位上下文。 */
+/* 触发卡外壳：hover 速览卡的定位上下文。
+   footerActions 槽位容器是横向 flex 行（无 gap 无 wrap）：作为 flex item 需允许
+   收缩（flex:1 1 auto）并放 opener min-width:0，否则 width:100% 会把同槽位的其他
+   插件按钮挤出侧栏边界（实测共存插件卡被压重叠）。 */
 .triggerWrap {
   position: relative;
   display: block;
+  flex: 1 1 auto;
+  min-width: 0;
   width: 100%;
 }
 
