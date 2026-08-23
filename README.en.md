@@ -185,6 +185,10 @@ None. This plugin is a pure UI surface: it registers no tools, injects no system
 - **Cost is a catalog estimate**: models without published per-token pricing (iFlytek, SenseTime, Xiaomi) use estimates (feature-list footnote ¹); official billing is authoritative.
 - **The 30-day trend is bounded by log retention**: dates outside the persisted log retention window are shown as zeros in the window, not backfilled.
 
+## Contributors
+
+- [@ciphoo](https://github.com/ciphoo) — MiniMax CN Token Plan quota support (PR #5)
+
 ## License
 
 [MIT](LICENSE) © 2026 KenZ (kenz1117)

@@ -187,6 +187,10 @@ npm publish --access public
 - **费用为目录价估算**：讯飞 / 商汤 / 小米等未公布按量单价的模型使用估算价（特性表脚注 ¹），正式定价以厂商账单为准。
 - **30 天趋势受日志保留范围约束**：超出持久化日志保留期的日期在窗口内补零显示，不回溯历史。
 
+## Contributors
+
+- [@ciphoo](https://github.com/ciphoo) — MiniMax 国内域 Token Plan 订阅额度支持（PR #5）
+
 ## 许可证
 
 [MIT](LICENSE) © 2026 KenZ (kenz1117)
