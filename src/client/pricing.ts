@@ -148,8 +148,9 @@ export function tierCountdown(nowMs: number): { tier: PriceTierId; nextSwitchInM
       return { tier: tierAt(nowMs), nextSwitchInMs: boundaryMs - dayMs }
     }
   }
-  // 18:00 之后：下一边界是明天 09:00。
-  return { tier: tierAt(nowMs), nextSwitchInMs: 86_400_000 - dayMs + TIER_BOUNDARY_MINUTES[0]! * 60_000 }
+  // 18:00 之后：下一边界是明天 09:00（TIER_BOUNDARY_MINUTES[0] 首项）。
+  const firstBoundary = TIER_BOUNDARY_MINUTES[0] ?? 0
+  return { tier: tierAt(nowMs), nextSwitchInMs: 86_400_000 - dayMs + firstBoundary * 60_000 }
 }
 
 /**
@@ -814,7 +815,12 @@ export function computeCost(entry: ModelEntry, buckets: TokenUsageBuckets, peakS
  * @param peakShare - fallback mix used only when `timeMs` is missing.
  * @returns the estimated cost in the entry's native currency.
  */
-export function computeCostAt(entry: ModelEntry, buckets: TokenUsageBuckets, timeMs: number | null | undefined, peakShare = DEFAULT_PEAK_SHARE): number {
+export function computeCostAt(
+  entry: ModelEntry,
+  buckets: TokenUsageBuckets,
+  timeMs: number | null | undefined,
+  peakShare = DEFAULT_PEAK_SHARE,
+): number {
   if (entry.price.offPeak === undefined) return priceBandCost(entry.price, buckets, entry.price.currency)
   if (timeMs === null || timeMs === undefined || !Number.isFinite(timeMs)) return computeCost(entry, buckets, peakShare)
   const band = tierAt(timeMs) === 'peak' ? entry.price : entry.price.offPeak

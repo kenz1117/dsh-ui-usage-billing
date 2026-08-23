@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { planTypeOf, subscriptionCnyOf, PLAN_KNOWLEDGE } from '../src/client/plan-knowledge.ts'
+import { planTypeOf, subscriptionCnyOf, tierInfoOf, PLAN_KNOWLEDGE } from '../src/client/plan-knowledge.ts'
 
 describe('planTypeOf', () => {
   it('classifies known subscription channels as code', () => {
@@ -35,5 +35,24 @@ describe('subscriptionCnyOf', () => {
     for (const [provider, entry] of Object.entries(PLAN_KNOWLEDGE)) {
       expect(entry.type, provider).toBe('code')
     }
+  })
+})
+
+describe('tierInfoOf (auto-detected tier fee + quota vocabulary)', () => {
+  it('returns the US-dollar tier fee and period quota for opencode family', () => {
+    // opencode 订阅制：$10/月档位费 + 周额度口径。
+    const tier = tierInfoOf('opencode-go')
+    expect(tier).toBeDefined()
+    expect(tier).toMatchObject({ amount: 10, currency: 'USD', periodDays: 7 })
+    expect(tier?.label).toMatch(/\$30/)
+  })
+
+  it('returns undefined for code plans without a published tier', () => {
+    // kimi-coding 未公布档位费/额度 → 无档位知识（卡片回退 CNY 月费）。
+    expect(tierInfoOf('kimi-coding')).toBeUndefined()
+  })
+
+  it('returns undefined for token plans', () => {
+    expect(tierInfoOf('deepseek')).toBeUndefined()
   })
 })

@@ -140,6 +140,22 @@ export type UsageBillingKey =
   | 'billing.thirdParty'
   | 'billing.officialCost'
   | 'billing.thirdPartyCost'
+  | 'billing.perfSamples'
+  | 'billing.perfTtft'
+  | 'billing.perfP50'
+  | 'billing.perfP90'
+  | 'billing.perfTps'
+  | 'billing.perfLatency'
+  | 'billing.perfEstimated'
+  | 'billing.perfEmpty'
+  | 'billing.perfTpsUnit'
+  | 'billing.perfTitle'
+  | 'billing.perfHint'
+  | 'billing.heatmapYear'
+  | 'billing.heatmapMonth'
+  | 'billing.activeDays'
+  | 'billing.streakDays'
+  | 'billing.subscriptionAutoDetect'
 
 export const NS = 'usageBilling'
 
@@ -283,6 +299,22 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.thirdParty': '三方',
   'billing.officialCost': '官方费用',
   'billing.thirdPartyCost': '三方费用',
+  'billing.perfSamples': '样本',
+  'billing.perfTtft': '首字延时',
+  'billing.perfP50': 'P50',
+  'billing.perfP90': 'P90',
+  'billing.perfTps': '生成速度',
+  'billing.perfLatency': '总延迟',
+  'billing.perfEstimated': '估算样本',
+  'billing.perfEmpty': '暂无性能数据',
+  'billing.perfTpsUnit': 'tok/s',
+  'billing.perfTitle': '性能',
+  'billing.perfHint': '按模型与按小时聚合；估算样本为工具续写步骤',
+  'billing.heatmapYear': '年',
+  'billing.heatmapMonth': '月',
+  'billing.activeDays': '活跃天数',
+  'billing.streakDays': '连续使用',
+  'billing.subscriptionAutoDetect': '自动识别',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -425,4 +457,20 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.thirdParty': 'Third-party',
   'billing.officialCost': 'Official cost',
   'billing.thirdPartyCost': 'Third-party cost',
+  'billing.perfSamples': 'Samples',
+  'billing.perfTtft': 'TTFT',
+  'billing.perfP50': 'P50',
+  'billing.perfP90': 'P90',
+  'billing.perfTps': 'Speed',
+  'billing.perfLatency': 'Total latency',
+  'billing.perfEstimated': 'Estimated',
+  'billing.perfEmpty': 'No performance data yet',
+  'billing.perfTpsUnit': 'tok/s',
+  'billing.perfTitle': 'Performance',
+  'billing.perfHint': 'Per model & per hour; estimated samples are tool-continuation steps',
+  'billing.heatmapYear': 'Year',
+  'billing.heatmapMonth': 'Month',
+  'billing.activeDays': 'Active days',
+  'billing.streakDays': 'Streak',
+  'billing.subscriptionAutoDetect': 'Auto',
 }

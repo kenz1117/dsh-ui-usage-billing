@@ -1751,6 +1751,22 @@
   background: var(--dsw-alias-bg-layer-3);
 }
 
+/* 档位月费旁边的周期额度口径（如「周额度 $30」）。 */
+.subscriptionTier {
+  margin-left: 6px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 自动识别徽标：档位价来自内置知识库，非厂商实时价格。 */
+.subscriptionAuto {
+  margin-left: 6px;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--dsw-static-blue-500);
+  background: color-mix(in srgb, var(--dsw-static-blue-500) 14%, var(--dsw-alias-bg-layer-2));
+}
+
 .subscriptionStatus {
   font-size: 11px;
   color: var(--dsw-alias-label-secondary);
@@ -2078,6 +2094,29 @@
 .heatmapHover {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
+}
+
+/* 年度热力图（GitHub 风格）：列=周，行=周日..周六，紧凑小方块，横向可滚动。 */
+.heatmapYearScroll {
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.heatmapYearGrid {
+  display: grid;
+  grid-template-rows: repeat(7, 11px);
+  grid-auto-flow: column;
+  gap: 3px;
+  min-width: max-content;
+}
+
+.heatmapYearCell {
+  width: 11px;
+  height: 11px;
+  border: 0;
+  border-radius: 2px;
+  padding: 0;
+  cursor: pointer;
 }
 
 /* ── Responsive ─────────────────────────────────────────────────────── */

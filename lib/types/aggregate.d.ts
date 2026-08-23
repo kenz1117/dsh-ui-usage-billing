@@ -65,6 +65,8 @@ export declare function emptyUsage(): ModelUsage;
 export declare function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number, official?: boolean): void;
 /** Local-time date stamp (the host runs in the user's timezone). */
 export declare function dayStamp(time: number): string;
+/** Local-time hour stamp `YYYY-MM-DDTHH` — the performance series bucket key. */
+export declare function hourStamp(time: number): string;
 /** cwd 未知时工作区聚合的占位名（UI 显示 em dash，保持语言无关）。 */
 export declare const UNKNOWN_WORKSPACE_NAME = "\u2014";
 /** 工作区名：取 cwd 的末级目录名；无 cwd 时返回 {@link UNKNOWN_WORKSPACE_NAME}。 */
@@ -98,12 +100,53 @@ export interface UsageStatsDocument {
      * 属估算口径，UI 需标注）。旧快照可能缺失。
      */
     byRole?: RoleCost;
+    /**
+     * 性能指标（TTFT / 生成速度 / 总延迟）按模型与按小时聚合；旧快照可能缺失。
+     * 口径：TTFT = request/header → 首个内容 chunk；生成速度 = 输出 token ÷ 生成时长；
+     * 总延迟 = request/header → assistant/message。工具续写步骤无独立请求头，
+     * 以 step/start 为起点估算并计 estimated。
+     */
+    perf?: PerfStats;
 }
 /** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
 export interface RoleCost {
     user: number;
     assistant: number;
     tool: number;
+}
+/**
+ * 性能指标（TTFT / 生成速度 / 总延迟）：按模型与按小时聚合，供「性能」面板渲染。
+ * 旧快照（无 perf 字段）缺失时客户端按无数据兜底。
+ */
+export interface PerfStats {
+    /** 按模型聚合（键 = 计费目录键；未收录模型原样保留）。 */
+    byModel: Record<string, ModelPerf>;
+    /** 按小时聚合（键 = {@link hourStamp}，北京时间）。 */
+    byHour: Record<string, HourPerf>;
+}
+/** 一个模型的性能统计：首字延时均值 / P50 / P90、生成速度均值、总延迟均值。 */
+export interface ModelPerf {
+    /** 有效性能样本数（有可测 TTFT 的调用；不含损毁样本）。 */
+    samples: number;
+    /** 平均首字延时（毫秒）。 */
+    ttftAvg: number;
+    /** 首字延时 P50（毫秒）。 */
+    ttftP50: number;
+    /** 首字延时 P90（毫秒）。 */
+    ttftP90: number;
+    /** 平均生成速度（tokens/s）；生成了有效输出且时长可测时存在。 */
+    tpsAvg?: number;
+    /** 平均总延迟（首次请求 → 响应完成，毫秒）。 */
+    latencyAvg: number;
+    /** 以 step/start 估算的样本数（工具续写步骤无独立 request/header）。 */
+    estimatedSamples: number;
+}
+/** 一个小时的性能统计（键 = {@link hourStamp}）。 */
+export interface HourPerf {
+    samples: number;
+    ttftAvg: number;
+    /** 平均生成速度（tokens/s）；该小时无可测生成窗口时缺失。 */
+    tpsAvg?: number;
 }
 /** 会话明细行：仪表盘「会话明细」面板的数据源。 */
 export interface SessionUsageRow {
@@ -156,6 +199,21 @@ export declare const SESSION_ROW_LIMIT = 100;
 export declare const TURN_ROW_LIMIT = 200;
 /** 聚合文档的短 TTL（毫秒）：合并密集轮询，TTL 内直接复用上次的合并结果。 */
 export declare const AGGREGATE_TTL_MS = 5000;
+/** 单步性能样本（foldSession 的折叠产物；跨会话合并时按模型/小时再聚合）。 */
+export interface PerfSample {
+    /** 计费目录键（模型；未收录模型原样保留）。 */
+    model: string;
+    /** 北京时间小时戳（{@link hourStamp}）——性能曲线的时间桶键。 */
+    hour: string;
+    /** 首字延时（毫秒）；无效样本（超出 sane 上限）不入样本集。 */
+    ttftMs: number;
+    /** 生成速度（tokens/s）；无有效生成窗口或无输出时缺失。 */
+    tps?: number;
+    /** 总延迟（首次请求 → 响应完成，毫秒）；只测到内容但完成时刻优先于起点时缺失。 */
+    latencyMs?: number;
+    /** 无独立 request/header，以 step/start 起算（工具续写步骤）。 */
+    estimated: boolean;
+}
 /** One persisted session's folded usage plus drill-down metadata. */
 interface SessionFold {
     total: ModelUsage;
@@ -166,6 +224,8 @@ interface SessionFold {
     planCalls: Map<string, number>;
     /** 每轮费用明细（按轮次号升序，不含 sessionId）；sessionId 在合并时补齐。 */
     turns: SessionTurnRow[];
+    /** 性能样本（有可测 TTFT 的调用，按事件次序折叠）。 */
+    perf: PerfSample[];
     /** 角色归因中间量：消息文本长度（user/tool）与输入/输出成本实测拆分。 */
     roles: RoleFold;
     /** 日志里最新的 session/title 文本（无标题事件时 undefined）。 */

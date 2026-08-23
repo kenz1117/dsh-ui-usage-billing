@@ -110,21 +110,94 @@ function buildMonthWeeks(days: readonly HeatmapDay[], now: Date): Cell[][] {
 }
 
 /**
- * Render the month heatmap.
+ * Build the GitHub-style year cells (column = week, row = Sunday..Saturday),
+ * covering the last 52 weeks up to the current week. Future days render as
+ * level-0 gray; the column-flow grid lays each week's 7 cells vertically.
+ */
+function buildYearWeeks(days: readonly HeatmapDay[], now: Date): Cell[][] {
+  const byDate = new Map<string, number>()
+  for (const day of days) byDate.set(day.date, day.value)
+  let max = 0
+  for (const value of byDate.values()) if (value > max) max = value
+
+  const today = dayStamp(now)
+  const thisSunday = new Date(now)
+  thisSunday.setHours(0, 0, 0, 0)
+  thisSunday.setDate(thisSunday.getDate() - thisSunday.getDay())
+  const firstSunday = new Date(thisSunday)
+  firstSunday.setDate(thisSunday.getDate() - 51 * 7)
+
+  const weeks: Cell[][] = []
+  for (let week = 0; week < 52; week += 1) {
+    const row: Cell[] = []
+    for (let dow = 0; dow < 7; dow += 1) {
+      const date = new Date(firstSunday)
+      date.setDate(firstSunday.getDate() + week * 7 + dow)
+      const iso = dayStamp(date)
+      const future = iso > today
+      const value = future ? 0 : (byDate.get(iso) ?? 0)
+      let level: 0 | 1 | 2 | 3 | 4 = 0
+      if (!future && value > 0 && max > 0) {
+        const scaled = Math.ceil((value / max) * 4)
+        level = (Math.min(4, Math.max(1, scaled)) as 1 | 2 | 3 | 4)
+      }
+      row.push({ date: iso, dayNum: date.getDate(), value, level, placeholder: future })
+    }
+    weeks.push(row)
+  }
+  return weeks
+}
+
+/**
+ * Render the month or year heatmap.
  * @param props.days - daily cost rows (keys are `YYYY-MM-DD`).
  * @param props.currency - display currency for the hover amount.
  * @param props.now - anchor date (defaults to today); injectable for tests.
  * @param props.t - locale function (used for the legend labels).
+ * @param props.range - `month` (calendar month) or `year` (last 52 weeks, GitHub style).
  */
-export function UsageHeatmap({ days, currency, now, t }: { days: readonly HeatmapDay[]; currency: CostCurrency; now?: Date; t: (key: 'billing.costAbbr' | 'billing.noData' | 'billing.heatmapLess' | 'billing.heatmapMore') => string }): React.ReactNode {
+export function UsageHeatmap({ days, currency, now, t, range = 'month' }: { days: readonly HeatmapDay[]; currency: CostCurrency; now?: Date; range?: 'month' | 'year'; t: (key: 'billing.costAbbr' | 'billing.noData' | 'billing.heatmapLess' | 'billing.heatmapMore') => string }): React.ReactNode {
   const [hover, setHover] = useState<Cell | null>(null)
-  const weeks = useMemo(() => buildMonthWeeks(days, now ?? new Date()), [days, now])
   const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
+  // monthWeeks 无条件计算，保证跨 range 切换时 hooks 顺序稳定。
+  const monthWeeks = useMemo(() => buildMonthWeeks(days, now ?? new Date()), [days, now])
+
+  if (range === 'year') {
+    // Year view: compact per-week column grid (GitHub style); tooltip via title.
+    const yearWeeks = buildYearWeeks(days, now ?? new Date())
+    return (
+      <div className={css.heatmap}>
+        <div className={css.heatmapYearScroll}>
+          <div className={css.heatmapYearGrid} role="img" aria-label="yearly cost heatmap" data-testid="heatmap-year-grid">
+            {yearWeeks.flat().map(cell => (
+              <button
+                key={cell.date}
+                type="button"
+                className={css.heatmapYearCell}
+                data-testid="heatmap-year-cell"
+                data-level={cell.level}
+                style={{ background: LEVEL_COLORS[cell.level] }}
+                title={`${cell.date} · ${money(cell.value)}`}
+                aria-label={`${cell.date}: ${money(cell.value)}`}
+              />
+            ))}
+          </div>
+        </div>
+        <div className={css.heatmapFooter}>
+          <span className={css.heatmapLegendText}>{t('billing.heatmapLess')}</span>
+          <span className={css.heatmapLegend}>
+            {LEVEL_COLORS.map((color, level) => <i key={level} style={{ background: color }} />)}
+          </span>
+          <span className={css.heatmapLegendText}>{t('billing.heatmapMore')}</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={css.heatmap}>
       <div className={css.heatmapGrid} role="img" aria-label="daily cost heatmap">
-        {weeks.map(week =>
+        {monthWeeks.map(week =>
           week.map((cell) => {
             if (cell.placeholder) return <div key={cell.date} className={css.heatmapCellEmpty}>{cell.dayNum}</div>
             return (
@@ -145,7 +218,7 @@ export function UsageHeatmap({ days, currency, now, t }: { days: readonly Heatma
                 {cell.dayNum}
               </button>
             )
-          })
+          }),
         )}
       </div>
       <div className={css.heatmapFooter}>

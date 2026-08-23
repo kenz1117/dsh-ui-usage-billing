@@ -108,7 +108,10 @@ async function readPiAiProviders(settings: SettingsProvider): Promise<Readonly<R
  * @param settings - the settings service (reads the llm-pi-ai namespace).
  * @param credentials - the credentials service (resolves the env refs).
  */
-export async function resolveSubscriptionKeys(settings: SettingsProvider, credentials: CredentialProvider): Promise<{ keys: SubscriptionKeys; identified: IdentifiedSubscriptionPlan[] }> {
+export async function resolveSubscriptionKeys(
+  settings: SettingsProvider,
+  credentials: CredentialProvider,
+): Promise<{ keys: SubscriptionKeys; identified: IdentifiedSubscriptionPlan[] }> {
   const keys: SubscriptionKeys = { ...EMPTY_SUBSCRIPTION_KEYS }
   let providers: Record<string, { apiKeyEnv?: string }> | undefined
   try {
@@ -166,7 +169,11 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     if (now - lastSnapshotAt < SNAPSHOT_INTERVAL_MS) return
     lastSnapshotAt = now
     // _writer 供双实例检测；客户端忽略未知字段。
-    void writeFileAtomic(snapshotPath, JSON.stringify({ ...doc, _writer: { pid: process.pid, at: now } }), { mode: 0o600, dirMode: 0o700 }).catch(() => {
+    void writeFileAtomic(
+      snapshotPath,
+      JSON.stringify({ ...doc, _writer: { pid: process.pid, at: now } }),
+      { mode: 0o600, dirMode: 0o700 },
+    ).catch(() => {
       // 快照写失败不影响服务：内存聚合值已下发。
     })
   }
@@ -221,7 +228,13 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
         const stats = await aggregator.aggregate()
         const zero = { range: args.range, cost: 0, calls: 0, input: 0, output: 0 }
         if (args.range === 'all') {
-          return { range: args.range, cost: stats.total.cost, calls: stats.total.calls, input: stats.total.input, output: stats.total.output }
+          return {
+            range: args.range,
+            cost: stats.total.cost,
+            calls: stats.total.calls,
+            input: stats.total.input,
+            output: stats.total.output,
+          }
         }
         if (args.range === 'today') {
           const day = stats.byDay[dayStamp(Date.now())]
@@ -323,7 +336,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       .filter(item => item.adapter)
       .map(item => ({ provider: item.provider, ...(item.region === undefined ? {} : { region: item.region }) }))
     const queried = await collectSubscriptions(keys, plans)
-    const rows: SubscriptionQuota[] = [...queried].map(row => {
+    const rows: SubscriptionQuota[] = [...queried].map((row) => {
       // plan 双口径（引用 dsh-spend）：订阅通道标 code 并带月费，其余 token。
       const planType = planTypeOf(row.provider)
       const subscriptionAmount = subscriptionCnyOf(row.provider)

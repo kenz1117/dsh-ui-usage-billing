@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import { fireEvent, render } from '@testing-library/react'
 import { UsageHeatmap, type HeatmapDay } from '../src/client/heatmap.tsx'
+import { activeDaysOf, streakDaysOf } from '../src/client/UsageBilling.tsx'
 
 const t = (key: 'billing.costAbbr' | 'billing.noData' | 'billing.heatmapLess' | 'billing.heatmapMore'): string =>
   key === 'billing.noData' ? '多' : key === 'billing.heatmapLess' ? '少' : key === 'billing.heatmapMore' ? '多' : '费用'
@@ -53,5 +54,33 @@ describe('UsageHeatmap', () => {
     fireEvent.mouseEnter(getAllByTestId('heatmap-cell')[0]!)
     const hover = getByTestId('heatmap-hover')
     expect(hover.textContent).toMatch(/· ¥/)
+  })
+
+  it('renders 52 weeks of compact cells in year range', () => {
+    const { getAllByTestId } = render(<UsageHeatmap days={DAYS} currency="cny" now={NOW} t={t} range="year" />)
+    const cells = getAllByTestId('heatmap-year-cell')
+    // 52 周 × 7 天。
+    expect(cells.length).toBe(52 * 7)
+    // 有值日点亮（≥2 个 data-level>0）。
+    const lit = cells.filter(cell => Number(cell.getAttribute('data-level')) > 0)
+    expect(lit.length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('active / streak day counting', () => {
+  const byDay = { '2026-08-15': { cost: 1 }, '2026-08-16': { cost: 2 } }
+
+  it('counts distinct active days (any recorded day)', () => {
+    expect(activeDaysOf(byDay)).toBe(2)
+  })
+
+  it('counts consecutive days ending on the anchor day', () => {
+    // 锚点 2026-08-16：8/16、8/15 连续，8/14 无记录 → 2。
+    expect(streakDaysOf(byDay, new Date(2026, 7, 16).getTime())).toBe(2)
+  })
+
+  it('returns 0 when the anchor day has no record', () => {
+    // 锚点 2026-08-17 无记录 → 0。
+    expect(streakDaysOf(byDay, new Date(2026, 7, 17).getTime())).toBe(0)
   })
 })

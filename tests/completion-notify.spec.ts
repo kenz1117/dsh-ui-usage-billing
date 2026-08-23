@@ -24,7 +24,6 @@ function makeList(initial: SessionListState) {
   }
 }
 
-const idle = (id: string, title: string): SessionSummary => ({ id: id, title, running: false })
 const running = (id: string, title: string): SessionSummary => ({ id: id, title, running: true })
 const done = (id: string, title: string): SessionSummary => ({ id: id, title, running: false, completed: true })
 

@@ -6,7 +6,8 @@
 
 import { describe, expect, it, afterEach } from 'vitest'
 import {
-  applyLiveCatalogModels, applyLivePricing, canonModelId, catalogEntries, cnyToUsd, computeCost, computeCostAt, convertUnitPrice, formatMoney, formatPercent, formatTokens, formatUnitPrice,
+  applyLiveCatalogModels, applyLivePricing, canonModelId, catalogEntries, cnyToUsd, computeCost,
+  computeCostAt, convertUnitPrice, formatMoney, formatPercent, formatTokens, formatUnitPrice,
   getRateInfo, isPeakHour, modelOf, MODEL_CATALOG, resolveCatalogKey, tierAt, tierCountdown,
 } from '../src/client/pricing.ts'
 import { PROVIDER_ALIASES } from '../src/client/UsageBilling.tsx'
