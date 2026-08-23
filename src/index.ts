@@ -34,7 +34,7 @@ import { queryBalances, queryCustomBalances } from './balance.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
 import type { CustomBalanceConfig, LivePricing, SubscriptionPlanConfig, SubscriptionQuota } from './pricing-shared.ts'
 import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts'
-import { planTypeOf, subscriptionCnyOf } from './client/plan-knowledge.ts'
+import { planTypeOf, subscriptionFeeCnyOf } from './client/plan-knowledge.ts'
 
 /** Plugin configuration. */
 export interface UsageBillingConfig {
@@ -345,8 +345,9 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     const queried = await collectSubscriptions(keys, plans)
     const rows: SubscriptionQuota[] = [...queried].map((row) => {
       // plan 双口径（引用 dsh-spend）：订阅通道标 code 并带月费，其余 token。
+      // 月费按原生币 × 实时汇率折算为人民币（汇率缺失时按 0 处理，跨币种保护）。
       const planType = planTypeOf(row.provider)
-      const subscriptionAmount = subscriptionCnyOf(row.provider)
+      const subscriptionAmount = subscriptionFeeCnyOf(row.provider, live.rate)
       return {
         ...row,
         planType,
