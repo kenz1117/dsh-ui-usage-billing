@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { planTypeOf, subscriptionCnyOf, tierInfoOf, PLAN_KNOWLEDGE } from '../src/client/plan-knowledge.ts'
+import { planTypeOf, subscriptionFeeCnyOf, tierInfoOf, normalizePlanProvider, PLAN_KNOWLEDGE } from '../src/client/plan-knowledge.ts'
 
 describe('planTypeOf', () => {
   it('classifies known subscription channels as code', () => {
@@ -21,20 +21,43 @@ describe('planTypeOf', () => {
   })
 })
 
-describe('subscriptionCnyOf', () => {
-  it('returns the subscription fee for code plans with a fee', () => {
-    expect(subscriptionCnyOf('opencode-go')).toBeGreaterThan(0)
+describe('subscriptionFeeCnyOf (native currency × live rate)', () => {
+  it('converts the OpenCode Go USD fee via the live rate', () => {
+    expect(subscriptionFeeCnyOf('opencode-go', 7.1)).toBe(71)
+  })
+
+  it('returns 0 when the rate is unavailable (no assumed-rate distortion)', () => {
+    expect(subscriptionFeeCnyOf('opencode-go', undefined)).toBe(0)
+    expect(subscriptionFeeCnyOf('opencode-go', 0)).toBe(0)
   })
 
   it('returns 0 for code plans without a fee or for token plans', () => {
-    expect(subscriptionCnyOf('kimi-coding')).toBe(0)
-    expect(subscriptionCnyOf('deepseek')).toBe(0)
+    expect(subscriptionFeeCnyOf('kimi-coding', 7.1)).toBe(0)
+    expect(subscriptionFeeCnyOf('deepseek', 7.1)).toBe(0)
   })
 
   it('classifies every known plan entry as code', () => {
     for (const [provider, entry] of Object.entries(PLAN_KNOWLEDGE)) {
       expect(entry.type, provider).toBe('code')
     }
+  })
+})
+
+describe('plan provider alias normalization', () => {
+  it('maps provider-id variants onto the canonical plan key', () => {
+    expect(normalizePlanProvider('glm')).toBe('zai-coding-cn')
+    expect(normalizePlanProvider('xiaomi')).toBe('xiaomi-token-plan-cn')
+    expect(normalizePlanProvider('moonshot')).toBe('kimi-coding')
+    expect(normalizePlanProvider('deepseek')).toBe('deepseek')
+  })
+
+  it('classifies aliased subscription variants as code plans (pay-as-you-go stays token)', () => {
+    expect(planTypeOf('glm')).toBe('code')
+    expect(planTypeOf('bigmodel')).toBe('code')
+    expect(planTypeOf('kimi')).toBe('code')
+    // 裸按量 API 名（qwen/dashscope/aliyun）不被归一到订阅键，仍按 token。
+    expect(planTypeOf('qwen')).toBe('token')
+    expect(planTypeOf('dashscope')).toBe('token')
   })
 })
 
