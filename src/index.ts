@@ -33,8 +33,9 @@ import { createUsageAggregator, dayStamp } from './aggregate.ts'
 import { applyLivePricing, formatMoney, formatTokens } from './client/pricing.ts'
 import { queryBalances, queryCustomBalances } from './balance.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
-import type { CustomBalanceConfig, LivePricing, SubscriptionPlanConfig, SubscriptionQuota } from './pricing-shared.ts'
+import type { CustomBalanceConfig, LivePricing, RelayQuota, SubscriptionPlanConfig, SubscriptionQuota } from './pricing-shared.ts'
 import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts'
+import { queryRelayQuotas, type RelayRoute } from './relay.ts'
 import { planTypeOf, subscriptionFeeCnyOf } from './client/plan-knowledge.ts'
 import {
   BILLING_SETTINGS_NAMESPACE,
@@ -132,19 +133,102 @@ const SUBSCRIPTION_KEY_SOURCES: ReadonlyArray<{ provider: string; key: Exclude<k
  * @param settings - the settings service (reads the llm-pi-ai namespace).
  * @returns the providers dict; empty when the namespace is unreadable.
  */
-async function readPiAiProviders(settings: SettingsProvider): Promise<Readonly<Record<string, { apiKeyEnv?: string }>>> {
+/** 一个 llm-pi-ai provider 路由的读取视图：只取三块——apiKeyEnv（凭据引用）、
+ *  baseURL（中转站零配置发现的来源）、displayName（站点显示名）。 */
+export interface PiAiProviderRoute {
+  apiKeyEnv?: string
+  baseURL?: string
+  displayName?: string
+}
+
+/** 读 llm-pi-ai 设置的 `providers` 字典（`<route> → { apiKeyEnv?, baseURL?, displayName? }`）。
+ *  余额与订阅查询复用同一份来源：部署为某个 provider 配一次，多 surface 共享。
+ * @param settings - the settings service (reads the llm-pi-ai namespace).
+ * @returns the providers dict; empty when the namespace is unreadable.
+ */
+async function readPiAiProviders(settings: SettingsProvider): Promise<Readonly<Record<string, PiAiProviderRoute>>> {
   try {
     const descriptors = settings.describe({ redactSecrets: true })
     const pi = descriptors.find(descriptor => descriptor.ns === 'llm-pi-ai')?.value
-    return (pi as { providers?: Record<string, { apiKeyEnv?: string }> } | null | undefined)?.providers ?? {}
+    const providers = (pi as { providers?: Record<string, PiAiProviderRoute> } | null | undefined)?.providers
+    const out: Record<string, PiAiProviderRoute> = {}
+    for (const [route, entry] of Object.entries(providers ?? {})) {
+      if (entry === null || typeof entry !== 'object') continue
+      const { apiKeyEnv, baseURL, displayName } = entry
+      out[route] = {
+        ...(typeof apiKeyEnv === 'string' ? { apiKeyEnv } : {}),
+        ...(typeof baseURL === 'string' ? { baseURL } : {}),
+        ...(typeof displayName === 'string' ? { displayName } : {}),
+      }
+    }
+    return out
   } catch {
     // 设置服务异常时按空 providers 处理（余额面板显示未配置）。
     return {}
   }
 }
 
+/** 同步读取 provider 路由的 baseURL 视图（中转站零配置发现来源）。
+ *  `settings.describe` 是同步调用，聚合器每次折叠取最新站点映射，无需缓存/过期。
+ *  注意：返回**全部可读路由**（baseURL 可选），聚合层据此区分「路由存在但无
+ *  baseURL=直连」与「路由已删除=未知路由」两种不同归属。
+ * @param settings - the settings service (reads the llm-pi-ai namespace).
+ * @returns `<route> → { baseURL? }`；命名空间不可读时返回空。
+ */
+export function readPiAiProviderRoutes(settings: SettingsProvider): Readonly<Record<string, { baseURL?: string }>> {
+  try {
+    const descriptors = settings.describe({ redactSecrets: true })
+    const pi = descriptors.find(descriptor => descriptor.ns === 'llm-pi-ai')?.value
+    const providers = (pi as { providers?: Record<string, { baseURL?: unknown }> } | null | undefined)?.providers
+    const out: Record<string, { baseURL?: string }> = {}
+    for (const [route, entry] of Object.entries(providers ?? {})) {
+      if (entry === null || typeof entry !== 'object') continue
+      const baseURL = entry.baseURL
+      out[route] = typeof baseURL === 'string' && baseURL !== '' ? { baseURL } : {}
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
 /**
- * 解析订阅适配器需要的 API Key：从 llm-pi-ai 设置的 `providers.<id>.apiKeyEnv`
+ * 构造「cwd → 工作区标题」解析器（host 的 `workspaceRegistry` 为可选依赖）。
+ * 匹配与 TokenLedger 同口径：会话 cwd 等于某工作区 path、或位于其子目录时，用
+ * 工作区标题命名该项目（子目录的会话也计入）；否则返回 undefined（回退到目录名）。
+ * registry 缺席/读取失败都返回 undefined，绝不抛错（可选依赖，不影响主流程）。
+ * @param ctx - host context carrying the optional workspace registry.
+ * @returns 标题解析函数；registry 不可用时 undefined。
+ */
+function buildWorkspaceTitleResolver(ctx: Context): ((cwd: string) => string | undefined) | undefined {
+  let registry: { list?: () => readonly { path: string; title: string }[] } | undefined
+  try {
+    registry = ctx.get('workspaceRegistry') as { list?: () => readonly { path: string; title: string }[] } | undefined
+  } catch {
+    return undefined
+  }
+  if (registry === undefined || typeof registry.list !== 'function') return undefined
+  const reg = registry as { list: () => readonly { path: string; title: string }[] }
+  return (cwd) => {
+    if (cwd === '') return undefined
+    try {
+      const records = reg.list() ?? []
+      // 精确 path 匹配优先（会话 cwd 即工作区登记目录）。
+      const exact = records.find(record => record.path === cwd)
+      if (exact !== undefined) return exact.title
+      // 子目录前缀匹配：子目录里的会话也计入该项目。
+      for (const record of records) {
+        if (record.path !== '' && cwd.startsWith(`${record.path}/`)) return record.title
+      }
+      return undefined
+    } catch {
+      return undefined
+    }
+  }
+}
+
+/**
+  * 解析订阅适配器需要的 API Key：从 llm-pi-ai 设置的 `providers.<id>.apiKeyEnv`
  * 读引用（如 kimi-coding → KIMI_CODING_API_KEY），再经凭据 seam 解析成实际值。
  * 同时识别出用户配置了 key 的订阅套餐（供面板只显示已识别的）。
  * @param settings - the settings service (reads the llm-pi-ai namespace).
@@ -191,10 +275,16 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   let usageSettingsScope: SettingsScope<UsageBillingSettings> | undefined
   // 常驻增量聚合器：按会话缓存折叠结果（日志 mtime+size 失效），
   // 前端 30 秒轮询只重算写过的会话。
+  // 项目归属用工作区标题（host workspaceRegistry 可选；缺失时 resolver 为 undefined，回退目录名）。
+  const workspaceTitleResolver = buildWorkspaceTitleResolver(ctx)
   const aggregator = createUsageAggregator(ctx.sessionPersistence, {
     ...(config.subscriptionProviders === undefined
       ? {}
       : { subscriptionProviders: config.subscriptionProviders }),
+    // 中转站零配置发现：每次聚合读 llm-pi-ai providers 的 baseURL（路由→站点映射）。
+    resolveRoutes: () => readPiAiProviderRoutes(ctx.settings),
+    // 项目归属用工作区标题命名（host workspaceRegistry 为可选依赖，缺失时回退目录名）。
+    ...(workspaceTitleResolver === undefined ? {} : { resolveWorkspaceTitle: workspaceTitleResolver }),
   })
   const cwd = process.cwd()
   const snapshotPath = join(homedir(), '.dsh/.dsh-usage-stats.json')
@@ -487,6 +577,37 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       },
     }),
     'usage-billing: subscriptions route',
+  )
+
+  // 中转站额度：识别配了 baseURL + apiKeyEnv 的路由所指向的中转站程序（New API /
+  // Sub2API），读出「余额 / 额度窗口」。外部 API 低频变化，缓存 5 分钟避免每次
+  // 轮询都打上游；只返回配了 baseURL 的路由，官方直连/未配置路由不出现。
+  let relayCache: { at: number; quotas: readonly RelayQuota[] } = { at: 0, quotas: [] }
+  const refreshRelay = async (): Promise<void> => {
+    const providers = await readPiAiProviders(ctx.settings)
+    const routes: RelayRoute[] = []
+    for (const [route, entry] of Object.entries(providers)) {
+      if (entry.baseURL === undefined || entry.apiKeyEnv === undefined) continue
+      routes.push({
+        route,
+        baseURL: entry.baseURL,
+        apiKeyEnv: entry.apiKeyEnv,
+        ...(entry.displayName === undefined ? {} : { displayName: entry.displayName }),
+      })
+    }
+    relayCache = { at: Date.now(), quotas: await queryRelayQuotas(ctx, routes) }
+  }
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'exact',
+      path: '/api/billing/relay-quotas',
+      handler: async (_req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+        if (Date.now() - relayCache.at >= SUBSCRIPTION_CACHE_MS) await refreshRelay()
+        res.end(JSON.stringify({ quotas: relayCache.quotas }))
+      },
+    }),
+    'usage-billing: relay-quotas route',
   )
 
   ctx.effect(

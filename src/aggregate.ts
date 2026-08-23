@@ -48,6 +48,59 @@ export function isOfficialProvider(provider: string): boolean {
   return /^deepseek(?:-[a-z0-9-]+)?$/i.test(provider.trim())
 }
 
+// ── 中转站（站点）归组 ──────────────────────────────────────────────────────
+
+/** 一个 provider 路由的站点视图（来自 llm-pi-ai providers 的 baseURL）。 */
+export interface ProviderRouteView {
+  /** 该路由配置的端点地址；无值 = 直连厂商（非中转站）。 */
+  baseURL?: string
+}
+
+/** 站点归属分类：site=中转站（有 baseURL origin）；direct=直连；unknown=未知路由（配置已删）。 */
+export type SiteKind = 'site' | 'direct' | 'unknown'
+
+/** 一个 provider 路由归类后的站点引用。 */
+export interface SiteRef {
+  kind: SiteKind
+  /** 站点归一化 origin（仅 site）。 */
+  origin?: string
+  /** 原 provider 路由名。 */
+  provider: string
+}
+
+/** 由 baseURL 归一化出站点 origin（协议 + 主机 + 端口）；解析失败回退原值。 */
+export function siteOriginOf(baseURL: string): string {
+  try {
+    return new URL(baseURL).origin
+  } catch {
+    return baseURL
+  }
+}
+
+/**
+ * 把一个 provider 路由归类为站点引用。判定顺序（与路由在 provider 配置里的状态一致）：
+ * - 路由存在于当前配置且配了 baseURL → 中转站 `site`（按 origin 归组，同站多 key 合并）；
+ * - 路由存在于当前配置但无 baseURL → 厂商直连 `direct`；
+ * - 路由不在当前配置里 → `unknown`（改过名 / 删除过，是「读不到」而非「直连」）。
+ * @param provider - 会话日志里的 provider 路由名（request/header 的 `config.provider`）。
+ * @param routes - 当前 provider 路由视图（来自 llm-pi-ai providers）。
+ */
+export function siteRefOf(provider: string, routes: Readonly<Record<string, ProviderRouteView>>): SiteRef {
+  const view = routes[provider]
+  if (view !== undefined) {
+    if (view.baseURL !== undefined) return { kind: 'site', origin: siteOriginOf(view.baseURL), provider }
+    return { kind: 'direct', provider }
+  }
+  return { kind: 'unknown', provider }
+}
+
+/** 站点桶的稳定 key：`site:<origin>` 与 `direct:<provider>` 分开，`unknown` 单一桶。 */
+export function siteBucketKey(ref: SiteRef): string {
+  if (ref.kind === 'site') return `site:${ref.origin ?? ''}`
+  if (ref.kind === 'direct') return `direct:${ref.provider}`
+  return 'unknown'
+}
+
 /** Aggregation tuning options. */
 export interface AggregateOptions {
   /** 订阅制 provider id 列表；默认 {@link DEFAULT_SUBSCRIPTION_PROVIDERS}。 */
@@ -57,6 +110,12 @@ export interface AggregateOptions {
   /** 每会话折叠缓存的上限（默认 {@link DEFAULT_MAX_CACHE_SESSIONS}）；
    *  超限时按最近使用先后淘汰最久未用的会话，防长期运行内存膨胀。 */
   maxCacheSessions?: number
+  /** 中转站归组来源：返回当前 provider 路由视图（llm-pi-ai providers 的 baseURL）。
+   *  每次聚合时调用取最新值；缺省时全部路由按「未知路由」处理（无配置发现）。 */
+  resolveRoutes?: () => Readonly<Record<string, ProviderRouteView>>
+  /** 工作区标题解析：给定会话 cwd 返回项目显示标题；undefined = 回退到 cwd 末级目录名
+   *  （host 的 workspaceRegistry 为可选依赖，缺失时不注入，行为保持不变）。 */
+  resolveWorkspaceTitle?: (cwd: string) => string | undefined
 }
 
 /** 每会话折叠缓存默认上限：超过则按 LRU 淘汰（P1-6 峰值内存治理）。 */
@@ -170,6 +229,12 @@ export interface UsageStatsDocument {
   byTurn?: TurnUsageRow[]
   /** 工作区聚合：按 cwd 末级目录归并，按费用倒序；旧快照可能缺失。 */
   byWorkspace?: WorkspaceUsageRow[]
+  /**
+   * 中转站归组：按 provider 路由归类到站点（有 baseURL 按 origin 归组）、直连、未知路由；
+   * key 为 {@link siteBucketKey} 的稳定值（`site:<origin>` / `direct:<provider>` / `unknown`）。
+   * 旧快照可能缺失。
+   */
+  bySite?: Record<string, ModelUsage>
   /**
    * 按角色费用归因（人民币元）：助手输出成本为实测计价；输入成本按会话内
    * 用户消息 / 工具结果的文本长度占比启发式摊分（日志无角色级 token 实测，
@@ -321,6 +386,8 @@ interface SessionFold {
   byModel: Map<string, ModelUsage>
   byDay: Map<string, ModelUsage>
   byDayModels: Map<string, Map<string, ModelUsage>>
+  /** 中转站归组：按 provider 路由归类到站点/直连/未知路由（key = {@link siteBucketKey}）。 */
+  bySite: Map<string, ModelUsage>
   /** 每个模型 key 在本会话内走订阅通道的调用数（合并时跨会话累加判定 plan）。 */
   planCalls: Map<string, number>
   /** 每轮费用明细（按轮次号升序，不含 sessionId）；sessionId 在合并时补齐。 */
@@ -417,12 +484,14 @@ export function foldSession(
   events: readonly { type: string; time: number; data: never }[],
   subscriptionProviders: ReadonlySet<string>,
   officialProviderIds?: ReadonlySet<string>,
+  routes: Readonly<Record<string, ProviderRouteView>> = {},
 ): SessionFold {
   const fold: SessionFold = {
     total: emptyUsage(),
     byModel: new Map(),
     byDay: new Map(),
     byDayModels: new Map(),
+    bySite: new Map(),
     planCalls: new Map(),
     turns: [],
     perf: [],
@@ -432,6 +501,8 @@ export function foldSession(
   let key = 'other'
   let subscription = false
   let official = false
+  // 当前调用的站点桶 key：在 request/header 时随模型/订阅/官方状态一起更新。
+  let siteBucket = 'unknown'
   const turns = new Map<number, TurnState>()
   // 性能时间状态机：按 (turn, step) 归属 request/header 与内容 chunk 的时刻。
   const steps = new Map<string, StepPerf>()
@@ -484,6 +555,8 @@ export function foldSession(
       subscription = subscriptionProviders.has(provider)
       // 官方直连（DeepSeek 官方）vs 第三方中转/代理。
       official = officialProviderIds === undefined ? isOfficialProvider(provider) : officialProviderIds.has(provider)
+      // 中转站归组：按当前路由映射到站点/直连/未知路由。
+      siteBucket = siteBucketKey(siteRefOf(provider, routes))
       // request/header 是该 step 的 TTFT 起点；归属到最近打开的 step（无独立请求头的
       // 工具续写步骤保持 undefined，以 step/start 起算估算）。
       if (lastOpenStepKey !== undefined) {
@@ -519,6 +592,7 @@ export function foldSession(
     foldUsage(usageCell(fold.byModel, modelKey), usage, modelKey, subscription, event.time, official)
     foldUsage(usageCell(fold.byDay, day), usage, modelKey, subscription, event.time, official)
     foldUsage(modelDayCell(fold.byDayModels, day, modelKey), usage, modelKey, subscription, event.time, official)
+    foldUsage(usageCell(fold.bySite, siteBucket), usage, modelKey, subscription, event.time, official)
     if (subscription) fold.planCalls.set(modelKey, (fold.planCalls.get(modelKey) ?? 0) + 1)
     // 每轮明细：同一轮内的调用累加进该轮状态（模型取最近一次的归属）。
     const turn = (event.data as { turn?: number }).turn ?? -1
@@ -669,6 +743,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
   const cache = new Map<string, { stamp: string | null; fold: SessionFold }>()
   let lastDoc: UsageStatsDocument | undefined
   let lastAt = 0
+  /** 每次聚合取最新的 provider 路由视图（中转站零配置发现）；缺省按空处理（全部未知路由）。 */
+  const routesOf = (): Readonly<Record<string, ProviderRouteView>> => options.resolveRoutes?.() ?? {}
 
   /** 失效键：日志文件的 mtime+size；拿不到（后端无 locate / 文件丢失）时每次重折。 */
   const stampOf = async (meta: SessionHeader): Promise<string | null> => {
@@ -713,7 +789,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           const after = await stampOf(meta)
           if (stamp !== null && after !== stamp) continue
           // durable 边界：日志事件是外部 JSON，foldSession 内做运行时收窄。
-          const fold = foldSession(events as { type: string; time: number; data: never }[], subscriptionProviders, officialProviderIds)
+          const fold = foldSession(events as { type: string; time: number; data: never }[], subscriptionProviders, officialProviderIds, routesOf())
           cache.set(id, { stamp, fold })
           folds.push({ meta, fold })
         } catch (error) {
@@ -740,6 +816,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const byModel = new Map<string, ModelUsage>()
       const byDay = new Map<string, ModelUsage>()
       const byDayModels = new Map<string, Map<string, ModelUsage>>()
+      const bySite = new Map<string, ModelUsage>()
       const planCalls = new Map<string, number>()
       const sessionRows: SessionUsageRow[] = []
       const turnRows: TurnUsageRow[] = []
@@ -761,6 +838,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         for (const [day, models] of fold.byDayModels) {
           for (const [modelKey, cell] of models) mergeUsageInto(modelDayCell(byDayModels, day, modelKey), cell)
         }
+        for (const [siteKey, cell] of fold.bySite) mergeUsageInto(usageCell(bySite, siteKey), cell)
         for (const [modelKey, count] of fold.planCalls) {
           planCalls.set(modelKey, (planCalls.get(modelKey) ?? 0) + count)
         }
@@ -785,8 +863,10 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         }
         // 每轮明细：跨会话的轮次统一按起始时间倒序（展示最近 N 轮）。
         for (const row of fold.turns) turnRows.push({ sessionId, ...row })
-        // 工作区聚合：按 cwd 末级目录归并（cwd 未知归入占位名）。
-        const wsName = workspaceNameOf(meta.cwd)
+        // 工作区聚合：按 cwd 归并（优先用宿主工作区标题，未注入/未命中回退到末级目录名）。
+        const wsName = (options.resolveWorkspaceTitle !== undefined && meta.cwd !== undefined)
+          ? (options.resolveWorkspaceTitle(meta.cwd) ?? workspaceNameOf(meta.cwd))
+          : workspaceNameOf(meta.cwd)
         const ws = workspaceMap.get(wsName) ?? { name: wsName, calls: 0, cost: 0, input: 0, output: 0, lastActive: 0 }
         ws.calls += fold.total.calls
         ws.cost += fold.total.cost
@@ -852,6 +932,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         bySession: sessionRows.slice(0, SESSION_ROW_LIMIT),
         byTurn: turnRows.slice(0, TURN_ROW_LIMIT),
         byWorkspace: workspaces.slice(0, SESSION_ROW_LIMIT),
+        ...(bySite.size === 0 ? {} : { bySite: toRecord(bySite) }),
         ...(perf === undefined ? {} : { perf }),
         // 角色归因：输出成本为实测；输入成本按 user/tool 消息字符占比摊分
         //（无任何消息内容的日志按五五均分兜底，整体属估算口径）。

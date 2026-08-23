@@ -30,7 +30,7 @@ import {
   formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
   modelOf, resolveToken, tierAt, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
-import type { BalanceResponse, LivePricing, ProviderBalance } from '../pricing-shared.ts'
+import type { BalanceResponse, LivePricing, ProviderBalance, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
 import { localizeProviderName } from './provider-display.ts'
@@ -336,6 +336,48 @@ function subscriptionWindowLabel(kind: SubscriptionQuota['windows'][number]['kin
   }
 }
 
+/** 站点桶的归属类别（bySite 的 key 前缀）。 */
+type SiteBucketKind = 'site' | 'direct' | 'unknown'
+
+/** 由 bySite 的 key 解析站点行显示名与类别。 */
+function siteBucketLabel(key: string, t: (key: UsageBillingKey) => string): { name: string; kind: SiteBucketKind } {
+  if (key.startsWith('site:')) return { name: key.slice(5), kind: 'site' }
+  if (key.startsWith('direct:')) return { name: key.slice(7), kind: 'direct' }
+  return { name: t('billing.relayUnknown'), kind: 'unknown' }
+}
+
+/** 站点类别的文案（中转站 / 直连 / 未知路由）。 */
+function siteKindText(kind: SiteBucketKind, t: (key: UsageBillingKey) => string): string {
+  switch (kind) {
+    case 'site': return t('billing.relaySite')
+    case 'direct': return t('billing.relayDirect')
+    default: return t('billing.relayUnknown')
+  }
+}
+
+/** 中转站程序类型的徽标文案（New API / Sub2API / 未识别）。 */
+function relayKindText(kind: RelayQuota['kind'], t: (key: UsageBillingKey) => string): string {
+  switch (kind) {
+    case 'new-api': return t('billing.relayKindNewApi')
+    case 'sub2api': return t('billing.relayKindSub2Api')
+    default: return t('billing.relayKindUnknown')
+  }
+}
+
+/** 站点类别对应的样式类（bySite 桶与中转站额度徽标共用配色）。 */
+const SITE_KIND_CLASS: Record<SiteBucketKind, string | undefined> = {
+  site: css.siteKindSite,
+  direct: css.siteKindDirect,
+  unknown: css.siteKindUnknown,
+}
+
+/** 中转站程序类型对应的样式类（复用站点类别配色）。 */
+const RELAY_KIND_CLASS: Record<RelayQuota['kind'], string | undefined> = {
+  'new-api': css.siteKindSite,
+  sub2api: css.siteKindDirect,
+  unknown: css.siteKindUnknown,
+}
+
 /** Usage stats structure from `.dsh-usage-stats.json`. */
 export interface UsageStats {
   /** 服务端聚合时间戳（毫秒）；旧快照可能缺失。 */
@@ -411,6 +453,16 @@ export interface UsageStats {
     output: number
     lastActive: number
   }[]
+  /** 中转站归组（key = `site:<origin>` / `direct:<provider>` / `unknown`）；旧快照可能缺失。 */
+  bySite?: Record<string, {
+    calls: number
+    input: number
+    output: number
+    cacheHit: number
+    cacheMiss: number
+    cost: number
+    reasoning: number
+  }>
   /** 按角色费用归因（估算口径：输出实测，输入按消息长度摊分）；旧快照可能缺失。 */
   byRole?: { user: number; assistant: number; tool: number }
   /** 性能指标（TTFT/生成速度/总延迟）按模型与按小时；旧快照可能缺失。 */
@@ -430,6 +482,9 @@ const BALANCE_PATH = '/api/billing/balance'
 
 /** Path to the subscription-plan quota endpoint served by this plugin's node half. */
 const SUBSCRIPTIONS_PATH = '/api/billing/subscriptions'
+
+/** Path to the relay-site quota endpoint served by this plugin's node half. */
+const RELAY_PATH = '/api/billing/relay-quotas'
 
 /** 弹窗打开期间统计与定价的自动刷新间隔（毫秒）。 */
 const STATS_REFRESH_INTERVAL_MS = 30_000
@@ -576,6 +631,25 @@ async function fetchSubscriptions(): Promise<readonly SubscriptionQuota[]> {
 }
 
 /**
+ * 拉取中转站额度（New API / Sub2API 的余额与滚动窗口）；失败返回空列表。
+ * @returns the relay-site quota rows, or an empty list on any failure.
+ */
+async function fetchRelayQuotas(): Promise<readonly RelayQuota[]> {
+  try {
+    const response = await fetch(RELAY_PATH)
+    if (!response.ok) return []
+    const text = await response.text()
+    const parsed = JSON.parse(text) as unknown
+    if (parsed !== null && typeof parsed === 'object' && 'quotas' in parsed) {
+      return (parsed as RelayResponse).quotas
+    }
+    return []
+  } catch {
+    return []
+  }
+}
+
+/**
  * 读取 usage_stats 工具开关当前值（插件自带接口，不依赖宿主浏览器设置白名单）。
  * @returns 当前是否注入；读取失败（服务未起/非 JSON）返回 undefined。
  */
@@ -683,9 +757,23 @@ function UsageBillingTrigger(
     todayCost: number
     weekCost: number
     days: readonly { date: string; cost: number }[]
+    /** hover 速览「主力直联/订阅消耗」+ 对应余额/配额数值文本与低值标记。 */
+    vendorStatus: {
+      direct: { name: string; text: string; low: boolean } | undefined
+      sub: { name: string; text: string; low: boolean } | undefined
+    }
+  /** hover 速览「数据卡」用量数值（累计）：总 Token / 输入 / 输出 / 缓存 / 调用 / 更新时间。 */
+  dash: {
+    totalToken: number
+    input: number
+    output: number
+    cacheRead: number
+    calls: number
+     updatedAt: string | undefined
+   }
   },
 ): React.ReactNode {
-  const { wide, t, onOpen, monthCost, todayCost, weekCost, days } = props
+  const { wide, t, onOpen, monthCost, todayCost, weekCost, days, vendorStatus, dash } = props
 
   // 计费 icon：圆角矩 + 细线描边，窄栏与宽栏共用。
   const cardIcon = (
@@ -744,29 +832,60 @@ function UsageBillingTrigger(
           ))}
         </span>
       </button>
-      {/* hover 速览卡：今日/本周/当月 + 近 7 天迷你柱，不点开弹窗即可速览。
-          纯 CSS 悬停呈现（pointer-events 关闭，不抢点击）。 */}
+      {/* hover 速览：参考图风格「数据卡」——标题 + 更新时间 + 两列指标网格 + 底部主力消耗/额度提醒。
+          纯 CSS 悬停呈现；「展开详情」按钮可点，其余不抢点击。 */}
       <span className={css.triggerPop} data-testid="billing-trigger-pop" aria-hidden="true">
-        <span className={css.triggerPopRow}>
-          <span className={css.triggerPopLabel}>{t('billing.todayCost')}</span>
-          <span className={css.triggerPopValue}>{formatMoney(todayCost)}</span>
+        <span className={css.triggerPopMetrics}>
+          <span className={css.triggerPopMetric}>
+            <span className={css.triggerPopMetricLabel}>{t('billing.monthCost')}</span>
+            <span className={clsx(css.triggerPopMetricValue, css.triggerPopMetricHighlight)}>{formatMoney(monthCost)}</span>
+          </span>
+          <span className={css.triggerPopMetric}>
+            <span className={css.triggerPopMetricLabel}>{t('billing.tokenTotal')}</span>
+            <span className={css.triggerPopMetricValue}>{formatTokens(dash.totalToken)}</span>
+          </span>
+          <span className={css.triggerPopMetric}>
+            <span className={css.triggerPopMetricLabel}>{t('billing.input')}</span>
+            <span className={css.triggerPopMetricValue}>{formatTokens(dash.input)}</span>
+          </span>
+          <span className={css.triggerPopMetric}>
+            <span className={css.triggerPopMetricLabel}>{t('billing.output')}</span>
+            <span className={css.triggerPopMetricValue}>{formatTokens(dash.output)}</span>
+          </span>
+          <span className={css.triggerPopMetric}>
+            <span className={css.triggerPopMetricLabel}>{t('billing.cacheHit')}</span>
+            <span className={css.triggerPopMetricValue}>{formatTokens(dash.cacheRead)}</span>
+          </span>
+          <span className={css.triggerPopMetric}>
+            <span className={css.triggerPopMetricLabel}>{t('billing.calls')}</span>
+            <span className={css.triggerPopMetricValue}>{dash.calls.toLocaleString()}</span>
+          </span>
         </span>
-        <span className={css.triggerPopRow}>
-          <span className={css.triggerPopLabel}>{t('billing.weekCost')}</span>
-          <span className={css.triggerPopValue}>{formatMoney(weekCost)}</span>
-        </span>
-        <span className={css.triggerPopRow}>
-          <span className={css.triggerPopLabel}>{t('billing.monthCost')}</span>
-          <span className={css.triggerPopValue}>{formatMoney(monthCost)}</span>
-        </span>
-        <span className={css.triggerPopBars}>
-          {sparkHeights.map((_h, index) => (
-            <span
-              key={days[index]?.date ?? String(index)}
-              className={css.triggerPopBar}
-              style={{ height: `${sparkMax > 0 ? 4 + ((days[index]?.cost ?? 0) / sparkMax) * 18 : 4}px` }}
-            />
-          ))}
+        <span className={css.triggerPopFoot}>
+          <span className={css.triggerPopFootTitle}>{t('billing.popTodayModel')}</span>
+          <span className={css.triggerPopFootNotes}>
+            {vendorStatus.direct !== undefined && (
+              <span className={css.triggerPopFootNote}>
+                <span className={clsx(css.triggerPopBadge, css.triggerPopBadgeDirect)}>{t('billing.popDirectLead')}</span>
+                <span className={css.triggerPopFootName}>{vendorStatus.direct.name}</span>
+                <span className={clsx(css.triggerPopFootStatus, vendorStatus.direct.low && css.triggerPopFootStatusLow)}>
+                  {vendorStatus.direct.text}
+                </span>
+              </span>
+            )}
+            {vendorStatus.sub !== undefined && (
+              <span className={css.triggerPopFootNote}>
+                <span className={clsx(css.triggerPopBadge, css.triggerPopBadgeSub)}>{t('billing.popSubLead')}</span>
+                <span className={css.triggerPopFootName}>{vendorStatus.sub.name}</span>
+                <span className={clsx(css.triggerPopFootStatus, vendorStatus.sub.low && css.triggerPopFootStatusLow)}>
+                  {vendorStatus.sub.text}
+                </span>
+              </span>
+            )}
+            {vendorStatus.direct === undefined && vendorStatus.sub === undefined && (
+              <span className={css.triggerPopFootNote}>{t('billing.popNoConsumption')}</span>
+            )}
+          </span>
         </span>
       </span>
     </span>
@@ -784,6 +903,8 @@ interface BillingDashboardProps {
   health: ModelHealth
   balances: readonly ProviderBalance[]
   quotas: readonly SubscriptionQuota[]
+  /** 中转站额度（New API / Sub2API 的余额与滚动窗口）。 */
+  relayQuotas: readonly RelayQuota[]
   /** 显示币种（成本金额按此币种换算显示）。 */
   currency: CostCurrency
   onCurrency: (currency: CostCurrency) => void
@@ -808,8 +929,52 @@ interface BillingDashboardProps {
  * The centered billing dashboard modal.
  * @param props - stats, locale function, close handler, model health, balances, renderSlot.
  */
+/** 余额详情弹窗：点击「约可撑 N 天」圆圈后展示余额构成与可用天数估算。 */
+function BalanceDetailPopover({
+  balance, days, dailyBurn, money, t, onClose,
+}: {
+  balance: ProviderBalance
+  days: number
+  dailyBurn: number
+  money: (cny: number) => string
+  t: (key: UsageBillingKey) => string
+  onClose: () => void
+}): React.ReactNode {
+  // 金额按余额原生币种显示（USD 直接美元；其余经 money 折成用户展示币种）。
+  const fmt = (value: number | undefined): string | undefined =>
+    value === undefined ? undefined : (balance.currency === 'USD' ? `$${value.toFixed(2)}` : money(value))
+  const total = fmt(balance.totalBalance)
+  const granted = fmt(balance.grantedBalance)
+  const topped = fmt(balance.toppedUpBalance)
+  return (
+    <span className={css.balanceDetailPop} data-testid="billing-balance-detail-pop">
+      <span className={css.balanceDetailHead}>
+        <span className={css.balanceDetailTitle}>{balance.displayName}</span>
+        <button type="button" className={css.balanceDetailClose} aria-label={t('billing.close')} onClick={onClose}>×</button>
+      </span>
+      <span className={css.balanceDetailGrid}>
+        {total !== undefined && <BalanceDetailRow label={t('billing.balance')} value={total} />}
+        {granted !== undefined && <BalanceDetailRow label={t('billing.balanceGranted')} value={granted} />}
+        {topped !== undefined && <BalanceDetailRow label={t('billing.balanceTopped')} value={topped} />}
+        <BalanceDetailRow label={t('billing.balanceDaily')} value={money(dailyBurn)} />
+        <BalanceDetailRow label={t('billing.balanceDaysLong')} value={`${days} ${t('billing.balanceDaysUnit')}`} />
+      </span>
+    </span>
+  )
+}
+
+/** 余额详情弹窗里的一行 label / value。 */
+function BalanceDetailRow({ label, value }: { label: string; value: string }): React.ReactNode {
+  return (
+    <span className={css.balanceDetailRow}>
+      <span className={css.balanceDetailLabel}>{label}</span>
+      <span className={css.balanceDetailValue}>{value}</span>
+    </span>
+  )
+}
+
 function BillingDashboard({
-  stats, t, onClose, health, balances, quotas, currency, onCurrency, turns,
+  stats, t, onClose, health, balances, quotas, relayQuotas, currency, onCurrency, turns,
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
   peakConfig, onPeakConfig, onPreviewPeak,
 }: BillingDashboardProps): React.ReactNode {
@@ -818,8 +983,9 @@ function BillingDashboard({
   const [tab, setTab] = useState<DashboardTab>('overview')
   // 趋势窗口：7 天 / 30 天切换（30 天窗口数据不足时按日补零）。
   const [trendDays, setTrendDays] = useState<7 | 30>(7)
-  // 热力图范围：月日历 / 近 52 周。
-  const [heatmapRange, setHeatmapRange] = useState<'month' | 'year'>('month')
+
+  // 余额详情弹窗：记录打开的厂商（按 provider 标识）；点击「约可撑 N 天」圆圈切换。
+  const [balanceDetailFor, setBalanceDetailFor] = useState<string | undefined>()
 
   // usage_stats 工具开关：经插件自带的 HTTP 接口读写（不依赖宿主浏览器设置白名单）。
   // 挂载时读一次当前值；点按乐观切换并回写，写失败回滚。工具注入是启动期决策，重启生效。
@@ -883,8 +1049,15 @@ function BillingDashboard({
   const balanceFor = (provider: string): ProviderBalance | undefined =>
     balances.find(balance => normalizeProvider(balance.provider) === normalizeProvider(provider))
 
+  // 订阅型厂商隐藏「余额」栏：该组模型全部走订阅且未配置按量余额时，只保留订阅额度，
+  // 避免「1 套餐 + 余额未配置」的困惑（按量余额与订阅是两套独立计费）。
+  const hideBalanceForGroup = (group: ProviderBillingGroup): boolean =>
+    group.balance?.error === 'unconfigured'
+    && group.models.length > 0
+    && group.models.every(model => model.plan)
+
   // 余额列单元格：按查询状态渲染金额或占位文案；余额有效且日均消耗可估时
-  // 附「约可撑 N 天」提示（A1），剩余不足 3 天时红色强调。
+  // 附「约可撑 N 天」圆形徽标（A1），点击弹出余额详情；剩余不足 3 天时红色强调。
   const renderBalance = (balance: ProviderBalance | undefined): React.ReactNode => {
     if (balance === undefined) return <span className={css.na}>—</span>
     if (balance.error === 'unconfigured') return t('billing.balanceUnconfigured')
@@ -896,14 +1069,32 @@ function BillingDashboard({
       : money(balance.totalBalance)
     // USD 余额按当前汇率折成人民币，与日均消耗（元）同口径。
     const balanceCny = balance.currency === 'USD' ? balance.totalBalance * rateInfo.rate : balance.totalBalance
-    if (dailyBurn <= 0) return amount
-    const days = Math.floor(balanceCny / dailyBurn)
+    const days = dailyBurn > 0 ? Math.floor(balanceCny / dailyBurn) : undefined
     return (
       <span className={css.balanceCell}>
         <span>{amount}</span>
-        <span className={clsx(css.balanceDays, days <= 3 && css.balanceDaysLow)} data-testid="billing-balance-days">
-          {t('billing.balanceDays').replace('{days}', String(days))}
-        </span>
+        {days !== undefined && days >= 0 && (
+          <button
+            type="button"
+            className={clsx(css.balanceDaysBadge, days <= 3 && css.balanceDaysBadgeLow)}
+            data-testid="billing-balance-days-badge"
+            title={t('billing.balanceDays').replace('{days}', String(days))}
+            aria-label={`${balance.displayName} ${t('billing.balanceDays').replace('{days}', String(days))}`}
+            onClick={() => { setBalanceDetailFor(balanceDetailFor === balance.provider ? undefined : balance.provider) }}
+          >
+            ?
+          </button>
+        )}
+        {balanceDetailFor === balance.provider && (
+          <BalanceDetailPopover
+            balance={balance}
+            days={days ?? 0}
+            dailyBurn={dailyBurn}
+            money={money}
+            t={t}
+            onClose={() => { setBalanceDetailFor(undefined) }}
+          />
+        )}
       </span>
     )
   }
@@ -1321,25 +1512,11 @@ function BillingDashboard({
                   <h3 className={css.panelTitle}>
                     {t('billing.heatmap')}
                   </h3>
-                  <span className={css.rangeToggle} role="group" aria-label={t('billing.heatmap')}>
-                    {(['month', 'year'] as const).map(range => (
-                      <button
-                        key={range}
-                        type="button"
-                        className={clsx(css.rangeButton, heatmapRange === range && css.rangeButtonActive)}
-                        aria-pressed={heatmapRange === range}
-                        data-testid={`billing-heatmap-${range}`}
-                        onClick={() => { setHeatmapRange(range) }}
-                      >
-                        {range === 'month' ? t('billing.heatmapMonth') : t('billing.heatmapYear')}
-                      </button>
-                    ))}
-                  </span>
                   <span className={css.panelHint} data-testid="billing-heatmap-summary">
                     {t('billing.activeDays')} {activeDays} · {t('billing.streakDays')} {streakDays}
                   </span>
                 </div>
-                <UsageHeatmap days={heatmapDays} currency={currency} t={t} range={heatmapRange} />
+                <UsageHeatmap days={heatmapDays} currency={currency} t={t} range="month" />
               </section>
             </div>
           )}
@@ -1612,6 +1789,63 @@ function BillingDashboard({
 
           {tab === 'providers' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-providers">
+              {/* 中转站分布：按 provider 路由的 baseURL 归组（站点/直连/未知路由），
+                  与「厂商计费」互补——先看钱从哪个站走，再看厂商明细。 */}
+              {stats.bySite !== undefined && Object.keys(stats.bySite).length > 0 && (
+                <section className={css.panel} data-testid="billing-panel-relay-sites">
+                  <div className={css.panelHead}>
+                    <h3 className={css.panelTitle}>{t('billing.panelRelay')}</h3>
+                  </div>
+                  <div className={css.providerGroupList} data-testid="billing-relay-sites">
+                    {Object.entries(stats.bySite)
+                      .sort((a, b) => (b[1].cost ?? 0) - (a[1].cost ?? 0))
+                      .map(([siteKey, usage]) => {
+                        const site = siteBucketLabel(siteKey, t)
+                        return (
+                          <div key={siteKey} className={css.siteRow} data-testid="billing-relay-site">
+                            <span className={css.siteRowName}>
+                              <span className={clsx(css.siteKindTag, SITE_KIND_CLASS[site.kind])}>{siteKindText(site.kind, t)}</span>
+                              <span className={css.siteRowTitle}>{site.name}</span>
+                            </span>
+                            <span className={css.siteRowMeta}>
+                              <span className={css.siteRowCost}>{money(usage.cost)}</span>
+                              <span className={css.siteRowCalls}>{usage.calls} {t('billing.relayCalls')}</span>
+                            </span>
+                          </div>
+                        )
+                      })}
+                  </div>
+                </section>
+              )}
+
+              {/* 中转站额度：识别出的 New API / Sub2API 的余额与滚动窗口。 */}
+              {relayQuotas.length > 0 && (
+                <section className={css.panel} data-testid="billing-panel-relay-quota">
+                  <div className={css.panelHead}>
+                    <h3 className={css.panelTitle}>{t('billing.panelRelayQuota')}</h3>
+                  </div>
+                  <div className={css.providerGroupList} data-testid="billing-relay-quotas">
+                    {relayQuotas.map(row => (
+                      <div key={row.route} className={css.siteRow} data-testid="billing-relay-quota">
+                        <span className={css.siteRowName}>
+                          <span className={clsx(css.siteKindTag, RELAY_KIND_CLASS[row.kind])}>{relayKindText(row.kind, t)}</span>
+                          <span className={css.siteRowTitle}>{row.origin}</span>
+                        </span>
+                        <span className={css.siteRowMeta}>
+                          {row.balance !== undefined && (
+                            <span className={css.siteRowCost}>{t('billing.relayBalance')} {row.balance.toFixed(2)}</span>
+                          )}
+                          {(row.windows?.length ?? 0) > 0
+                            ? row.windows?.map(window => (
+                              <span key={window.kind} className={css.siteRowCalls}>{t('billing.relayWindowUsed')} {window.usedPercent}%</span>
+                            ))
+                            : <span className={css.siteRowCalls}>{t('billing.relayNoQuota')}</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
               {/* 厂商计费与订阅：单一容器按厂商聚合模型用量与订阅额度。
               厂商组同时容纳非订阅按量模型（无订阅额度也成组）与订阅套餐
               （无用量也成组）；余额与健康点只在厂商头部显示一次。 */}
@@ -1648,7 +1882,7 @@ function BillingDashboard({
                                 {group.subscriptions.length} 套餐
                               </span>
                             )}
-                            {group.balance !== undefined && (
+                            {!hideBalanceForGroup(group) && group.balance !== undefined && (
                               <span className={css.providerGroupBalance} data-testid="billing-provider-balance">
                                 <span className={css.providerGroupBalanceLabel}>{t('billing.balance')}</span>
                                 {renderBalance(group.balance)}
@@ -1785,17 +2019,19 @@ function BillingDashboard({
                                             style={{ width: `${used}%` }}
                                           />
                                         </span>
-                                        <span className={clsx(css.subscriptionPct, exhausted && css.subscriptionExhausted)}>
-                                          {exhausted
-                                            ? t('billing.subscriptionExhausted')
-                                            : t('billing.subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
-                                        </span>
-                                        {window.resetsAt !== undefined && (
-                                          <span className={css.subscriptionReset}>
-                                            {/* 重置时间精确到时分秒（本地时区）。 */}
-                                            {t('billing.subscriptionReset').replace('{date}', `${localDayStamp(new Date(window.resetsAt).getTime())} ${formatClock(new Date(window.resetsAt).getTime())}`)}
+                                        <span className={css.subscriptionMeta}>
+                                          <span className={clsx(css.subscriptionPct, exhausted && css.subscriptionExhausted)}>
+                                            {exhausted
+                                              ? t('billing.subscriptionExhausted')
+                                              : t('billing.subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
                                           </span>
-                                        )}
+                                          {window.resetsAt !== undefined && (
+                                            <span className={css.subscriptionReset}>
+                                              {/* 重置时间完整显示（本地时区）；与「剩余%」上下排布，不再横挤进度条。 */}
+                                              {t('billing.subscriptionReset').replace('{date}', `${localDayStamp(new Date(window.resetsAt).getTime())} ${formatClock(new Date(window.resetsAt).getTime())}`)}
+                                            </span>
+                                          )}
+                                        </span>
                                       </div>
                                     )
                                   })())}
@@ -2133,6 +2369,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const [health, setHealth] = useState<ModelHealth>(IDLE_HEALTH)
   const [balances, setBalances] = useState<readonly ProviderBalance[]>([])
   const [quotas, setQuotas] = useState<readonly SubscriptionQuota[]>([])
+  const [relayQuotas, setRelayQuotas] = useState<readonly RelayQuota[]>([])
   const [currency, setCurrency] = useState<CostCurrency>('cny')
   // 严格联动（仅本插件，不影响宿主全局语言）：币种=USD 时面板文案切英文，CNY 时切中文。
   // 用本包自带 zh/en 字典构建本地 t；key 未覆盖时回退宿主 t。
@@ -2159,6 +2396,9 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     })
     void fetchSubscriptions().then((list) => {
       if (list.length > 0) setQuotas(list)
+    })
+    void fetchRelayQuotas().then((list) => {
+      if (list.length > 0) setRelayQuotas(list)
     })
   }, [])
 
@@ -2319,6 +2559,72 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     }
   }, [lowBalanceRow, lastBalanceAlertDay, actions, t])
 
+  // hover 速览「主力直联/订阅消耗」：本月按厂商聚合消耗，区分按量（直联）与订阅，
+  // 并附余额/配额状态——余额仅按量厂商有意义，配额仅订阅厂商有意义。
+  const vendorStatus = useMemo(() => {
+    const prefix = today.slice(0, 7)
+    const vendor = new Map<string, { cost: number; plan: boolean }>()
+    for (const [date, models] of Object.entries(stats.byDayModels ?? {})) {
+      if (!date.startsWith(prefix)) continue
+      for (const [modelKey, usage] of Object.entries(models)) {
+        if (usage.cost <= 0) continue
+        const provider = modelOf(modelKey).provider ?? '其他'
+        const isPlan = stats.byModel?.[modelKey]?.plan === true
+        const cur = vendor.get(provider) ?? { cost: 0, plan: isPlan }
+        cur.cost += usage.cost
+        // 混合计费（部分订阅）视为存在按量 → 归直联桶。
+        if (!isPlan) cur.plan = false
+        vendor.set(provider, cur)
+      }
+    }
+    const directEntry = [...vendor.entries()].filter(([, v]) => !v.plan).sort((a, b) => b[1].cost - a[1].cost)[0]
+    const subEntry = [...vendor.entries()].filter(([, v]) => v.plan).sort((a, b) => b[1].cost - a[1].cost)[0]
+    const balanceStatus = (name: string): { text: string; low: boolean } => {
+      const bal = balances.find(b => normalizeProvider(b.provider) === normalizeProvider(name))
+      if (bal === undefined || bal.totalBalance === undefined) {
+        // 无余额/异常时给出状态文案（未配置 / 密钥无效 / 查询失败），而非空。
+        const text = bal?.error === 'unauthorized'
+          ? t('billing.balanceUnauthorized')
+          : bal?.error === 'unreachable' || bal?.error === 'invalid'
+            ? t('billing.balanceUnreachable')
+            : t('billing.balanceUnconfigured')
+        return { text, low: false }
+      }
+      const amount = bal.currency === 'USD' ? `$${bal.totalBalance.toFixed(2)}` : formatMoney(bal.totalBalance)
+      const rate = getRateInfo().rate
+      const cny = bal.currency === 'USD' ? bal.totalBalance * rate : bal.totalBalance
+      return { text: amount, low: cny < (stats.lowBalanceThreshold ?? DEFAULT_LOW_BALANCE_THRESHOLD) }
+    }
+    const quotaStatus = (name: string): { text: string; low: boolean } => {
+      const q = quotas.find(qq => qq.displayName === name || subscriptionVendorOf(qq.provider) === name)
+      if (q === undefined || q.windows.length === 0) {
+        return { text: t('billing.subscriptionNoApi'), low: false }
+      }
+      const lowest = q.windows.reduce((min, window) => Math.min(min, window.remainingPercent), 100)
+      return {
+        text: lowest <= 0 ? t('billing.subscriptionExhausted') : t('billing.subscriptionRemaining').replace('{pct}', String(lowest)),
+        low: lowest < 20,
+      }
+    }
+    return {
+      direct: directEntry === undefined ? undefined : { name: directEntry[0], ...balanceStatus(directEntry[0]) },
+      sub: subEntry === undefined ? undefined : { name: subEntry[0], ...quotaStatus(subEntry[0]) },
+    }
+  }, [stats.byDayModels, stats.byModel, stats.lowBalanceThreshold, balances, quotas, today])
+
+  // hover 速览「数据卡」数值：全量累计用量 + 更新时间（参考图风格）。
+  const dash = useMemo(() => {
+    const total = stats.total
+    return {
+      totalToken: total.input + total.output,
+      input: total.input,
+      output: total.output,
+      cacheRead: total.cacheHit,
+      calls: total.calls,
+      updatedAt: stats.updatedAt === undefined ? undefined : `${localDayStamp(stats.updatedAt)} ${formatClock(stats.updatedAt)}`,
+    }
+  }, [stats])
+
   // 费用摘要始终写入计费指标服务：服务与槽位一样按「无消费者即空转」设计，
   // 主题插件（如 StickerPad）存在时自行读取，缺席时发布无害。
   useEffect(() => {
@@ -2342,6 +2648,8 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
         todayCost={todayCost}
         weekCost={weekCost}
         days={last7}
+        vendorStatus={vendorStatus}
+        dash={dash}
       />
       {open && (
         <BillingDashboard
@@ -2351,6 +2659,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           health={health}
           balances={balances}
           quotas={quotas}
+          relayQuotas={relayQuotas}
           currency={currency}
           onCurrency={setCurrency}
           turns={turns}

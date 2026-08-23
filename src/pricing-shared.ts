@@ -116,6 +116,32 @@ export interface SubscriptionResponse {
   quotas: readonly SubscriptionQuota[]
 }
 
+// ── 中转站额度（node 半区查询，浏览器半区展示）────────────────────────────
+
+/** 中转站程序类型；`unknown` = 两个端点都没读出额度。 */
+export type RelayKind = 'new-api' | 'sub2api' | 'unknown'
+
+/** 中转站额度的一行（`/api/billing/relay-quotas` 的一行）。 */
+export interface RelayQuota {
+  /** llm-pi-ai providers 路由名。 */
+  route: string
+  /** 站点 origin（baseURL 归一化）。 */
+  origin: string
+  /** 站点显示名。 */
+  displayName: string
+  kind: RelayKind
+  status: SubscriptionStatus
+  /** 上游明确携带的钱包余额（不猜币种，币种由上游决定）。 */
+  balance?: number
+  /** 解析出的滚动额度窗口（used/total 比值）。 */
+  windows?: readonly SubscriptionWindow[]
+}
+
+/** Response of `/api/billing/relay-quotas`. */
+export interface RelayResponse {
+  quotas: readonly RelayQuota[]
+}
+
 /** Config for one subscription adapter (validated in apply). */
 export interface SubscriptionPlanConfig {
   /** Adapter id: `kimi` / `zai` / `opencode-go`. */

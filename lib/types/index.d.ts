@@ -38,7 +38,30 @@ export interface UsageBillingConfig {
 /** Required services: the web server, the persisted session log store, and user settings. */
 export declare const inject: string[];
 /**
- * 解析订阅适配器需要的 API Key：从 llm-pi-ai 设置的 `providers.<id>.apiKeyEnv`
+ * 读取 llm-pi-ai 设置的 `providers` 字典（`<route> → { apiKeyEnv? }`）。
+ * 余额查询复用同一份来源：部署为某个 provider 配一次 key，多个 surface 共享。
+ * @param settings - the settings service (reads the llm-pi-ai namespace).
+ * @returns the providers dict; empty when the namespace is unreadable.
+ */
+/** 一个 llm-pi-ai provider 路由的读取视图：只取三块——apiKeyEnv（凭据引用）、
+ *  baseURL（中转站零配置发现的来源）、displayName（站点显示名）。 */
+export interface PiAiProviderRoute {
+    apiKeyEnv?: string;
+    baseURL?: string;
+    displayName?: string;
+}
+/** 同步读取 provider 路由的 baseURL 视图（中转站零配置发现来源）。
+ *  `settings.describe` 是同步调用，聚合器每次折叠取最新站点映射，无需缓存/过期。
+ *  注意：返回**全部可读路由**（baseURL 可选），聚合层据此区分「路由存在但无
+ *  baseURL=直连」与「路由已删除=未知路由」两种不同归属。
+ * @param settings - the settings service (reads the llm-pi-ai namespace).
+ * @returns `<route> → { baseURL? }`；命名空间不可读时返回空。
+ */
+export declare function readPiAiProviderRoutes(settings: SettingsProvider): Readonly<Record<string, {
+    baseURL?: string;
+}>>;
+/**
+  * 解析订阅适配器需要的 API Key：从 llm-pi-ai 设置的 `providers.<id>.apiKeyEnv`
  * 读引用（如 kimi-coding → KIMI_CODING_API_KEY），再经凭据 seam 解析成实际值。
  * 同时识别出用户配置了 key 的订阅套餐（供面板只显示已识别的）。
  * @param settings - the settings service (reads the llm-pi-ai namespace).

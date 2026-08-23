@@ -181,6 +181,36 @@ export type UsageBillingKey =
   | 'billing.tokenShare'
   | 'billing.usageStatsTool'
   | 'billing.usageStatsToolHint'
+  | 'billing.balanceGranted'
+  | 'billing.balanceTopped'
+  | 'billing.balanceDaily'
+  | 'billing.balanceDaysLong'
+  | 'billing.balanceDaysUnit'
+  | 'billing.popTodayModel'
+  | 'billing.popNoConsumption'
+  | 'billing.popQuotaAlert'
+  | 'billing.popRiskNone'
+  | 'billing.popTitle'
+  | 'billing.popDirectLead'
+  | 'billing.popSubLead'
+  | 'billing.popBalanceNormal'
+  | 'billing.popBalanceLow'
+  | 'billing.popQuotaNormal'
+  | 'billing.popQuotaLow'
+  | 'billing.alertBalanceLow'
+  | 'billing.alertQuotaLow'
+  | 'billing.panelRelay'
+  | 'billing.relaySite'
+  | 'billing.relayDirect'
+  | 'billing.relayUnknown'
+  | 'billing.panelRelayQuota'
+  | 'billing.relayBalance'
+  | 'billing.relayNoQuota'
+  | 'billing.relayWindowUsed'
+  | 'billing.relayKindNewApi'
+  | 'billing.relayKindSub2Api'
+  | 'billing.relayKindUnknown'
+  | 'billing.relayCalls'
 
 export const NS = 'usageBilling'
 
@@ -365,6 +395,36 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.tokenShare': '占比',
   'billing.usageStatsTool': '注入用量查询工具',
   'billing.usageStatsToolHint': '让模型可在对话中查询用量/费用；会占用模型每次请求的上下文，coding 场景建议关闭（改后需重载应用生效）',
+  'billing.balanceGranted': '赠金余额',
+  'billing.balanceTopped': '充值余额',
+  'billing.balanceDaily': '日均消耗',
+  'billing.balanceDaysLong': '约可撑',
+  'billing.balanceDaysUnit': '天',
+  'billing.popTodayModel': '主力消耗模型余额',
+  'billing.popNoConsumption': '暂无消耗',
+  'billing.popQuotaAlert': '额度提醒',
+  'billing.popRiskNone': '余额与配额正常',
+  'billing.popTitle': '用量与预测',
+  'billing.popDirectLead': '直联',
+  'billing.popSubLead': '订阅',
+  'billing.popBalanceNormal': '余额正常',
+  'billing.popBalanceLow': '余额不足',
+  'billing.popQuotaNormal': '配额正常',
+  'billing.popQuotaLow': '配额将尽',
+  'billing.alertBalanceLow': '{name} 余额不足',
+  'billing.alertQuotaLow': '{name} 配额将尽',
+  'billing.panelRelay': '中转站分布',
+  'billing.relaySite': '中转站',
+  'billing.relayDirect': '直连',
+  'billing.relayUnknown': '未知路由',
+  'billing.panelRelayQuota': '中转站额度',
+  'billing.relayBalance': '余额',
+  'billing.relayNoQuota': '未读出额度',
+  'billing.relayWindowUsed': '已用',
+  'billing.relayKindNewApi': 'New API',
+  'billing.relayKindSub2Api': 'Sub2API',
+  'billing.relayKindUnknown': '未识别',
+  'billing.relayCalls': '调用',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -548,4 +608,34 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.tokenShare': 'Share',
   'billing.usageStatsTool': 'Inject usage-stats tool',
   'billing.usageStatsToolHint': 'Lets the model query usage/cost inside a conversation; it consumes context per request, so keep it off for coding (takes effect after a reload)',
+  'billing.balanceGranted': 'Granted',
+  'billing.balanceTopped': 'Topped up',
+  'billing.balanceDaily': 'Daily burn',
+  'billing.balanceDaysLong': '~days left',
+  'billing.balanceDaysUnit': 'days',
+  'billing.popTodayModel': 'Main model balance',
+  'billing.popNoConsumption': 'No usage yet',
+  'billing.popQuotaAlert': 'Quota alerts',
+  'billing.popRiskNone': 'Balances & quotas OK',
+  'billing.popTitle': 'Usage & forecast',
+  'billing.popDirectLead': 'Direct',
+  'billing.popSubLead': 'Subscription',
+  'billing.popBalanceNormal': 'balance ok',
+  'billing.popBalanceLow': 'balance low',
+  'billing.popQuotaNormal': 'quota ok',
+  'billing.popQuotaLow': 'quota low',
+  'billing.alertBalanceLow': '{name} balance low',
+  'billing.alertQuotaLow': '{name} quota low',
+  'billing.panelRelay': 'Relay sites',
+  'billing.relaySite': 'Relay',
+  'billing.relayDirect': 'Direct',
+  'billing.relayUnknown': 'Unknown route',
+  'billing.panelRelayQuota': 'Relay quota',
+  'billing.relayBalance': 'Balance',
+  'billing.relayNoQuota': 'No quota',
+  'billing.relayWindowUsed': 'used',
+  'billing.relayKindNewApi': 'New API',
+  'billing.relayKindSub2Api': 'Sub2API',
+  'billing.relayKindUnknown': 'Unknown',
+  'billing.relayCalls': 'calls',
 }
