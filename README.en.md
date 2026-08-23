@@ -38,6 +38,7 @@
 
   ![Rates: model rate table (peak/off-peak split and live rate)](screenshots/5.png)
 - **Official vs third-party buckets**: the detail cost column is split by official DeepSeek direct / third-party relay ("official x / third y" when mixed); the Stats tab has an official/third-party summary card.
+- **Relay-site attribution & quota**: usage is grouped by a provider's `baseURL` origin — multiple keys on the same relay station merge into one row, named by its domain. The Providers tab adds a "Relay sites" card (relay / direct / unknown-route states — an unknown route is one deleted or renamed in the current provider config, honestly labeled "cannot read" rather than mis-attributed as direct). Routes with a `baseURL` are auto-detected as New API (`/api/status`) or Sub2API (`/v1/usage`) to read their **balance and rolling quota windows**, labeled "no quota" when unreadable; the Zhipu GLM / Z.ai (CN region) wallet balance is now supported (read alongside the subscription plan). Project attribution prefers the workspace title for naming.
 - **Monthly budget + tier alerts**: a budget bar (on/off / amount / progress, ≥80% amber, over red pulse); notifies once per tier crossing 50/80/100%; a balance below the threshold (in CNY) alerts once a day.
 - **Subscription quota**: detects subscription providers in `llm-pi-ai` (Kimi / Z.ai / OpenCode Go / MiniMax / OpenRouter / Xiaomi / Volcano…); those with a quota API show remaining % and reset time live, exhausted in red, no API shown as "not wired"; subscription-channel model cost is 0.
 
@@ -90,7 +91,7 @@ Browser                                   Server (Node)
   └─ renders the dashboard
 ```
 
-- **Server** (`src/index.ts`): injects `webServer`, `sessionPersistence` and `credentials`, and registers `GET /api/billing/usage-stats`, `/api/billing/pricing`, `/api/billing/balance`. The aggregator caches folded results per session: each LLM call is attributed to the model of its preceding `request/header`, tokens split into cache-hit / cache-miss buckets, dates bucketed by the local timezone; a log file with unchanged mtime+size reuses its cached fold, only written sessions are re-folded, and the whole document has a 5s TTL to coalesce heavy polling. Aggregation logic lives in `src/aggregate.ts`.
+- **Server** (`src/index.ts`): injects `webServer`, `sessionPersistence` and `credentials`, and registers `GET /api/billing/usage-stats`, `/api/billing/pricing`, `/api/billing/balance`, `/api/billing/subscriptions`, `/api/billing/relay-quotas`. The aggregator caches folded results per session: each LLM call is attributed to the model of its preceding `request/header`, tokens split into cache-hit / cache-miss buckets, dates bucketed by the local timezone; a log file with unchanged mtime+size reuses its cached fold, only written sessions are re-folded, and the whole document has a 5s TTL to coalesce heavy polling. Aggregation logic lives in `src/aggregate.ts`.
 - **Browser** (`src/client/`): requests the endpoints above to render the dashboard and probes each provider connection via `llm.models`. Until real data arrives it shows an all-zero empty snapshot, never fabricated samples.
 
 ## Theme collaboration
@@ -138,7 +139,7 @@ To add a model: append an entry to `MODEL_CATALOG` and map its real id in `MODEL
 
 ## HTTP API
 
-The public HTTP endpoints and field definitions are documented in source: `GET /api/billing/pricing`, `/api/billing/balance`, `/api/billing/usage-stats` (see `src/index.ts`, `src/aggregate.ts`).
+The public HTTP endpoints and field definitions are documented in source: `GET /api/billing/pricing`, `/api/billing/balance`, `/api/billing/usage-stats`, `/api/billing/subscriptions`, `/api/billing/relay-quotas` (see `src/index.ts`, `src/aggregate.ts`, `src/relay.ts`). The `usage-stats` payload's `bySite` field is the relay-attributed usage distribution (`site:<origin>` / `direct:<provider>` / `unknown`).
 
 ## Configuration
 
@@ -177,7 +178,8 @@ None. This plugin is a pure UI surface: it registers no tools, injects no system
 
 ## Known Limitations and Deferred Work
 
-- **Balance queries cover DeepSeek / Moonshot (Kimi) / StepFun**: these three use a standard Bearer API key. Other providers expose no public balance API or need non-Bearer auth (Xiaomi MiMo via console Cookie, SenseTime via AccessKey signing, MiniMax/Doubao via quota or AK/SK), so they currently show "not configured"; the extension point is `src/balance.ts` (add a querier per provider balance API).
+- **Balance queries cover DeepSeek / Moonshot (Kimi) / StepFun / SiliconFlow / xAI / Zhipu GLM (Z.ai CN region)**: these use a standard Bearer API key. Other providers expose no public balance API or need non-Bearer auth (Xiaomi MiMo via console Cookie, SenseTime via AccessKey signing, MiniMax/Doubao via quota or AK/SK), so they currently show "not configured"; the extension point is `src/balance.ts` (add a querier per provider balance API).
+- **Relay quota depends on upstream private schemas**: New API / Sub2API interface fields are not public, so an unreadable station is labeled "no quota" rather than fabricating an amount; if a station's response fields differ, extend the parsers in `src/relay.ts`. An "unknown route" means that route no longer exists in the current provider config (renamed / deleted); historical call data is not lost — re-adding the same-named route restores attribution automatically.
 - **Overspend notifications rely on the browser Notification API**: when permission is denied or the platform lacks support, only the in-UI red-pulse fallback remains — no host-level notification channel; notifications are capped at once per day.
 - **Session rows are not navigable**: clicking a session row does not open that session (cross-plugin navigation needs a host session-selection channel); sessions are capped at 100 rows and the panel shows the top 20.
 - **Cost is a catalog estimate**: models without published per-token pricing (iFlytek, SenseTime, Xiaomi) use estimates (feature-list footnote ¹); official billing is authoritative.
