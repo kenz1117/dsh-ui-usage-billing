@@ -64,6 +64,8 @@ export interface ModelUsage {
   cacheHit: number
   cacheMiss: number
   cost: number
+  /** 输出中的 reasoning（思考）token；已包含在 `output` 内，单列用于结构展示。 */
+  reasoning: number
   /** 该模型本次统计的所有调用是否都走订阅通道（coding/token plan）；混合通道不置位。 */
   plan?: boolean
   /** 走官方渠道的调用数（DeepSeek 官方直连；其余为三方）。 */
@@ -74,7 +76,7 @@ export interface ModelUsage {
 
 /** Zeroed usage accumulator. */
 export function emptyUsage(): ModelUsage {
-  return { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0, officialCalls: 0, officialCost: 0 }
+  return { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0, reasoning: 0, officialCalls: 0, officialCost: 0 }
 }
 
 /**
@@ -94,6 +96,7 @@ export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subsc
   acc.calls += 1
   acc.input += usage.inputTokens + cacheHit + (usage.cacheWriteTokens ?? 0)
   acc.output += usage.outputTokens
+  acc.reasoning += usage.reasoningTokens ?? 0
   acc.cacheHit += cacheHit
   acc.cacheMiss += cacheMiss
   // 官方/三方分桶：官方直连调用数与其费用分别累加；三方=总量-官方。
@@ -593,6 +596,7 @@ function mergeUsageInto(acc: ModelUsage, cell: ModelUsage): void {
   acc.calls += cell.calls
   acc.input += cell.input
   acc.output += cell.output
+  acc.reasoning += cell.reasoning
   acc.cacheHit += cell.cacheHit
   acc.cacheMiss += cell.cacheMiss
   acc.cost += cell.cost

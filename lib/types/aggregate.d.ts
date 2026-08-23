@@ -42,6 +42,8 @@ export interface ModelUsage {
     cacheHit: number;
     cacheMiss: number;
     cost: number;
+    /** 输出中的 reasoning（思考）token；已包含在 `output` 内，单列用于结构展示。 */
+    reasoning: number;
     /** 该模型本次统计的所有调用是否都走订阅通道（coding/token plan）；混合通道不置位。 */
     plan?: boolean;
     /** 走官方渠道的调用数（DeepSeek 官方直连；其余为三方）。 */

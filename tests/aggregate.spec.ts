@@ -85,6 +85,13 @@ describe('foldUsage', () => {
     foldUsage(off, USAGE, 'flash', false, at(13))
     expect(peak.cost).toBeGreaterThan(off.cost)
   })
+
+  it('accumulates reasoning tokens as a subset of output', () => {
+    const acc = emptyUsage()
+    foldUsage(acc, { inputTokens: 100, outputTokens: 500, reasoningTokens: 200 } as TokenUsage, 'flash', false, 1_000)
+    expect(acc.output).toBe(500)
+    expect(acc.reasoning).toBe(200)
+  })
 })
 
 describe('workspaceNameOf (P2-2)', () => {
