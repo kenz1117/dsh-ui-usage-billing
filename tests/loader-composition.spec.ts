@@ -91,12 +91,19 @@ const credentialsDouble = {
   },
 }
 
-/** settings 能力替身：无任何命名空间（订阅 key 解析得到空值 → 不触网）。 */
+/** settings 能力替身：无任何命名空间（订阅 key 解析得到空值 → 不触网）。
+ *  提供最小 `register`，让 node 半区注册 usage_stats 命名空间时不崩（默认关闭）。 */
 const settingsDouble = {
   name: 'test-billing-settings',
   apply(ctx: Context): void {
     ctx.provide('settings', {
       describe: () => [],
+      register: (_ns: unknown, _schema: unknown, options?: { base?: Record<string, unknown> }) => ({
+        get: () => ({ enableUsageStatsTool: (options?.base?.enableUsageStatsTool as boolean | undefined) ?? false }),
+        watch: () => () => {},
+        update: async () => {},
+        replace: async () => {},
+      }),
     } as unknown as SettingsProvider)
   },
 }
@@ -195,6 +202,11 @@ describe('usage-billing real Loader composition', () => {
     const pricing = await getJson(port, '/api/billing/pricing')
     expect(pricing.status).toBe(200)
     expect((pricing.json as { source: string }).source).toBe('builtin')
+
+    // usage_stats 工具开关节点接口：组合 base 缺省关闭 → 返回 enabled=false。
+    const usageTool = await getJson(port, '/api/billing/usage-tool')
+    expect(usageTool.status).toBe(200)
+    expect((usageTool.json as { enabled: boolean }).enabled).toBe(false)
 
     // balance：凭据替身解析不到 key；DeepSeek（balanceApiKeyEnv 特例）与 Moonshot
     // balance：凭据替身解析不到 key；DeepSeek（balanceApiKeyEnv 特例）、Moonshot 与

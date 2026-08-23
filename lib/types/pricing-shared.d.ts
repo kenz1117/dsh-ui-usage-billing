@@ -38,8 +38,10 @@ export interface ExtraModelPrice {
     provider: string;
     price: LivePrice;
 }
-/** 余额查询失败的原因，前端据此显示文案。 */
-export type BalanceError = 'unconfigured' | 'unauthorized' | 'unreachable';
+/** 余额查询失败的原因，前端据此显示文案。
+ *  `invalid` 表示上游返回 2xx 但响应结构偏离预期（接口改版/漂移），
+ *  与"网络不可达"（unreachable）区分，便于定位是上游变更还是网络问题。 */
+export type BalanceError = 'unconfigured' | 'unauthorized' | 'unreachable' | 'invalid';
 /** 一个提供方的账户余额（`/api/billing/balance` 的一行）。 */
 export interface ProviderBalance {
     /** 提供方 id（小写，如 `deepseek`），与模型表 provider 匹配用。 */

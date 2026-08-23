@@ -53,6 +53,9 @@ describe('UsageBilling surface', () => {
     // 预算开关默认关闭：开关存在但不渲染进度与金额。
     expect(screen.getByTestId('billing-budget-toggle').getAttribute('aria-checked')).toBe('false')
     expect(screen.queryByTestId('billing-budget-track')).toBeNull()
+    // usage_stats 工具开关：默认关闭（初始未开启，经插件自带接口读写）。
+    const usageStatsToggle = screen.getByTestId('billing-usage-stats-tool-toggle')
+    expect(usageStatsToggle.getAttribute('aria-checked')).toBe('false')
   })
 
   it('switches the dashboard copy to English when the currency is set to USD (strict bilingual binding)', async () => {

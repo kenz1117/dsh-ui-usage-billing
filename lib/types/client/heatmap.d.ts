@@ -20,16 +20,18 @@ export interface HeatmapDay {
     value: number;
 }
 /**
- * Render the month heatmap.
+ * Render the month or year heatmap.
  * @param props.days - daily cost rows (keys are `YYYY-MM-DD`).
  * @param props.currency - display currency for the hover amount.
  * @param props.now - anchor date (defaults to today); injectable for tests.
  * @param props.t - locale function (used for the legend labels).
+ * @param props.range - `month` (calendar month) or `year` (last 52 weeks, GitHub style).
  */
-export declare function UsageHeatmap({ days, currency, now, t }: {
+export declare function UsageHeatmap({ days, currency, now, t, range }: {
     days: readonly HeatmapDay[];
     currency: CostCurrency;
     now?: Date;
+    range?: 'month' | 'year';
     t: (key: 'billing.costAbbr' | 'billing.noData' | 'billing.heatmapLess' | 'billing.heatmapMore') => string;
 }): React.ReactNode;
 //# sourceMappingURL=heatmap.d.ts.map

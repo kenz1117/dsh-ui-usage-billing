@@ -11,7 +11,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials';
-import type { SettingsProvider } from '@deepseek-ai/dsh-settings';
+import { type SettingsProvider } from '@deepseek-ai/dsh-settings';
 import type { CustomBalanceConfig, SubscriptionPlanConfig } from './pricing-shared.ts';
 import { type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts';
 /** Plugin configuration. */
@@ -31,6 +31,9 @@ export interface UsageBillingConfig {
     lowBalanceThreshold?: number;
     /** 自定义 Provider 余额查询（任意 HTTP 端点 + extract 规则，适配 NewApi/LiteLLM 等）。 */
     customBalances?: readonly CustomBalanceConfig[];
+    /** `usage_stats` 工具注入的组合 base（默认 false：不注入）；与设置命名空间同字段，
+     *  作为用户设置（设置 Tab 开关）的组合兜底。该工具占用每次请求的上下文，coding 场景多在仪表盘查看。 */
+    enableUsageStatsTool?: boolean;
 }
 /** Required services: the web server, the persisted session log store, and user settings. */
 export declare const inject: string[];

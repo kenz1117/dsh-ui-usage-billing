@@ -16,9 +16,20 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CustomBalanceConfig, CustomBalanceExtract, ProviderBalance } from './pricing-shared.ts'
+import { createCooldownGate, withRetry } from './resilience.ts'
 
 /** Abort a balance fetch when the upstream hangs beyond this budget. */
 const FETCH_TIMEOUT_MS = 8000
+
+/**
+ * 每平台熔断门：单个 provider 连续可重试失败（网络波动 / 5xx / 429）达阈值后
+ * 短路一段真实时间，避免 30 秒轮询在已不可用的上游上反复打满超时。
+ * 鉴权失败（unauthorized）是配置问题而非暂时故障，不计入熔断。
+ */
+const balanceGate = createCooldownGate({ failures: 3, cooldownMs: 60_000 })
+
+/** 自定义 Provider 余额的熔断门：按端点 URL 独立熔断（各配置端点互不干扰）。 */
+const customGate = createCooldownGate({ failures: 3, cooldownMs: 60_000 })
 
 /** DeepSeek 官方余额接口（官方文档 api-docs.deepseek.com/api/get-user-balance）。 */
 const DEEPSEEK_BALANCE_URL = 'https://api.deepseek.com/user/balance'
@@ -69,24 +80,52 @@ async function queryBearerBalance(
   if (hit === undefined) {
     return { provider, displayName, error: 'unconfigured' }
   }
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-  try {
-    const response = await fetch(url, {
-      headers: { accept: 'application/json', authorization: `Bearer ${hit.value}` },
-      signal: controller.signal,
-    })
-    if (response.status === 401 || response.status === 403) {
-      return { provider, displayName, error: 'unauthorized' }
-    }
-    if (!response.ok) {
-      return { provider, displayName, error: 'unreachable' }
-    }
-    return parse(await response.json())
-  } catch {
+  // 熔断：该 platform 正处于冷却（连续失败）时，直接短路为 unconfigured 之外的
+  // 稳定不可用态，不再打上游。success/fail 在下方按请求结果上报。
+  if (!balanceGate.check(provider)) {
     return { provider, displayName, error: 'unreachable' }
-  } finally {
-    clearTimeout(timer)
+  }
+  // 单次请求：每次 attempt 用独立 AbortController，避免上一次超时 abort 污染重试。
+  const doRequest = async (): Promise<ProviderBalance> => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+    try {
+      const response = await fetch(url, {
+        headers: { accept: 'application/json', authorization: `Bearer ${hit.value}` },
+        signal: controller.signal,
+      })
+      if (response.status === 401 || response.status === 403) {
+        return { provider, displayName, error: 'unauthorized' }
+      }
+      if (!response.ok) {
+        const error = new Error(`HTTP ${String(response.status)}`)
+        ;(error as { httpStatus?: number }).httpStatus = response.status
+        throw error
+      }
+      const row = parse(await response.json())
+      // P0-1 结构偏移探测：接口返回 2xx 却一个余额字段都没解析出来，视为上游改版/
+      // 漂移。与"网络不可达"分离，标记 invalid 并告警，便于定位是上游变更。
+      if (
+        row.totalBalance === undefined &&
+        row.grantedBalance === undefined &&
+        row.toppedUpBalance === undefined &&
+        row.isAvailable === undefined
+      ) {
+        console.warn(`[usage-billing] balance response drifted for ${displayName}: no balance field parsed from ${url}`)
+        return { ...row, error: 'invalid' }
+      }
+      return row
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  try {
+    const row = await withRetry(doRequest, { retries: 1, baseDelayMs: 250, maxDelayMs: 2000 })
+    balanceGate.success(provider)
+    return row
+  } catch {
+    balanceGate.fail(provider)
+    return { provider, displayName, error: 'unreachable' }
   }
 }
 
@@ -333,30 +372,44 @@ export async function queryCustomBalances(
     }
     const headers = await resolveHeaders(ctx, config.headers ?? {})
     if (headers === null) return { provider, displayName, error: 'unconfigured' }
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+    if (!customGate.check(config.url)) return { provider, displayName, error: 'unreachable' }
+    const doRequest = async (): Promise<ProviderBalance> => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+      try {
+        const response = await fetch(config.url, {
+          method: config.method ?? 'GET',
+          headers: { accept: 'application/json', ...headers },
+          signal: controller.signal,
+        })
+        if (response.status === 401 || response.status === 403) {
+          return { provider, displayName, error: 'unauthorized' }
+        }
+        if (!response.ok) {
+          const error = new Error(`HTTP ${String(response.status)}`)
+          ;(error as { httpStatus?: number }).httpStatus = response.status
+          throw error
+        }
+        const remaining = evalExtract(config.extract.remaining, await response.json())
+        // 提取规则未命中任何字段：配置的 path 写错或上游改版，标记 invalid 而非网络问题。
+        if (remaining === undefined) return { provider, displayName, error: 'invalid' }
+        return {
+          provider,
+          displayName,
+          currency: config.unit ?? 'CNY',
+          totalBalance: remaining,
+        }
+      } finally {
+        clearTimeout(timer)
+      }
+    }
     try {
-      const response = await fetch(config.url, {
-        method: config.method ?? 'GET',
-        headers: { accept: 'application/json', ...headers },
-        signal: controller.signal,
-      })
-      if (response.status === 401 || response.status === 403) {
-        return { provider, displayName, error: 'unauthorized' }
-      }
-      if (!response.ok) return { provider, displayName, error: 'unreachable' }
-      const remaining = evalExtract(config.extract.remaining, await response.json())
-      if (remaining === undefined) return { provider, displayName, error: 'unreachable' }
-      return {
-        provider,
-        displayName,
-        currency: config.unit ?? 'CNY',
-        totalBalance: remaining,
-      }
+      const row = await withRetry(doRequest, { retries: 1, baseDelayMs: 250, maxDelayMs: 2000 })
+      customGate.success(config.url)
+      return row
     } catch {
+      customGate.fail(config.url)
       return { provider, displayName, error: 'unreachable' }
-    } finally {
-      clearTimeout(timer)
     }
   }))
 }
