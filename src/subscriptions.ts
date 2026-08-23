@@ -78,13 +78,14 @@ const SUBSCRIPTION_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   'wenxin': '百度文心 Plan',
   'minimax': 'MiniMax Coding Plan',
   'minimax-token-plan': 'MiniMax Token Plan',
+  'minimax-token-plan-cn': 'MiniMax Token Plan（国内）',
   'openrouter': 'OpenRouter',
 }
 
 /** 订阅类 provider id 判定：带 coding / agent-plan / token-plan 后缀，或已知订阅通道。 */
 const SUBSCRIPTION_ID_RE = new RegExp(
   '(?:^|-)(?:coding|agent[-_]?plan|token[-_]?plan)(?:$|-|_)|' +
-    '^(?:opencode|opencode-go|kimi-coding|zai-coding|minimax|minimax-token-plan|openrouter)',
+    '^(?:opencode|opencode-go|kimi-coding|zai-coding|minimax|minimax-token-plan|minimax-token-plan-cn|openrouter)',
   'i',
 )
 
@@ -104,6 +105,7 @@ const SUBSCRIPTION_ADAPTERS: Readonly<Record<string, {
   'opencode-go': { collect: collectOpenCodeGo },
   'minimax': { collect: collectMiniMax },
   'minimax-token-plan': { collect: collectMiniMax },
+  'minimax-token-plan-cn': { collect: collectMiniMax },
   'openrouter': { collect: collectOpenRouter },
 }
 
@@ -498,19 +500,37 @@ export function parseMiniMaxRemains(body: unknown): SubscriptionWindow[] {
   return [session, weekly].filter((hit): hit is SubscriptionWindow => hit !== null)
 }
 
-/** Collect the MiniMax Token Plan quota. */
+/**
+ * Resolve the MiniMax API host based on the configured provider id.
+ *
+ * 国内开发者走 MiniMax（`api.minimaxi.com`），海外走 MiniMax（`minimaxi.com`）。
+ * User-explicit `config.baseUrl` wins when set, so deployments in either
+ * region can still override the auto-pick (e.g. proxies / staging).
+ */
+function resolveMiniMaxBaseUrl(config: SubscriptionPlanConfig): string {
+  if (typeof config.baseUrl === 'string' && config.baseUrl.trim() !== '') return config.baseUrl
+  return config.provider === 'minimax-token-plan-cn' ? 'https://api.minimaxi.com' : 'https://www.minimaxi.com'
+}
+
+/** Display name for a MiniMax quota row, matching the configured region. */
+function minmaxDisplayName(provider: string): string {
+  return provider === 'minimax-token-plan-cn' ? 'MiniMax Token Plan（国内）' : 'MiniMax Coding Plan'
+}
+
+/** Collect the MiniMax Token Plan quota (CN + INTL). */
 async function collectMiniMax(keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number): Promise<SubscriptionQuota> {
   const apiKey = keys.minmaxApiKey.trim()
-  const base = config.baseUrl ?? 'https://www.minimaxi.com'
+  const base = resolveMiniMaxBaseUrl(config)
+  const displayName = minmaxDisplayName(config.provider)
   if (apiKey === '') {
-    return { provider: config.provider, displayName: 'MiniMax Coding Plan', status: 'not-configured', windows: [] }
+    return { provider: config.provider, displayName, status: 'not-configured', windows: [] }
   }
   try {
     const body = await requestJson(`${base}/v1/token_plan/remains`, { headers: { authorization: `Bearer ${apiKey}`, accept: 'application/json' } }, timeoutMs)
     const windows = parseMiniMaxRemains(body)
-    return { provider: config.provider, displayName: 'MiniMax Coding Plan', status: windows.length > 0 ? 'ok' : 'invalid-response', windows }
+    return { provider: config.provider, displayName, status: windows.length > 0 ? 'ok' : 'invalid-response', windows }
   } catch (error) {
-    return { provider: config.provider, displayName: 'MiniMax Coding Plan', status: statusOf(error), windows: [] }
+    return { provider: config.provider, displayName, status: statusOf(error), windows: [] }
   }
 }
 

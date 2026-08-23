@@ -12,6 +12,9 @@ describe('planTypeOf', () => {
     expect(planTypeOf('opencode-go')).toBe('code')
     expect(planTypeOf('kimi-coding')).toBe('code')
     expect(planTypeOf('zai-coding-cn')).toBe('code')
+    // MiniMax CN：与 xiaomi-token-plan-cn / qwen-token-plan-cn 同口径，订阅卡片
+    // 必须按 code 计算月费，否则会把它误归到 token 桶里丢档位知识。
+    expect(planTypeOf('minimax-token-plan-cn')).toBe('code')
   })
 
   it('defaults unknown providers to token (pay-as-you-go)', () => {
