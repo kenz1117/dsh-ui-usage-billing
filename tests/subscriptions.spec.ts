@@ -32,6 +32,25 @@ describe('identifySubscriptionPlans', () => {
     expect(identified[1]).toMatchObject({ adapter: false, displayName: '小米 Token Plan（国内）' })
   })
 
+  it('recognizes MiniMax CN as a subscription provider with an adapter', () => {
+    const identified = identifySubscriptionPlans({
+      'minimax-token-plan-cn': { apiKeyEnv: 'MINIMAX_CN_API_KEY' },
+      'minimax': { apiKeyEnv: 'MINIMAX_API_KEY' },
+    })
+    expect(identified.map(item => item.provider)).toEqual(['minimax-token-plan-cn', 'minimax'])
+    // 两个 provider id 都应识别为订阅，且都挂同一个 collectMiniMax 适配器。
+    expect(identified[0]).toMatchObject({
+      provider: 'minimax-token-plan-cn',
+      adapter: true,
+      displayName: 'MiniMax Token Plan（国内）',
+    })
+    expect(identified[1]).toMatchObject({
+      provider: 'minimax',
+      adapter: true,
+      displayName: 'MiniMax Coding Plan',
+    })
+  })
+
   it('returns an empty list for an empty providers map', () => {
     expect(identifySubscriptionPlans(undefined)).toEqual([])
     expect(identifySubscriptionPlans({})).toEqual([])
@@ -130,6 +149,67 @@ describe('collectSubscriptions', () => {
     expect(quotas).toHaveLength(1)
     expect(quotas[0]).toMatchObject({ provider: 'not-a-real-provider', status: 'unavailable' })
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('collectSubscriptions MiniMax baseUrl routing', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('queries the MiniMax CN endpoint for `minimax-token-plan-cn`', async () => {
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ model_remains: [{ model_name: 'general', current_interval_status: 1, current_interval_remaining_percent: 90, current_weekly_status: 1, current_weekly_remaining_percent: 80 }] }),
+    }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: 'cn-key' },
+      [{ provider: 'minimax-token-plan-cn' }],
+    )
+    expect(quotas[0]).toMatchObject({
+      provider: 'minimax-token-plan-cn',
+      status: 'ok',
+      displayName: 'MiniMax Token Plan（国内）',
+    })
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://api.minimaxi.com/v1/token_plan/remains')
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer cn-key')
+  })
+
+  it('queries the international MiniMax endpoint for `minimax`/`minimax-token-plan`', async () => {
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ model_remains: [{ model_name: 'general', current_interval_status: 1, current_interval_remaining_percent: 90, current_weekly_status: 1, current_weekly_remaining_percent: 80 }] }),
+    }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: 'intl-key' },
+      [{ provider: 'minimax-token-plan' }],
+    )
+    expect(quotas[0]).toMatchObject({
+      provider: 'minimax-token-plan',
+      status: 'ok',
+      displayName: 'MiniMax Token Plan',
+    })
+    const [url] = fetchSpy.mock.calls[0] as [string]
+    expect(url).toBe('https://www.minimaxi.com/v1/token_plan/remains')
+  })
+
+  it('honors an explicit per-plan baseUrl over the region default', async () => {
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ model_remains: [] }),
+    }))
+    vi.stubGlobal('fetch', fetchSpy)
+    await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: 'any-key' },
+      [{ provider: 'minimax-token-plan-cn', baseUrl: 'https://staging.example.com/minimax-cn' }],
+    )
+    const [url] = fetchSpy.mock.calls[0] as [string]
+    expect(url).toBe('https://staging.example.com/minimax-cn/v1/token_plan/remains')
   })
 })
 
