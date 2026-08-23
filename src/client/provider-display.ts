@@ -32,6 +32,7 @@ const PROVIDER_NAMES_EN: Readonly<Record<string, string>> = {
   '火山方舟 Token Plan': 'Volcengine Ark Token Plan',
   '豆包 Token Plan': 'Doubao Token Plan',
   '百度文心 Plan': 'Baidu ERNIE Plan',
+  'MiniMax Token Plan（国内）': 'MiniMax Token Plan (CN)',
 }
 
 /**
