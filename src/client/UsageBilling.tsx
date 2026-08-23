@@ -15,6 +15,7 @@ import clsx from 'clsx'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { DEFAULT_ENABLE_USAGE_STATS_TOOL } from './usage-billing-settings.ts'
 import { TrendChart, type TrendPoint } from './TrendChart.tsx'
 import { PerfPanel, type ClientPerf } from './PerfPanel.tsx'
 import { PluginInfoCard } from './PluginInfoCard.tsx'
@@ -574,6 +575,41 @@ async function fetchSubscriptions(): Promise<readonly SubscriptionQuota[]> {
   }
 }
 
+/**
+ * 读取 usage_stats 工具开关当前值（插件自带接口，不依赖宿主浏览器设置白名单）。
+ * @returns 当前是否注入；读取失败（服务未起/非 JSON）返回 undefined。
+ */
+async function loadUsageTool(): Promise<boolean | undefined> {
+  try {
+    const response = await fetch('/api/billing/usage-tool')
+    if (!response.ok) return undefined
+    const parsed = JSON.parse(await response.text()) as { enabled?: unknown }
+    return typeof parsed.enabled === 'boolean' ? parsed.enabled : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * 写 usage_stats 工具开关（插件自带接口）。工具注入是启动期决策，重启应用后生效。
+ * @param enabled - 是否注入。
+ * @returns 是否写成功。
+ */
+async function saveUsageTool(enabled: boolean): Promise<boolean> {
+  try {
+    const response = await fetch('/api/billing/usage-tool', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    })
+    if (!response.ok) return false
+    const parsed = JSON.parse(await response.text()) as { ok?: unknown }
+    return parsed.ok === true
+  } catch {
+    return false
+  }
+}
+
 /** 组件注入面：探活 + 计费指标写入（billing 自身写入，主题插件经服务读取）。 */
 export interface UsageBillingInjected {
   checkModels: () => Promise<ModelHealth>
@@ -784,6 +820,24 @@ function BillingDashboard({
   const [trendDays, setTrendDays] = useState<7 | 30>(7)
   // 热力图范围：月日历 / 近 52 周。
   const [heatmapRange, setHeatmapRange] = useState<'month' | 'year'>('month')
+
+  // usage_stats 工具开关：经插件自带的 HTTP 接口读写（不依赖宿主浏览器设置白名单）。
+  // 挂载时读一次当前值；点按乐观切换并回写，写失败回滚。工具注入是启动期决策，重启生效。
+  const [usageStatsEnabled, setUsageStatsEnabled] = useState(DEFAULT_ENABLE_USAGE_STATS_TOOL)
+  useEffect(() => {
+    let mounted = true
+    void loadUsageTool().then((enabled) => {
+      if (mounted && enabled !== undefined) setUsageStatsEnabled(enabled)
+    })
+    return () => { mounted = false }
+  }, [])
+  const toggleUsageStats = useCallback(() => {
+    const next = !usageStatsEnabled
+    setUsageStatsEnabled(next)
+    void saveUsageTool(next).then((ok) => {
+      if (!ok) setUsageStatsEnabled(!next)
+    })
+  }, [usageStatsEnabled])
 
   // 当前汇率与来源：供单价表标题展示（实时 / 内置）。
   const rateInfo = getRateInfo()
@@ -1432,6 +1486,27 @@ function BillingDashboard({
                     </button>
                   </div>
                 )}
+              </section>
+
+              {/* usage_stats 工具开关：设置命名空间持久化（默认关闭，重启生效）。 */}
+              <section className={css.budget} data-testid="billing-usage-stats-tool-setting">
+                <div className={css.budgetHead}>
+                  <span className={css.budgetLabel}>{t('billing.usageStatsTool')}</span>
+                  <span className={css.budgetControls}>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={usageStatsEnabled}
+                      aria-label={t('billing.usageStatsTool')}
+                      data-testid="billing-usage-stats-tool-toggle"
+                      className={clsx(css.switch, usageStatsEnabled && css.switchOn)}
+                      onClick={toggleUsageStats}
+                    >
+                      <span className={css.switchKnob} />
+                    </button>
+                  </span>
+                </div>
+                <p className={css.budgetHint}>{t('billing.usageStatsToolHint')}</p>
               </section>
 
               {/* 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}

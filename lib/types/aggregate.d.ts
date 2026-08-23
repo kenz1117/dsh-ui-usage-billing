@@ -33,7 +33,12 @@ export interface AggregateOptions {
     subscriptionProviders?: readonly string[];
     /** 官方渠道 provider id 列表；默认按 {@link isOfficialProvider} 判定（DeepSeek 官方直连）。 */
     officialProviderIds?: readonly string[];
+    /** 每会话折叠缓存的上限（默认 {@link DEFAULT_MAX_CACHE_SESSIONS}）；
+     *  超限时按最近使用先后淘汰最久未用的会话，防长期运行内存膨胀。 */
+    maxCacheSessions?: number;
 }
+/** 每会话折叠缓存默认上限：超过则按 LRU 淘汰（P1-6 峰值内存治理）。 */
+export declare const DEFAULT_MAX_CACHE_SESSIONS = 400;
 /** One model's aggregated usage plus estimated cost in CNY. */
 export interface ModelUsage {
     calls: number;

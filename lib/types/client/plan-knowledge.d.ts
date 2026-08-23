@@ -33,11 +33,17 @@ export interface PlanTier {
     /** 额度口径的人话描述（官方未公布精确额度时）。 */
     label?: string;
 }
-/** One plan row: provider id (after alias) → plan shape + optional subscription fee. */
+/** 原生币订阅月费（金额 + 币种 + 计费周期）。 */
+export interface SubscriptionMount {
+    amount: number;
+    currency: 'CNY' | 'USD';
+    period: 'month' | 'week' | 'day';
+}
+/** One plan row: provider id (after plan alias) → plan shape + optional subscription fee. */
 export interface PlanKnowledgeEntry {
     type: PlanType;
-    /** 订阅月费（人民币元）；code 计划用，计入「本月预计」。 */
-    subscriptionCny?: number;
+    /** 原生币订阅月费（如 $10/月）；code 计划用，折算后计入「本月预计」。 */
+    subscription?: SubscriptionMount;
     /** 自动识别的档位月费与周期额度口径（订阅卡片展示）。 */
     tier?: PlanTier;
 }
@@ -46,10 +52,23 @@ export interface PlanKnowledgeEntry {
  * 覆盖我们实际会识别到的订阅通道；其余按量 API 不计入此表（默认 token）。
  */
 export declare const PLAN_KNOWLEDGE: Readonly<Record<string, PlanKnowledgeEntry>>;
+/**
+ * 订阅/plan provider id 变体 → PLAN_KNOWLEDGE 规范键（引用 dsh-spend 的别名归一化）。
+ * 部署配置的订阅 provider id 写法不一（glm/zhipu/bigmodel、ark/volcengine、
+ * kimi/moonshot、xiaomi…），先归一化再匹配，提升"自动识别"覆盖率。
+ * 注意：裸 qwen/dashscope/tongyi 等是按量 API（token 计费）而非订阅，不归一到
+ * 订阅键——只有显式 token-plan 后缀才由 SUBSCRIPTION_ID_RE 判定为订阅。
+ */
+export declare const PLAN_PROVIDER_ALIASES: Readonly<Record<string, string>>;
+/** 归一化订阅 provider id：别名命中则映射到规范键，否则原样返回。 */
+export declare function normalizePlanProvider(providerId: string): string;
 /** provider id（llm-pi-ai 设置键）→ plan 知识；未命中默认 token。 */
 export declare function planTypeOf(providerId: string): PlanType;
-/** 订阅月费（人民币元）；非 code 或未配置时为 0。 */
-export declare function subscriptionCnyOf(providerId: string): number;
+/**
+ * 订阅月费折算为人民币：原生币 × 实时汇率（USD→CNY）。汇率缺失时返回 0，
+ * 避免用假设汇率造成失真（跨币种保护：金额统一折成 CNY 再相加）。
+ */
+export declare function subscriptionFeeCnyOf(providerId: string, rate: number | undefined): number;
 /** 自动识别的档位月费与周期额度口径（订阅卡片展示）；无档位知识返回 undefined。 */
 export declare function tierInfoOf(providerId: string): PlanTier | undefined;
 export interface FallbackRate {

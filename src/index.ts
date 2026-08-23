@@ -27,7 +27,8 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
-import type { SettingsProvider } from '@deepseek-ai/dsh-settings'
+import { settingsNamespace, type SettingsProvider, type SettingsScope } from '@deepseek-ai/dsh-settings'
+import z from '@deepseek-ai/schemastery'
 import { createUsageAggregator, dayStamp } from './aggregate.ts'
 import { applyLivePricing, formatMoney, formatTokens } from './client/pricing.ts'
 import { queryBalances, queryCustomBalances } from './balance.ts'
@@ -35,6 +36,20 @@ import { fetchLivePricing } from './pricing-fetch.ts'
 import type { CustomBalanceConfig, LivePricing, SubscriptionPlanConfig, SubscriptionQuota } from './pricing-shared.ts'
 import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts'
 import { planTypeOf, subscriptionFeeCnyOf } from './client/plan-knowledge.ts'
+import {
+  BILLING_SETTINGS_NAMESPACE,
+  DEFAULT_ENABLE_USAGE_STATS_TOOL,
+  ENABLE_USAGE_STATS_TOOL_FIELD,
+  type UsageBillingSettings,
+} from './client/usage-billing-settings.ts'
+
+/** usage_stats 工具开关的设置命名空间 id（下端与 node 共用同一常量）。 */
+const usageBillingSettingsNs = settingsNamespace(BILLING_SETTINGS_NAMESPACE)
+
+/** 该命名空间的 wire schema：`enableUsageStatsTool` 布尔，默认关闭（issue 诉求）。 */
+const UsageBillingSettingsSchema: z<UsageBillingSettings> = z.object({
+  [ENABLE_USAGE_STATS_TOOL_FIELD]: z.boolean().default(DEFAULT_ENABLE_USAGE_STATS_TOOL),
+})
 
 /** Plugin configuration. */
 export interface UsageBillingConfig {
@@ -53,6 +68,9 @@ export interface UsageBillingConfig {
   lowBalanceThreshold?: number
   /** 自定义 Provider 余额查询（任意 HTTP 端点 + extract 规则，适配 NewApi/LiteLLM 等）。 */
   customBalances?: readonly CustomBalanceConfig[]
+  /** `usage_stats` 工具注入的组合 base（默认 false：不注入）；与设置命名空间同字段，
+   *  作为用户设置（设置 Tab 开关）的组合兜底。该工具占用每次请求的上下文，coding 场景多在仪表盘查看。 */
+  enableUsageStatsTool?: boolean
 }
 
 /** 实时定价的后台刷新间隔（毫秒）：汇率/模型价低频变化，6 小时一次足够。 */
@@ -72,6 +90,23 @@ const PACKAGE_VERSION = (createRequire(import.meta.url)('../package.json') as { 
 
 /** 统计快照的落盘节流（毫秒）：前端 30 秒轮询，快照最多每 30 秒写一次。 */
 const SNAPSHOT_INTERVAL_MS = 30_000
+
+/** 鉴权失败告警冷却（毫秒）：同一 provider 在窗口内只提示一次，避免 30 秒轮询刷屏。 */
+const AUTH_WARN_COOLDOWN_MS = 30 * 60 * 1000
+
+/**
+ * 鉴权失败分类告警（P1-5）：余额 / 订阅查询返回 unauthorized 时，按
+ * `source:provider` 去重并冷却告警，提示检查 llm-pi-ai 里该 provider 的 apiKeyEnv。
+ */
+const authWarnedAt = new Map<string, number>()
+function warnAuthOnce(source: string, provider: string, displayName: string): void {
+  const key = `${source}:${provider}`
+  const now = Date.now()
+  const last = authWarnedAt.get(key)
+  if (last !== undefined && now - last < AUTH_WARN_COOLDOWN_MS) return
+  authWarnedAt.set(key, now)
+  console.warn(`[usage-billing] ${displayName}（${provider}）鉴权失败：请检查 llm-pi-ai 设置中该 provider 的 apiKeyEnv 凭据是否正确/有效。`)
+}
 
 /** Required services: the web server, the persisted session log store, and user settings. */
 export const inject = ['webServer', 'sessionPersistence', 'credentials', 'settings']
@@ -152,6 +187,8 @@ export async function resolveSubscriptionKeys(
  * @param config - optional statsPath override.
  */
 export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
+  // usage_stats 工具开关的设置命名空间 scope：settings 服务就绪后注册；HTTP 路由据此读写。
+  let usageSettingsScope: SettingsScope<UsageBillingSettings> | undefined
   // 常驻增量聚合器：按会话缓存折叠结果（日志 mtime+size 失效），
   // 前端 30 秒轮询只重算写过的会话。
   const aggregator = createUsageAggregator(ctx.sessionPersistence, {
@@ -175,18 +212,39 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     const now = Date.now()
     if (now - lastSnapshotAt < SNAPSHOT_INTERVAL_MS) return
     lastSnapshotAt = now
-    // _writer 供双实例检测；客户端忽略未知字段。
-    void writeFileAtomic(
-      snapshotPath,
-      JSON.stringify({ ...doc, _writer: { pid: process.pid, at: now } }),
-      { mode: 0o600, dirMode: 0o700 },
-    ).catch(() => {
-      // 快照写失败不影响服务：内存聚合值已下发。
-    })
+    const payload = JSON.stringify({ ...doc, _writer: { pid: process.pid, at: now } })
+    // P0-3 崩溃恢复：写入前先把当前的上一版快照备份为 `.bak`。主文件一旦损坏
+    //（旧版本非原子写入 / 磁盘写坏），聚合失败路径的 fallback 会用 `.bak` 重建。
+    void (async () => {
+      try {
+        const existing = await readFile(snapshotPath, 'utf8')
+        await writeFileAtomic(`${snapshotPath}.bak`, existing, { mode: 0o600, dirMode: 0o700 })
+      } catch {
+        // 旧快照不存在（首次运行）或不可读：无需备份，直接写新快照。
+      }
+      try {
+        await writeFileAtomic(snapshotPath, payload, { mode: 0o600, dirMode: 0o700 })
+      } catch {
+        // 快照写失败不影响服务：内存聚合值已下发。
+      }
+    })()
   }
 
-  // 双实例检测：启动时快照新鲜（60 秒内）且写入者不是本进程 → 另一实例在跑，
-  // 双实例会造成余额/预算提醒重复，提示一次。
+  /** 读一个快照候选并解析成对象：主文件优先；主文件损坏时回退上一版 `.bak`（P0-3 崩溃恢复）。 */
+  const readSnapshot: (candidate: string) => Promise<Record<string, unknown> | null> = async (candidate) => {
+    for (const path of [candidate, `${candidate}.bak`]) {
+      try {
+        return JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>
+      } catch {
+        // 文件不存在或 JSON 损坏：尝试下一个（主文件失败 → `.bak`；都失败返回 null）。
+      }
+    }
+    return null
+  }
+
+  // 多实例心跳锁（P1-5）：快照每次写入都会刷新 `_writer`（pid + at）作为心跳。
+  // 启动时若读到的快照新鲜（60 秒内）且写入者不是本进程 → 另一实例在跑，
+  // 双实例会造成余额/预算提醒重复，提示一次即可。
   void (async () => {
     try {
       const text = await readFile(snapshotPath, 'utf8')
@@ -200,11 +258,22 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     }
   })()
 
-  // usage_stats 动态工具：模型可主动查询用量费用（今天 / 本月 / 当前会话 / 累计）。
-  // tools 服务缺席时整个注册跳过（机会性组合，不阻断插件加载）。
-  ctx.inject(['tools'], (toolsCtx) => {
-    toolsCtx.tools.register(defineTool({
-      name: 'usage_stats',
+  // usage_stats 动态工具（默认关闭）：模型可主动查询用量费用（今天 / 本月 / 当前会话 / 累计）。
+  // 该工具占用每次请求的上下文，而 coding 场景多在仪表盘看用量，属可关的打扰项。
+  // 开关持久化在设置命名空间 `ui-usage-billing.enableUsageStatsTool`（默认 false），
+  // 用户可在「设置」Tab 切换；工具注入是启动期决策，改开关后重载应用生效。
+  // cordis.yml 的 `enableUsageStatsTool` config 作为组合 base 兜底。
+  ctx.inject(['settings'], (sctx) => {
+    const scope = sctx.settings.register(usageBillingSettingsNs, UsageBillingSettingsSchema, {
+      base: { enableUsageStatsTool: config.enableUsageStatsTool ?? DEFAULT_ENABLE_USAGE_STATS_TOOL },
+    })
+    usageSettingsScope = scope
+    // 命名空间注册与工具注册解耦：tools 服务缺席/延迟就绪时命名空间仍尽早注册，
+    // 前端可从本插件的 HTTP 路由读到开关状态。工具仅在可用且开启时注入。
+    ctx.inject(['tools'], (toolsCtx) => {
+      if (scope.get().enableUsageStatsTool) {
+        toolsCtx.tools.register(defineTool({
+          name: 'usage_stats',
       description: '查询本机 DeepSeek Harness 的模型用量与估算费用（人民币，按官方目录价估算，非账单）。range 取值：today=今天，month=本月，session=当前会话，all=累计。',
       parameters: {
         range: {
@@ -280,6 +349,8 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
         return { range: args.range, cost, calls, input, output }
       },
     }))
+    }
+    })
   })
 
   // 后台拉取实时定价（汇率 + OpenRouter 模型价 + models.dev 目录外补充），
@@ -327,10 +398,52 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
         const balances = await queryBalances(ctx, providers)
         // 自定义 Provider 余额（任意 HTTP 端点）：独立于内置三家，逐个成败。
         const custom = await queryCustomBalances(ctx, config.customBalances ?? [])
+        // P1-5 鉴权分类告警：区分「配置错了 key」与「上游不可达」，协助定位。
+        for (const row of [...balances, ...custom]) {
+          if (row.error === 'unauthorized') warnAuthOnce('balance', row.provider, row.displayName)
+        }
         res.end(JSON.stringify({ balances: [...balances, ...custom] }))
       },
     }),
     'usage-billing: balance route',
+  )
+
+  // usage_stats 工具开关：插件自带的读/写接口（不依赖宿主浏览器设置白名单）。
+  // GET 返回当前是否注入；POST 写设置命名空间（重启应用后工具注入随新值生效）。
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'exact',
+      path: '/api/billing/usage-tool',
+      handler: async (req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+        const enabled = usageSettingsScope?.get().enableUsageStatsTool ?? DEFAULT_ENABLE_USAGE_STATS_TOOL
+        if (req.method === 'GET') {
+          res.end(JSON.stringify({ enabled }))
+          return
+        }
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'content-type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'method not allowed' }))
+          return
+        }
+        // 读取并解析 JSON body 后写设置命名空间；settings 服务未就绪时拒绝写。
+        try {
+          let body = ''
+          for await (const chunk of req) body += String(chunk)
+          const parsed = JSON.parse(body === '' ? '{}' : body) as { enabled?: unknown }
+          if (usageSettingsScope === undefined) {
+            res.end(JSON.stringify({ error: 'settings unavailable' }))
+            return
+          }
+          const next = parsed.enabled === true
+          await usageSettingsScope.update({ enableUsageStatsTool: next })
+          res.end(JSON.stringify({ ok: true, enabled: next }))
+        } catch {
+          res.end(JSON.stringify({ error: 'invalid' }))
+        }
+      },
+    }),
+    'usage-billing: usage-tool route',
   )
 
   // 订阅套餐额度：外部 API 低频变化，缓存 5 分钟避免每次轮询都打上游。
@@ -356,6 +469,10 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     })
     for (const item of identified) {
       if (!item.adapter) rows.push({ provider: item.provider, displayName: item.displayName, status: 'ok', windows: [], planType: planTypeOf(item.provider) })
+    }
+    // P1-5 鉴权分类告警：订阅额度查询鉴权失败时提示检查 apiKeyEnv。
+    for (const row of rows) {
+      if (row.status === 'unauthorized') warnAuthOnce('subscription', row.provider, row.displayName)
     }
     quotaCache = { at: Date.now(), quotas: rows }
   }
@@ -398,19 +515,15 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
           console.error('[usage-billing] usage-stats aggregate failed, falling back to snapshot:', error)
         }
         for (const candidate of candidates) {
-          try {
-            const text = await readFile(candidate, 'utf8')
-            // Accept only parseable JSON so a stale or partial file never
-            // reaches the dashboard as if it were real.
-            const doc = JSON.parse(text) as Record<string, unknown>
-            if (config.monthlyBudget !== undefined) doc['budget'] = config.monthlyBudget
-            if (config.lowBalanceThreshold !== undefined) doc['lowBalanceThreshold'] = config.lowBalanceThreshold
-            doc['pluginVersion'] = PACKAGE_VERSION
-            res.end(JSON.stringify(doc))
-            return
-          } catch {
-            // Try the next candidate location.
-          }
+          const doc = await readSnapshot(candidate)
+          // Accept only parseable JSON so a stale or partial file never
+          // reaches the dashboard as if it were real.
+          if (doc === null) continue
+          if (config.monthlyBudget !== undefined) doc['budget'] = config.monthlyBudget
+          if (config.lowBalanceThreshold !== undefined) doc['lowBalanceThreshold'] = config.lowBalanceThreshold
+          doc['pluginVersion'] = PACKAGE_VERSION
+          res.end(JSON.stringify(doc))
+          return
         }
         res.end(JSON.stringify({ error: 'usage stats unavailable' }))
       },

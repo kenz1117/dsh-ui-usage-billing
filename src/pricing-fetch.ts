@@ -10,9 +10,14 @@
 
 import type { ExtraModelPrice, LivePrice, LivePricing } from './pricing-shared.ts'
 import { MODEL_CATALOG, MODEL_KEY_ALIASES } from './client/pricing.ts'
+import { createCooldownGate, withRetry } from './resilience.ts'
 
 /** Abort a fetch when the upstream hangs beyond this budget. */
 const FETCH_TIMEOUT_MS = 8000
+
+/** 每平台熔断门：单个定价上游连续可重试失败（网络 / 5xx / 429）达阈值后短路，
+ *  避免 6 小时刷新循环与每次启动在已故障的上游上反复打满超时。按 URL 独立。 */
+const pricingGate = createCooldownGate({ failures: 3, cooldownMs: 60_000 })
 
 /**
  * USD → CNY 汇率源，按顺序尝试：国内可达的腾讯财经行情（免 key、`~` 分隔
@@ -116,18 +121,32 @@ interface RouterModel {
   output: number
 }
 
-/** GET a URL's text body with a hard timeout; null on any failure. */
+/** GET a URL's text body with a hard timeout and retry; null on any failure. */
 async function fetchText(url: string): Promise<string | null> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  // 熔断：该上游正处于冷却期时直接短路（调用方落到下一来源/内置目录）。
+  if (!pricingGate.check(url)) return null
+  const doFetch = async (): Promise<string> => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+    try {
+      const response = await fetch(url, { signal: controller.signal })
+      if (!response.ok) {
+        const error = new Error(`HTTP ${String(response.status)}`)
+        ;(error as { httpStatus?: number }).httpStatus = response.status
+        throw error
+      }
+      return await response.text()
+    } finally {
+      clearTimeout(timer)
+    }
+  }
   try {
-    const response = await fetch(url, { signal: controller.signal })
-    if (!response.ok) return null
-    return await response.text()
+    const text = await withRetry(doFetch, { retries: 1, baseDelayMs: 250, maxDelayMs: 2000 })
+    pricingGate.success(url)
+    return text
   } catch {
+    pricingGate.fail(url)
     return null
-  } finally {
-    clearTimeout(timer)
   }
 }
 
@@ -158,7 +177,10 @@ async function fetchRouterModels(): Promise<readonly RouterModel[] | undefined> 
   const data = await fetchJson(ROUTER_URL)
   if (data === null || typeof data !== 'object') return undefined
   const list = (data as { data?: unknown }).data
-  if (!Array.isArray(list)) return undefined
+  if (!Array.isArray(list)) {
+    console.warn('[usage-billing] openrouter models response drifted: expected a `data` array')
+    return undefined
+  }
   const models: RouterModel[] = []
   for (const item of list) {
     if (item === null || typeof item !== 'object') continue

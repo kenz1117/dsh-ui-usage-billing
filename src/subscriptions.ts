@@ -13,6 +13,12 @@
  */
 
 import type { SubscriptionPlanConfig, SubscriptionQuota, SubscriptionStatus, SubscriptionWindow } from './pricing-shared.ts'
+import { createCooldownGate, withRetry } from './resilience.ts'
+
+/** 每平台熔断门：某个订阅适配器连续可重试失败（网络 / 5xx / 429）达阈值后
+ *  短路由不可用，避免 30 秒轮询对已故障的上游反复打满超时。鉴权失败（unauthorized）
+ *  是配置问题，不计入熔断。 */
+const subscriptionGate = createCooldownGate({ failures: 3, cooldownMs: 60_000 })
 
 /** 订阅适配器需要的凭据（来自 llm-pi-ai 设置命名空间）。 */
 export interface SubscriptionKeys {
@@ -171,15 +177,19 @@ function statusOf(error: unknown): SubscriptionStatus {
   return 'unavailable'
 }
 
-/** One JSON fetch with a timeout, mapping HTTP failures to typed errors. */
+/** One JSON fetch with a timeout, mapping HTTP failures to typed errors.
+ *  可重试错误（网络 / 5xx / 429）用指数退避重试一次；401/403/404 不重试。 */
 async function requestJson(url: string, init: RequestInit, timeoutMs: number): Promise<unknown> {
-  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
-  if (!response.ok) {
-    const error = new Error(`HTTP ${String(response.status)}`)
-    ;(error as { httpStatus?: number }).httpStatus = response.status
-    throw error
+  const doFetch = async (): Promise<unknown> => {
+    const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
+    if (!response.ok) {
+      const error = new Error(`HTTP ${String(response.status)}`)
+      ;(error as { httpStatus?: number }).httpStatus = response.status
+      throw error
+    }
+    return await response.json()
   }
-  return await response.json()
+  return await withRetry(doFetch, { retries: 1, baseDelayMs: 250, maxDelayMs: 2000 })
 }
 
 // ── Kimi For Coding ──────────────────────────────────────────────────────────
@@ -558,11 +568,20 @@ export async function collectSubscriptions(
   plans: readonly SubscriptionPlanConfig[] = [],
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<readonly SubscriptionQuota[]> {
-  return await Promise.all(plans.map((plan) => {
+  return await Promise.all(plans.map(async (plan): Promise<SubscriptionQuota> => {
     const adapter = SUBSCRIPTION_ADAPTERS[plan.provider]
     if (adapter === undefined) {
-      return Promise.resolve<SubscriptionQuota>({ provider: plan.provider, displayName: plan.provider, status: 'unavailable', windows: [] })
+      return { provider: plan.provider, displayName: plan.provider, status: 'unavailable', windows: [] }
     }
-    return adapter.collect(keys, plan, timeoutMs)
+    // 熔断：该适配器连续失败正处于冷却期时，直接短路为不可用，不再打上游。
+    if (!subscriptionGate.check(plan.provider)) {
+      return { provider: plan.provider, displayName: plan.provider, status: 'unavailable', windows: [] }
+    }
+    const quota = await adapter.collect(keys, plan, timeoutMs)
+    // 可重试失败（网络 / 5xx / 429）才累计熔断；鉴权 / 响应异常属配置问题或上游改版，不算暂时故障。
+    const retryable = quota.status === 'unavailable' || quota.status === 'rate-limited'
+    if (retryable) subscriptionGate.fail(plan.provider)
+    else subscriptionGate.success(plan.provider)
+    return quota
   }))
 }

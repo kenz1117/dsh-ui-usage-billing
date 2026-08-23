@@ -2,12 +2,11 @@
  * Account-balance queries for the billing dashboard.
  *
  * Only providers with a public balance endpoint can report one. Today that is
- * DeepSeek (`GET https://api.deepseek.com/user/balance`) and Moonshot/Kimi
- * (`GET https://api.moonshot.cn/v1/users/me/balance`), both Bearer 鉴权 with a
- * documented JSON shape; the other mainstream providers expose no standard
- * balance API (or require a non-Bearer auth flow), so their rows in the model
- * table show an unavailable state. The lookup map below is the extension point
- * for future providers.
+ * DeepSeek, Moonshot/Kimi, StepFun, SiliconFlow, and xAI (Grok) — all Bearer
+ * 鉴权 with a documented JSON shape; the other mainstream providers expose no
+ * standard balance API (or require a non-Bearer auth flow), so their rows in
+ * the model table show an unavailable state. The lookup map below is the
+ * extension point for future providers.
  *
  * API keys are read from the `llm-pi-ai` settings namespace (`providers.<id>.apiKeyEnv`),
  * the same source the subscription adapter uses, so a deployment configures a

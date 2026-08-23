@@ -16,8 +16,8 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-// Type-only: pulls the connection service face (ctx.connection.api) for the model-health probe.
-import type {} from '@deepseek-ai/dsh-client-connection/client'
+// Type-only: the connection service handle for the model-health probe（经 ctx.get 获取）。
+import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 // Type-only: pulls the ui-conversation SlotMap merge (the composer.dock entry the live cost bar rides).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { UsageBilling, type ModelHealth, type UsageBillingInjected } from './UsageBilling.tsx'
@@ -76,6 +76,9 @@ export function apply(ctx: ClientContext): void {
   // 预算偏好 store：apply 期构造，身份绑定本 fiber；引擎持久化到 localStorage。
   const budgetStore = createBillingBudgetStore()
 
+  // 模型健康探活走 connection 服务（cordis 标准取法：ctx.get；类型来自 ConnectionHandle）。
+  const connection = ctx.get('connection') as ConnectionHandle
+
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-usage-billing: dictionaries')
 
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
@@ -95,7 +98,7 @@ export function apply(ctx: ClientContext): void {
         // catalog has live credentials; failed providers are the unhealthy
         // ones. Display names feed the per-model dots in the dashboard table.
         try {
-          const { result } = await ctx.connection.api.llm.models({})
+          const { result } = await connection.api.llm.models({})
           if (!result.ok) return { checked: true, available: false, models: 0, failures: 0, okProviders: [], badProviders: [] }
           // 探活 groups[].models[] 投影为 CatalogModel（含 id/name/厂商名，无价格）：
           // 费率表据此对标「系统设置里实际配置/预制的模型」。

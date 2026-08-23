@@ -54,7 +54,13 @@ export interface AggregateOptions {
   subscriptionProviders?: readonly string[]
   /** 官方渠道 provider id 列表；默认按 {@link isOfficialProvider} 判定（DeepSeek 官方直连）。 */
   officialProviderIds?: readonly string[]
+  /** 每会话折叠缓存的上限（默认 {@link DEFAULT_MAX_CACHE_SESSIONS}）；
+   *  超限时按最近使用先后淘汰最久未用的会话，防长期运行内存膨胀。 */
+  maxCacheSessions?: number
 }
+
+/** 每会话折叠缓存默认上限：超过则按 LRU 淘汰（P1-6 峰值内存治理）。 */
+export const DEFAULT_MAX_CACHE_SESSIONS = 400
 
 /** One model's aggregated usage plus estimated cost in CNY. */
 export interface ModelUsage {
@@ -659,6 +665,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
   const officialProviderIds = options.officialProviderIds === undefined
     ? undefined
     : new Set(options.officialProviderIds)
+  const maxCacheSessions = options.maxCacheSessions ?? DEFAULT_MAX_CACHE_SESSIONS
   const cache = new Map<string, { stamp: string | null; fold: SessionFold }>()
   let lastDoc: UsageStatsDocument | undefined
   let lastAt = 0
@@ -691,6 +698,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         const stamp = await stampOf(meta)
         const hit = cache.get(id)
         if (hit !== undefined && stamp !== null && hit.stamp === stamp) {
+          // LRU touch：复用命中的会话移到缓存末尾，供上方上限清理优先淘汰最久未用。
+          cache.delete(id)
+          cache.set(id, hit)
           folds.push({ meta, fold: hit.fold })
           continue
         }
@@ -698,6 +708,10 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         // 跳到下一个会话，避免面板整体归零。失败会话放进 skipped 末尾告警。
         try {
           const { events } = await persistence.readFrom(meta.id, 0)
+          // P0-4 竞态加固：读取期间日志被写入（mtime+size 变化），本轮的折叠可能基于
+          // 半截内容，丢弃待下一轮重读，避免把不完整事件当作真实用量输出。
+          const after = await stampOf(meta)
+          if (stamp !== null && after !== stamp) continue
           // durable 边界：日志事件是外部 JSON，foldSession 内做运行时收窄。
           const fold = foldSession(events as { type: string; time: number; data: never }[], subscriptionProviders, officialProviderIds)
           cache.set(id, { stamp, fold })
@@ -710,6 +724,12 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       // 已删除会话的缓存一并清除，避免内存随历史膨胀。
       for (const key of [...cache.keys()]) {
         if (!seen.has(key)) cache.delete(key)
+      }
+      // P1-6 峰值内存治理：缓存会话数超过上限时，从最久未用的开始淘汰。
+      while (cache.size > maxCacheSessions) {
+        const oldest = cache.keys().next()
+        if (oldest.done === true) break
+        cache.delete(oldest.value)
       }
       // 只读路径无坏会话时无需区分：stampOf 命中或新会话，失败均已在上面跳过。
       if (skipped.length > 0) {

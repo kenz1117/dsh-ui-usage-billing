@@ -11,6 +11,7 @@
  */
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots';
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client';
+import { type ClientPerf } from './PerfPanel.tsx';
 import type { createBillingBudgetStore } from './budget-store.ts';
 import { type CatalogModel } from './pricing.ts';
 import { NS, type UsageBillingKey } from './locales.ts';
@@ -32,7 +33,7 @@ export interface ModelHealth {
     catalog?: readonly CatalogModel[];
 }
 /** 仪表盘分区 Tab id。 */
-export type DashboardTab = 'overview' | 'trends' | 'providers' | 'details' | 'pricing' | 'settings';
+export type DashboardTab = 'overview' | 'token' | 'trends' | 'providers' | 'pricing' | 'settings';
 /**
  * Tab 定义（顺序即渲染顺序）：概览=主数字/KPI/热力图，趋势=趋势图/每轮费用，
  * 明细=厂商计费与订阅，统计=工作区/会话明细，费率=模型单价表，设置=预算与峰谷提醒。
@@ -83,6 +84,16 @@ export declare function peakOffpeakCost(turns: readonly {
     peak: number;
     offPeak: number;
 };
+/** 近 7 天费用序列（含今天，缺日补 0）：触发卡 hover 速览的迷你柱数据源。
+ * 导出供测试：纯函数（日期取本地时区）。 */
+export declare function activeDaysOf(byDay: Record<string, {
+    cost: number;
+}>): number;
+/** 连续使用天数：从今天往前连续「有调用记录」的天数；今天无记录则为 0。
+ * 导出供测试：纯函数（日期取本地时区）。 */
+export declare function streakDaysOf(byDay: Record<string, {
+    cost: number;
+}>, now?: number): number;
 /**
  * 近 7 天费用序列（含今天，缺日补 0）：触发卡 hover 速览的迷你柱数据源。
  * 导出供测试：纯函数（日期取本地时区）。
@@ -95,6 +106,101 @@ export declare function lastSevenDays(byDay: Record<string, {
     date: string;
     cost: number;
 }[];
+/** 会话明细行（与服务端 SessionUsageRow 同形；旧快照可能缺失整个 bySession）。 */
+interface SessionBillingRow {
+    id: string;
+    title?: string;
+    cwd?: string;
+    calls: number;
+    cost: number;
+    lastActive: number;
+}
+/** Usage stats structure from `.dsh-usage-stats.json`. */
+export interface UsageStats {
+    /** 服务端聚合时间戳（毫秒）；旧快照可能缺失。 */
+    updatedAt?: number;
+    /** 月度预算（人民币元）：宿主 Config 注入；未配置时不渲染预算条。 */
+    budget?: number;
+    /** 余额不足告警阈值（人民币元）：宿主 Config 注入；未配置时客户端用默认值。 */
+    lowBalanceThreshold?: number;
+    /** 会话明细（按费用倒序，服务端已封顶）；旧快照可能缺失。 */
+    bySession?: readonly SessionBillingRow[];
+    total: {
+        calls: number;
+        input: number;
+        output: number;
+        cacheHit: number;
+        cacheMiss: number;
+        cost: number;
+        /** 输出中的 reasoning（思考）token；已含在 output 内。 */
+        reasoning: number;
+    };
+    byModel: Record<string, {
+        calls: number;
+        input: number;
+        output: number;
+        cacheHit: number;
+        cacheMiss: number;
+        cost: number;
+        reasoning: number;
+        /** Billed through a subscription plan (no per-token cost). */
+        plan?: boolean;
+        /** 走官方 DeepSeek 直连的调用数（其余为第三方）；旧快照可能缺失。 */
+        officialCalls?: number;
+        /** 走官方渠道的费用（CNY）；旧快照可能缺失。 */
+        officialCost?: number;
+    }>;
+    byDay: Record<string, {
+        calls: number;
+        input: number;
+        output: number;
+        cacheHit: number;
+        cacheMiss: number;
+        cost: number;
+        reasoning: number;
+    }>;
+    /** 模型 × 日期 二维统计（趋势图堆叠柱的输入）；旧快照可能缺失，渲染时降级为单色柱。 */
+    byDayModels?: Record<string, Record<string, {
+        calls: number;
+        input: number;
+        output: number;
+        cacheHit: number;
+        cacheMiss: number;
+        cost: number;
+    }>>;
+    /** 每轮费用明细（服务端聚合路径恒带）；旧快照可能缺失。 */
+    byTurn?: readonly {
+        sessionId: string;
+        turn: number;
+        model: string;
+        input: number;
+        output: number;
+        cacheHit: number;
+        cacheMiss: number;
+        cost: number;
+        startedAt: number;
+        endedAt?: number;
+    }[];
+    /** 工作区聚合（按 cwd 末级目录）；旧快照可能缺失。 */
+    byWorkspace?: readonly {
+        name: string;
+        calls: number;
+        cost: number;
+        input: number;
+        output: number;
+        lastActive: number;
+    }[];
+    /** 按角色费用归因（估算口径：输出实测，输入按消息长度摊分）；旧快照可能缺失。 */
+    byRole?: {
+        user: number;
+        assistant: number;
+        tool: number;
+    };
+    /** 性能指标（TTFT/生成速度/总延迟）按模型与按小时；旧快照可能缺失。 */
+    perf?: ClientPerf;
+    /** 插件版本号（服务端读自包 package.json；旧快照缺失）。 */
+    pluginVersion?: string;
+}
 /** 组件注入面：探活 + 计费指标写入（billing 自身写入，主题插件经服务读取）。 */
 export interface UsageBillingInjected {
     checkModels: () => Promise<ModelHealth>;

@@ -179,6 +179,8 @@ export type UsageBillingKey =
   | 'billing.tokenOutput'
   | 'billing.tokenTotal'
   | 'billing.tokenShare'
+  | 'billing.usageStatsTool'
+  | 'billing.usageStatsToolHint'
 
 export const NS = 'usageBilling'
 
@@ -361,6 +363,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.tokenOutput': '输出',
   'billing.tokenTotal': '总 Token',
   'billing.tokenShare': '占比',
+  'billing.usageStatsTool': '注入用量查询工具',
+  'billing.usageStatsToolHint': '让模型可在对话中查询用量/费用；会占用模型每次请求的上下文，coding 场景建议关闭（改后需重载应用生效）',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -542,4 +546,6 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.tokenOutput': 'Output',
   'billing.tokenTotal': 'Total tokens',
   'billing.tokenShare': 'Share',
+  'billing.usageStatsTool': 'Inject usage-stats tool',
+  'billing.usageStatsToolHint': 'Lets the model query usage/cost inside a conversation; it consumes context per request, so keep it off for coding (takes effect after a reload)',
 }

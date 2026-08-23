@@ -43,7 +43,7 @@
 
   ![Providers: provider billing & subscriptions (balance, plan quota, model usage)](screenshots/3.png)
 - **Custom provider balance**: configure any HTTP endpoint for balance (`extract` supports constant / dot-path / add-subtract / divide, header `{{ENV}}` via the credentials seam); DeepSeek / Kimi / StepFun / SiliconFlow have built-in official balances, and the balance column estimates "≈N days" from the 7-day daily burn.
-- **Real usage aggregation**: the server aggregates from session logs on demand (incremental cache recomputes only written sessions), with per-session corruption tolerance and snapshot fallback; the `usage_stats` tool lets the model query today / month spend.
+- **Real usage aggregation**: the server aggregates from session logs on demand (incremental cache recomputes only written sessions), with per-session corruption tolerance and snapshot fallback; an optional `usage_stats` tool lets the model query today / month spend (**off by default** — toggle it in the Settings tab; takes effect after a reload).
 - **Multi-language + dual currency**: the ¥/$ switch is bilingual (USD→English, CNY→Chinese, this plugin only); the rate table converts to the selected currency.
 - **Model health + uncatalogued annotation**: provider connection dots (green / red / grey); a model id not in the catalog is marked "uncatalogued" priced at the fallback, with provider inferred (e.g. `mi-mimo-2.5` → Xiaomi); estimated-price models are marked "estimated".
 - **Session detail + cost spikes + heatmap**: sessions sorted by cost (title / project / calls / cost / last active); per-turn cost bars (last 40 turns, amount at bar top, peak/off-peak background bands, >2× spike flagged with attribution); a monthly calendar heatmap (5-color scale, hover detail).
@@ -51,6 +51,7 @@
   ![Trends: daily cost trend, per-turn costs and peak/off-peak share](screenshots/2.png)
 
 - **Export + offline self-contained**: the Stats tab exports daily / per-session CSV and full JSON; no chart library, no external CDN, pure design tokens.
+- **Stability & reliability**: official-interface shape drift degrades with an explicit `invalid` status (distinct from network-unreachable); balance / subscription / pricing upstreams share a unified timeout budget, exponential-backoff retry and per-platform circuit-breaker cooldown; the stats snapshot is written with a `.bak` backup and auto-recovers from corruption; session-log reads re-check freshness to avoid half-line misreads; auth failures warn per provider with cooldown; the per-session fold cache is bounded by LRU to keep long-running memory stable.
 
   ![Stats: export, cost breakdown, workspaces and session detail](screenshots/4.png)
 
