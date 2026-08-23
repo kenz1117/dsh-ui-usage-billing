@@ -156,6 +156,14 @@ export type UsageBillingKey =
   | 'billing.activeDays'
   | 'billing.streakDays'
   | 'billing.subscriptionAutoDetect'
+  | 'billing.pluginInfo'
+  | 'billing.pluginName'
+  | 'billing.pluginDescription'
+  | 'billing.pluginVersion'
+  | 'billing.pluginAuthor'
+  | 'billing.pluginRepository'
+  | 'billing.pluginNpm'
+  | 'billing.pluginLicense'
 
 export const NS = 'usageBilling'
 
@@ -315,6 +323,14 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.activeDays': '活跃天数',
   'billing.streakDays': '连续使用',
   'billing.subscriptionAutoDetect': '自动识别',
+  'billing.pluginInfo': '插件信息',
+  'billing.pluginName': '插件名',
+  'billing.pluginDescription': '描述',
+  'billing.pluginVersion': '版本',
+  'billing.pluginAuthor': '作者',
+  'billing.pluginRepository': '仓库',
+  'billing.pluginNpm': 'npm',
+  'billing.pluginLicense': '许可证',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -473,4 +489,12 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.activeDays': 'Active days',
   'billing.streakDays': 'Streak',
   'billing.subscriptionAutoDetect': 'Auto',
+  'billing.pluginInfo': 'Plugin info',
+  'billing.pluginName': 'Name',
+  'billing.pluginDescription': 'Description',
+  'billing.pluginVersion': 'Version',
+  'billing.pluginAuthor': 'Author',
+  'billing.pluginRepository': 'Repository',
+  'billing.pluginNpm': 'npm',
+  'billing.pluginLicense': 'License',
 }

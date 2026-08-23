@@ -17,6 +17,7 @@ import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-s
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TrendChart, type TrendPoint } from './TrendChart.tsx'
 import { PerfPanel, type ClientPerf } from './PerfPanel.tsx'
+import { PluginInfoCard } from './PluginInfoCard.tsx'
 import { RoundCostChart, type RoundChartRow } from './round-chart.tsx'
 import { UsageHeatmap, type HeatmapDay } from './heatmap.tsx'
 import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
@@ -408,6 +409,8 @@ interface UsageStats {
   byRole?: { user: number; assistant: number; tool: number }
   /** 性能指标（TTFT/生成速度/总延迟）按模型与按小时；旧快照可能缺失。 */
   perf?: ClientPerf
+  /** 插件版本号（服务端读自包 package.json；旧快照缺失）。 */
+  pluginVersion?: string
 }
 
 /** Path to the usage-stats endpoint served by this plugin's node half. */
@@ -493,6 +496,7 @@ async function loadUsageStats(): Promise<UsageStats | null> {
         && candidate.perf.byHour !== null && typeof candidate.perf.byHour === 'object'
         ? { perf: candidate.perf as ClientPerf }
         : {}),
+      ...(typeof candidate.pluginVersion === 'string' ? { pluginVersion: candidate.pluginVersion } : {}),
     }
   } catch {
     return null
@@ -1424,6 +1428,9 @@ function BillingDashboard({
                   </div>
                 )}
               </section>
+
+              {/* 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
+              <PluginInfoCard t={t} version={stats.pluginVersion} />
             </div>
           )}
 

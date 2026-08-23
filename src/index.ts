@@ -11,6 +11,7 @@
  */
 
 import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -62,6 +63,12 @@ const SUBSCRIPTION_CACHE_MS = 5 * 60 * 1000
 
 /** DeepSeek 余额查询的默认凭据引用（与 llm-deepseek 的默认引用一致）。 */
 const DEFAULT_BALANCE_API_KEY_ENV = 'DEEPSEEK_API_KEY'
+
+/**
+ * 本插件版本号：从包自身的 package.json 读取（单一来源），随 usage-stats
+ * 下发，供「设置 → 插件信息卡」展示。发布版 lib/index.js 相对包根解析。
+ */
+const PACKAGE_VERSION = (createRequire(import.meta.url)('../package.json') as { version?: string }).version ?? '0.0.0'
 
 /** 统计快照的落盘节流（毫秒）：前端 30 秒轮询，快照最多每 30 秒写一次。 */
 const SNAPSHOT_INTERVAL_MS = 30_000
@@ -378,7 +385,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
             ...(config.monthlyBudget === undefined ? {} : { budget: config.monthlyBudget }),
             ...(config.lowBalanceThreshold === undefined ? {} : { lowBalanceThreshold: config.lowBalanceThreshold }),
           }
-          const payload = Object.keys(injected).length === 0 ? stats : { ...stats, ...injected }
+          const payload = { ...stats, pluginVersion: PACKAGE_VERSION, ...injected }
           // 快照落盘（节流 30 秒）：聚合失败路径的回退文件因此始终保持新鲜。
           persistSnapshot(payload as unknown as Record<string, unknown>)
           res.end(JSON.stringify(payload))
@@ -397,6 +404,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
             const doc = JSON.parse(text) as Record<string, unknown>
             if (config.monthlyBudget !== undefined) doc['budget'] = config.monthlyBudget
             if (config.lowBalanceThreshold !== undefined) doc['lowBalanceThreshold'] = config.lowBalanceThreshold
+            doc['pluginVersion'] = PACKAGE_VERSION
             res.end(JSON.stringify(doc))
             return
           } catch {

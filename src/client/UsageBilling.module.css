@@ -2119,6 +2119,41 @@
   cursor: pointer;
 }
 
+/* 插件信息卡（设置 Tab）：单行「标签 - 值」列表，链接可点击外链。 */
+.pluginInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pluginInfoRow {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.pluginInfoLabel {
+  flex: 0 0 72px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.pluginInfoValue {
+  color: var(--dsw-alias-label-primary);
+  word-break: break-all;
+}
+
+.pluginInfoLink {
+  color: var(--dsw-static-blue-500);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.pluginInfoLink:hover {
+  text-decoration: underline;
+}
+
 /* ── Responsive ─────────────────────────────────────────────────────── */
 
 @media (max-width: 640px) {
