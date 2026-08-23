@@ -55,7 +55,7 @@ export interface IdentifiedSubscriptionPlan {
 /** 订阅类 provider 的显示名（未命中的回退为 id 本身）。 */
 const SUBSCRIPTION_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   'kimi-coding': 'Kimi For Coding',
-  'zai-coding-cn': 'Z.ai Coding Plan',
+  'zai-coding-cn': 'Z.ai Coding Plan（国内）',
   'zai-coding': 'Z.ai Coding Plan',
   'opencode': 'OpenCode Plan',
   'opencode-go': 'OpenCode Go',
@@ -76,7 +76,11 @@ const SUBSCRIPTION_DISPLAY_NAMES: Readonly<Record<string, string>> = {
 }
 
 /** 订阅类 provider id 判定：带 coding / agent-plan / token-plan 后缀，或已知订阅通道。 */
-const SUBSCRIPTION_ID_RE = /(?:^|-)(?:coding|agent[-_]?plan|token[-_]?plan)(?:$|-|_)|^(?:opencode|opencode-go|kimi-coding|zai-coding|minimax|minimax-token-plan|openrouter)/i
+const SUBSCRIPTION_ID_RE = new RegExp(
+  '(?:^|-)(?:coding|agent[-_]?plan|token[-_]?plan)(?:$|-|_)|' +
+    '^(?:opencode|opencode-go|kimi-coding|zai-coding|minimax|minimax-token-plan|openrouter)',
+  'i',
+)
 
 /** 是否是订阅类 provider id（如 kimi-coding、xiaomi-token-plan-cn）。 */
 export function isSubscriptionProviderId(providerId: string): boolean {
@@ -85,7 +89,9 @@ export function isSubscriptionProviderId(providerId: string): boolean {
 }
 
 /** 适配器注册表：provider id → 收集器（displayName 同步映射）。 */
-const SUBSCRIPTION_ADAPTERS: Readonly<Record<string, { collect: (keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number) => Promise<SubscriptionQuota> }>> = {
+const SUBSCRIPTION_ADAPTERS: Readonly<Record<string, {
+  collect: (keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number) => Promise<SubscriptionQuota>
+}>> = {
   'kimi-coding': { collect: collectKimi },
   'zai-coding-cn': { collect: collectZai },
   'opencode': { collect: collectOpenCodeGo },
@@ -103,7 +109,9 @@ const ADAPTER_PROVIDER_IDS: ReadonlySet<string> = new Set(Object.keys(SUBSCRIPTI
  * @param providers - the `providers` map of the llm-pi-ai settings namespace.
  * @returns identified plans in configuration order.
  */
-export function identifySubscriptionPlans(providers: Record<string, { apiKeyEnv?: string } | undefined> | undefined): IdentifiedSubscriptionPlan[] {
+export function identifySubscriptionPlans(
+  providers: Record<string, { apiKeyEnv?: string } | undefined> | undefined,
+): IdentifiedSubscriptionPlan[] {
   const out: IdentifiedSubscriptionPlan[] = []
   for (const [id, config] of Object.entries(providers ?? {})) {
     if (typeof config?.apiKeyEnv !== 'string' || config.apiKeyEnv === '') continue
@@ -289,13 +297,15 @@ function parseZai(quotaBody: unknown, subscriptionBody: unknown): { plan: string
     ? ((quota.data as Record<string, unknown>).limits as unknown[])
     : []
   const tokenLimits = limits
-    .filter(entry => {
+    .filter((entry) => {
       const record = entry as Record<string, unknown>
       const type = String(record.type ?? record.limit_type ?? '').toUpperCase()
       return (type === 'TOKENS_LIMIT' || type === 'CREDIT_LIMIT') && zaiUsedPercent(record) !== null
     })
-    .sort((a, b) => (zaiWindowMinutes(a as Record<string, unknown>) ?? Number.MAX_SAFE_INTEGER) - (zaiWindowMinutes(b as Record<string, unknown>) ?? Number.MAX_SAFE_INTEGER))
-  const timeLimit = limits.find(entry => {
+    .sort((a, b) =>
+      (zaiWindowMinutes(a as Record<string, unknown>) ?? Number.MAX_SAFE_INTEGER) -
+      (zaiWindowMinutes(b as Record<string, unknown>) ?? Number.MAX_SAFE_INTEGER))
+  const timeLimit = limits.find((entry) => {
     const record = entry as Record<string, unknown>
     return String(record.type ?? record.limit_type ?? '').toUpperCase() === 'TIME_LIMIT' && zaiUsedPercent(record) !== null
   }) as Record<string, unknown> | undefined
@@ -304,9 +314,14 @@ function parseZai(quotaBody: unknown, subscriptionBody: unknown): { plan: string
   const session = tokenLimits.length >= 2 ? first
     : first !== undefined && zaiWindowMinutes(first) !== null && (zaiWindowMinutes(first) ?? 0) <= 360 ? first
       : undefined
-  const weekly = tokenLimits.length >= 2 ? tokenLimits[tokenLimits.length - 1] as Record<string, unknown> : session === undefined ? first : undefined
+  const weekly = tokenLimits.length >= 2
+    ? tokenLimits[tokenLimits.length - 1] as Record<string, unknown>
+    : session === undefined ? first : undefined
   const subscriptionRow = (subscriptionBody as { data?: unknown } | null)?.data
-  const renewAt = toIso(Array.isArray(subscriptionRow) ? (subscriptionRow[0] as Record<string, unknown>)?.next_renew_time ?? (subscriptionRow[0] as Record<string, unknown>)?.nextRenewTime : undefined)
+  const renewAt = toIso(Array.isArray(subscriptionRow)
+    ? (subscriptionRow[0] as Record<string, unknown>)?.next_renew_time
+      ?? (subscriptionRow[0] as Record<string, unknown>)?.nextRenewTime
+    : undefined)
   const row = Array.isArray(subscriptionRow) ? subscriptionRow[0] as Record<string, unknown> : undefined
   let plan = 'GLM Coding Plan'
   for (const source of [row, quota.data]) {
@@ -376,7 +391,9 @@ function goWindow(value: unknown, kind: 'session' | 'weekly' | 'monthly'): Subsc
   // Bearer endpoint's `percent` is already 0..100; dashboard fields are 0..1.
   if (usedPercent <= 1 && usedPercent >= 0 && record.percent === undefined && percentSource !== undefined) usedPercent *= 100
   const resetSeconds = numberOrNull(record.resetInSec ?? record.resetInSeconds ?? record.resetSeconds)
-  const resetsAt = resetSeconds === null ? toIso(record.resetAt ?? record.resetsAt ?? record.nextReset) : new Date(Date.now() + Math.max(0, resetSeconds) * 1000).toISOString()
+  const resetsAt = resetSeconds === null
+    ? toIso(record.resetAt ?? record.resetsAt ?? record.nextReset)
+    : new Date(Date.now() + Math.max(0, resetSeconds) * 1000).toISOString()
   return {
     kind,
     usedPercent: round1(clampPercent(usedPercent) ?? 0),
@@ -461,7 +478,7 @@ export function parseMiniMaxRemains(body: unknown): SubscriptionWindow[] {
       ? (doc.model_remains as unknown[])
       : []
   if (rows.length === 0) return []
-  const pick = rows.find(row => {
+  const pick = rows.find((row) => {
     const name = String((row as Record<string, unknown>).model_name ?? '').toLowerCase()
     return name === 'general' || /^minimax-m/i.test(name)
   }) ?? rows[0]
@@ -541,7 +558,7 @@ export async function collectSubscriptions(
   plans: readonly SubscriptionPlanConfig[] = [],
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<readonly SubscriptionQuota[]> {
-  return await Promise.all(plans.map(plan => {
+  return await Promise.all(plans.map((plan) => {
     const adapter = SUBSCRIPTION_ADAPTERS[plan.provider]
     if (adapter === undefined) {
       return Promise.resolve<SubscriptionQuota>({ provider: plan.provider, displayName: plan.provider, status: 'unavailable', windows: [] })

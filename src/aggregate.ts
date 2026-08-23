@@ -120,6 +120,13 @@ export function dayStamp(time: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
+/** Local-time hour stamp `YYYY-MM-DDTHH` — the performance series bucket key. */
+export function hourStamp(time: number): string {
+  const date = new Date(time)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}`
+}
+
 /** cwd 未知时工作区聚合的占位名（UI 显示 em dash，保持语言无关）。 */
 export const UNKNOWN_WORKSPACE_NAME = '—'
 
@@ -160,6 +167,13 @@ export interface UsageStatsDocument {
    * 属估算口径，UI 需标注）。旧快照可能缺失。
    */
   byRole?: RoleCost
+  /**
+   * 性能指标（TTFT / 生成速度 / 总延迟）按模型与按小时聚合；旧快照可能缺失。
+   * 口径：TTFT = request/header → 首个内容 chunk；生成速度 = 输出 token ÷ 生成时长；
+   * 总延迟 = request/header → assistant/message。工具续写步骤无独立请求头，
+   * 以 step/start 为起点估算并计 estimated。
+   */
+  perf?: PerfStats
 }
 
 /** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
@@ -167,6 +181,43 @@ export interface RoleCost {
   user: number
   assistant: number
   tool: number
+}
+
+/**
+ * 性能指标（TTFT / 生成速度 / 总延迟）：按模型与按小时聚合，供「性能」面板渲染。
+ * 旧快照（无 perf 字段）缺失时客户端按无数据兜底。
+ */
+export interface PerfStats {
+  /** 按模型聚合（键 = 计费目录键；未收录模型原样保留）。 */
+  byModel: Record<string, ModelPerf>
+  /** 按小时聚合（键 = {@link hourStamp}，北京时间）。 */
+  byHour: Record<string, HourPerf>
+}
+
+/** 一个模型的性能统计：首字延时均值 / P50 / P90、生成速度均值、总延迟均值。 */
+export interface ModelPerf {
+  /** 有效性能样本数（有可测 TTFT 的调用；不含损毁样本）。 */
+  samples: number
+  /** 平均首字延时（毫秒）。 */
+  ttftAvg: number
+  /** 首字延时 P50（毫秒）。 */
+  ttftP50: number
+  /** 首字延时 P90（毫秒）。 */
+  ttftP90: number
+  /** 平均生成速度（tokens/s）；生成了有效输出且时长可测时存在。 */
+  tpsAvg?: number
+  /** 平均总延迟（首次请求 → 响应完成，毫秒）。 */
+  latencyAvg: number
+  /** 以 step/start 估算的样本数（工具续写步骤无独立 request/header）。 */
+  estimatedSamples: number
+}
+
+/** 一个小时的性能统计（键 = {@link hourStamp}）。 */
+export interface HourPerf {
+  samples: number
+  ttftAvg: number
+  /** 平均生成速度（tokens/s）；该小时无可测生成窗口时缺失。 */
+  tpsAvg?: number
 }
 
 /** 会话明细行：仪表盘「会话明细」面板的数据源。 */
@@ -227,6 +278,34 @@ export const TURN_ROW_LIMIT = 200
 /** 聚合文档的短 TTL（毫秒）：合并密集轮询，TTL 内直接复用上次的合并结果。 */
 export const AGGREGATE_TTL_MS = 5000
 
+/** 单步性能样本（foldSession 的折叠产物；跨会话合并时按模型/小时再聚合）。 */
+export interface PerfSample {
+  /** 计费目录键（模型；未收录模型原样保留）。 */
+  model: string
+  /** 北京时间小时戳（{@link hourStamp}）——性能曲线的时间桶键。 */
+  hour: string
+  /** 首字延时（毫秒）；无效样本（超出 sane 上限）不入样本集。 */
+  ttftMs: number
+  /** 生成速度（tokens/s）；无有效生成窗口或无输出时缺失。 */
+  tps?: number
+  /** 总延迟（首次请求 → 响应完成，毫秒）；只测到内容但完成时刻优先于起点时缺失。 */
+  latencyMs?: number
+  /** 无独立 request/header，以 step/start 起算（工具续写步骤）。 */
+  estimated: boolean
+}
+
+/** 一个 step 的性能时间状态机（keyed `${turn}:${step}`）。 */
+interface StepPerf {
+  /** step/start 时刻；无独立请求头时作为 TTFT 估算起点。 */
+  startTime: number
+  /** request/header 时刻（TTFT 起点）；工具续写步骤缺失。 */
+  requestTime?: number
+  /** 首个内容 chunk 时刻。 */
+  firstContentTime?: number
+  /** 最后一个内容 chunk 时刻。 */
+  lastContentTime?: number
+}
+
 /** One persisted session's folded usage plus drill-down metadata. */
 interface SessionFold {
   total: ModelUsage
@@ -237,6 +316,8 @@ interface SessionFold {
   planCalls: Map<string, number>
   /** 每轮费用明细（按轮次号升序，不含 sessionId）；sessionId 在合并时补齐。 */
   turns: SessionTurnRow[]
+  /** 性能样本（有可测 TTFT 的调用，按事件次序折叠）。 */
+  perf: PerfSample[]
   /** 角色归因中间量：消息文本长度（user/tool）与输入/输出成本实测拆分。 */
   roles: RoleFold
   /** 日志里最新的 session/title 文本（无标题事件时 undefined）。 */
@@ -323,7 +404,11 @@ function turnState(turns: Map<number, TurnState>, turn: number): TurnState {
  *   (default: any `deepseek`-prefixed id). Others count as third-party.
  * @returns the per-session fold (cached by the incremental aggregator).
  */
-export function foldSession(events: readonly { type: string; time: number; data: never }[], subscriptionProviders: ReadonlySet<string>, officialProviderIds?: ReadonlySet<string>): SessionFold {
+export function foldSession(
+  events: readonly { type: string; time: number; data: never }[],
+  subscriptionProviders: ReadonlySet<string>,
+  officialProviderIds?: ReadonlySet<string>,
+): SessionFold {
   const fold: SessionFold = {
     total: emptyUsage(),
     byModel: new Map(),
@@ -331,6 +416,7 @@ export function foldSession(events: readonly { type: string; time: number; data:
     byDayModels: new Map(),
     planCalls: new Map(),
     turns: [],
+    perf: [],
     roles: { userChars: 0, toolChars: 0, inputCost: 0, outputCost: 0 },
     lastActive: 0,
   }
@@ -338,6 +424,10 @@ export function foldSession(events: readonly { type: string; time: number; data:
   let subscription = false
   let official = false
   const turns = new Map<number, TurnState>()
+  // 性能时间状态机：按 (turn, step) 归属 request/header 与内容 chunk 的时刻。
+  const steps = new Map<string, StepPerf>()
+  // 最近一次 step/start 打开的 step；request/header 不带 turn/step，需借此归属。
+  let lastOpenStepKey: string | undefined
   for (const event of events) {
     fold.lastActive = Math.max(fold.lastActive, event.time)
     // session/title 由 dsh-session-title 经声明合并注册，本包不引用它，
@@ -368,6 +458,16 @@ export function foldSession(events: readonly { type: string; time: number; data:
       if (state !== undefined) state.endedAt = event.time
       continue
     }
+    if (event.type === 'step/start') {
+      const turn = (event.data as { turn?: number }).turn
+      const step = (event.data as { step?: number }).step
+      if (typeof turn === 'number' && typeof step === 'number') {
+        const stepKey = `${turn}:${step}`
+        steps.set(stepKey, { startTime: event.time })
+        lastOpenStepKey = stepKey
+      }
+      continue
+    }
     if (event.type === 'request/header') {
       const { model, provider } = (event.data as { header: { config: { model: string; provider: string } } }).header.config
       key = resolveCatalogKey(model)
@@ -375,6 +475,28 @@ export function foldSession(events: readonly { type: string; time: number; data:
       subscription = subscriptionProviders.has(provider)
       // 官方直连（DeepSeek 官方）vs 第三方中转/代理。
       official = officialProviderIds === undefined ? isOfficialProvider(provider) : officialProviderIds.has(provider)
+      // request/header 是该 step 的 TTFT 起点；归属到最近打开的 step（无独立请求头的
+      // 工具续写步骤保持 undefined，以 step/start 起算估算）。
+      if (lastOpenStepKey !== undefined) {
+        const stepState = steps.get(lastOpenStepKey)
+        if (stepState !== undefined && stepState.requestTime === undefined) stepState.requestTime = event.time
+      }
+      continue
+    }
+    if (event.type === 'assistant/chunk') {
+      // 内容增量（block-start/text-delta/reasoning-delta/tool-call-delta/block-end）
+      // 才记录首/末内容时刻；usage/finish 无正文，不算内容。TTFT 以首个内容 chunk 为准。
+      const data = event.data as { turn?: unknown; step?: unknown; chunk?: { type?: string } }
+      const turn = data.turn
+      const step = data.step
+      const chunk = data.chunk
+      if (typeof turn === 'number' && typeof step === 'number' && chunk !== undefined && chunk.type !== 'usage' && chunk.type !== 'finish') {
+        const state = steps.get(`${turn}:${step}`)
+        if (state !== undefined) {
+          if (state.firstContentTime === undefined) state.firstContentTime = event.time
+          state.lastContentTime = event.time
+        }
+      }
       continue
     }
     if (event.type !== 'assistant/message') continue
@@ -413,6 +535,17 @@ export function foldSession(events: readonly { type: string; time: number; data:
       fold.roles.inputCost += fullCost - outputCost
     }
     if (state.startedAt === Number.MAX_SAFE_INTEGER) state.startedAt = event.time
+    // 性能样本：该 step 的 TTFT / 生成速度 / 总延迟；无效样本不入集。
+    // 工具续写步骤无独立 request/header（perfState.requestTime 缺失）时以 step/start 估算。
+    const stepNum = (event.data as { step?: number }).step
+    if (typeof stepNum === 'number') {
+      const perfState = steps.get(`${turn}:${stepNum}`)
+      if (perfState !== undefined) {
+        const sample = perfSampleOf(perfState, modelKey, usage.outputTokens ?? 0, event.time)
+        if (sample !== undefined) fold.perf.push(sample)
+        steps.delete(`${turn}:${stepNum}`)
+      }
+    }
   }
   fold.turns = [...turns.values()]
     .filter(state => state.input > 0 || state.output > 0)
@@ -431,6 +564,30 @@ export function foldSession(events: readonly { type: string; time: number; data:
   return fold
 }
 
+/**
+ * 生成一个 step 的性能样本；无效 / 超出 sane 上限（15 分钟）时返回 undefined，
+ * 避免单条异常记录（时区错位 / 服务端抖动）拉偏均值。
+ */
+function perfSampleOf(state: StepPerf, model: string, outputTokens: number, endTime: number): PerfSample | undefined {
+  const start = state.requestTime ?? state.startTime
+  const first = state.firstContentTime
+  const last = state.lastContentTime
+  if (start === undefined || first === undefined || first < start) return undefined
+  const ttftMs = first - start
+  if (!Number.isFinite(ttftMs) || ttftMs < 0 || ttftMs > 900000) return undefined
+  const genMs = last !== undefined && last > first ? last - first : undefined
+  const latencyMs = endTime >= start ? endTime - start : undefined
+  const tps = genMs !== undefined && genMs > 0 && outputTokens > 0 ? outputTokens / (genMs / 1000) : undefined
+  return {
+    model,
+    hour: hourStamp(endTime),
+    ttftMs,
+    ...(tps === undefined || !Number.isFinite(tps) || tps <= 0 ? {} : { tps }),
+    estimated: state.requestTime === undefined,
+    ...(latencyMs === undefined ? {} : { latencyMs }),
+  }
+}
+
 /** Accumulate one ModelUsage into another (merge step of the incremental aggregator). */
 function mergeUsageInto(acc: ModelUsage, cell: ModelUsage): void {
   acc.calls += cell.calls
@@ -441,6 +598,40 @@ function mergeUsageInto(acc: ModelUsage, cell: ModelUsage): void {
   acc.cost += cell.cost
   acc.officialCalls += cell.officialCalls
   acc.officialCost += cell.officialCost
+}
+
+/** 均值（数组非空时调用；空数组按 0 兜底）。 */
+function mean(values: number[]): number {
+  if (values.length === 0) return 0
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+/** 分位数（0..1）：先拷贝排序，再线性插值；空数组返回 0。 */
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const idx = (sorted.length - 1) * p
+  const lo = Math.floor(idx)
+  const hi = Math.ceil(idx)
+  if (lo === hi) { const value = sorted[lo]; return value === undefined ? 0 : value }
+  const a = sorted[lo]
+  const b = sorted[hi]
+  if (a === undefined || b === undefined) return 0
+  return a + (b - a) * (idx - lo)
+}
+
+/** 按模型聚合的性能累加器。 */
+interface PerfModelAccum {
+  ttfts: number[]
+  tps: number[]
+  latencies: number[]
+  estimated: number
+}
+
+/** 按小时聚合的性能累加器。 */
+interface PerfHourAccum {
+  ttfts: number[]
+  tps: number[]
 }
 
 /**
@@ -531,6 +722,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const workspaceMap = new Map<string, WorkspaceUsageRow>()
       // 角色归因跨会话累加：字符占比与输入/输出成本分别求和后再摊分。
       const roles: RoleFold = { userChars: 0, toolChars: 0, inputCost: 0, outputCost: 0 }
+      // 性能样本跨会话累加（按模型 / 小时分桶，聚合时才算均值/分位）。
+      const perfModel = new Map<string, PerfModelAccum>()
+      const perfHour = new Map<string, PerfHourAccum>()
       for (const { meta, fold } of folds) {
         const sessionId = String(meta.id)
         mergeUsageInto(total, fold.total)
@@ -545,6 +739,25 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         }
         for (const [modelKey, count] of fold.planCalls) {
           planCalls.set(modelKey, (planCalls.get(modelKey) ?? 0) + count)
+        }
+        // 性能样本入桶：按模型、按小时各聚合一份，供「性能」面板分别渲染。
+        for (const sample of fold.perf) {
+          let modelAccum = perfModel.get(sample.model)
+          if (modelAccum === undefined) {
+            modelAccum = { ttfts: [], tps: [], latencies: [], estimated: 0 }
+            perfModel.set(sample.model, modelAccum)
+          }
+          modelAccum.ttfts.push(sample.ttftMs)
+          if (sample.tps !== undefined) modelAccum.tps.push(sample.tps)
+          if (sample.latencyMs !== undefined) modelAccum.latencies.push(sample.latencyMs)
+          if (sample.estimated) modelAccum.estimated += 1
+          let hourAccum = perfHour.get(sample.hour)
+          if (hourAccum === undefined) {
+            hourAccum = { ttfts: [], tps: [] }
+            perfHour.set(sample.hour, hourAccum)
+          }
+          hourAccum.ttfts.push(sample.ttftMs)
+          if (sample.tps !== undefined) hourAccum.tps.push(sample.tps)
         }
         // 每轮明细：跨会话的轮次统一按起始时间倒序（展示最近 N 轮）。
         for (const row of fold.turns) turnRows.push({ sessionId, ...row })
@@ -585,6 +798,25 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const toModelDayRecord = (map: Map<string, Map<string, ModelUsage>>): Record<string, Record<string, ModelUsage>> =>
         Object.fromEntries([...map].map(([day, models]) => [day, Object.fromEntries(models)]))
 
+      // 性能指标：按模型（含 P90）、按小时聚合；无任何可测样本时整个 perf 字段缺失。
+      const perf: PerfStats | undefined = perfModel.size === 0
+        ? undefined
+        : {
+          byModel: Object.fromEntries([...perfModel].map(([model, acc]) => [model, {
+            samples: acc.ttfts.length,
+            ttftAvg: mean(acc.ttfts),
+            ttftP50: percentile(acc.ttfts, 0.5),
+            ttftP90: percentile(acc.ttfts, 0.9),
+            ...(acc.tps.length === 0 ? {} : { tpsAvg: mean(acc.tps) }),
+            latencyAvg: acc.latencies.length === 0 ? 0 : mean(acc.latencies),
+            estimatedSamples: acc.estimated,
+          }])),
+          byHour: Object.fromEntries([...perfHour].map(([hour, acc]) => [hour, {
+            samples: acc.ttfts.length,
+            ttftAvg: mean(acc.ttfts),
+            ...(acc.tps.length === 0 ? {} : { tpsAvg: mean(acc.tps) }),
+          }])),
+        }
       lastDoc = {
         version: 3,
         updatedAt: now,
@@ -596,6 +828,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         bySession: sessionRows.slice(0, SESSION_ROW_LIMIT),
         byTurn: turnRows.slice(0, TURN_ROW_LIMIT),
         byWorkspace: workspaces.slice(0, SESSION_ROW_LIMIT),
+        ...(perf === undefined ? {} : { perf }),
         // 角色归因：输出成本为实测；输入成本按 user/tool 消息字符占比摊分
         //（无任何消息内容的日志按五五均分兜底，整体属估算口径）。
         byRole: (() => {

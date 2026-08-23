@@ -17,11 +17,32 @@
 /** Plan type: code = subscription + quota, token = per-token usage. */
 export type PlanType = 'code' | 'token'
 
+/**
+ * 订阅档位知识（自动识别的「档位月费 + 周期额度口径」）：供订阅卡片在
+ * 厂商官方未提供实时额度接口时展示参考口径。currency 为原生币种；费用与
+ * 额度按官方订阅周期（天/周/月）计量时，periodDays 表述该重置周期。
+ */
+export interface PlanTier {
+  /** 档位月费（原生币种值）。 */
+  amount: number
+  currency: 'CNY' | 'USD'
+  /** 周期额度口径：每 periodDays 天重置的一个额度窗。 */
+  periodDays: number
+  /** 周期请求额度（若有）。 */
+  requests?: number
+  /** 周期 token 额度（若有）。 */
+  tokens?: number
+  /** 额度口径的人话描述（官方未公布精确额度时）。 */
+  label?: string
+}
+
 /** One plan row: provider id (after alias) → plan shape + optional subscription fee. */
 export interface PlanKnowledgeEntry {
   type: PlanType
   /** 订阅月费（人民币元）；code 计划用，计入「本月预计」。 */
   subscriptionCny?: number
+  /** 自动识别的档位月费与周期额度口径（订阅卡片展示）。 */
+  tier?: PlanTier
 }
 
 /**
@@ -29,8 +50,17 @@ export interface PlanKnowledgeEntry {
  * 覆盖我们实际会识别到的订阅通道；其余按量 API 不计入此表（默认 token）。
  */
 export const PLAN_KNOWLEDGE: Readonly<Record<string, PlanKnowledgeEntry>> = {
-  'opencode-go': { type: 'code', subscriptionCny: 70 },
-  opencode: { type: 'code', subscriptionCny: 70 },
+  'opencode-go': {
+    type: 'code',
+    subscriptionCny: 70,
+    // OpenCode Go 订阅制 $10/月，额度按周 $30（V4 Flash 约 79,050 请求/周）。
+    tier: { amount: 10, currency: 'USD', periodDays: 7, label: '周额度 $30' },
+  },
+  opencode: {
+    type: 'code',
+    subscriptionCny: 70,
+    tier: { amount: 10, currency: 'USD', periodDays: 7, label: '周额度 $30' },
+  },
   'kimi-coding': { type: 'code', subscriptionCny: 0 },
   'zai-coding-cn': { type: 'code', subscriptionCny: 0 },
   'zai-coding': { type: 'code', subscriptionCny: 0 },
@@ -55,6 +85,12 @@ export function planTypeOf(providerId: string): PlanType {
 export function subscriptionCnyOf(providerId: string): number {
   const entry = PLAN_KNOWLEDGE[providerId]
   return entry?.type === 'code' ? (entry.subscriptionCny ?? 0) : 0
+}
+
+/** 自动识别的档位月费与周期额度口径（订阅卡片展示）；无档位知识返回 undefined。 */
+export function tierInfoOf(providerId: string): PlanTier | undefined {
+  const entry = PLAN_KNOWLEDGE[providerId]
+  return entry?.type === 'code' ? entry.tier : undefined
 }
 
 /* ── dsh-spend 官方价表兜底（USD / 1M tokens）──────────────────────────────

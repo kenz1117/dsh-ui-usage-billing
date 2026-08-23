@@ -98,7 +98,12 @@ function queryDeepSeek(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance
   return queryBearerBalance(ctx, DEEPSEEK_BALANCE_URL, apiKeyEnv, 'deepseek', 'DeepSeek', (data) => {
     const doc = data as { is_available?: unknown; balance_infos?: unknown }
     const infos = Array.isArray(doc.balance_infos) ? doc.balance_infos : []
-    const info = infos[0] as { currency?: unknown; total_balance?: unknown; granted_balance?: unknown; topped_up_balance?: unknown } | undefined
+    const info = infos[0] as {
+      currency?: unknown
+      total_balance?: unknown
+      granted_balance?: unknown
+      topped_up_balance?: unknown
+    } | undefined
     const currency = typeof info?.currency === 'string' ? info.currency : undefined
     const totalBalance = toNumber(info?.total_balance)
     const grantedBalance = toNumber(info?.granted_balance)

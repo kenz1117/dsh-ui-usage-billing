@@ -121,7 +121,7 @@ export function apply(ctx: ClientContext): void {
         }
       },
       publishCosts: (costs) => { metrics.publishCosts(costs) },
-      registerOpen: (handler) => metrics.registerOpen(handler),
+      registerOpen: handler => metrics.registerOpen(handler),
     }),
   }, UsageBilling))
 

@@ -16,19 +16,22 @@ import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStor
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TrendChart, type TrendPoint } from './TrendChart.tsx'
+import { PerfPanel, type ClientPerf } from './PerfPanel.tsx'
 import { RoundCostChart, type RoundChartRow } from './round-chart.tsx'
 import { UsageHeatmap, type HeatmapDay } from './heatmap.tsx'
 import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
 import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv } from './export.ts'
 import type { createBillingBudgetStore } from './budget-store.ts'
 import {
-  applyLiveCatalogModels, applyLivePricing, catalogEntries, cnyToUsd, computeCost, convertUnitPrice, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
+  applyLiveCatalogModels, applyLivePricing, catalogEntries, cnyToUsd, computeCost, convertUnitPrice,
+  formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
   modelOf, resolveToken, tierAt, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
 import { localizeProviderName } from './provider-display.ts'
+import { tierInfoOf } from './plan-knowledge.ts'
 import { computePeakAlert, loadPeakAlertConfig, savePeakAlertConfig, type PeakAlertConfig, type PeakAlertHit } from './peak-alert.ts'
 import { PeakAlertBanner } from './PeakAlertBanner.tsx'
 import css from './UsageBilling.module.css'
@@ -253,6 +256,26 @@ export function peakOffpeakCost(turns: readonly { startedAt: number; cost: numbe
   return { peak, offPeak }
 }
 
+/** 近 7 天费用序列（含今天，缺日补 0）：触发卡 hover 速览的迷你柱数据源。
+ * 导出供测试：纯函数（日期取本地时区）。 */
+export function activeDaysOf(byDay: Record<string, { cost: number }>): number {
+  return Object.keys(byDay).length
+}
+
+/** 连续使用天数：从今天往前连续「有调用记录」的天数；今天无记录则为 0。
+ * 导出供测试：纯函数（日期取本地时区）。 */
+export function streakDaysOf(byDay: Record<string, { cost: number }>, now = Date.now()): number {
+  let streak = 0
+  const cursor = new Date(now)
+  for (;;) {
+    const key = localDayStamp(cursor.getTime())
+    if (!(key in byDay)) break
+    streak += 1
+    cursor.setDate(cursor.getDate() - 1)
+  }
+  return streak
+}
+
 /**
  * 近 7 天费用序列（含今天，缺日补 0）：触发卡 hover 速览的迷你柱数据源。
  * 导出供测试：纯函数（日期取本地时区）。
@@ -383,6 +406,8 @@ interface UsageStats {
   }[]
   /** 按角色费用归因（估算口径：输出实测，输入按消息长度摊分）；旧快照可能缺失。 */
   byRole?: { user: number; assistant: number; tool: number }
+  /** 性能指标（TTFT/生成速度/总延迟）按模型与按小时；旧快照可能缺失。 */
+  perf?: ClientPerf
 }
 
 /** Path to the usage-stats endpoint served by this plugin's node half. */
@@ -461,6 +486,12 @@ async function loadUsageStats(): Promise<UsageStats | null> {
       // 角色归因：旧快照缺失；仅接受对象形状（durable 边界，字段值由渲染处数值化兜底）。
       ...(candidate.byRole !== null && typeof candidate.byRole === 'object'
         ? { byRole: candidate.byRole as { user: number; assistant: number; tool: number } }
+        : {}),
+      // 性能指标：旧快照缺失；仅接受含 byModel/byHour 的对象形状。
+      ...(candidate.perf !== null && typeof candidate.perf === 'object'
+        && candidate.perf.byModel !== null && typeof candidate.perf.byModel === 'object'
+        && candidate.perf.byHour !== null && typeof candidate.perf.byHour === 'object'
+        ? { perf: candidate.perf as ClientPerf }
         : {}),
     }
   } catch {
@@ -600,7 +631,15 @@ interface ProviderBillingGroup {
  * （body[data-zine-mode] 选择器）隐藏，组件本身无 zine 分支。
  * @param props - framework props plus `wide` column state.
  */
-function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; monthCost: number; todayCost: number; weekCost: number; days: readonly { date: string; cost: number }[] }): React.ReactNode {
+function UsageBillingTrigger(
+  props: UsageBillingProps & {
+    onOpen: () => void
+    monthCost: number
+    todayCost: number
+    weekCost: number
+    days: readonly { date: string; cost: number }[]
+  },
+): React.ReactNode {
   const { wide, t, onOpen, monthCost, todayCost, weekCost, days } = props
 
   // 计费 icon：圆角矩 + 细线描边，窄栏与宽栏共用。
@@ -680,7 +719,7 @@ function UsageBillingTrigger(props: UsageBillingProps & { onOpen: () => void; mo
             <span
               key={days[index]?.date ?? String(index)}
               className={css.triggerPopBar}
-              style={{ height: `${sparkMax > 0 ? 4 + (days[index]!.cost / sparkMax) * 18 : 4}px` }}
+              style={{ height: `${sparkMax > 0 ? 4 + ((days[index]?.cost ?? 0) / sparkMax) * 18 : 4}px` }}
             />
           ))}
         </span>
@@ -724,12 +763,18 @@ interface BillingDashboardProps {
  * The centered billing dashboard modal.
  * @param props - stats, locale function, close handler, model health, balances, renderSlot.
  */
-function BillingDashboard({ stats, t, onClose, health, balances, quotas, currency, onCurrency, turns, renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount, peakConfig, onPeakConfig, onPreviewPeak }: BillingDashboardProps): React.ReactNode {
+function BillingDashboard({
+  stats, t, onClose, health, balances, quotas, currency, onCurrency, turns,
+  renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
+  peakConfig, onPeakConfig, onPreviewPeak,
+}: BillingDashboardProps): React.ReactNode {
   const { total, byModel, byDay } = stats
   // 分区 Tab：默认概览；各区块已进入二级 Tab，全部默认展开（无折叠交互）。
   const [tab, setTab] = useState<DashboardTab>('overview')
   // 趋势窗口：7 天 / 30 天切换（30 天窗口数据不足时按日补零）。
   const [trendDays, setTrendDays] = useState<7 | 30>(7)
+  // 热力图范围：月日历 / 近 52 周。
+  const [heatmapRange, setHeatmapRange] = useState<'month' | 'year'>('month')
 
   // 当前汇率与来源：供单价表标题展示（实时 / 内置）。
   const rateInfo = getRateInfo()
@@ -860,6 +905,9 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
     () => Object.entries(byDay).map(([date, day]) => ({ date, value: day.cost })),
     [byDay],
   )
+  // 活跃天数（有调用记录的天数）与连续使用天数（从今天往前连续的活跃日）。
+  const activeDays = activeDaysOf(byDay)
+  const streakDays = streakDaysOf(byDay)
 
   // Trend series for the SVG chart: each day's total plus its per-model cost
   // breakdown (byDayModels feeds the stacked columns; absent → single-color).
@@ -1092,837 +1140,894 @@ function BillingDashboard({ stats, t, onClose, health, balances, quotas, currenc
         {/* Scrollable body: 按 Tab 条件渲染分区。 */}
         <div className={css.dashboardBody}>
           {tab === 'overview' && (
-          <div className={css.tabPanel} data-testid="billing-tab-panel-overview">
-          {/* Hero: 液晶读数大屏 —— 左上「本月费用」大数字液晶表，右上环形仪表盘，底部一条「本年 / 今日 / 本月预计」读数排。 */}
-          <section
-            className={css.hero}
-            data-testid="billing-hero"
-          >
-            {/* ZINE: 装饰孔位（hero 锚点：撕角便签角标） */}
-            {renderSlot('billing.dashboard.decor', { position: 'hero' })}
-            <div className={css.heroTop}>
-              <div className={css.heroMain}>
-                <span className={css.heroLabel}>
-                  {t('billing.monthCost')}
-                </span>
-                <div className={css.heroReadout}>
-                  <span className={css.heroCurrency} aria-hidden="true">{currency === 'usd' ? '$' : '¥'}</span>
-                  <span className={css.heroValue}>
-                    {money(monthCost).slice(1)}
-                  </span>
-                </div>
-                <span className={css.heroMeta}>
-                  {monthCalls.toLocaleString()} {t('billing.calls')}
-                </span>
-              </div>
-              {/* 环形仪表盘：SVG stroke-dasharray 画弧，中心显示百分比与标签，
+            <div className={css.tabPanel} data-testid="billing-tab-panel-overview">
+              {/* Hero: 液晶读数大屏 —— 左上「本月费用」大数字液晶表，右上环形仪表盘，底部一条「本年 / 今日 / 本月预计」读数排。 */}
+              <section
+                className={css.hero}
+                data-testid="billing-hero"
+              >
+                {/* ZINE: 装饰孔位（hero 锚点：撕角便签角标） */}
+                {renderSlot('billing.dashboard.decor', { position: 'hero' })}
+                <div className={css.heroTop}>
+                  <div className={css.heroMain}>
+                    <span className={css.heroLabel}>
+                      {t('billing.monthCost')}
+                    </span>
+                    <div className={css.heroReadout}>
+                      <span className={css.heroCurrency} aria-hidden="true">{currency === 'usd' ? '$' : '¥'}</span>
+                      <span className={css.heroValue}>
+                        {money(monthCost).slice(1)}
+                      </span>
+                    </div>
+                    <span className={css.heroMeta}>
+                      {monthCalls.toLocaleString()} {t('billing.calls')}
+                    </span>
+                  </div>
+                  {/* 环形仪表盘：SVG stroke-dasharray 画弧，中心显示百分比与标签，
                   超支转红（预算口径下）。无预算时按本月占本年装饰。 */}
-              <div className={css.heroGauge} data-testid="billing-hero-gauge">
-                <svg
-                  className={css.heroGaugeSvg}
-                  viewBox="0 0 120 120"
-                  aria-hidden="true"
-                >
-                  <circle className={css.heroGaugeTrack} cx="60" cy="60" r="52" />
-                  <circle
-                    className={clsx(css.heroGaugeArc, heroGauge.over && css.heroGaugeArcOver)}
-                    cx="60"
-                    cy="60"
-                    r="52"
-                    style={{ strokeDasharray: `${(heroGauge.pct / 100) * 326.7} 326.7` }}
-                  />
-                </svg>
-                <span className={css.heroGaugeCenter}>
-                  <span className={clsx(css.heroGaugePct, heroGauge.over && css.heroGaugePctOver)}>
-                    {heroGauge.pct.toFixed(0)}%
-                  </span>
-                  <span className={css.heroGaugeLabel}>{heroGauge.label}</span>
-                </span>
-              </div>
-            </div>
-            <div className={css.heroSide}>
-              <div className={css.heroSideItem}>
-                <span className={css.heroSideLabel}>
-                  {t('billing.yearCost')}
-                </span>
-                <span className={css.heroSideValue}>
-                  {money(yearCost)}
-                </span>
-              </div>
-              <div className={css.heroSideItem}>
-                <span className={css.heroSideLabel}>
-                  {t('billing.todayCost')}
-                </span>
-                <span className={css.heroSideValue}>
-                  {money(todayCost)}
-                  <span className={clsx(css.delta, deltaPct >= 0 ? css.deltaUp : css.deltaDown)}>
-                    {deltaPct >= 0 ? '▲' : '▼'} {Math.abs(deltaPct).toFixed(1)}%
-                  </span>
-                </span>
-              </div>
-              {monthCostProjected > 0 && (
-                <div className={css.heroSideItem}>
-                  <span className={css.heroSideLabel}>
-                    {t('billing.monthProjected')}
-                  </span>
-                  <span className={css.heroSideValue}>
-                    {money(monthCostProjected)}
+                  <div className={css.heroGauge} data-testid="billing-hero-gauge">
+                    <svg
+                      className={css.heroGaugeSvg}
+                      viewBox="0 0 120 120"
+                      aria-hidden="true"
+                    >
+                      <circle className={css.heroGaugeTrack} cx="60" cy="60" r="52" />
+                      <circle
+                        className={clsx(css.heroGaugeArc, heroGauge.over && css.heroGaugeArcOver)}
+                        cx="60"
+                        cy="60"
+                        r="52"
+                        style={{ strokeDasharray: `${(heroGauge.pct / 100) * 326.7} 326.7` }}
+                      />
+                    </svg>
+                    <span className={css.heroGaugeCenter}>
+                      <span className={clsx(css.heroGaugePct, heroGauge.over && css.heroGaugePctOver)}>
+                        {heroGauge.pct.toFixed(0)}%
+                      </span>
+                      <span className={css.heroGaugeLabel}>{heroGauge.label}</span>
+                    </span>
+                  </div>
+                </div>
+                <div className={css.heroSide}>
+                  <div className={css.heroSideItem}>
+                    <span className={css.heroSideLabel}>
+                      {t('billing.yearCost')}
+                    </span>
+                    <span className={css.heroSideValue}>
+                      {money(yearCost)}
+                    </span>
+                  </div>
+                  <div className={css.heroSideItem}>
+                    <span className={css.heroSideLabel}>
+                      {t('billing.todayCost')}
+                    </span>
+                    <span className={css.heroSideValue}>
+                      {money(todayCost)}
+                      <span className={clsx(css.delta, deltaPct >= 0 ? css.deltaUp : css.deltaDown)}>
+                        {deltaPct >= 0 ? '▲' : '▼'} {Math.abs(deltaPct).toFixed(1)}%
+                      </span>
+                    </span>
+                  </div>
+                  {monthCostProjected > 0 && (
+                    <div className={css.heroSideItem}>
+                      <span className={css.heroSideLabel}>
+                        {t('billing.monthProjected')}
+                      </span>
+                      <span className={css.heroSideValue}>
+                        {money(monthCostProjected)}
+                      </span>
+                    </div>
+                  )}
+                  {/* 无本月预计时用占位行保持读数排三等分。 */}
+                  {monthCostProjected <= 0 && <span className={css.heroSideSpacer} aria-hidden="true" />}
+                </div>
+              </section>
+
+              {/* KPI grid */}
+              <section className={css.kpiGrid} data-testid="billing-kpi-grid">
+                <div className={css.kpiTile} data-testid="billing-kpi-tile">
+                  <span className={css.kpiLabel}>{t('billing.cacheHitRate')}</span>
+                  <span className={clsx(css.kpiValue, css.kpiGreen)}>{formatPercent(cacheHitRate)}</span>
+                  <span className={css.kpiDetail}>
+                    {formatTokens(total.cacheHit)} / {formatTokens(total.cacheHit + total.cacheMiss)}
                   </span>
                 </div>
-              )}
-              {/* 无本月预计时用占位行保持读数排三等分。 */}
-              {monthCostProjected <= 0 && <span className={css.heroSideSpacer} aria-hidden="true" />}
-            </div>
-          </section>
+                <div className={css.kpiTile}>
+                  <span className={css.kpiLabel}>{t('billing.tokens')}</span>
+                  <span className={css.kpiValue}>{formatTokens(total.input + total.output)}</span>
+                  <span className={css.kpiDetail}>
+                    {t('billing.inputTokens')} {formatTokens(total.input)} · {t('billing.outputTokens')} {formatTokens(total.output)}
+                  </span>
+                </div>
+                <div className={css.kpiTile}>
+                  <span className={css.kpiLabel}>{t('billing.avgCost')}</span>
+                  <span className={css.kpiValue}>{money(avgPerCall)}</span>
+                  <span className={css.kpiDetail}>{t('billing.calls')} {total.calls.toLocaleString()}</span>
+                </div>
+                <div className={css.kpiTile}>
+                  <span className={css.kpiLabel}>{t('billing.calls')}</span>
+                  <span className={css.kpiValue}>{total.calls.toLocaleString()}</span>
+                  <span className={css.kpiDetail}>{modelRows.length} {t('billing.models')}</span>
+                </div>
+              </section>
 
-          {/* KPI grid */}
-          <section className={css.kpiGrid} data-testid="billing-kpi-grid">
-            <div className={css.kpiTile} data-testid="billing-kpi-tile">
-              <span className={css.kpiLabel}>{t('billing.cacheHitRate')}</span>
-              <span className={clsx(css.kpiValue, css.kpiGreen)}>{formatPercent(cacheHitRate)}</span>
-              <span className={css.kpiDetail}>
-                {formatTokens(total.cacheHit)} / {formatTokens(total.cacheHit + total.cacheMiss)}
-              </span>
+              {/* 用量热力图：概览常驻区块（月历信息密度高，进入二级 Tab 后不再折叠）。
+              头部带「活跃天数 / 连续使用」摘要与 月/年 范围切换。 */}
+              <section className={css.panel} data-testid="billing-panel-heatmap">
+                <div className={css.panelHead}>
+                  <h3 className={css.panelTitle}>
+                    {t('billing.heatmap')}
+                  </h3>
+                  <span className={css.rangeToggle} role="group" aria-label={t('billing.heatmap')}>
+                    {(['month', 'year'] as const).map(range => (
+                      <button
+                        key={range}
+                        type="button"
+                        className={clsx(css.rangeButton, heatmapRange === range && css.rangeButtonActive)}
+                        aria-pressed={heatmapRange === range}
+                        data-testid={`billing-heatmap-${range}`}
+                        onClick={() => { setHeatmapRange(range) }}
+                      >
+                        {range === 'month' ? t('billing.heatmapMonth') : t('billing.heatmapYear')}
+                      </button>
+                    ))}
+                  </span>
+                  <span className={css.panelHint} data-testid="billing-heatmap-summary">
+                    {t('billing.activeDays')} {activeDays} · {t('billing.streakDays')} {streakDays}
+                  </span>
+                </div>
+                <UsageHeatmap days={heatmapDays} currency={currency} t={t} range={heatmapRange} />
+              </section>
             </div>
-            <div className={css.kpiTile}>
-              <span className={css.kpiLabel}>{t('billing.tokens')}</span>
-              <span className={css.kpiValue}>{formatTokens(total.input + total.output)}</span>
-              <span className={css.kpiDetail}>
-                {t('billing.inputTokens')} {formatTokens(total.input)} · {t('billing.outputTokens')} {formatTokens(total.output)}
-              </span>
-            </div>
-            <div className={css.kpiTile}>
-              <span className={css.kpiLabel}>{t('billing.avgCost')}</span>
-              <span className={css.kpiValue}>{money(avgPerCall)}</span>
-              <span className={css.kpiDetail}>{t('billing.calls')} {total.calls.toLocaleString()}</span>
-            </div>
-            <div className={css.kpiTile}>
-              <span className={css.kpiLabel}>{t('billing.calls')}</span>
-              <span className={css.kpiValue}>{total.calls.toLocaleString()}</span>
-              <span className={css.kpiDetail}>{modelRows.length} {t('billing.models')}</span>
-            </div>
-          </section>
-
-          {/* 用量热力图：概览常驻区块（月历信息密度高，进入二级 Tab 后不再折叠）。 */}
-          <section className={css.panel} data-testid="billing-panel-heatmap">
-            <div className={css.panelHead}>
-              <h3 className={css.panelTitle}>
-                {t('billing.heatmap')}
-              </h3>
-            </div>
-            <UsageHeatmap days={heatmapDays} currency={currency} t={t} />
-          </section>
-          </div>
           )}
 
           {tab === 'settings' && (
-          <div className={css.tabPanel} data-testid="billing-tab-panel-settings">
-          <div className={css.settingsHead}>
-            <h3 className={css.settingsTitle}>{t('billing.settingsHead')}</h3>
-            <p className={css.settingsHint}>{t('billing.settingsHint')}</p>
-          </div>
-          {/* 月度预算：开关控制显隐（持久化到 localStorage），金额可编辑，宿主 monthlyBudget 作为默认值；超支进度条转红。 */}
-          <section className={css.budget} data-testid="billing-budget">
-            <div className={css.budgetHead}>
-              <span className={css.budgetLabel}>{t('billing.budget')}</span>
-              <span className={css.budgetControls}>
-                {budgetEnabled && (
-                  <span className={css.budgetInputWrap} data-testid="billing-budget-input-wrap">
-                    {/* 单位符号：预算以人民币元计，避免误填分/美元。 */}
-                    <span className={css.budgetUnit} aria-hidden="true">¥</span>
-                    <input
-                      className={css.budgetInput}
-                      data-testid="billing-budget-input"
-                      type="number"
-                      min={0}
-                      step={1}
-                      value={budgetAmount === 0 ? '' : budgetAmount}
-                      placeholder={stats.budget !== undefined ? String(stats.budget) : '0'}
-                      aria-label={`${t('billing.budget')}（${currency === 'usd' ? 'USD' : 'CNY'}）`}
-                      title={`${t('billing.budget')}（${currency === 'usd' ? 'USD' : 'CNY'}）`}
-                      onChange={(e) => { onBudgetAmount(e.target.valueAsNumber) }}
-                    />
+            <div className={css.tabPanel} data-testid="billing-tab-panel-settings">
+              <div className={css.settingsHead}>
+                <h3 className={css.settingsTitle}>{t('billing.settingsHead')}</h3>
+                <p className={css.settingsHint}>{t('billing.settingsHint')}</p>
+              </div>
+              {/* 月度预算：开关控制显隐（持久化到 localStorage），金额可编辑，宿主 monthlyBudget 作为默认值；超支进度条转红。 */}
+              <section className={css.budget} data-testid="billing-budget">
+                <div className={css.budgetHead}>
+                  <span className={css.budgetLabel}>{t('billing.budget')}</span>
+                  <span className={css.budgetControls}>
+                    {budgetEnabled && (
+                      <span className={css.budgetInputWrap} data-testid="billing-budget-input-wrap">
+                        {/* 单位符号：预算以人民币元计，避免误填分/美元。 */}
+                        <span className={css.budgetUnit} aria-hidden="true">¥</span>
+                        <input
+                          className={css.budgetInput}
+                          data-testid="billing-budget-input"
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={budgetAmount === 0 ? '' : budgetAmount}
+                          placeholder={stats.budget !== undefined ? String(stats.budget) : '0'}
+                          aria-label={`${t('billing.budget')}（${currency === 'usd' ? 'USD' : 'CNY'}）`}
+                          title={`${t('billing.budget')}（${currency === 'usd' ? 'USD' : 'CNY'}）`}
+                          onChange={(e) => { onBudgetAmount(e.target.valueAsNumber) }}
+                        />
+                      </span>
+                    )}
+                    {budgetEnabled && budgetAmount > 0 && (() => {
+                      const pct = (monthCost / budgetAmount) * 100
+                      return (
+                        <span className={css.budgetValue} data-testid="billing-budget-value">
+                          {money(monthCost)} / {money(budgetAmount)} · {pct.toFixed(1)}%
+                        </span>
+                      )
+                    })()}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={budgetEnabled}
+                      aria-label={t('billing.budget')}
+                      data-testid="billing-budget-toggle"
+                      className={clsx(css.switch, budgetEnabled && css.switchOn)}
+                      onClick={onToggleBudget}
+                    >
+                      <span className={css.switchKnob} />
+                    </button>
                   </span>
-                )}
+                </div>
+                <p className={css.budgetHint}>{t('billing.budgetHint')}</p>
                 {budgetEnabled && budgetAmount > 0 && (() => {
                   const pct = (monthCost / budgetAmount) * 100
                   return (
-                    <span className={css.budgetValue} data-testid="billing-budget-value">
-                      {money(monthCost)} / {money(budgetAmount)} · {pct.toFixed(1)}%
-                    </span>
+                    <div className={css.budgetTrack} data-testid="billing-budget-track">
+                      {/* 分档变色：≥80% 琥珀警示，≥100% 红色脉冲。 */}
+                      <div
+                        className={clsx(css.budgetFill, pct >= 100 && css.budgetFillOver, pct >= 80 && pct < 100 && css.budgetFillWarn)}
+                        style={{ width: `${Math.min(pct, 100)}%` }}
+                      />
+                    </div>
                   )
                 })()}
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={budgetEnabled}
-                  aria-label={t('billing.budget')}
-                  data-testid="billing-budget-toggle"
-                  className={clsx(css.switch, budgetEnabled && css.switchOn)}
-                  onClick={onToggleBudget}
-                >
-                  <span className={css.switchKnob} />
-                </button>
-              </span>
-            </div>
-            <p className={css.budgetHint}>{t('billing.budgetHint')}</p>
-            {budgetEnabled && budgetAmount > 0 && (() => {
-              const pct = (monthCost / budgetAmount) * 100
-              return (
-                <div className={css.budgetTrack} data-testid="billing-budget-track">
-                  {/* 分档变色：≥80% 琥珀警示，≥100% 红色脉冲。 */}
-                  <div
-                    className={clsx(css.budgetFill, pct >= 100 && css.budgetFillOver, pct >= 80 && pct < 100 && css.budgetFillWarn)}
-                    style={{ width: `${Math.min(pct, 100)}%` }}
-                  />
-                </div>
-              )
-            })()}
-          </section>
+              </section>
 
-          {/* 峰谷切换提醒：开关 + 提前量/位置/模式/系统通知 + 预览（偏好持久化到 localStorage）。 */}
-          <section className={css.peakAlertPanel} data-testid="billing-peak-alert-settings">
-            <div className={css.peakAlertPanelHead}>
-              <span className={css.peakAlertPanelLabel}>{t('billing.peakAlert')}</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={peakConfig.enabled}
-                aria-label={t('billing.peakAlert')}
-                data-testid="billing-peak-alert-toggle"
-                className={clsx(css.switch, peakConfig.enabled && css.switchOn)}
-                onClick={() => { onPeakConfig({ ...peakConfig, enabled: !peakConfig.enabled }) }}
-              >
-                <span className={css.switchKnob} />
-              </button>
+              {/* 峰谷切换提醒：开关 + 提前量/位置/模式/系统通知 + 预览（偏好持久化到 localStorage）。 */}
+              <section className={css.peakAlertPanel} data-testid="billing-peak-alert-settings">
+                <div className={css.peakAlertPanelHead}>
+                  <span className={css.peakAlertPanelLabel}>{t('billing.peakAlert')}</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={peakConfig.enabled}
+                    aria-label={t('billing.peakAlert')}
+                    data-testid="billing-peak-alert-toggle"
+                    className={clsx(css.switch, peakConfig.enabled && css.switchOn)}
+                    onClick={() => { onPeakConfig({ ...peakConfig, enabled: !peakConfig.enabled }) }}
+                  >
+                    <span className={css.switchKnob} />
+                  </button>
+                </div>
+                <p className={css.peakAlertHint}>{t('billing.peakAlertHint')}</p>
+                {peakConfig.enabled && (
+                  <div className={css.peakAlertPanelBody}>
+                    <label className={css.peakAlertField}>
+                      <span>{t('billing.peakAlertLeadMin')}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        step={1}
+                        value={peakConfig.leadMin}
+                        className={css.peakAlertNum}
+                        aria-label={t('billing.peakAlertLeadMin')}
+                        onChange={(e) => {
+                          const v = Number(e.target.valueAsNumber)
+                          onPeakConfig({
+                            ...peakConfig,
+                            leadMin: Number.isFinite(v) ? Math.min(30, Math.max(1, Math.round(v))) : peakConfig.leadMin,
+                          })
+                        }}
+                      />
+                    </label>
+                    <label className={css.peakAlertField}>
+                      <span>{t('billing.peakAlertPosCorner')}</span>
+                      <select
+                        value={peakConfig.position}
+                        className={css.peakAlertSelect}
+                        onChange={(e) => { onPeakConfig({ ...peakConfig, position: e.target.value === 'center' ? 'center' : 'bottom-right' }) }}
+                      >
+                        <option value="bottom-right">{t('billing.peakAlertPosCorner')}</option>
+                        <option value="center">{t('billing.peakAlertPosCenter')}</option>
+                      </select>
+                    </label>
+                    <label className={css.peakAlertField}>
+                      <span>{t('billing.peakAlert')}</span>
+                      <select
+                        value={peakConfig.mode}
+                        className={css.peakAlertSelect}
+                        onChange={(e) => {
+                          const m = e.target.value
+                          onPeakConfig({ ...peakConfig, mode: m === 'peak' || m === 'offPeak' ? m : 'both' })
+                        }}
+                      >
+                        <option value="both">{t('billing.peakAlertModeBoth')}</option>
+                        <option value="peak">{t('billing.peakAlertModePeak')}</option>
+                        <option value="offPeak">{t('billing.peakAlertModeOff')}</option>
+                      </select>
+                    </label>
+                    <label className={css.peakAlertCheck}>
+                      <input
+                        type="checkbox"
+                        checked={peakConfig.webNotify}
+                        onChange={(e) => { onPeakConfig({ ...peakConfig, webNotify: e.target.checked }) }}
+                      />
+                      <span>{t('billing.peakAlertWebNotify')}</span>
+                    </label>
+                    <button type="button" className={css.peakAlertPreview} onClick={onPreviewPeak}>
+                      {t('billing.peakAlertPreview')}
+                    </button>
+                  </div>
+                )}
+              </section>
             </div>
-            <p className={css.peakAlertHint}>{t('billing.peakAlertHint')}</p>
-            {peakConfig.enabled && (
-              <div className={css.peakAlertPanelBody}>
-                <label className={css.peakAlertField}>
-                  <span>{t('billing.peakAlertLeadMin')}</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={30}
-                    step={1}
-                    value={peakConfig.leadMin}
-                    className={css.peakAlertNum}
-                    aria-label={t('billing.peakAlertLeadMin')}
-                    onChange={(e) => {
-                      const v = Number(e.target.valueAsNumber)
-                      onPeakConfig({ ...peakConfig, leadMin: Number.isFinite(v) ? Math.min(30, Math.max(1, Math.round(v))) : peakConfig.leadMin })
-                    }}
-                  />
-                </label>
-                <label className={css.peakAlertField}>
-                  <span>{t('billing.peakAlertPosCorner')}</span>
-                  <select
-                    value={peakConfig.position}
-                    className={css.peakAlertSelect}
-                    onChange={(e) => { onPeakConfig({ ...peakConfig, position: e.target.value === 'center' ? 'center' : 'bottom-right' }) }}
-                  >
-                    <option value="bottom-right">{t('billing.peakAlertPosCorner')}</option>
-                    <option value="center">{t('billing.peakAlertPosCenter')}</option>
-                  </select>
-                </label>
-                <label className={css.peakAlertField}>
-                  <span>{t('billing.peakAlert')}</span>
-                  <select
-                    value={peakConfig.mode}
-                    className={css.peakAlertSelect}
-                    onChange={(e) => {
-                      const m = e.target.value
-                      onPeakConfig({ ...peakConfig, mode: m === 'peak' || m === 'offPeak' ? m : 'both' })
-                    }}
-                  >
-                    <option value="both">{t('billing.peakAlertModeBoth')}</option>
-                    <option value="peak">{t('billing.peakAlertModePeak')}</option>
-                    <option value="offPeak">{t('billing.peakAlertModeOff')}</option>
-                  </select>
-                </label>
-                <label className={css.peakAlertCheck}>
-                  <input
-                    type="checkbox"
-                    checked={peakConfig.webNotify}
-                    onChange={(e) => { onPeakConfig({ ...peakConfig, webNotify: e.target.checked }) }}
-                  />
-                  <span>{t('billing.peakAlertWebNotify')}</span>
-                </label>
-                <button type="button" className={css.peakAlertPreview} onClick={onPreviewPeak}>
-                  {t('billing.peakAlertPreview')}
-                </button>
-              </div>
-            )}
-          </section>
-          </div>
           )}
 
           {tab === 'trends' && (
-          <div className={css.tabPanel} data-testid="billing-tab-panel-trends">
-          {/* Trend chart */}
-          <section
-            className={clsx(css.panel, css.trendPanel)}
-            data-testid="billing-panel-trend"
-          >
-            <div className={css.panelHead}>
-              <h3 className={css.panelTitle}>
-                {t('billing.trend')}
-              </h3>
-              {renderSlot('billing.dashboard.decor', { position: 'trend' })}
-              <span className={css.rangeToggle} role="group" aria-label={t('billing.trend')}>
-                {([7, 30] as const).map(days => (
-                  <button
-                    key={days}
-                    type="button"
-                    className={clsx(css.rangeButton, trendDays === days && css.rangeButtonActive)}
-                    aria-pressed={trendDays === days}
-                    data-testid={`billing-trend-${days}d`}
-                    onClick={() => { setTrendDays(days) }}
-                  >
-                    {days === 7 ? t('billing.trend7d') : t('billing.trend30d')}
-                  </button>
-                ))}
-              </span>
-              <span className={css.panelHint}>
-                {latestDate}
-              </span>
-            </div>
-            <TrendChart data={trend} models={chartModels} currency={currency} />
-          </section>
-
-          {/* 每轮费用 + 成本突增异常（趋势 Tab 内默认展开）。 */}
-          {turns.length > 0 && (
-            <section className={css.panel} data-testid="billing-panel-rounds">
-              <div className={css.panelHead}>
-                <h3 className={css.panelTitle}>
-                  {t('billing.rounds')}
-                </h3>
-                {roundFlags.length > 0 && (
-                  <span className={css.roundsFlagBadge} data-testid="billing-rounds-flag-count">
-                    {roundFlags.length} {t('billing.anomaly')}
-                  </span>
-                )}
-              </div>
-              <RoundCostChart
-                rounds={turns}
-                flags={roundFlags}
-                currency={currency}
-                t={t}
-              />
-            </section>
-          )}
-
-          {/* 峰谷时段占比：近 N 轮费用按北京时间高峰/空闲分摊（精确到轮）。 */}
-          {turns.length > 0 && (() => {
-            const shareTotal = peakShare.peak + peakShare.offPeak
-            if (shareTotal <= 0) return null
-            const peakPct = (peakShare.peak / shareTotal) * 100
-            return (
-              <section className={css.panel} data-testid="billing-panel-share">
+            <div className={css.tabPanel} data-testid="billing-tab-panel-trends">
+              {/* Trend chart */}
+              <section
+                className={clsx(css.panel, css.trendPanel)}
+                data-testid="billing-panel-trend"
+              >
                 <div className={css.panelHead}>
                   <h3 className={css.panelTitle}>
-                    {t('billing.peakShare')}
+                    {t('billing.trend')}
                   </h3>
+                  {renderSlot('billing.dashboard.decor', { position: 'trend' })}
+                  <span className={css.rangeToggle} role="group" aria-label={t('billing.trend')}>
+                    {([7, 30] as const).map(days => (
+                      <button
+                        key={days}
+                        type="button"
+                        className={clsx(css.rangeButton, trendDays === days && css.rangeButtonActive)}
+                        aria-pressed={trendDays === days}
+                        data-testid={`billing-trend-${days}d`}
+                        onClick={() => { setTrendDays(days) }}
+                      >
+                        {days === 7 ? t('billing.trend7d') : t('billing.trend30d')}
+                      </button>
+                    ))}
+                  </span>
                   <span className={css.panelHint}>
-                    {t('billing.peakShareHint').replace('{count}', String(turns.length))}
+                    {latestDate}
                   </span>
                 </div>
-                <div className={css.shareTrack} data-testid="billing-share-track">
-                  <div className={clsx(css.shareSeg, css.shareSegPeak)} style={{ width: `${peakPct}%` }} />
-                  <div className={clsx(css.shareSeg, css.shareSegOff)} style={{ width: `${100 - peakPct}%` }} />
-                </div>
-                <div className={css.shareLegend}>
-                  <span className={css.shareItem}>
-                    <span className={css.shareDot} style={{ background: 'var(--dsw-static-blue-500)' }} />
-                    {t('billing.peak')}
-                    <span className={css.shareValue} data-testid="billing-share-peak">
-                      {money(peakShare.peak)} · {peakPct.toFixed(1)}%
-                    </span>
-                  </span>
-                  <span className={css.shareItem}>
-                    <span className={css.shareDot} style={{ background: 'color-mix(in srgb, var(--dsw-static-blue-500) 30%, var(--dsw-alias-bg-module-platform))' }} />
-                    {t('billing.offPeak')}
-                    <span className={css.shareValue} data-testid="billing-share-offpeak">
-                      {money(peakShare.offPeak)} · {(100 - peakPct).toFixed(1)}%
-                    </span>
-                  </span>
-                </div>
+                <TrendChart data={trend} models={chartModels} currency={currency} />
               </section>
-            )
-          })()}
-          </div>
+
+              {/* 每轮费用 + 成本突增异常（趋势 Tab 内默认展开）。 */}
+              {turns.length > 0 && (
+                <section className={css.panel} data-testid="billing-panel-rounds">
+                  <div className={css.panelHead}>
+                    <h3 className={css.panelTitle}>
+                      {t('billing.rounds')}
+                    </h3>
+                    {roundFlags.length > 0 && (
+                      <span className={css.roundsFlagBadge} data-testid="billing-rounds-flag-count">
+                        {roundFlags.length} {t('billing.anomaly')}
+                      </span>
+                    )}
+                  </div>
+                  <RoundCostChart
+                    rounds={turns}
+                    flags={roundFlags}
+                    currency={currency}
+                    t={t}
+                  />
+                </section>
+              )}
+
+              {/* 峰谷时段占比：近 N 轮费用按北京时间高峰/空闲分摊（精确到轮）。 */}
+              {turns.length > 0 && (() => {
+                const shareTotal = peakShare.peak + peakShare.offPeak
+                if (shareTotal <= 0) return null
+                const peakPct = (peakShare.peak / shareTotal) * 100
+                return (
+                  <section className={css.panel} data-testid="billing-panel-share">
+                    <div className={css.panelHead}>
+                      <h3 className={css.panelTitle}>
+                        {t('billing.peakShare')}
+                      </h3>
+                      <span className={css.panelHint}>
+                        {t('billing.peakShareHint').replace('{count}', String(turns.length))}
+                      </span>
+                    </div>
+                    <div className={css.shareTrack} data-testid="billing-share-track">
+                      <div className={clsx(css.shareSeg, css.shareSegPeak)} style={{ width: `${peakPct}%` }} />
+                      <div className={clsx(css.shareSeg, css.shareSegOff)} style={{ width: `${100 - peakPct}%` }} />
+                    </div>
+                    <div className={css.shareLegend}>
+                      <span className={css.shareItem}>
+                        <span className={css.shareDot} style={{ background: 'var(--dsw-static-blue-500)' }} />
+                        {t('billing.peak')}
+                        <span className={css.shareValue} data-testid="billing-share-peak">
+                          {money(peakShare.peak)} · {peakPct.toFixed(1)}%
+                        </span>
+                      </span>
+                      <span className={css.shareItem}>
+                        <span className={css.shareDot} style={{ background: 'color-mix(in srgb, var(--dsw-static-blue-500) 30%, var(--dsw-alias-bg-module-platform))' }} />
+                        {t('billing.offPeak')}
+                        <span className={css.shareValue} data-testid="billing-share-offpeak">
+                          {money(peakShare.offPeak)} · {(100 - peakPct).toFixed(1)}%
+                        </span>
+                      </span>
+                    </div>
+                  </section>
+                )
+              })()}
+            </div>
           )}
 
           {tab === 'providers' && (
-          <div className={css.tabPanel} data-testid="billing-tab-panel-providers">
-          {/* 厂商计费与订阅：单一容器按厂商聚合模型用量与订阅额度。
+            <div className={css.tabPanel} data-testid="billing-tab-panel-providers">
+              {/* 厂商计费与订阅：单一容器按厂商聚合模型用量与订阅额度。
               厂商组同时容纳非订阅按量模型（无订阅额度也成组）与订阅套餐
               （无用量也成组）；余额与健康点只在厂商头部显示一次。 */}
-          <section className={css.panel} data-testid="billing-panel-providers">
-            <div className={css.panelHead}>
-              <h3 className={css.panelTitle}>
-                {t('billing.providerBilling')}
-              </h3>
-              {renderSlot('billing.dashboard.decor', { position: 'models' })}
-              {/* 更新时间精确到时分秒；旧快照没有时间戳时留空。 */}
-              <span className={css.panelHint}>
-                {stats.updatedAt !== undefined
-                  ? `${t('billing.lastUpdated')} ${formatClock(stats.updatedAt)}`
-                  : ''}
-              </span>
-            </div>
-            {providerGroups.length === 0 ? (
-              <div className={css.emptyRow} data-testid="billing-provider-empty">
-                {t('billing.noData')}
-              </div>
-            ) : (
-              <div className={css.providerGroupList} data-testid="billing-provider-groups">
-                {providerGroups.map(group => (
-                  <div key={group.name} className={css.providerGroup} data-testid="billing-provider-group">
-                    {/* 厂商组头部：厂商名 + 健康点 + 订阅套数 + 厂商余额（只显示一次）。 */}
-                    <div className={css.providerGroupHead}>
-                      <span className={css.providerGroupTitle}>
-                        <span className={clsx(css.healthDot, group.dot)} aria-hidden="true" />
-                        <span className={css.providerGroupName}>{providerName(group.name)}</span>
-                      </span>
-                      <span className={css.providerGroupMeta}>
-                        {group.subscriptions.length > 0 && (
-                          <span className={css.providerGroupBadge} data-testid="billing-provider-sub-count">
-                            {group.subscriptions.length} 套餐
-                          </span>
-                        )}
-                        {group.balance !== undefined && (
-                          <span className={css.providerGroupBalance} data-testid="billing-provider-balance">
-                            <span className={css.providerGroupBalanceLabel}>{t('billing.balance')}</span>
-                            {renderBalance(group.balance)}
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    {/* 模型用量子表：无余额列（余额已在厂商头部显示一次）。 */}
-                    {group.models.length > 0 && (
-                      <div className={clsx(css.tableScroll, css.modelTableScroll)} data-testid="billing-table-scroll">
-                        <table className={css.modelTable}>
-                          <thead>
-                            <tr>
-                              <th>{t('billing.model')}</th>
-                              <th className={css.numCol}>{t('billing.calls')}</th>
-                              <th className={css.numCol}>{t('billing.inputTokens')}</th>
-                              <th className={css.numCol}>{t('billing.outputTokens')}</th>
-                              <th className={css.numCol}>{t('billing.cacheHitRate')}</th>
-                              <th className={css.numCol}>{t('billing.actual')}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {group.models.map(row => (
-                              <tr key={row.key}>
-                                <td>
-                                  <span className={css.modelCell}>
-                                    <span>
-                                      <span className={css.modelName}>
-                                        {row.name}
-                                        {/* 未收录：真实 id 不在计费目录，费用按兜底档估算，明确标注。 */}
-                                        {row.uncatalogued && (
-                                          <span className={css.uncataloguedTag} data-testid="billing-uncatalogued-tag">
-                                            {t('billing.uncatalogued')}
-                                          </span>
-                                        )}
-                                        {/* 估算价：厂商未公布官方按量单价，避免误当正式定价。 */}
-                                        {row.estimatedPricing && (
-                                          <span className={css.estimatedTag} data-testid="billing-estimated-tag">
-                                            {t('billing.estimatedPricing')}
-                                          </span>
-                                        )}
-                                      </span>
-                                      <span className={css.modelProvider}>{providerName(row.provider)}</span>
-                                    </span>
-                                  </span>
-                                </td>
-                                <td className={css.numCol}>{row.calls.toLocaleString()}</td>
-                                <td className={css.numCol}>{formatTokens(row.input)}</td>
-                                <td className={css.numCol}>{formatTokens(row.output)}</td>
-                                <td className={css.numCol}>{formatPercent(row.cacheHitRate)}</td>
-                                <td className={css.numCol}>
-                                  {row.plan
-                                    ? <span className={css.planTag}>{t('billing.subscriptionIncluded')}</span>
-                                    : row.actual !== undefined
-                                      ? (() => {
-                                          const official = row.officialCost
-                                          const third = row.actual - official
-                                          // 纯官方 / 纯三方 / 混合三态：混合时分解展示。
-                                          if (official > 0 && third > 0) {
-                                            return (
-                                              <span className={css.bucketCost}>
-                                                <span className={css.bucketOfficial}>{money(official)}</span>
-                                                <span className={css.bucketSep}>/</span>
-                                                <span className={css.bucketThird}>{money(third)}</span>
-                                              </span>
-                                            )
-                                          }
-                                          return money(row.actual)
-                                        })()
-                                      : <span className={css.na}>—</span>}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                    {/* 订阅额度卡片：归并到对应模型厂商，随厂商组展示。 */}
-                    {group.subscriptions.length > 0 && (
-                      <div className={css.subscriptionGrid} data-testid="billing-subscriptions-grid">
-                        {group.subscriptions.map(quota => {
-                          const statusText = subscriptionStatusText(quota.status, t)
-                          return (
-                            <div key={quota.provider} className={css.subscriptionCard} data-testid="billing-subscription-card">
-                              <div className={css.subscriptionHead}>
-                                <span className={css.subscriptionName}>{providerName(quota.displayName)}</span>
-                                {/* plan 双口径徽标（dsh-spend）：订阅制/按量；订阅制附月费。 */}
-                                {quota.planType === 'code' && (
-                                  <span className={css.subscriptionPlan} data-kind="code">
-                                    {quota.subscriptionAmount !== undefined && quota.subscriptionAmount > 0
-                                      ? t('billing.subscriptionFeePerMonth').replace('{amount}', money(quota.subscriptionAmount))
-                                      : t('billing.planTypeCode')}
-                                  </span>
-                                )}
-                                {quota.planType === 'token' && <span className={css.subscriptionPlan} data-kind="token">{t('billing.planTypeToken')}</span>}
-                                {quota.plan !== undefined && <span className={css.subscriptionPlan}>{quota.plan}</span>}
-                              </div>
-                              {statusText !== '' && <div className={css.subscriptionStatus}>{statusText}</div>}
-                              {quota.windows.length === 0 && statusText === '' && (
-                                <div className={css.subscriptionStatus}>{t('billing.subscriptionNoApi')}</div>
-                              )}
-                              {quota.windows.map(window => (() => {
-                                const used = Math.min(100, Math.max(0, window.usedPercent))
-                                const remaining = Math.min(100, Math.max(0, window.remainingPercent))
-                                const exhausted = remaining <= 0
-                                return (
-                                  <div key={window.kind} className={css.subscriptionWindow}>
-                                    <span className={css.subscriptionWindowLabel}>{subscriptionWindowLabel(window.kind, t)}</span>
-                                    <span className={css.subscriptionTrack} aria-hidden="true">
-                                      {/* 进度条按「已用」比例填充（与预算条同语义）：用尽时满格红，行恒可见。 */}
-                                      <span
-                                        className={clsx(css.subscriptionFill, used >= 100 && css.subscriptionFillOver, used >= 80 && used < 100 && css.subscriptionFillWarn)}
-                                        style={{ width: `${used}%` }}
-                                      />
-                                    </span>
-                                    <span className={clsx(css.subscriptionPct, exhausted && css.subscriptionExhausted)}>
-                                      {exhausted
-                                        ? t('billing.subscriptionExhausted')
-                                        : t('billing.subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
-                                    </span>
-                                    {window.resetsAt !== undefined && (
-                                      <span className={css.subscriptionReset}>
-                                        {/* 重置时间精确到时分秒（本地时区）。 */}
-                                        {t('billing.subscriptionReset').replace('{date}', `${localDayStamp(new Date(window.resetsAt).getTime())} ${formatClock(new Date(window.resetsAt).getTime())}`)}
-                                      </span>
-                                    )}
-                                  </div>
-                                )
-                              })())}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
+              <section className={css.panel} data-testid="billing-panel-providers">
+                <div className={css.panelHead}>
+                  <h3 className={css.panelTitle}>
+                    {t('billing.providerBilling')}
+                  </h3>
+                  {renderSlot('billing.dashboard.decor', { position: 'models' })}
+                  {/* 更新时间精确到时分秒；旧快照没有时间戳时留空。 */}
+                  <span className={css.panelHint}>
+                    {stats.updatedAt !== undefined
+                      ? `${t('billing.lastUpdated')} ${formatClock(stats.updatedAt)}`
+                      : ''}
+                  </span>
+                </div>
+                {providerGroups.length === 0 ? (
+                  <div className={css.emptyRow} data-testid="billing-provider-empty">
+                    {t('billing.noData')}
                   </div>
-                ))}
-              </div>
-            )}
-          </section>
-          </div>
+                ) : (
+                  <div className={css.providerGroupList} data-testid="billing-provider-groups">
+                    {providerGroups.map(group => (
+                      <div key={group.name} className={css.providerGroup} data-testid="billing-provider-group">
+                        {/* 厂商组头部：厂商名 + 健康点 + 订阅套数 + 厂商余额（只显示一次）。 */}
+                        <div className={css.providerGroupHead}>
+                          <span className={css.providerGroupTitle}>
+                            <span className={clsx(css.healthDot, group.dot)} aria-hidden="true" />
+                            <span className={css.providerGroupName}>{providerName(group.name)}</span>
+                          </span>
+                          <span className={css.providerGroupMeta}>
+                            {group.subscriptions.length > 0 && (
+                              <span className={css.providerGroupBadge} data-testid="billing-provider-sub-count">
+                                {group.subscriptions.length} 套餐
+                              </span>
+                            )}
+                            {group.balance !== undefined && (
+                              <span className={css.providerGroupBalance} data-testid="billing-provider-balance">
+                                <span className={css.providerGroupBalanceLabel}>{t('billing.balance')}</span>
+                                {renderBalance(group.balance)}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        {/* 模型用量子表：无余额列（余额已在厂商头部显示一次）。 */}
+                        {group.models.length > 0 && (
+                          <div className={clsx(css.tableScroll, css.modelTableScroll)} data-testid="billing-table-scroll">
+                            <table className={css.modelTable}>
+                              <thead>
+                                <tr>
+                                  <th>{t('billing.model')}</th>
+                                  <th className={css.numCol}>{t('billing.calls')}</th>
+                                  <th className={css.numCol}>{t('billing.inputTokens')}</th>
+                                  <th className={css.numCol}>{t('billing.outputTokens')}</th>
+                                  <th className={css.numCol}>{t('billing.cacheHitRate')}</th>
+                                  <th className={css.numCol}>{t('billing.actual')}</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {group.models.map(row => (
+                                  <tr key={row.key}>
+                                    <td>
+                                      <span className={css.modelCell}>
+                                        <span>
+                                          <span className={css.modelName}>
+                                            {row.name}
+                                            {/* 未收录：真实 id 不在计费目录，费用按兜底档估算，明确标注。 */}
+                                            {row.uncatalogued && (
+                                              <span className={css.uncataloguedTag} data-testid="billing-uncatalogued-tag">
+                                                {t('billing.uncatalogued')}
+                                              </span>
+                                            )}
+                                            {/* 估算价：厂商未公布官方按量单价，避免误当正式定价。 */}
+                                            {row.estimatedPricing && (
+                                              <span className={css.estimatedTag} data-testid="billing-estimated-tag">
+                                                {t('billing.estimatedPricing')}
+                                              </span>
+                                            )}
+                                          </span>
+                                          <span className={css.modelProvider}>{providerName(row.provider)}</span>
+                                        </span>
+                                      </span>
+                                    </td>
+                                    <td className={css.numCol}>{row.calls.toLocaleString()}</td>
+                                    <td className={css.numCol}>{formatTokens(row.input)}</td>
+                                    <td className={css.numCol}>{formatTokens(row.output)}</td>
+                                    <td className={css.numCol}>{formatPercent(row.cacheHitRate)}</td>
+                                    <td className={css.numCol}>
+                                      {row.plan
+                                        ? <span className={css.planTag}>{t('billing.subscriptionIncluded')}</span>
+                                        : row.actual !== undefined
+                                          ? (() => {
+                                            const official = row.officialCost
+                                            const third = row.actual - official
+                                            // 纯官方 / 纯三方 / 混合三态：混合时分解展示。
+                                            if (official > 0 && third > 0) {
+                                              return (
+                                                <span className={css.bucketCost}>
+                                                  <span className={css.bucketOfficial}>{money(official)}</span>
+                                                  <span className={css.bucketSep}>/</span>
+                                                  <span className={css.bucketThird}>{money(third)}</span>
+                                                </span>
+                                              )
+                                            }
+                                            return money(row.actual)
+                                          })()
+                                          : <span className={css.na}>—</span>}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                        {/* 订阅额度卡片：归并到对应模型厂商，随厂商组展示。 */}
+                        {group.subscriptions.length > 0 && (
+                          <div className={css.subscriptionGrid} data-testid="billing-subscriptions-grid">
+                            {group.subscriptions.map((quota) => {
+                              const statusText = subscriptionStatusText(quota.status, t)
+                              return (
+                                <div key={quota.provider} className={css.subscriptionCard} data-testid="billing-subscription-card">
+                                  <div className={css.subscriptionHead}>
+                                    <span className={css.subscriptionName}>{providerName(quota.displayName)}</span>
+                                    {/* plan 双口径徽标（dsh-spend）：订阅制/按量；订阅制附月费。 */}
+                                    {quota.planType === 'code' && (() => {
+                                      // 档位知识自动识别（原生币月费 + 周期额度口径）；无档位时回退 CNY 月费。
+                                      const tier = tierInfoOf(quota.provider)
+                                      const tierFee = tier !== undefined
+                                        ? t('billing.subscriptionFeePerMonth').replace('{amount}', tier.currency === 'USD' ? `$${tier.amount}` : `¥${tier.amount}`)
+                                        : undefined
+                                      return (
+                                        <span className={css.subscriptionPlan} data-kind="code">
+                                          {tierFee ?? (quota.subscriptionAmount !== undefined && quota.subscriptionAmount > 0
+                                            ? t('billing.subscriptionFeePerMonth').replace('{amount}', money(quota.subscriptionAmount))
+                                            : t('billing.planTypeCode'))}
+                                          {tier?.label !== undefined && (
+                                            <span className={css.subscriptionTier} data-testid={`billing-tier-${quota.provider}`}>
+                                              {tier.label}
+                                            </span>
+                                          )}
+                                          {tier !== undefined && (
+                                            <span className={css.subscriptionAuto} data-testid={`billing-auto-${quota.provider}`}>
+                                              {t('billing.subscriptionAutoDetect')}
+                                            </span>
+                                          )}
+                                        </span>
+                                      )
+                                    })()}
+                                    {quota.planType === 'token' && <span className={css.subscriptionPlan} data-kind="token">{t('billing.planTypeToken')}</span>}
+                                    {quota.plan !== undefined && <span className={css.subscriptionPlan}>{quota.plan}</span>}
+                                  </div>
+                                  {statusText !== '' && <div className={css.subscriptionStatus}>{statusText}</div>}
+                                  {quota.windows.length === 0 && statusText === '' && (
+                                    <div className={css.subscriptionStatus}>{t('billing.subscriptionNoApi')}</div>
+                                  )}
+                                  {quota.windows.map(window => (() => {
+                                    const used = Math.min(100, Math.max(0, window.usedPercent))
+                                    const remaining = Math.min(100, Math.max(0, window.remainingPercent))
+                                    const exhausted = remaining <= 0
+                                    return (
+                                      <div key={window.kind} className={css.subscriptionWindow}>
+                                        <span className={css.subscriptionWindowLabel}>{subscriptionWindowLabel(window.kind, t)}</span>
+                                        <span className={css.subscriptionTrack} aria-hidden="true">
+                                          {/* 进度条按「已用」比例填充（与预算条同语义）：用尽时满格红，行恒可见。 */}
+                                          <span
+                                            className={clsx(
+                                              css.subscriptionFill,
+                                              used >= 100 && css.subscriptionFillOver,
+                                              used >= 80 && used < 100 && css.subscriptionFillWarn,
+                                            )}
+                                            style={{ width: `${used}%` }}
+                                          />
+                                        </span>
+                                        <span className={clsx(css.subscriptionPct, exhausted && css.subscriptionExhausted)}>
+                                          {exhausted
+                                            ? t('billing.subscriptionExhausted')
+                                            : t('billing.subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
+                                        </span>
+                                        {window.resetsAt !== undefined && (
+                                          <span className={css.subscriptionReset}>
+                                            {/* 重置时间精确到时分秒（本地时区）。 */}
+                                            {t('billing.subscriptionReset').replace('{date}', `${localDayStamp(new Date(window.resetsAt).getTime())} ${formatClock(new Date(window.resetsAt).getTime())}`)}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )
+                                  })())}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
           )}
 
           {tab === 'details' && (
-          <div className={css.tabPanel} data-testid="billing-tab-panel-details">
-          {/* 数据导出：按日 / 按会话 CSV 与全量 JSON（对账用），文件名带日期范围。 */}
-          <div className={css.exportBar} data-testid="billing-export-bar" role="group" aria-label={t('billing.export')}>
-            <span className={css.exportLabel}>{t('billing.export')}</span>
-            <button
-              type="button"
-              className={css.exportButton}
-              data-testid="billing-export-day"
-              onClick={() => { downloadText(exportFileName('usage-daily', 'csv', Object.keys(byDay)), dayRowsCsv(byDay), 'text/csv') }}
-            >
-              {t('billing.exportCsvDay')}
-            </button>
-            {stats.bySession !== undefined && (
-              <button
-                type="button"
-                className={css.exportButton}
-                data-testid="billing-export-sessions"
-                onClick={() => { downloadText(exportFileName('usage-sessions', 'csv', Object.keys(byDay)), sessionRowsCsv(stats.bySession ?? []), 'text/csv') }}
-              >
-                {t('billing.exportCsvSession')}
-              </button>
-            )}
-            <button
-              type="button"
-              className={css.exportButton}
-              data-testid="billing-export-json"
-              onClick={() => { downloadText(exportFileName('usage-stats', 'json', Object.keys(byDay)), JSON.stringify(stats, null, 2), 'application/json') }}
-            >
-              {t('billing.exportJson')}
-            </button>
-          </div>
-          {/* 费用构成（估算）：输出成本实测计价，输入成本按 user/tool 消息
-              文本长度占比摊分（日志无角色级 token 实测，标注估算口径）。 */}
-          {roleRows.length > 0 && (
-            <section className={css.panel} data-testid="billing-panel-roles">
-              <div className={css.panelHead}>
-                <h3 className={css.panelTitle}>
-                  {t('billing.roleCost')}
-                </h3>
-                <span className={css.panelHint}>
-                  {t('billing.roleHint')}
-                </span>
+            <div className={css.tabPanel} data-testid="billing-tab-panel-details">
+              {/* 数据导出：按日 / 按会话 CSV 与全量 JSON（对账用），文件名带日期范围。 */}
+              <div className={css.exportBar} data-testid="billing-export-bar" role="group" aria-label={t('billing.export')}>
+                <span className={css.exportLabel}>{t('billing.export')}</span>
+                <button
+                  type="button"
+                  className={css.exportButton}
+                  data-testid="billing-export-day"
+                  onClick={() => { downloadText(exportFileName('usage-daily', 'csv', Object.keys(byDay)), dayRowsCsv(byDay), 'text/csv') }}
+                >
+                  {t('billing.exportCsvDay')}
+                </button>
+                {stats.bySession !== undefined && (
+                  <button
+                    type="button"
+                    className={css.exportButton}
+                    data-testid="billing-export-sessions"
+                    onClick={() => { downloadText(exportFileName('usage-sessions', 'csv', Object.keys(byDay)), sessionRowsCsv(stats.bySession ?? []), 'text/csv') }}
+                  >
+                    {t('billing.exportCsvSession')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={css.exportButton}
+                  data-testid="billing-export-json"
+                  onClick={() => { downloadText(exportFileName('usage-stats', 'json', Object.keys(byDay)), JSON.stringify(stats, null, 2), 'application/json') }}
+                >
+                  {t('billing.exportJson')}
+                </button>
               </div>
-              <div className={css.shareTrack} data-testid="billing-role-track">
-                {roleRows.map(row => (
-                  <div key={row.label} className={clsx(css.shareSeg, row.seg)} style={{ width: `${row.pct}%` }} />
-                ))}
-              </div>
-              <div className={css.shareLegend}>
-                {roleRows.map(row => (
-                  <span key={row.label} className={css.shareItem}>
-                    <span className={clsx(css.shareDot, row.seg)} />
-                    {row.label}
-                    <span className={css.shareValue}>
-                      {money(row.value)} · {row.pct.toFixed(1)}%
+              {/* 性能：按模型 TTFT/P50/P90/生成速度/总延迟 + 按小时曲线（复用模型图例色）。
+               旧快照无 perf 字段时整段不出现；图表数据为服务端聚合，无任何样本时不伪造。 */}
+              {stats.perf !== undefined && (
+                <section className={css.panel} data-testid="billing-panel-perf">
+                  <div className={css.panelHead}>
+                    <h3 className={css.panelTitle}>
+                      {t('billing.perfTitle')}
+                    </h3>
+                    <span className={css.panelHint}>
+                      {t('billing.perfHint')}
                     </span>
-                  </span>
-                ))}
-              </div>
-            </section>
-          )}
-          {/* 官方 vs 三方汇总：官方 = DeepSeek 官方直连，三方 = 其余中转/代理。 */}
-          {bucketSummary !== undefined && (
-            <section className={css.panel} data-testid="billing-panel-buckets">
-              <div className={css.panelHead}>
-                <h3 className={css.panelTitle}>
-                  {t('billing.official')} / {t('billing.thirdParty')}
-                </h3>
-              </div>
-              <div className={css.bucketSummary}>
-                <div className={css.bucketStat}>
-                  <span className={css.bucketStatLabel}>{t('billing.official')}</span>
-                  <span className={css.bucketStatValue}>{money(bucketSummary.officialCost)}</span>
-                  <span className={css.bucketStatSub}>{bucketSummary.officialCalls} {t('billing.calls')}</span>
-                </div>
-                <div className={css.bucketStat}>
-                  <span className={css.bucketStatLabel}>{t('billing.thirdParty')}</span>
-                  <span className={css.bucketStatValue}>{money(bucketSummary.thirdCost)}</span>
-                  <span className={css.bucketStatSub}>{bucketSummary.thirdCalls} {t('billing.calls')}</span>
-                </div>
-              </div>
-            </section>
-          )}
-          {/* 工作区统计：按 cwd 末级目录归并（明细 Tab 内默认展开）。 */}
-          {stats.byWorkspace !== undefined && stats.byWorkspace.length > 0 && (
-            <section className={css.panel} data-testid="billing-panel-workspaces">
-              <div className={css.panelHead}>
-                <h3 className={css.panelTitle}>
-                  {t('billing.workspaces')}
-                </h3>
-              </div>
-              <div className={css.tableScroll}>
-                  <table className={css.modelTable}>
-                    <thead>
-                      <tr>
-                        <th>{t('billing.project')}</th>
-                        <th className={css.numCol}>{t('billing.calls')}</th>
-                        <th className={css.numCol}>{t('billing.inputTokens')}</th>
-                        <th className={css.numCol}>{t('billing.outputTokens')}</th>
-                        <th className={css.numCol}>{t('billing.actual')}</th>
-                        <th className={css.numCol}>{t('billing.lastActive')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stats.byWorkspace.map(row => (
-                        <tr key={row.name}>
-                          <td><span className={css.modelName}>{row.name}</span></td>
-                          <td className={css.numCol}>{row.calls.toLocaleString()}</td>
-                          <td className={css.numCol}>{formatTokens(row.input)}</td>
-                          <td className={css.numCol}>{formatTokens(row.output)}</td>
-                          <td className={css.numCol}>{money(row.cost)}</td>
-                          <td className={css.numCol}>
-                            {row.lastActive > 0 ? `${localDayStamp(row.lastActive)}` : '—'}
-                          </td>
+                  </div>
+                  <PerfPanel perf={stats.perf} models={chartModels} t={t} />
+                </section>
+              )}
+              {/* 费用构成（估算）：输出成本实测计价，输入成本按 user/tool 消息
+              文本长度占比摊分（日志无角色级 token 实测，标注估算口径）。 */}
+              {roleRows.length > 0 && (
+                <section className={css.panel} data-testid="billing-panel-roles">
+                  <div className={css.panelHead}>
+                    <h3 className={css.panelTitle}>
+                      {t('billing.roleCost')}
+                    </h3>
+                    <span className={css.panelHint}>
+                      {t('billing.roleHint')}
+                    </span>
+                  </div>
+                  <div className={css.shareTrack} data-testid="billing-role-track">
+                    {roleRows.map(row => (
+                      <div key={row.label} className={clsx(css.shareSeg, row.seg)} style={{ width: `${row.pct}%` }} />
+                    ))}
+                  </div>
+                  <div className={css.shareLegend}>
+                    {roleRows.map(row => (
+                      <span key={row.label} className={css.shareItem}>
+                        <span className={clsx(css.shareDot, row.seg)} />
+                        {row.label}
+                        <span className={css.shareValue}>
+                          {money(row.value)} · {row.pct.toFixed(1)}%
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {/* 官方 vs 三方汇总：官方 = DeepSeek 官方直连，三方 = 其余中转/代理。 */}
+              {bucketSummary !== undefined && (
+                <section className={css.panel} data-testid="billing-panel-buckets">
+                  <div className={css.panelHead}>
+                    <h3 className={css.panelTitle}>
+                      {t('billing.official')} / {t('billing.thirdParty')}
+                    </h3>
+                  </div>
+                  <div className={css.bucketSummary}>
+                    <div className={css.bucketStat}>
+                      <span className={css.bucketStatLabel}>{t('billing.official')}</span>
+                      <span className={css.bucketStatValue}>{money(bucketSummary.officialCost)}</span>
+                      <span className={css.bucketStatSub}>{bucketSummary.officialCalls} {t('billing.calls')}</span>
+                    </div>
+                    <div className={css.bucketStat}>
+                      <span className={css.bucketStatLabel}>{t('billing.thirdParty')}</span>
+                      <span className={css.bucketStatValue}>{money(bucketSummary.thirdCost)}</span>
+                      <span className={css.bucketStatSub}>{bucketSummary.thirdCalls} {t('billing.calls')}</span>
+                    </div>
+                  </div>
+                </section>
+              )}
+              {/* 工作区统计：按 cwd 末级目录归并（明细 Tab 内默认展开）。 */}
+              {stats.byWorkspace !== undefined && stats.byWorkspace.length > 0 && (
+                <section className={css.panel} data-testid="billing-panel-workspaces">
+                  <div className={css.panelHead}>
+                    <h3 className={css.panelTitle}>
+                      {t('billing.workspaces')}
+                    </h3>
+                  </div>
+                  <div className={css.tableScroll}>
+                    <table className={css.modelTable}>
+                      <thead>
+                        <tr>
+                          <th>{t('billing.project')}</th>
+                          <th className={css.numCol}>{t('billing.calls')}</th>
+                          <th className={css.numCol}>{t('billing.inputTokens')}</th>
+                          <th className={css.numCol}>{t('billing.outputTokens')}</th>
+                          <th className={css.numCol}>{t('billing.actual')}</th>
+                          <th className={css.numCol}>{t('billing.lastActive')}</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-            </section>
-          )}
+                      </thead>
+                      <tbody>
+                        {stats.byWorkspace.map(row => (
+                          <tr key={row.name}>
+                            <td><span className={css.modelName}>{row.name}</span></td>
+                            <td className={css.numCol}>{row.calls.toLocaleString()}</td>
+                            <td className={css.numCol}>{formatTokens(row.input)}</td>
+                            <td className={css.numCol}>{formatTokens(row.output)}</td>
+                            <td className={css.numCol}>{money(row.cost)}</td>
+                            <td className={css.numCol}>
+                              {row.lastActive > 0 ? `${localDayStamp(row.lastActive)}` : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
 
-          {/* 会话明细：按费用倒序，回答「钱花在哪」（明细 Tab 内默认展开）。
+              {/* 会话明细：按费用倒序，回答「钱花在哪」（明细 Tab 内默认展开）。
               服务端聚合路径恒带 bySession（空数组时显示空态）；JSON 回退
               文件没有此字段，面板不出现。 */}
-          {stats.bySession !== undefined && (
-            <section className={css.panel} data-testid="billing-panel-sessions">
-              <div className={css.panelHead}>
-                <h3 className={css.panelTitle}>
-                  {t('billing.sessions')}
-                </h3>
-                <span className={css.panelHint}>
-                  {stats.bySession.length > SESSION_DISPLAY_LIMIT
-                    ? t('billing.sessionOverflow')
-                        .replace('{limit}', String(SESSION_DISPLAY_LIMIT))
-                        .replace('{total}', String(stats.bySession.length))
-                    : `${stats.bySession.length}`}
-                </span>
-              </div>
-              <div className={css.tableScroll} data-testid="billing-sessions-table">
-                  <table className={css.modelTable}>
-                    <thead>
-                      <tr>
-                        <th>{t('billing.sessions')}</th>
-                        <th>{t('billing.project')}</th>
-                        <th className={css.numCol}>{t('billing.calls')}</th>
-                        <th className={css.numCol}>{t('billing.actual')}</th>
-                        <th className={css.numCol}>{t('billing.lastActive')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stats.bySession.length === 0 && (
+              {stats.bySession !== undefined && (
+                <section className={css.panel} data-testid="billing-panel-sessions">
+                  <div className={css.panelHead}>
+                    <h3 className={css.panelTitle}>
+                      {t('billing.sessions')}
+                    </h3>
+                    <span className={css.panelHint}>
+                      {stats.bySession.length > SESSION_DISPLAY_LIMIT
+                        ? t('billing.sessionOverflow')
+                          .replace('{limit}', String(SESSION_DISPLAY_LIMIT))
+                          .replace('{total}', String(stats.bySession.length))
+                        : `${stats.bySession.length}`}
+                    </span>
+                  </div>
+                  <div className={css.tableScroll} data-testid="billing-sessions-table">
+                    <table className={css.modelTable}>
+                      <thead>
                         <tr>
-                          <td colSpan={5} className={css.emptyRow}>{t('billing.noData')}</td>
+                          <th>{t('billing.sessions')}</th>
+                          <th>{t('billing.project')}</th>
+                          <th className={css.numCol}>{t('billing.calls')}</th>
+                          <th className={css.numCol}>{t('billing.actual')}</th>
+                          <th className={css.numCol}>{t('billing.lastActive')}</th>
                         </tr>
-                      )}
-                      {stats.bySession.slice(0, SESSION_DISPLAY_LIMIT).map(row => (
-                        <tr key={row.id}>
-                          <td>
-                            <span className={css.modelName}>{row.title ?? row.id.slice(0, 8)}</span>
-                          </td>
-                          <td>
-                            <span className={css.modelProvider}>{projectName(row.cwd) ?? '—'}</span>
-                          </td>
-                          <td className={css.numCol}>{row.calls.toLocaleString()}</td>
-                          <td className={css.numCol}>{money(row.cost)}</td>
-                          <td className={css.numCol}>
-                            {row.lastActive > 0 ? `${localDayStamp(row.lastActive)} ${formatClock(row.lastActive)}` : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-              </div>
-            </section>
-          )}
+                      </thead>
+                      <tbody>
+                        {stats.bySession.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className={css.emptyRow}>{t('billing.noData')}</td>
+                          </tr>
+                        )}
+                        {stats.bySession.slice(0, SESSION_DISPLAY_LIMIT).map(row => (
+                          <tr key={row.id}>
+                            <td>
+                              <span className={css.modelName}>{row.title ?? row.id.slice(0, 8)}</span>
+                            </td>
+                            <td>
+                              <span className={css.modelProvider}>{projectName(row.cwd) ?? '—'}</span>
+                            </td>
+                            <td className={css.numCol}>{row.calls.toLocaleString()}</td>
+                            <td className={css.numCol}>{money(row.cost)}</td>
+                            <td className={css.numCol}>
+                              {row.lastActive > 0 ? `${localDayStamp(row.lastActive)} ${formatClock(row.lastActive)}` : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
 
-          </div>
+            </div>
           )}
 
           {tab === 'pricing' && (
-          <div className={css.tabPanel} data-testid="billing-tab-panel-pricing">
-          {/* 模型单价表：独立 Tab 常驻展开，附汇率来源徽标。 */}
-          <section
-            className={css.panel}
-            data-testid="billing-panel-pricing"
-          >
-            <div className={css.panelHead}>
-              <h3 className={css.panelTitle}>
-                {t('billing.pricing')}
-              </h3>
-              <span className={css.panelHint}>
-                {t('billing.todayRate')} 1 USD = {formatMoney(rateInfo.rate)}
-                <span className={clsx(css.rateBadge, rateInfo.live ? css.rateBadgeLive : css.rateBadgeBuiltin)}>
-                  {rateInfo.live ? t('billing.rateLive') : t('billing.rateBuiltin')}
-                </span>
-              </span>
-            </div>
-            <p className={css.pricingTip}>{t('billing.pricingTip')}</p>
-            <div className={css.tableScroll}>
-                <table className={css.pricingTable}>
-                  <thead>
-                    <tr>
-                      <th>Model</th>
-                      <th className={css.numCol}>{t('billing.input')}</th>
-                      <th className={css.numCol}>{t('billing.cacheHit')}</th>
-                      <th className={css.numCol}>{t('billing.output')}</th>
-                      <th>{t('billing.band')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {catalogEntries().map(entry => {
-                      const hasPrice = entry.price.input > 0 || entry.price.output > 0
-                      return (
-                        <tr key={entry.key}>
-                          <td>
-                            <span className={css.modelCell}>
-                              <span className={css.modelDot} style={{ background: resolveToken(entry.colorVar) }} />
-                              <span>
-                                <span className={css.modelName}>
-                                  {entry.name}
-                                  {/* 探活命中但无内置/models.dev 价：明确标注，不参与计价。 */}
-                                  {entry.uncatalogued && (
-                                    <span className={css.uncataloguedTag} data-testid="billing-price-uncatalogued">
-                                      {t('billing.uncatalogued')}
-                                    </span>
-                                  )}
-                                </span>
-                                <span className={css.modelProvider}>{providerName(entry.provider)}</span>
-                              </span>
-                            </span>
-                          </td>
-                          <td className={css.numCol}>
-                            {hasPrice ? entry.price.offPeak !== undefined
-                              ? (
-                                <span className={css.bandPrice}>
-                                  <span>{unitMoney(entry.price.input, entry.price.currency)}</span>
-                                  <span className={css.bandPriceOff}>{unitMoney(entry.price.offPeak.input, entry.price.currency)}</span>
-                                </span>
-                              )
-                              : unitMoney(entry.price.input, entry.price.currency)
-                              : <span className={css.na}>—</span>}
-                          </td>
-                          <td className={css.numCol}>
-                            {hasPrice ? entry.price.offPeak !== undefined
-                              ? (
-                                <span className={css.bandPrice}>
-                                  <span>{unitMoney(entry.price.cacheHit, entry.price.currency)}</span>
-                                  <span className={css.bandPriceOff}>
-                                    {unitMoney(entry.price.offPeak.cacheHit, entry.price.currency)}
-                                  </span>
-                                </span>
-                              )
-                              : unitMoney(entry.price.cacheHit, entry.price.currency)
-                              : <span className={css.na}>—</span>}
-                          </td>
-                          <td className={css.numCol}>
-                            {hasPrice ? entry.price.offPeak !== undefined
-                              ? (
-                                <span className={css.bandPrice}>
-                                  <span>{unitMoney(entry.price.output, entry.price.currency)}</span>
-                                  <span className={css.bandPriceOff}>
-                                    {unitMoney(entry.price.offPeak.output, entry.price.currency)}
-                                  </span>
-                                </span>
-                              )
-                              : unitMoney(entry.price.output, entry.price.currency)
-                              : <span className={css.na}>—</span>}
-                          </td>
-                          <td>
-                            {entry.price.offPeak !== undefined && entry.peakHours !== undefined
-                              ? (
-                                <span className={css.bandTag}>
-                                  <span>{t('billing.peak')} {entry.peakHours}</span>
-                                  <span className={css.bandTagOff}>{t('billing.offPeak')} 50%</span>
-                                </span>
-                              )
-                              : <span className={css.flatTag}>{t('billing.flat')}</span>}
-                          </td>
+            <div className={css.tabPanel} data-testid="billing-tab-panel-pricing">
+              {/* 模型单价表：独立 Tab 常驻展开，附汇率来源徽标。 */}
+              <section
+                className={css.panel}
+                data-testid="billing-panel-pricing"
+              >
+                <div className={css.panelHead}>
+                  <h3 className={css.panelTitle}>
+                    {t('billing.pricing')}
+                  </h3>
+                  <span className={css.panelHint}>
+                    {t('billing.todayRate')} 1 USD = {formatMoney(rateInfo.rate)}
+                    <span className={clsx(css.rateBadge, rateInfo.live ? css.rateBadgeLive : css.rateBadgeBuiltin)}>
+                      {rateInfo.live ? t('billing.rateLive') : t('billing.rateBuiltin')}
+                    </span>
+                  </span>
+                </div>
+                <p className={css.pricingTip}>{t('billing.pricingTip')}</p>
+                <div className={css.tableScroll}>
+                  <table className={css.pricingTable}>
+                    <thead>
+                      <tr>
+                        <th>Model</th>
+                        <th className={css.numCol}>{t('billing.input')}</th>
+                        <th className={css.numCol}>{t('billing.cacheHit')}</th>
+                        <th className={css.numCol}>{t('billing.output')}</th>
+                        <th>{t('billing.band')}</th>
                       </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {catalogEntries().map((entry) => {
+                        const hasPrice = entry.price.input > 0 || entry.price.output > 0
+                        return (
+                          <tr key={entry.key}>
+                            <td>
+                              <span className={css.modelCell}>
+                                <span className={css.modelDot} style={{ background: resolveToken(entry.colorVar) }} />
+                                <span>
+                                  <span className={css.modelName}>
+                                    {entry.name}
+                                    {/* 探活命中但无内置/models.dev 价：明确标注，不参与计价。 */}
+                                    {entry.uncatalogued && (
+                                      <span className={css.uncataloguedTag} data-testid="billing-price-uncatalogued">
+                                        {t('billing.uncatalogued')}
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className={css.modelProvider}>{providerName(entry.provider)}</span>
+                                </span>
+                              </span>
+                            </td>
+                            <td className={css.numCol}>
+                              {hasPrice ? entry.price.offPeak !== undefined
+                                ? (
+                                  <span className={css.bandPrice}>
+                                    <span>{unitMoney(entry.price.input, entry.price.currency)}</span>
+                                    <span className={css.bandPriceOff}>{unitMoney(entry.price.offPeak.input, entry.price.currency)}</span>
+                                  </span>
+                                )
+                                : unitMoney(entry.price.input, entry.price.currency)
+                                : <span className={css.na}>—</span>}
+                            </td>
+                            <td className={css.numCol}>
+                              {hasPrice ? entry.price.offPeak !== undefined
+                                ? (
+                                  <span className={css.bandPrice}>
+                                    <span>{unitMoney(entry.price.cacheHit, entry.price.currency)}</span>
+                                    <span className={css.bandPriceOff}>
+                                      {unitMoney(entry.price.offPeak.cacheHit, entry.price.currency)}
+                                    </span>
+                                  </span>
+                                )
+                                : unitMoney(entry.price.cacheHit, entry.price.currency)
+                                : <span className={css.na}>—</span>}
+                            </td>
+                            <td className={css.numCol}>
+                              {hasPrice ? entry.price.offPeak !== undefined
+                                ? (
+                                  <span className={css.bandPrice}>
+                                    <span>{unitMoney(entry.price.output, entry.price.currency)}</span>
+                                    <span className={css.bandPriceOff}>
+                                      {unitMoney(entry.price.offPeak.output, entry.price.currency)}
+                                    </span>
+                                  </span>
+                                )
+                                : unitMoney(entry.price.output, entry.price.currency)
+                                : <span className={css.na}>—</span>}
+                            </td>
+                            <td>
+                              {entry.price.offPeak !== undefined && entry.peakHours !== undefined
+                                ? (
+                                  <span className={css.bandTag}>
+                                    <span>{t('billing.peak')} {entry.peakHours}</span>
+                                    <span className={css.bandTagOff}>{t('billing.offPeak')} 50%</span>
+                                  </span>
+                                )
+                                : <span className={css.flatTag}>{t('billing.flat')}</span>}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             </div>
-          </section>
-          </div>
           )}
 
           {/* ZINE: 装饰孔位（footer 锚点：条码装饰底部），所有 Tab 共享常驻。 */}
@@ -2177,7 +2282,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       )}
       {(peakHit !== null || peakPreview !== null) && (
         <PeakAlertBanner
-          hit={(peakHit ?? peakPreview)!}
+          hit={(peakHit ?? peakPreview) as PeakAlertHit}
           config={peakConfig}
           t={t}
           onDismiss={() => { setPeakHit(null); setPeakPreview(null) }}

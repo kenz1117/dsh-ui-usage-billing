@@ -15,11 +15,31 @@
  */
 /** Plan type: code = subscription + quota, token = per-token usage. */
 export type PlanType = 'code' | 'token';
+/**
+ * 订阅档位知识（自动识别的「档位月费 + 周期额度口径」）：供订阅卡片在
+ * 厂商官方未提供实时额度接口时展示参考口径。currency 为原生币种；费用与
+ * 额度按官方订阅周期（天/周/月）计量时，periodDays 表述该重置周期。
+ */
+export interface PlanTier {
+    /** 档位月费（原生币种值）。 */
+    amount: number;
+    currency: 'CNY' | 'USD';
+    /** 周期额度口径：每 periodDays 天重置的一个额度窗。 */
+    periodDays: number;
+    /** 周期请求额度（若有）。 */
+    requests?: number;
+    /** 周期 token 额度（若有）。 */
+    tokens?: number;
+    /** 额度口径的人话描述（官方未公布精确额度时）。 */
+    label?: string;
+}
 /** One plan row: provider id (after alias) → plan shape + optional subscription fee. */
 export interface PlanKnowledgeEntry {
     type: PlanType;
     /** 订阅月费（人民币元）；code 计划用，计入「本月预计」。 */
     subscriptionCny?: number;
+    /** 自动识别的档位月费与周期额度口径（订阅卡片展示）。 */
+    tier?: PlanTier;
 }
 /**
  * 订阅/计划 provider id → plan 知识（引用 dsh-spend 的 code/token 双口径）。
@@ -30,6 +50,8 @@ export declare const PLAN_KNOWLEDGE: Readonly<Record<string, PlanKnowledgeEntry>
 export declare function planTypeOf(providerId: string): PlanType;
 /** 订阅月费（人民币元）；非 code 或未配置时为 0。 */
 export declare function subscriptionCnyOf(providerId: string): number;
+/** 自动识别的档位月费与周期额度口径（订阅卡片展示）；无档位知识返回 undefined。 */
+export declare function tierInfoOf(providerId: string): PlanTier | undefined;
 export interface FallbackRate {
     /** 归一化模型 id（计费键，与 catalogEntries 的 key 同口径）。 */
     key: string;

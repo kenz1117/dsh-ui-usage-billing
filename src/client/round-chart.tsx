@@ -66,7 +66,7 @@ export function RoundCostChart({ rounds, flags, currency, t }: {
   return (
     <div className={css.rounds}>
       <div className={css.roundsBars} role="img" aria-label="cost per turn">
-        {visible.map(round => {
+        {visible.map((round) => {
           const flagged = flagKey.has(`${round.sessionId}:${round.turn}`)
           const height = Math.max(1, (round.cost / maxCost) * 100)
           // 该轮起始时刻落在峰时/平价的背景色带（峰=琥珀、平价=中性）。

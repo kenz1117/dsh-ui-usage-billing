@@ -509,3 +509,91 @@ describe('createUsageAggregator (incremental cache)', () => {
     expect(empty.bySession).toHaveLength(0)
   })
 })
+
+describe('performance aggregation (TTFT / tps / latency)', () => {
+  /** Fold-session event row helper (durable-shape cast like the aggregator). */
+  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
+    ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
+
+  it('folds a measured step into a perf sample from request/header → content', () => {
+    const fold = foldSession([
+      ev('step/start', 1, 500, { turn: 1, step: 1 }),
+      ev('request/header', 2, 600, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/chunk', 3, 800, { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'h' } }),
+      ev('assistant/chunk', 4, 900, { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'i' } }),
+      ev('assistant/message', 5, 1_000, { turn: 1, step: 1, usage: { inputTokens: 10, outputTokens: 100 } }),
+    ], new Set())
+    expect(fold.perf).toHaveLength(1)
+    // TTFT = 800-600；gen = 900-800；
+    // tokens/s = 100 ÷ (100ms/1000)；总延迟 = 1000-600。
+    expect(fold.perf[0]).toMatchObject({
+      model: 'flash', ttftMs: 200, tps: 1_000, latencyMs: 400, estimated: false,
+    })
+  })
+
+  it('marks tool-continuation steps as estimated when no request/header exists', () => {
+    const fold = foldSession([
+      ev('step/start', 1, 500, { turn: 1, step: 1 }),
+      ev('assistant/chunk', 2, 800, { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'h' } }),
+      ev('assistant/message', 3, 1_000, { turn: 1, step: 1, usage: { inputTokens: 10, outputTokens: 0 } }),
+    ], new Set())
+    const sample = fold.perf[0]
+    expect(sample).toBeDefined()
+    // TTFT 以 step/start 为起点估算；无输出 → 无 tps。
+    expect(sample).toMatchObject({ ttftMs: 300, estimated: true })
+    expect(sample?.tps).toBeUndefined()
+  })
+
+  it('ignores usage-only chunks as content when measuring TTFT', () => {
+    const fold = foldSession([
+      ev('step/start', 1, 500, { turn: 1, step: 1 }),
+      ev('request/header', 2, 600, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/chunk', 3, 650, { turn: 1, step: 1, chunk: { type: 'usage', usage: { inputTokens: 10, outputTokens: 0 } } }),
+      ev('assistant/chunk', 4, 700, { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'h' } }),
+      ev('assistant/message', 5, 800, { turn: 1, step: 1, usage: { inputTokens: 10, outputTokens: 0 } }),
+    ], new Set())
+    // usage chunk（650）不算内容；TTFT 以首个 text-delta（700）为准。
+    expect(fold.perf[0]).toMatchObject({ ttftMs: 100 })
+    expect(fold.perf[0]?.tps).toBeUndefined()
+  })
+
+  it('omits the perf field when no step produced a measurable sample', async () => {
+    const stats = await aggregateUsage(fakePersistence({
+      'session-a': [header(1, 'deepseek-v4-flash'), message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE)],
+    }))
+    expect(stats.perf).toBeUndefined()
+  })
+
+  it('rolls perf samples by model and hour, with percentile latency stats', async () => {
+    const stats = await aggregateUsage(fakePersistence({
+      'session-a': [
+        ev('step/start', 1, 0, { turn: 1, step: 1 }),
+        ev('request/header', 2, 100, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+        ev('assistant/chunk', 3, 200, { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'a' } }),
+        ev('assistant/chunk', 4, 300, { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'b' } }),
+        ev('assistant/message', 5, 1_000, { turn: 1, step: 1, usage: { inputTokens: 10, outputTokens: 50 } }),
+      ] as unknown as SessionEvent[],
+      'session-b': [
+        ev('step/start', 1, 0, { turn: 1, step: 1 }),
+        ev('request/header', 2, 100, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+        ev('assistant/chunk', 3, 400, { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'a' } }),
+        ev('assistant/chunk', 4, 600, { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'b' } }),
+        ev('assistant/message', 5, 1_000, { turn: 1, step: 1, usage: { inputTokens: 10, outputTokens: 50 } }),
+      ] as unknown as SessionEvent[],
+    }))
+    const flash = stats.perf?.byModel.flash
+    expect(flash?.samples).toBe(2)
+    // TTFT：(200-100) + (400-100) = 100+300 → 均值 200。
+    expect(flash?.ttftAvg).toBe(200)
+    expect(flash?.ttftP50).toBe(200)
+    // P90 线性插值 [100, 300] → 100 + 200×0.9。
+    expect(flash?.ttftP90).toBeCloseTo(280, 6)
+    // tokens/s：(50÷0.1) + (50÷0.2) → (500+250)/2。
+    expect(flash?.tpsAvg).toBe(375)
+    // 总延迟：两次都是 1000-100=900。
+    expect(flash?.latencyAvg).toBe(900)
+    expect(flash?.estimatedSamples).toBe(0)
+    // 两个样本同属一个本地小时 → 小时桶 samples = 2。
+    expect(Object.keys(stats.perf?.byHour ?? {}).length).toBe(1)
+  })
+})
