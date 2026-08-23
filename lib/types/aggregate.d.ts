@@ -147,6 +147,8 @@ export interface UsageStatsDocument {
      * 属估算口径，UI 需标注）。旧快照可能缺失。
      */
     byRole?: RoleCost;
+    /** 不可计价的模型 id（未收录 / 无价，费用按 0 计）；供面板提示用户自查与反馈。 */
+    unpricedModels?: readonly string[];
     /**
      * 性能指标（TTFT / 生成速度 / 总延迟）按模型与按小时聚合；旧快照可能缺失。
      * 口径：TTFT = request/header → 首个内容 chunk；生成速度 = 输出 token ÷ 生成时长；
@@ -269,6 +271,8 @@ interface SessionFold {
     byDayModels: Map<string, Map<string, ModelUsage>>;
     /** 中转站归组：按 provider 路由归类到站点/直连/未知路由（key = {@link siteBucketKey}）。 */
     bySite: Map<string, ModelUsage>;
+    /** 不可计价模型 id（未收录/无价，且非订阅）集合；跨会话合并后输出给面板提示。 */
+    unpricedModels: Set<string>;
     /** 每个模型 key 在本会话内走订阅通道的调用数（合并时跨会话累加判定 plan）。 */
     planCalls: Map<string, number>;
     /** 每轮费用明细（按轮次号升序，不含 sessionId）；sessionId 在合并时补齐。 */

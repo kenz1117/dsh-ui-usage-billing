@@ -10,7 +10,7 @@
  * never fabricated samples.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, Fragment } from 'react'
 import clsx from 'clsx'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -23,7 +23,7 @@ import { TokenPanel } from './TokenPanel.tsx'
 import { RoundCostChart, type RoundChartRow } from './round-chart.tsx'
 import { UsageHeatmap, type HeatmapDay } from './heatmap.tsx'
 import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
-import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv } from './export.ts'
+import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv, siteRowsCsv } from './export.ts'
 import type { createBillingBudgetStore } from './budget-store.ts'
 import {
   applyLiveCatalogModels, applyLivePricing, catalogEntries, cnyToUsd, computeCost, convertUnitPrice,
@@ -468,6 +468,8 @@ export interface UsageStats {
     cost: number
     reasoning: number
   }>
+  /** 不可计价模型 id（未收录/无价，费用按 0 计）；旧快照可能缺失。 */
+  unpricedModels?: readonly string[]
   /** 按角色费用归因（估算口径：输出实测，输入按消息长度摊分）；旧快照可能缺失。 */
   byRole?: { user: number; assistant: number; tool: number }
   /** 性能指标（TTFT/生成速度/总延迟）按模型与按小时；旧快照可能缺失。 */
@@ -991,6 +993,8 @@ function BillingDashboard({
 
   // 余额详情弹窗：记录打开的厂商（按 provider 标识）；点击「约可撑 N 天」圆圈切换。
   const [balanceDetailFor, setBalanceDetailFor] = useState<string | undefined>()
+  // 项目下钻：记录当前展开的项目名；点击项目行切换展开/收起。
+  const [expandedProject, setExpandedProject] = useState<string | undefined>()
 
   // usage_stats 工具开关：经插件自带的 HTTP 接口读写（不依赖宿主浏览器设置白名单）。
   // 挂载时读一次当前值；点按乐观切换并回写，写失败回滚。工具注入是启动期决策，重启生效。
@@ -1482,6 +1486,13 @@ function BillingDashboard({
                 </div>
               </section>
 
+              {/* 未计价模型提示：目录外/无价模型费用按 0 计，提醒用户自查并反馈。 */}
+              {(stats.unpricedModels?.length ?? 0) > 0 && (
+                <div className={css.unpricedHint} data-testid="billing-unpriced-hint">
+                  {t('billing.unpricedHint').replace('{count}', String(stats.unpricedModels?.length ?? 0))}
+                </div>
+              )}
+
               {/* KPI grid */}
               <section className={css.kpiGrid} data-testid="billing-kpi-grid">
                 <div className={css.kpiTile} data-testid="billing-kpi-tile">
@@ -1841,9 +1852,12 @@ function BillingDashboard({
                             <span className={css.siteRowCost}>{t('billing.relayBalance')} {row.balance.toFixed(2)}</span>
                           )}
                           {(row.windows?.length ?? 0) > 0
-                            ? row.windows?.map(window => (
-                              <span key={window.kind} className={css.siteRowCalls}>{t('billing.relayWindowUsed')} {window.usedPercent}%</span>
-                            ))
+                            ? row.windows?.map(window => {
+                              const low = window.remainingPercent < 20
+                              return (
+                                <span key={window.kind} className={clsx(css.siteRowCalls, low && css.siteRowCallsLow)}>{t('billing.relayWindowUsed')} {window.usedPercent}%</span>
+                              )
+                            })
                             : <span className={css.siteRowCalls}>{t('billing.relayNoQuota')}</span>}
                         </span>
                       </div>
@@ -2071,6 +2085,16 @@ function BillingDashboard({
                     {t('billing.exportCsvSession')}
                   </button>
                 )}
+                {stats.bySite !== undefined && (
+                  <button
+                    type="button"
+                    className={css.exportButton}
+                    data-testid="billing-export-sites"
+                    onClick={() => { downloadText(exportFileName('usage-sites', 'csv', Object.keys(byDay)), siteRowsCsv(stats.bySite ?? {}), 'text/csv') }}
+                  >
+                    {t('billing.exportCsvSite')}
+                  </button>
+                )}
                 <button
                   type="button"
                   className={css.exportButton}
@@ -2154,16 +2178,40 @@ function BillingDashboard({
                       </thead>
                       <tbody>
                         {stats.byWorkspace.map(row => (
-                          <tr key={row.name}>
-                            <td><span className={css.modelName}>{row.name}</span></td>
-                            <td className={css.numCol}>{row.calls.toLocaleString()}</td>
-                            <td className={css.numCol}>{formatTokens(row.input)}</td>
-                            <td className={css.numCol}>{formatTokens(row.output)}</td>
-                            <td className={css.numCol}>{money(row.cost)}</td>
-                            <td className={css.numCol}>
-                              {row.lastActive > 0 ? `${localDayStamp(row.lastActive)}` : '—'}
-                            </td>
-                          </tr>
+                          <Fragment key={row.name}>
+                            <tr onClick={() => { setExpandedProject(expandedProject === row.name ? undefined : row.name) }} style={{ cursor: 'pointer' }}>
+                              <td><span className={css.modelName}>{row.name}</span></td>
+                              <td className={css.numCol}>{row.calls.toLocaleString()}</td>
+                              <td className={css.numCol}>{formatTokens(row.input)}</td>
+                              <td className={css.numCol}>{formatTokens(row.output)}</td>
+                              <td className={css.numCol}>{money(row.cost)}</td>
+                              <td className={css.numCol}>
+                                {row.lastActive > 0 ? `${localDayStamp(row.lastActive)}` : '—'}
+                              </td>
+                            </tr>
+                            {/* 项目下钻：展开时列出该项目成本最高的会话（最多 5 条）。 */}
+                            {expandedProject === row.name && (
+                              <tr>
+                                <td colSpan={6} style={{ padding: '0' }}>
+                                  <table className={css.modelTable} style={{ margin: 0, border: 'none', background: 'var(--dsw-alias-bg-layer-1)' }}>
+                                    <tbody>
+                                      {stats.bySession
+                                        ?.filter(s => projectName(s.cwd) === row.name)
+                                        .slice(0, 5)
+                                        .map(s => (
+                                          <tr key={s.id}>
+                                            <td><span className={css.modelName}>{s.title ?? s.id.slice(0, 8)}</span></td>
+                                            <td className={css.numCol}>{s.calls.toLocaleString()}</td>
+                                            <td className={css.numCol}>{money(s.cost)}</td>
+                                            <td className={css.numCol}>{localDayStamp(s.lastActive)}</td>
+                                          </tr>
+                                        ))}
+                                    </tbody>
+                                  </table>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
                         ))}
                       </tbody>
                     </table>

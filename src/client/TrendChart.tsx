@@ -179,18 +179,40 @@ export function TrendChart({ data, models = [], currency = 'cny' }: { data: read
         })}
 
         {/* Stacked per-day cost bars: one bar per day, per-model segments. */}
-        {bars.map(bar => (bar.value > 0 ? (
-          <rect
-            key={`${bar.date}-${bar.model.key}`}
-            x={bar.x}
-            y={yCost(bar.base + bar.value)}
-            width={barW}
-            height={yCost(bar.base) - yCost(bar.base + bar.value)}
-            rx={bar.topRounded ? 2 : 0}
-            className={bar.model.color === '' ? css.chartBar : css.chartStack}
-            style={bar.model.color === '' ? undefined : { fill: bar.model.color }}
-          />
-        ) : null))}
+      {bars.map(bar => {
+        // 费用=0 但调用>0 的当天，画一个 1px 高的占位空柱，避免「没柱=没调用」的误解。
+        if (bar.value > 0) {
+          return (
+            <rect
+              key={`${bar.date}-${bar.model.key}`}
+              x={bar.x}
+              y={yCost(bar.base + bar.value)}
+              width={barW}
+              height={yCost(bar.base) - yCost(bar.base + bar.value)}
+              rx={bar.topRounded ? 2 : 0}
+              className={bar.model.color === '' ? css.chartBar : css.chartStack}
+              style={bar.model.color === '' ? undefined : { fill: bar.model.color }}
+            />
+          )
+        }
+        // 占位空柱：当天有调用但费用为 0 时，画一个 1px 高的灰柱提示「有调用但免费」。
+        // key 含 model.key 保证唯一（同一天多模型段共享同一 date，占位柱 key 不能只用 date）。
+        const day = data.find(d => d.date === bar.date)
+        if (day !== undefined && day.calls > 0 && bar.base === 0) {
+          return (
+            <rect
+              key={`${bar.date}-${bar.model.key}-placeholder`}
+              x={bar.x}
+              y={yCost(0) - 1}
+              width={barW}
+              height={1}
+              rx={0}
+              className={css.chartBarPlaceholder}
+            />
+          )
+        }
+        return null
+      })}
 
         {/* Calls line (right axis): the daily call volume trend. */}
         <path d={linePath} fill="none" className={css.chartLine} />

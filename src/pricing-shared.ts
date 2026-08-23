@@ -140,6 +140,18 @@ export interface RelayQuota {
 /** Response of `/api/billing/relay-quotas`. */
 export interface RelayResponse {
   quotas: readonly RelayQuota[]
+  /** 诊断：每条路由的归类（route / origin / kind / unknown），供「我的中转站为什么不显示」自查。 */
+  diagnostics?: readonly RelayDiagnostic[]
+}
+
+/** 一条路由的归类诊断（供面板/日志定位中转站识别结果）。 */
+export interface RelayDiagnostic {
+  /** llm-pi-ai providers 路由名。 */
+  route: string
+  /** 站点 origin（baseURL 归一化）。 */
+  origin: string
+  /** 识别结果：new-api / sub2api（有额度读出）或 unknown（读不出）。 */
+  kind: 'new-api' | 'sub2api' | 'unknown'
 }
 
 /** Config for one subscription adapter (validated in apply). */
