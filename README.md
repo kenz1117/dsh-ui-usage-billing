@@ -40,7 +40,7 @@
 - **官方 vs 三方分桶**：明细费用列按官方 DeepSeek 直连 / 第三方中转分解（混合时「官 x / 三 y」），统计 Tab 有「官方/三方」汇总卡。
 - **中转站归组与额度**：按 provider 的 `baseURL` 归一化 origin 归组——同一中转站的多把 key 合并成一行，站名即域名；明细 Tab 新增「中转站分布」卡（中转站 / 直连 / 未知路由三态，未知路由 = 配置里已删 / 改名的路由，诚实标注「读不到」而非误归直连）。对配了 `baseURL` 的路由自动识别 New API 系（`/api/status`）与 Sub2API（`/v1/usage`）的**余额与滚动额度窗口**，读不出标「未读出额度」；智谱 GLM / Z.ai 国内域钱包余额已接入（与订阅套餐双读）。项目归属优先用工作区标题命名。
 - **月度预算 + 分档提醒**：预算条（开关 / 金额 / 进度，≥80% 琥珀、超支红脉）；跨 50 / 80 / 100% 各提醒一次；余额折算 CNY 低于阈值每天提醒一次。
-- **订阅套餐额度**：识别 `llm-pi-ai` 里的订阅类 provider（Kimi / Z.ai / OpenCode Go / MiniMax / OpenRouter / 小米 / 火山…），有额度 API 的实时显示剩余%与重置时间、用尽标红，无 API 标「未接入」；订阅通道模型费用记 0。档位月费与周期额度口径由内置知识库自动识别（如 OpenCode Go $10/月 + 周 $30 额度），有档位知识的标「自动识别」。
+- **订阅套餐额度**：识别 `llm-pi-ai` 里的订阅类 provider（Kimi / Z.ai / OpenCode Go / MiniMax / OpenRouter / 小米 / 火山…），有额度 API 的实时显示剩余%与重置时间、用尽标红，无 API 标「未接入」；订阅通道模型费用记 0。档位月费与周期额度口径由内置知识库自动识别（如 OpenCode Go $10/月 + 周 $30 额度），有档位知识的标「自动识别」。**MiniMax 用户注意**：在国内开发者环境请使用 `minimax-token-plan-cn` provider id，自动对接 `https://api.minimaxi.com`；国际保留 `minimax` / `minimax-token-plan`，默认 `https://www.minimaxi.com`。需要自配中转或 staging 时可在该 provider 设置里覆盖 `baseUrl`。
 
   ![明细：厂商计费与订阅（余额、套餐额度、模型用量）](screenshots/3.png)
 - **自定义 Provider 余额**：配置任意 HTTP 端点查余额（`extract` 支持常量 / 点路径 / add-subtract / divide，请求头 `{{ENV}}` 经凭据 seam）；DeepSeek / Kimi / 阶跃星辰 / 硅基流动内置官方余额，余额列按近 7 天日均折算「约可撑 N 天」。
