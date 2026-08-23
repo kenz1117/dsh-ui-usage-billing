@@ -512,9 +512,9 @@ function resolveMiniMaxBaseUrl(config: SubscriptionPlanConfig): string {
   return config.provider === 'minimax-token-plan-cn' ? 'https://api.minimaxi.com' : 'https://www.minimaxi.com'
 }
 
-/** Display name for a MiniMax quota row, matching the configured region. */
+/** Display name for a MiniMax quota row, aligned with the display-name map. */
 function minmaxDisplayName(provider: string): string {
-  return provider === 'minimax-token-plan-cn' ? 'MiniMax Token Plan（国内）' : 'MiniMax Coding Plan'
+  return SUBSCRIPTION_DISPLAY_NAMES[provider] ?? 'MiniMax Coding Plan'
 }
 
 /** Collect the MiniMax Token Plan quota (CN + INTL). */
