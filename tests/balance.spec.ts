@@ -40,7 +40,7 @@ describe('queryBalances provider routing', () => {
       deepseek: {},
       moonshot: { apiKeyEnv: 'STUB_KEY' },
     })
-    expect(rows).toHaveLength(4)
+    expect(rows).toHaveLength(5)
     const moonshot = rows.find(row => row.provider === '月之暗面')
     expect(moonshot).toMatchObject({ displayName: '月之暗面', currency: 'CNY', totalBalance: 49.59, grantedBalance: 46.59, toppedUpBalance: 3 })
     const deepseek = rows.find(row => row.provider === 'deepseek')
