@@ -204,6 +204,9 @@ const SUBSCRIPTION_VENDORS: Readonly<Record<string, string>> = {
   'opencode-go': 'OpenCode',
 }
 
+/** 仅供测试：暴露厂商映射表（subscriptionVendorOf 仍是唯一消费入口）。 */
+export const SUBSCRIPTION_VENDORS_FOR_TEST: Readonly<Record<string, string>> = SUBSCRIPTION_VENDORS
+
 /** 订阅套餐归并到的厂商显示名；未知 id 回退为从 model id 反推或 id 本身。 */
 function subscriptionVendorOf(provider: string): string {
   const mapped = SUBSCRIPTION_VENDORS[provider]
