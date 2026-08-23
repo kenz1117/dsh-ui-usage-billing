@@ -59,6 +59,8 @@ export declare const PROVIDER_ALIASES: Readonly<Record<string, readonly string[]
  * 导出供守卫测试：短别名（mi/yi）仅允许前缀形式，防止 minimax 等误吞。
  */
 export declare function providerFromModelKey(modelKey: string): string | undefined;
+/** 仅供测试：暴露厂商映射表（subscriptionVendorOf 仍是唯一消费入口）。 */
+export declare const SUBSCRIPTION_VENDORS_FOR_TEST: Readonly<Record<string, string>>;
 /**
  * 本月预计总花费：按本月已有记录的平均日消耗 × 本月天数外推；无本月记录时
  * 回退为最近 7 天日均 × 本月天数；无任何记录时返回 0（调用方不展示）。
