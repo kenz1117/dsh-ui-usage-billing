@@ -164,6 +164,21 @@ export type UsageBillingKey =
   | 'billing.pluginRepository'
   | 'billing.pluginNpm'
   | 'billing.pluginLicense'
+  | 'billing.tabToken'
+  | 'billing.tokenExport'
+  | 'billing.tokenExportCsv'
+  | 'billing.tokenCacheHitRate'
+  | 'billing.tokenReasoningShare'
+  | 'billing.tokenReasoningShort'
+  | 'billing.tokenIo'
+  | 'billing.tokenPeak'
+  | 'billing.tokenDaily'
+  | 'billing.tokenByModel'
+  | 'billing.tokenMiss'
+  | 'billing.tokenHit'
+  | 'billing.tokenOutput'
+  | 'billing.tokenTotal'
+  | 'billing.tokenShare'
 
 export const NS = 'usageBilling'
 
@@ -331,6 +346,21 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.pluginRepository': '仓库',
   'billing.pluginNpm': 'npm',
   'billing.pluginLicense': '许可证',
+  'billing.tabToken': '用量',
+  'billing.tokenExport': '导出 Token',
+  'billing.tokenExportCsv': '按日 Token CSV',
+  'billing.tokenCacheHitRate': '缓存命中率',
+  'billing.tokenReasoningShare': '思考占比',
+  'billing.tokenReasoningShort': '思考',
+  'billing.tokenIo': '输入/输出比',
+  'billing.tokenPeak': '峰值日',
+  'billing.tokenDaily': '每日 Token',
+  'billing.tokenByModel': '模型 Token',
+  'billing.tokenMiss': '未命中输入',
+  'billing.tokenHit': '缓存命中',
+  'billing.tokenOutput': '输出',
+  'billing.tokenTotal': '总 Token',
+  'billing.tokenShare': '占比',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -497,4 +527,19 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.pluginRepository': 'Repository',
   'billing.pluginNpm': 'npm',
   'billing.pluginLicense': 'License',
+  'billing.tabToken': 'Usage',
+  'billing.tokenExport': 'Export tokens',
+  'billing.tokenExportCsv': 'Daily token CSV',
+  'billing.tokenCacheHitRate': 'Cache hit rate',
+  'billing.tokenReasoningShare': 'Reasoning share',
+  'billing.tokenReasoningShort': 'reasoning',
+  'billing.tokenIo': 'In/out ratio',
+  'billing.tokenPeak': 'Peak day',
+  'billing.tokenDaily': 'Daily tokens',
+  'billing.tokenByModel': 'Tokens by model',
+  'billing.tokenMiss': 'Uncached input',
+  'billing.tokenHit': 'Cache hit',
+  'billing.tokenOutput': 'Output',
+  'billing.tokenTotal': 'Total tokens',
+  'billing.tokenShare': 'Share',
 }

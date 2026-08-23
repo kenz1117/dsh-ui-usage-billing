@@ -18,6 +18,7 @@ import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TrendChart, type TrendPoint } from './TrendChart.tsx'
 import { PerfPanel, type ClientPerf } from './PerfPanel.tsx'
 import { PluginInfoCard } from './PluginInfoCard.tsx'
+import { TokenPanel } from './TokenPanel.tsx'
 import { RoundCostChart, type RoundChartRow } from './round-chart.tsx'
 import { UsageHeatmap, type HeatmapDay } from './heatmap.tsx'
 import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
@@ -59,7 +60,7 @@ export interface ModelHealth {
 const SESSION_DISPLAY_LIMIT = 20
 
 /** 仪表盘分区 Tab id。 */
-export type DashboardTab = 'overview' | 'trends' | 'providers' | 'details' | 'pricing' | 'settings'
+export type DashboardTab = 'overview' | 'token' | 'trends' | 'providers' | 'pricing' | 'settings'
 
 /**
  * Tab 定义（顺序即渲染顺序）：概览=主数字/KPI/热力图，趋势=趋势图/每轮费用，
@@ -68,9 +69,9 @@ export type DashboardTab = 'overview' | 'trends' | 'providers' | 'details' | 'pr
  */
 export const DASHBOARD_TABS: readonly { id: DashboardTab; labelKey: UsageBillingKey }[] = [
   { id: 'overview', labelKey: 'billing.tabOverview' },
+  { id: 'token', labelKey: 'billing.tabToken' },
   { id: 'trends', labelKey: 'billing.tabTrends' },
   { id: 'providers', labelKey: 'billing.tabProviders' },
-  { id: 'details', labelKey: 'billing.tabDetails' },
   { id: 'pricing', labelKey: 'billing.tabPricing' },
   { id: 'settings', labelKey: 'billing.tabSettings' },
 ]
@@ -335,7 +336,7 @@ function subscriptionWindowLabel(kind: SubscriptionQuota['windows'][number]['kin
 }
 
 /** Usage stats structure from `.dsh-usage-stats.json`. */
-interface UsageStats {
+export interface UsageStats {
   /** 服务端聚合时间戳（毫秒）；旧快照可能缺失。 */
   updatedAt?: number
   /** 月度预算（人民币元）：宿主 Config 注入；未配置时不渲染预算条。 */
@@ -351,6 +352,8 @@ interface UsageStats {
     cacheHit: number
     cacheMiss: number
     cost: number
+    /** 输出中的 reasoning（思考）token；已含在 output 内。 */
+    reasoning: number
   }
   byModel: Record<string, {
     calls: number
@@ -359,6 +362,7 @@ interface UsageStats {
     cacheHit: number
     cacheMiss: number
     cost: number
+    reasoning: number
     /** Billed through a subscription plan (no per-token cost). */
     plan?: boolean
     /** 走官方 DeepSeek 直连的调用数（其余为第三方）；旧快照可能缺失。 */
@@ -373,6 +377,7 @@ interface UsageStats {
     cacheHit: number
     cacheMiss: number
     cost: number
+    reasoning: number
   }>
   /** 模型 × 日期 二维统计（趋势图堆叠柱的输入）；旧快照可能缺失，渲染时降级为单色柱。 */
   byDayModels?: Record<string, Record<string, {
@@ -456,7 +461,7 @@ const CHART_PALETTE: readonly string[] = [
 
 /** Empty snapshot: shown before (or without) real host data — zeros, never fabricated samples. */
 const EMPTY_STATS: UsageStats = {
-  total: { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0 },
+  total: { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0, reasoning: 0 },
   byModel: {},
   byDay: {},
   byDayModels: {},
@@ -1729,11 +1734,6 @@ function BillingDashboard({
                   </div>
                 )}
               </section>
-            </div>
-          )}
-
-          {tab === 'details' && (
-            <div className={css.tabPanel} data-testid="billing-tab-panel-details">
               {/* 数据导出：按日 / 按会话 CSV 与全量 JSON（对账用），文件名带日期范围。 */}
               <div className={css.exportBar} data-testid="billing-export-bar" role="group" aria-label={t('billing.export')}>
                 <span className={css.exportLabel}>{t('billing.export')}</span>
@@ -1764,21 +1764,6 @@ function BillingDashboard({
                   {t('billing.exportJson')}
                 </button>
               </div>
-              {/* 性能：按模型 TTFT/P50/P90/生成速度/总延迟 + 按小时曲线（复用模型图例色）。
-               旧快照无 perf 字段时整段不出现；图表数据为服务端聚合，无任何样本时不伪造。 */}
-              {stats.perf !== undefined && (
-                <section className={css.panel} data-testid="billing-panel-perf">
-                  <div className={css.panelHead}>
-                    <h3 className={css.panelTitle}>
-                      {t('billing.perfTitle')}
-                    </h3>
-                    <span className={css.panelHint}>
-                      {t('billing.perfHint')}
-                    </span>
-                  </div>
-                  <PerfPanel perf={stats.perf} models={chartModels} t={t} />
-                </section>
-              )}
               {/* 费用构成（估算）：输出成本实测计价，输入成本按 user/tool 消息
               文本长度占比摊分（日志无角色级 token 实测，标注估算口径）。 */}
               {roleRows.length > 0 && (
@@ -1831,7 +1816,7 @@ function BillingDashboard({
                   </div>
                 </section>
               )}
-              {/* 工作区统计：按 cwd 末级目录归并（明细 Tab 内默认展开）。 */}
+              {/* 工作区统计：按 cwd 末级目录归并。 */}
               {stats.byWorkspace !== undefined && stats.byWorkspace.length > 0 && (
                 <section className={css.panel} data-testid="billing-panel-workspaces">
                   <div className={css.panelHead}>
@@ -1869,10 +1854,7 @@ function BillingDashboard({
                   </div>
                 </section>
               )}
-
-              {/* 会话明细：按费用倒序，回答「钱花在哪」（明细 Tab 内默认展开）。
-              服务端聚合路径恒带 bySession（空数组时显示空态）；JSON 回退
-              文件没有此字段，面板不出现。 */}
+              {/* 会话明细：按费用倒序，回答「钱花在哪」。 */}
               {stats.bySession !== undefined && (
                 <section className={css.panel} data-testid="billing-panel-sessions">
                   <div className={css.panelHead}>
@@ -1924,7 +1906,27 @@ function BillingDashboard({
                   </div>
                 </section>
               )}
+            </div>
+          )}
 
+          {tab === 'token' && (
+            <div className={css.tabPanel} data-testid="billing-tab-panel-token">
+              {/* Token 洞察：独立于费用的 token 统计（每日堆叠 / 模型占比 / 结构 KPI / 导出）。 */}
+              <TokenPanel stats={stats} currency={currency} trendDays={trendDays} onTrendDays={setTrendDays} t={t} />
+              {/* 性能：按模型 TTFT/P50/P90/生成速度/总延迟 + 按小时曲线（并入「用量」分区）。 */}
+              {stats.perf !== undefined && (
+                <section className={css.panel} data-testid="billing-panel-perf">
+                  <div className={css.panelHead}>
+                    <h3 className={css.panelTitle}>
+                      {t('billing.perfTitle')}
+                    </h3>
+                    <span className={css.panelHint}>
+                      {t('billing.perfHint')}
+                    </span>
+                  </div>
+                  <PerfPanel perf={stats.perf} models={chartModels} t={t} />
+                </section>
+              )}
             </div>
           )}
 

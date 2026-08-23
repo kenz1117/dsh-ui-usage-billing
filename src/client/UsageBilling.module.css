@@ -2154,6 +2154,40 @@
   text-decoration: underline;
 }
 
+/* 插件信息卡（Token 分区）：模型 token 横向条 + 占比。 */
+.tokenPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tokenModelBar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
+  overflow: hidden;
+}
+
+/* 模型 token 占比分段条：蓝=输入（含缓存命中）、琥珀=输出。 */
+.tokenModelParts {
+  display: flex;
+  height: 100%;
+}
+
+.tokenModelPartIn {
+  background: var(--dsw-static-blue-500);
+}
+
+.tokenModelPartOut {
+  background: var(--dsw-static-amber-500);
+}
+
+.tokenModelShareRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ── Responsive ─────────────────────────────────────────────────────── */
 
 @media (max-width: 640px) {

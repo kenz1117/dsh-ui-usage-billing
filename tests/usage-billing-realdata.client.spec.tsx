@@ -167,7 +167,7 @@ describe('UsageBilling real-data surface', () => {
     const { container } = render(<UsageBilling {...makeProps()} />)
     fireEvent.click(container.querySelector('button')!)
     // 会话明细在明细 Tab 内默认展开：切 Tab 后表格直接可见。
-    fireEvent.click(await screen.findByTestId('billing-tab-details'))
+    fireEvent.click(await screen.findByTestId('billing-tab-providers'))
     const table = await screen.findByTestId('billing-sessions-table')
     // 标题行按费用倒序；无标题会话回退为 id 前 8 位；项目取 cwd 末级目录。
     expect(table.textContent).toContain('修复登录 bug')
