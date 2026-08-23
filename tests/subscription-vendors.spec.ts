@@ -2,6 +2,9 @@
  * 订阅 provider → 厂商映射守卫：凡有独立显示名的订阅 provider id，必须列在
  * SUBSCRIPTION_VENDORS 中，否则 subscriptionVendorOf() 会回退并让订阅卡在
  * 「厂商」列直接把 provider id 原样显示，破坏按厂商归并。
+ *
+ * 本守卫源自 @ciphoo 的 PR #6（fix(client): 把 minimax-token-plan 也归到
+ * Minimax 厂商），由其提议并实现；作者采纳并作为 v0.9.9 之后的后续 commit 并入。
  */
 
 import { describe, expect, it } from 'vitest'
