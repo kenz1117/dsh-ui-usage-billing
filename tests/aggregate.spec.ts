@@ -14,6 +14,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import {
   aggregateUsage, createUsageAggregator, dayStamp, foldSession, foldUsage, emptyUsage, workspaceNameOf,
+  siteBucketKey, siteOriginOf, siteRefOf,
   AGGREGATE_TTL_MS, SESSION_ROW_LIMIT, type UsagePersistence,
 } from '../src/aggregate.ts'
 
@@ -186,6 +187,62 @@ describe('dayStamp', () => {
   it('formats the local date of a timestamp', () => {
     // 2026-08-15 12:00 UTC 在 UTC+8 是 2026-08-15 20:00。
     expect(dayStamp(Date.UTC(2026, 7, 15, 12, 0, 0))).toMatch(/^2026-08-1[5-6]$/)
+  })
+})
+
+describe('relay site attribution (P0-2)', () => {
+  it('normalizes a baseURL to its origin', () => {
+    expect(siteOriginOf('https://relay.example.com/v1')).toBe('https://relay.example.com')
+    expect(siteOriginOf('http://gateway.acme.example:8080/path')).toBe('http://gateway.acme.example:8080')
+    // 非法的 URL 原样回退（不抛错）。
+    expect(siteOriginOf('not-a-url')).toBe('not-a-url')
+  })
+
+  it('classifies a route as site / direct / unknown from the provider routes dict', () => {
+    const routes: Record<string, { baseURL?: string }> = {
+      // 配了 baseURL → 中转站（按 origin 归组）。
+      'relay-a': { baseURL: 'https://relay.example.com/v1' },
+      // 存在但无 baseURL → 直连厂商。
+      'deepseek': {},
+    }
+    expect(siteRefOf('relay-a', routes)).toEqual({ kind: 'site', origin: 'https://relay.example.com', provider: 'relay-a' })
+    expect(siteRefOf('deepseek', routes)).toEqual({ kind: 'direct', provider: 'deepseek' })
+    // 不在配置里 → 未知路由（读不到，而不是直连）。
+    expect(siteRefOf('removed-route', routes)).toEqual({ kind: 'unknown', provider: 'removed-route' })
+  })
+
+  it('keys site buckets stably for the dashboard', () => {
+    expect(siteBucketKey({ kind: 'site', origin: 'https://relay.example.com', provider: 'relay-a' })).toBe('site:https://relay.example.com')
+    expect(siteBucketKey({ kind: 'direct', provider: 'deepseek' })).toBe('direct:deepseek')
+    expect(siteBucketKey({ kind: 'unknown', provider: 'whatever' })).toBe('unknown')
+  })
+
+  it('folds each call into its site bucket keyed by origin', () => {
+    const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
+      ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
+    const fold = foldSession([
+      ev('request/header', 1, 1_000, { header: { config: { provider: 'relay-a', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE }),
+    ], new Set(), undefined, { 'relay-a': { baseURL: 'https://relay.example.com/v1' } })
+    const site = fold.bySite.get('site:https://relay.example.com')
+    expect(site?.calls).toBe(1)
+    expect(site?.cost ?? 0).toBeGreaterThan(0)
+  })
+
+  it('emits bySite in the document when routes resolve to stations', async () => {
+    const stats = await aggregateUsage(
+      fakePersistence({ s1: [header(1, 'deepseek-v4-flash', 'relay-a'), message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE)] }),
+      { resolveRoutes: () => ({ 'relay-a': { baseURL: 'https://relay.example.com/v1' } }) },
+    )
+    expect(stats.bySite?.['site:https://relay.example.com']?.calls).toBe(1)
+    expect(stats.bySite?.['unknown']).toBeUndefined()
+  })
+
+  it('routes without configuration fall into the unknown bucket', async () => {
+    const stats = await aggregateUsage(
+      fakePersistence({ s1: [header(1, 'deepseek-v4-flash', 'missing-route'), message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE)] }),
+    )
+    expect(stats.bySite?.['unknown']?.calls).toBe(1)
   })
 })
 

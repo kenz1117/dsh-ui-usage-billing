@@ -40,7 +40,7 @@ describe('queryBalances provider routing', () => {
       deepseek: {},
       moonshot: { apiKeyEnv: 'STUB_KEY' },
     })
-    expect(rows).toHaveLength(5)
+    expect(rows).toHaveLength(7)
     const moonshot = rows.find(row => row.provider === '月之暗面')
     expect(moonshot).toMatchObject({ displayName: '月之暗面', currency: 'CNY', totalBalance: 49.59, grantedBalance: 46.59, toppedUpBalance: 3 })
     const deepseek = rows.find(row => row.provider === 'deepseek')
@@ -50,6 +50,10 @@ describe('queryBalances provider routing', () => {
     expect(rows.find(row => row.provider === '阶跃星辰')).toMatchObject({ provider: '阶跃星辰', error: 'unconfigured' })
     // siliconflow route 同样未配 → unconfigured。
     expect(rows.find(row => row.provider === '硅基流动')).toMatchObject({ provider: '硅基流动', error: 'unconfigured' })
+    // 智谱钱包余额（zhipu 直连路由 + zai-coding-cn 订阅通道）都未配 key → 各 unconfigured。
+    const zhipu = rows.filter(row => row.provider === '智谱 AI')
+    expect(zhipu).toHaveLength(2)
+    for (const row of zhipu) expect(row).toMatchObject({ provider: '智谱 AI', error: 'unconfigured' })
   })
 
   it('classifies a missing secret as unconfigured without fetching', async () => {

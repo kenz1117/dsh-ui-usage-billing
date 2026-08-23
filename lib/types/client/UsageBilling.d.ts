@@ -190,6 +190,16 @@ export interface UsageStats {
         output: number;
         lastActive: number;
     }[];
+    /** 中转站归组（key = `site:<origin>` / `direct:<provider>` / `unknown`）；旧快照可能缺失。 */
+    bySite?: Record<string, {
+        calls: number;
+        input: number;
+        output: number;
+        cacheHit: number;
+        cacheMiss: number;
+        cost: number;
+        reasoning: number;
+    }>;
     /** 按角色费用归因（估算口径：输出实测，输入按消息长度摊分）；旧快照可能缺失。 */
     byRole?: {
         user: number;

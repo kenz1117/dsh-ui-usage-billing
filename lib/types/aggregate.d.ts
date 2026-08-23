@@ -27,6 +27,34 @@ export declare const DEFAULT_SUBSCRIPTION_PROVIDERS: readonly string[];
  * 调用与费用分桶展示；部署可由配置覆盖（见 {@link AggregateOptions}）。
  */
 export declare function isOfficialProvider(provider: string): boolean;
+/** 一个 provider 路由的站点视图（来自 llm-pi-ai providers 的 baseURL）。 */
+export interface ProviderRouteView {
+    /** 该路由配置的端点地址；无值 = 直连厂商（非中转站）。 */
+    baseURL?: string;
+}
+/** 站点归属分类：site=中转站（有 baseURL origin）；direct=直连；unknown=未知路由（配置已删）。 */
+export type SiteKind = 'site' | 'direct' | 'unknown';
+/** 一个 provider 路由归类后的站点引用。 */
+export interface SiteRef {
+    kind: SiteKind;
+    /** 站点归一化 origin（仅 site）。 */
+    origin?: string;
+    /** 原 provider 路由名。 */
+    provider: string;
+}
+/** 由 baseURL 归一化出站点 origin（协议 + 主机 + 端口）；解析失败回退原值。 */
+export declare function siteOriginOf(baseURL: string): string;
+/**
+ * 把一个 provider 路由归类为站点引用。判定顺序（与路由在 provider 配置里的状态一致）：
+ * - 路由存在于当前配置且配了 baseURL → 中转站 `site`（按 origin 归组，同站多 key 合并）；
+ * - 路由存在于当前配置但无 baseURL → 厂商直连 `direct`；
+ * - 路由不在当前配置里 → `unknown`（改过名 / 删除过，是「读不到」而非「直连」）。
+ * @param provider - 会话日志里的 provider 路由名（request/header 的 `config.provider`）。
+ * @param routes - 当前 provider 路由视图（来自 llm-pi-ai providers）。
+ */
+export declare function siteRefOf(provider: string, routes: Readonly<Record<string, ProviderRouteView>>): SiteRef;
+/** 站点桶的稳定 key：`site:<origin>` 与 `direct:<provider>` 分开，`unknown` 单一桶。 */
+export declare function siteBucketKey(ref: SiteRef): string;
 /** Aggregation tuning options. */
 export interface AggregateOptions {
     /** 订阅制 provider id 列表；默认 {@link DEFAULT_SUBSCRIPTION_PROVIDERS}。 */
@@ -36,6 +64,12 @@ export interface AggregateOptions {
     /** 每会话折叠缓存的上限（默认 {@link DEFAULT_MAX_CACHE_SESSIONS}）；
      *  超限时按最近使用先后淘汰最久未用的会话，防长期运行内存膨胀。 */
     maxCacheSessions?: number;
+    /** 中转站归组来源：返回当前 provider 路由视图（llm-pi-ai providers 的 baseURL）。
+     *  每次聚合时调用取最新值；缺省时全部路由按「未知路由」处理（无配置发现）。 */
+    resolveRoutes?: () => Readonly<Record<string, ProviderRouteView>>;
+    /** 工作区标题解析：给定会话 cwd 返回项目显示标题；undefined = 回退到 cwd 末级目录名
+     *  （host 的 workspaceRegistry 为可选依赖，缺失时不注入，行为保持不变）。 */
+    resolveWorkspaceTitle?: (cwd: string) => string | undefined;
 }
 /** 每会话折叠缓存默认上限：超过则按 LRU 淘汰（P1-6 峰值内存治理）。 */
 export declare const DEFAULT_MAX_CACHE_SESSIONS = 400;
@@ -101,6 +135,12 @@ export interface UsageStatsDocument {
     byTurn?: TurnUsageRow[];
     /** 工作区聚合：按 cwd 末级目录归并，按费用倒序；旧快照可能缺失。 */
     byWorkspace?: WorkspaceUsageRow[];
+    /**
+     * 中转站归组：按 provider 路由归类到站点（有 baseURL 按 origin 归组）、直连、未知路由；
+     * key 为 {@link siteBucketKey} 的稳定值（`site:<origin>` / `direct:<provider>` / `unknown`）。
+     * 旧快照可能缺失。
+     */
+    bySite?: Record<string, ModelUsage>;
     /**
      * 按角色费用归因（人民币元）：助手输出成本为实测计价；输入成本按会话内
      * 用户消息 / 工具结果的文本长度占比启发式摊分（日志无角色级 token 实测，
@@ -227,6 +267,8 @@ interface SessionFold {
     byModel: Map<string, ModelUsage>;
     byDay: Map<string, ModelUsage>;
     byDayModels: Map<string, Map<string, ModelUsage>>;
+    /** 中转站归组：按 provider 路由归类到站点/直连/未知路由（key = {@link siteBucketKey}）。 */
+    bySite: Map<string, ModelUsage>;
     /** 每个模型 key 在本会话内走订阅通道的调用数（合并时跨会话累加判定 plan）。 */
     planCalls: Map<string, number>;
     /** 每轮费用明细（按轮次号升序，不含 sessionId）；sessionId 在合并时补齐。 */
@@ -268,7 +310,7 @@ export declare function foldSession(events: readonly {
     type: string;
     time: number;
     data: never;
-}[], subscriptionProviders: ReadonlySet<string>, officialProviderIds?: ReadonlySet<string>): SessionFold;
+}[], subscriptionProviders: ReadonlySet<string>, officialProviderIds?: ReadonlySet<string>, routes?: Readonly<Record<string, ProviderRouteView>>): SessionFold;
 /**
  * 增量聚合器：按会话缓存折叠结果，用日志文件的 mtime+size 作失效键——
  * 日志没动的会话直接复用，只有写过的会话重新折叠；整份文档另有短 TTL

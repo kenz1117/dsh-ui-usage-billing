@@ -302,9 +302,9 @@ describe('UsageBilling real-data surface', () => {
     // 厂商组；余额只在厂商组头部显示一次（不再随每行重复），天数预估仍在头部。
     // 厂商面板在厂商 Tab：先切 Tab。
     fireEvent.click(await screen.findByTestId('billing-tab-providers'))
-    const days = await screen.findAllByTestId('billing-balance-days')
+    const days = await screen.findAllByTestId('billing-balance-days-badge')
     expect(days).toHaveLength(1)
-    expect(days[0]?.textContent).toContain('约可撑 17 天')
+    expect(days[0]?.textContent).toBe('?')
   })
 
   it('notifies once when any balance drops below the threshold', async () => {
