@@ -203,6 +203,7 @@ const SUBSCRIPTION_VENDORS: Readonly<Record<string, string>> = {
   'baidu': '百度文心',
   'wenxin': '百度文心',
   'minimax': 'MiniMax',
+  'minimax-cn': 'MiniMax',
   'minimax-token-plan': 'MiniMax',
   'minimax-token-plan-cn': 'MiniMax',
   'opencode': 'OpenCode',
