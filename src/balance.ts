@@ -2,12 +2,11 @@
  * Account-balance queries for the billing dashboard.
  *
  * Only providers with a public balance endpoint can report one. Today that is
- * DeepSeek (`GET https://api.deepseek.com/user/balance`) and Moonshot/Kimi
- * (`GET https://api.moonshot.cn/v1/users/me/balance`), both Bearer 鉴权 with a
- * documented JSON shape; the other mainstream providers expose no standard
- * balance API (or require a non-Bearer auth flow), so their rows in the model
- * table show an unavailable state. The lookup map below is the extension point
- * for future providers.
+ * DeepSeek, Moonshot/Kimi, StepFun, SiliconFlow, and xAI (Grok) — all Bearer
+ * 鉴权 with a documented JSON shape; the other mainstream providers expose no
+ * standard balance API (or require a non-Bearer auth flow), so their rows in
+ * the model table show an unavailable state. The lookup map below is the
+ * extension point for future providers.
  *
  * API keys are read from the `llm-pi-ai` settings namespace (`providers.<id>.apiKeyEnv`),
  * the same source the subscription adapter uses, so a deployment configures a
@@ -32,6 +31,9 @@ const STEPFUN_BALANCE_URL = 'https://api.stepfun.com/v1/accounts'
 
 /** 硅基流动 SiliconFlow 官方用户信息接口（docs.siliconflow.cn/cn/api-reference/user/query-user-info）。 */
 const SILICONFLOW_BALANCE_URL = 'https://api.siliconflow.cn/v1/user/info'
+
+/** xAI 官方账单接口（docs.x.ai/developers/api/credits）；total.val 为美分。 */
+const XAI_CREDITS_URL = 'https://api.x.ai/v1/billing/credits'
 
 /** 数字归一化：接口返回的余额是字符串（如 `"110.00"`），统一转 number。 */
 function toNumber(value: unknown): number | undefined {
@@ -189,6 +191,27 @@ function querySiliconFlow(ctx: Context, apiKeyEnv: string): Promise<ProviderBala
 }
 
 /**
+ * Query the xAI (Grok) credit balance.
+ * @param ctx - host context carrying the credentials seam.
+ * @param apiKeyEnv - credential reference resolving the xAI API key.
+ * @returns the balance row, or an error row when the key/endpoint misbehaves.
+ */
+function queryXai(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
+  return queryBearerBalance(ctx, XAI_CREDITS_URL, apiKeyEnv, 'xAI', 'xAI', (data) => {
+    const doc = data as { total?: { val?: unknown } }
+    // `total.val` 是美分：预付余额以负数返回，转正后除以 100 得美元。
+    const cents = toNumber(doc.total?.val)
+    const totalBalance = cents === undefined ? undefined : Math.abs(cents) / 100
+    return {
+      provider: 'xAI',
+      displayName: 'xAI',
+      currency: 'USD',
+      ...(totalBalance !== undefined ? { totalBalance } : {}),
+    }
+  })
+}
+
+/**
  * One balance querier plus the llm-pi-ai provider route id it reads its key
  * from. The `provider` field is the model-table vendor display name, so
  * `balanceFor` matches by normalization; `route` is the llm-pi-ai providers
@@ -208,6 +231,7 @@ const QUERIERS: readonly BalanceQuerier[] = [
   { route: 'moonshot', displayName: '月之暗面', querier: queryMoonshot },
   { route: 'stepfun', displayName: '阶跃星辰', querier: queryStepFun },
   { route: 'siliconflow', displayName: '硅基流动', querier: querySiliconFlow },
+  { route: 'xai', displayName: 'xAI', querier: queryXai },
 ]
 
 /**
