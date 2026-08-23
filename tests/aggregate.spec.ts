@@ -191,6 +191,19 @@ describe('dayStamp', () => {
 })
 
 describe('relay site attribution (P0-2)', () => {
+  it('collects unpriced models into unpricedModels', () => {
+    const fold = foldSession([
+      header(1, 'unknown-model-x', 'unknown-route') as unknown as { type: string; time: number; data: never },
+      message(2, 1_001, USAGE) as unknown as { type: string; time: number; data: never },
+    ], new Set())
+    expect(fold.unpricedModels.has('unknown-model-x')).toBe(true)
+    // 已收录模型不进 unpriced 集合。
+    const foldPriced = foldSession([
+      header(1, 'deepseek-v4-flash') as unknown as { type: string; time: number; data: never },
+      message(2, 1_001, USAGE) as unknown as { type: string; time: number; data: never },
+    ], new Set())
+    expect(foldPriced.unpricedModels.size).toBe(0)
+  })
   it('normalizes a baseURL to its origin', () => {
     expect(siteOriginOf('https://relay.example.com/v1')).toBe('https://relay.example.com')
     expect(siteOriginOf('http://gateway.acme.example:8080/path')).toBe('http://gateway.acme.example:8080')

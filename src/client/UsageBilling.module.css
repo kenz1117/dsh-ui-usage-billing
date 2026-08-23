@@ -793,6 +793,20 @@
 .deltaUp { color: var(--dsw-static-green-500); }
 .deltaDown { color: var(--dsw-static-red-500); }
 
+/* 未计价模型提示条：Hero 与 KPI 之间的轻量警告，琥珀低饱和，不打断视觉流。 */
+.unpricedHint {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--dsw-static-amber-500) 30%, transparent);
+  background: color-mix(in srgb, var(--dsw-static-amber-500) 8%, transparent);
+  color: var(--dsw-static-amber-500);
+  font-size: 11.5px;
+  line-height: 17px;
+  font-weight: 500;
+}
+
 /* ── KPI grid ───────────────────────────────────────────────────────── */
 
 .kpiGrid {
@@ -1334,6 +1348,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+.chartBarPlaceholder {
+  fill: color-mix(in srgb, var(--dsw-alias-label-secondary) 30%, transparent);
+}
+
 .chartLegendLine {
   display: inline-block;
   width: 10px;
@@ -1586,6 +1604,11 @@
   line-height: 17px;
   color: var(--dsw-alias-label-secondary);
   font-variant-numeric: tabular-nums;
+}
+
+/* 中转站额度低配额（剩余 < 20%）标红，与订阅低配额语义一致。 */
+.siteRowCallsLow {
+  color: var(--dsw-static-red-500);
 }
 
 .rateBadgeBuiltin {

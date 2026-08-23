@@ -14,6 +14,7 @@ import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: merges the ctx.sessionPersistence service declaration.
 import type {} from '@deepseek-ai/dsh-session-persistence'
@@ -43,6 +44,41 @@ import {
   ENABLE_USAGE_STATS_TOOL_FIELD,
   type UsageBillingSettings,
 } from './client/usage-billing-settings.ts'
+
+/** Peer 地址是否为回环（本地）。回环防护：本插件的端点只供本机浏览器用，
+ *  局域网/远端请求一律拒绝，避免面板数据（含中转站 origin 与余额）外泄。 */
+function isLoopbackPeer(req: IncomingMessage): boolean {
+  const address = req.socket.remoteAddress
+  if (address === undefined) return false
+  // IPv4 127.0.0.0/8、IPv6 ::1、以及 IPv4-mapped IPv6（::ffff:127.x.x.x）。
+  return address === '::1' || address.startsWith('127.') || address.startsWith('::ffff:127.')
+}
+
+/** 校验 Host 头是本机回环（127.x / ::1 / localhost 或空，供 curl 不带 Host 的极简请求）。 */
+function isLoopbackHost(req: IncomingMessage): boolean {
+  const host = req.headers.host
+  if (host === undefined || host === '') return true
+  const name = host.split(':')[0]
+  return name === 'localhost' || name === '::1' || (name !== undefined && name.startsWith('127.'))
+}
+
+/**
+ * 回环防护守卫：仅接受回环 GET 请求（peer socket 地址 + Host 头同时校验）。
+ * 不满足时返回 403 并结束响应；调用方在 handler 顶部调用，返回 false 即已拒绝。
+ * @param req - 当前请求。
+ * @param res - 当前响应。
+ * @returns 是否放行；false = 已拒绝并结束响应。
+ */
+export function guardLoopback(req: IncomingMessage, res: ServerResponse): boolean {
+  // GET 读取 + POST（usage-tool 的开关写入）都在回环内允许；其他方法一律拒绝。
+  const methodOk = req.method === 'GET' || req.method === 'POST'
+  if (!methodOk || !isLoopbackPeer(req) || !isLoopbackHost(req)) {
+    res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify({ error: 'forbidden: loopback only' }))
+    return false
+  }
+  return true
+}
 
 /** usage_stats 工具开关的设置命名空间 id（下端与 node 共用同一常量）。 */
 const usageBillingSettingsNs = settingsNamespace(BILLING_SETTINGS_NAMESPACE)
@@ -368,9 +404,9 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       parameters: {
         range: {
           type: 'string',
-          enum: ['today', 'month', 'session', 'all'],
+          enum: ['today', 'month', 'session', 'all', 'bySite', 'relay'],
           required: true,
-          description: '统计范围：today / month / session / all',
+          description: '统计范围：today / month / session / all / bySite / relay',
         },
       },
       output: {
@@ -401,6 +437,21 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
             input: stats.total.input,
             output: stats.total.output,
           }
+        }
+        if (args.range === 'bySite' || args.range === 'relay') {
+          // 按站点归组：bySite 维度（中转站/直连/未知路由）累计；relay 只看中转站部分。
+          const bySite = stats.bySite ?? {}
+          let cost = 0
+          let calls = 0
+          let input = 0
+          let output = 0
+          for (const usage of Object.values(bySite)) {
+            cost += usage.cost
+            calls += usage.calls
+            input += usage.input
+            output += usage.output
+          }
+          return { range: args.range, cost, calls, input, output }
         }
         if (args.range === 'today') {
           const day = stats.byDay[dayStamp(Date.now())]
@@ -437,7 +488,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
           output += turn.output
         }
         return { range: args.range, cost, calls, input, output }
-      },
+      }
     }))
     }
     })
@@ -464,7 +515,8 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     () => ctx.webServer.register({
       kind: 'exact',
       path: '/api/billing/pricing',
-      handler: async (_req, res) => {
+      handler: async (req, res) => {
+        if (!guardLoopback(req, res)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         res.end(JSON.stringify(live))
       },
@@ -476,7 +528,8 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     () => ctx.webServer.register({
       kind: 'exact',
       path: '/api/billing/balance',
-      handler: async (_req, res) => {
+      handler: async (req, res) => {
+        if (!guardLoopback(req, res)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         // 余额 key 复用 llm-pi-ai 的 providers（同订阅）：部署为某 provider 配一次即可。
         // DeepSeek 保留 `balanceApiKeyEnv` 特例：llm-pi-ai 未配 deepseek 时仍可用该 env 查余额。
@@ -505,6 +558,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       kind: 'exact',
       path: '/api/billing/usage-tool',
       handler: async (req, res) => {
+        if (!guardLoopback(req, res)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         const enabled = usageSettingsScope?.get().enableUsageStatsTool ?? DEFAULT_ENABLE_USAGE_STATS_TOOL
         if (req.method === 'GET') {
@@ -570,7 +624,8 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     () => ctx.webServer.register({
       kind: 'exact',
       path: '/api/billing/subscriptions',
-      handler: async (_req, res) => {
+      handler: async (req, res) => {
+        if (!guardLoopback(req, res)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         if (Date.now() - quotaCache.at >= SUBSCRIPTION_CACHE_MS) await refreshQuotas()
         res.end(JSON.stringify({ quotas: quotaCache.quotas }))
@@ -601,10 +656,13 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     () => ctx.webServer.register({
       kind: 'exact',
       path: '/api/billing/relay-quotas',
-      handler: async (_req, res) => {
+      handler: async (req, res) => {
+        if (!guardLoopback(req, res)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         if (Date.now() - relayCache.at >= SUBSCRIPTION_CACHE_MS) await refreshRelay()
-        res.end(JSON.stringify({ quotas: relayCache.quotas }))
+        // 诊断：每条路由的归类（origin / kind），供「我的中转站为什么不显示」自查。
+        const diagnostics = relayCache.quotas.map(row => ({ route: row.route, origin: row.origin, kind: row.kind }))
+        res.end(JSON.stringify({ quotas: relayCache.quotas, diagnostics }))
       },
     }),
     'usage-billing: relay-quotas route',
@@ -614,7 +672,8 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     () => ctx.webServer.register({
       kind: 'exact',
       path: '/api/billing/usage-stats',
-      handler: async (_req, res) => {
+      handler: async (req, res) => {
+        if (!guardLoopback(req, res)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         try {
           const stats = await aggregator.aggregate()

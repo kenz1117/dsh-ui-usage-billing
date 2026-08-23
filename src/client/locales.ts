@@ -199,6 +199,8 @@ export type UsageBillingKey =
   | 'billing.popQuotaLow'
   | 'billing.alertBalanceLow'
   | 'billing.alertQuotaLow'
+  | 'billing.unpricedHint'
+  | 'billing.exportCsvSite'
   | 'billing.panelRelay'
   | 'billing.relaySite'
   | 'billing.relayDirect'
@@ -388,8 +390,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.tokenPeak': '峰值日',
   'billing.tokenDaily': '每日 Token',
   'billing.tokenByModel': '模型 Token',
-  'billing.tokenMiss': '未命中输入',
-  'billing.tokenHit': '缓存命中',
+  'billing.tokenMiss': '输入（缓存未命中）',
+  'billing.tokenHit': '输入（缓存命中）',
   'billing.tokenOutput': '输出',
   'billing.tokenTotal': '总 Token',
   'billing.tokenShare': '占比',
@@ -413,6 +415,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.popQuotaLow': '配额将尽',
   'billing.alertBalanceLow': '{name} 余额不足',
   'billing.alertQuotaLow': '{name} 配额将尽',
+  'billing.unpricedHint': '{count} 个模型未收录计价，费用已按 0 计',
+  'billing.exportCsvSite': '按站点 CSV',
   'billing.panelRelay': '中转站分布',
   'billing.relaySite': '中转站',
   'billing.relayDirect': '直连',
@@ -601,8 +605,8 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.tokenPeak': 'Peak day',
   'billing.tokenDaily': 'Daily tokens',
   'billing.tokenByModel': 'Tokens by model',
-  'billing.tokenMiss': 'Uncached input',
-  'billing.tokenHit': 'Cache hit',
+  'billing.tokenMiss': 'Input (cache miss)',
+  'billing.tokenHit': 'Input (cache hit)',
   'billing.tokenOutput': 'Output',
   'billing.tokenTotal': 'Total tokens',
   'billing.tokenShare': 'Share',
@@ -626,6 +630,8 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.popQuotaLow': 'quota low',
   'billing.alertBalanceLow': '{name} balance low',
   'billing.alertQuotaLow': '{name} quota low',
+  'billing.unpricedHint': '{count} models not priced; their cost counts as 0',
+  'billing.exportCsvSite': 'By site CSV',
   'billing.panelRelay': 'Relay sites',
   'billing.relaySite': 'Relay',
   'billing.relayDirect': 'Direct',

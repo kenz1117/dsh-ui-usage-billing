@@ -46,6 +46,17 @@ export function dayRowsCsv(byDay: Record<string, DayExportRow>): string {
   return [header, ...lines].join('\n')
 }
 
+/** 按站点（中转站/直连/未知路由）CSV：站点,类别,调用,费用(元)。 */
+export function siteRowsCsv(bySite: Record<string, DayExportRow>): string {
+  const header = 'site,kind,calls,cost_cny'
+  const lines = Object.entries(bySite).map(([key, usage]) => {
+    const site = key.startsWith('site:') ? key.slice(5) : key.startsWith('direct:') ? key.slice(7) : 'unknown'
+    const kind = key.startsWith('site:') ? 'site' : key.startsWith('direct:') ? 'direct' : 'unknown'
+    return [csvCell(site), kind, usage.calls, money(usage.cost)].join(',')
+  })
+  return [header, ...lines].join('\n')
+}
+
 /** 项目名取 cwd 末级目录（与统计 Tab 的会话明细同口径）。 */
 function projectOf(cwd: string | undefined): string {
   if (cwd === undefined) return ''

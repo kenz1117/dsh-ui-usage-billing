@@ -71,8 +71,9 @@ describe('queryRelayQuota', () => {
         ? { ok: false, status: 404 }
         : { ok: true, status: 200, json: async () => ({ data: { ratio: 0.5 } }) }
     }))
-    const row = await queryRelayQuota(ctx, { route: 'r', baseURL: 'https://relay.example.com', apiKeyEnv: 'STUB_KEY' })
-    expect(row).toMatchObject({ kind: 'new-api', status: 'ok', origin: 'https://relay.example.com' })
+    // 用不同 origin 隔离缓存：同 origin 的指纹识别会命中缓存，影响后续用例。
+    const row = await queryRelayQuota(ctx, { route: 'r2', baseURL: 'https://relay2.example.com', apiKeyEnv: 'STUB_KEY' })
+    expect(row).toMatchObject({ kind: 'new-api', status: 'ok', origin: 'https://relay2.example.com' })
     expect(row.windows?.[0]).toMatchObject({ usedPercent: 50 })
   })
 
@@ -88,14 +89,16 @@ describe('queryRelayQuota', () => {
   it('reports unauthorized when the endpoint rejects the key', async () => {
     const ctx = fakeContext('k')
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 401 })))
-    const row = await queryRelayQuota(ctx, { route: 'r', baseURL: 'https://relay.example.com', apiKeyEnv: 'STUB_KEY' })
+    // 用不同 origin 隔离缓存。
+    const row = await queryRelayQuota(ctx, { route: 'r3', baseURL: 'https://relay3.example.com', apiKeyEnv: 'STUB_KEY' })
     expect(row).toMatchObject({ status: 'unauthorized' })
   })
 
   it('answers unavailable when neither program is recognized', async () => {
     const ctx = fakeContext('k')
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })))
-    const row = await queryRelayQuota(ctx, { route: 'r', baseURL: 'https://relay.example.com', apiKeyEnv: 'STUB_KEY' })
+    // 用不同 origin 隔离缓存。
+    const row = await queryRelayQuota(ctx, { route: 'r4', baseURL: 'https://relay4.example.com', apiKeyEnv: 'STUB_KEY' })
     expect(row).toMatchObject({ kind: 'unknown', status: 'unavailable' })
   })
 })

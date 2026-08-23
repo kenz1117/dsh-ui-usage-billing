@@ -202,6 +202,8 @@ export interface UsageStats {
         cost: number;
         reasoning: number;
     }>;
+    /** 不可计价模型 id（未收录/无价，费用按 0 计）；旧快照可能缺失。 */
+    unpricedModels?: readonly string[];
     /** 按角色费用归因（估算口径：输出实测，输入按消息长度摊分）；旧快照可能缺失。 */
     byRole?: {
         user: number;

@@ -241,6 +241,8 @@ export interface UsageStatsDocument {
    * 属估算口径，UI 需标注）。旧快照可能缺失。
    */
   byRole?: RoleCost
+  /** 不可计价的模型 id（未收录 / 无价，费用按 0 计）；供面板提示用户自查与反馈。 */
+  unpricedModels?: readonly string[]
   /**
    * 性能指标（TTFT / 生成速度 / 总延迟）按模型与按小时聚合；旧快照可能缺失。
    * 口径：TTFT = request/header → 首个内容 chunk；生成速度 = 输出 token ÷ 生成时长；
@@ -388,6 +390,8 @@ interface SessionFold {
   byDayModels: Map<string, Map<string, ModelUsage>>
   /** 中转站归组：按 provider 路由归类到站点/直连/未知路由（key = {@link siteBucketKey}）。 */
   bySite: Map<string, ModelUsage>
+  /** 不可计价模型 id（未收录/无价，且非订阅）集合；跨会话合并后输出给面板提示。 */
+  unpricedModels: Set<string>
   /** 每个模型 key 在本会话内走订阅通道的调用数（合并时跨会话累加判定 plan）。 */
   planCalls: Map<string, number>
   /** 每轮费用明细（按轮次号升序，不含 sessionId）；sessionId 在合并时补齐。 */
@@ -492,6 +496,7 @@ export function foldSession(
     byDay: new Map(),
     byDayModels: new Map(),
     bySite: new Map(),
+    unpricedModels: new Set(),
     planCalls: new Map(),
     turns: [],
     perf: [],
@@ -588,6 +593,8 @@ export function foldSession(
     // 时段按本次调用的实际时刻（event.time）精确判定，不再按固定比例混合。
     const modelKey = key
     const day = dayStamp(event.time)
+    // 不可计价模型（目录外/无价，且非订阅通道）收集到 unpriced 集合，供聚合层暴露给用户提示。
+    if (!subscription && !isPriced(modelKey)) fold.unpricedModels.add(modelKey)
     foldUsage(fold.total, usage, modelKey, subscription, event.time, official)
     foldUsage(usageCell(fold.byModel, modelKey), usage, modelKey, subscription, event.time, official)
     foldUsage(usageCell(fold.byDay, day), usage, modelKey, subscription, event.time, official)
@@ -817,6 +824,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const byDay = new Map<string, ModelUsage>()
       const byDayModels = new Map<string, Map<string, ModelUsage>>()
       const bySite = new Map<string, ModelUsage>()
+      const unpricedModels = new Set<string>()
       const planCalls = new Map<string, number>()
       const sessionRows: SessionUsageRow[] = []
       const turnRows: TurnUsageRow[] = []
@@ -839,6 +847,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           for (const [modelKey, cell] of models) mergeUsageInto(modelDayCell(byDayModels, day, modelKey), cell)
         }
         for (const [siteKey, cell] of fold.bySite) mergeUsageInto(usageCell(bySite, siteKey), cell)
+        for (const id of fold.unpricedModels) unpricedModels.add(id)
         for (const [modelKey, count] of fold.planCalls) {
           planCalls.set(modelKey, (planCalls.get(modelKey) ?? 0) + count)
         }
@@ -933,6 +942,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         byTurn: turnRows.slice(0, TURN_ROW_LIMIT),
         byWorkspace: workspaces.slice(0, SESSION_ROW_LIMIT),
         ...(bySite.size === 0 ? {} : { bySite: toRecord(bySite) }),
+        ...(unpricedModels.size === 0 ? {} : { unpricedModels: [...unpricedModels].sort() }),
         ...(perf === undefined ? {} : { perf }),
         // 角色归因：输出成本为实测；输入成本按 user/tool 消息字符占比摊分
         //（无任何消息内容的日志按五五均分兜底，整体属估算口径）。

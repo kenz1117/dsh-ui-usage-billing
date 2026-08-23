@@ -9,11 +9,20 @@
  * missing file answers `{ error }` so the dashboard shows zeros, never
  * fabricated samples.
  */
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials';
 import { type SettingsProvider } from '@deepseek-ai/dsh-settings';
 import type { CustomBalanceConfig, SubscriptionPlanConfig } from './pricing-shared.ts';
 import { type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts';
+/**
+ * 回环防护守卫：仅接受回环 GET 请求（peer socket 地址 + Host 头同时校验）。
+ * 不满足时返回 403 并结束响应；调用方在 handler 顶部调用，返回 false 即已拒绝。
+ * @param req - 当前请求。
+ * @param res - 当前响应。
+ * @returns 是否放行；false = 已拒绝并结束响应。
+ */
+export declare function guardLoopback(req: IncomingMessage, res: ServerResponse): boolean;
 /** Plugin configuration. */
 export interface UsageBillingConfig {
     /** Absolute path to a `.dsh-usage-stats.json` fallback file. */

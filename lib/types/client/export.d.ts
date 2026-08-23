@@ -24,6 +24,8 @@ export interface SessionExportRow {
 }
 /** 按日 CSV：日期,调用,输入,输出,缓存命中,缓存未命中,费用(元)。 */
 export declare function dayRowsCsv(byDay: Record<string, DayExportRow>): string;
+/** 按站点（中转站/直连/未知路由）CSV：站点,类别,调用,费用(元)。 */
+export declare function siteRowsCsv(bySite: Record<string, DayExportRow>): string;
 /** 按会话 CSV：会话 id,标题,项目,调用,费用(元),最后活跃(ISO)。 */
 export declare function sessionRowsCsv(rows: readonly SessionExportRow[]): string;
 /** 导出文件名：带日期范围（usage-2026-08-01_2026-08-22.csv）；无日期时只带前缀。 */
