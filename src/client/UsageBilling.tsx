@@ -198,10 +198,13 @@ const SUBSCRIPTION_VENDORS: Readonly<Record<string, string>> = {
   'baidu': '百度文心',
   'wenxin': '百度文心',
   'minimax': 'MiniMax',
+  'minimax-token-plan': 'MiniMax',
   'minimax-token-plan-cn': 'MiniMax',
   'opencode': 'OpenCode',
   'opencode-go': 'OpenCode',
 }
+/** Export the table only for tests; consumers should still go through {@link subscriptionVendorOf}. */
+export const SUBSCRIPTION_VENDORS_FOR_TEST: Readonly<Record<string, string>> = SUBSCRIPTION_VENDORS
 
 /** 订阅套餐归并到的厂商显示名；未知 id 回退为从 model id 反推或 id 本身。 */
 function subscriptionVendorOf(provider: string): string {
