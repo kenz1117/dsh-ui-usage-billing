@@ -34,17 +34,27 @@ describe('identifySubscriptionPlans', () => {
 
   it('recognizes MiniMax CN as a subscription provider with an adapter', () => {
     const identified = identifySubscriptionPlans({
-      'minimax-token-plan-cn': { apiKeyEnv: 'MINIMAX_CN_API_KEY' },
+      // `minimax-cn` is the id shipped by DSH pi-ai's own catalog
+      // (https://api.minimaxi.com). The plugin treats it as a sibling alias
+      // of `minimax-token-plan-cn`.
+      'minimax-cn': { apiKeyEnv: 'MINIMAX_CN_API_KEY' },
+      'minimax-token-plan-cn': { apiKeyEnv: 'MINIMAX_CN_ALT_API_KEY' },
       'minimax': { apiKeyEnv: 'MINIMAX_API_KEY' },
     })
-    expect(identified.map(item => item.provider)).toEqual(['minimax-token-plan-cn', 'minimax'])
-    // 两个 provider id 都应识别为订阅，且都挂同一个 collectMiniMax 适配器。
+    expect(identified.map(item => item.provider)).toEqual(['minimax-cn', 'minimax-token-plan-cn', 'minimax'])
+    // All three provider ids must be recognised as subscriptions and routed
+    // to the same collectMiniMax adapter.
     expect(identified[0]).toMatchObject({
-      provider: 'minimax-token-plan-cn',
+      provider: 'minimax-cn',
       adapter: true,
       displayName: 'MiniMax Token Plan（国内）',
     })
     expect(identified[1]).toMatchObject({
+      provider: 'minimax-token-plan-cn',
+      adapter: true,
+      displayName: 'MiniMax Token Plan（国内）',
+    })
+    expect(identified[2]).toMatchObject({
       provider: 'minimax',
       adapter: true,
       displayName: 'MiniMax Coding Plan',
@@ -175,6 +185,30 @@ describe('collectSubscriptions MiniMax baseUrl routing', () => {
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('https://api.minimaxi.com/v1/token_plan/remains')
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer cn-key')
+  })
+
+  it('treats `minimax-cn` as an alias for the MiniMax CN endpoint', async () => {
+    // DSH pi-ai's installed catalog ships `minimax-cn` as the official
+    // domestic route (https://api.minimaxi.com). It must hit the same CN
+    // /v1/token_plan/remains endpoint as `minimax-token-plan-cn`, otherwise
+    // domestic users won't see the Token Plan quota row in the dashboard.
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ model_remains: [{ model_name: 'general', current_interval_status: 1, current_interval_remaining_percent: 90, current_weekly_status: 1, current_weekly_remaining_percent: 80 }] }),
+    }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: 'cn-key' },
+      [{ provider: 'minimax-cn' }],
+    )
+    expect(quotas[0]).toMatchObject({
+      provider: 'minimax-cn',
+      status: 'ok',
+      displayName: 'MiniMax Token Plan（国内）',
+    })
+    const [url] = fetchSpy.mock.calls[0] as [string]
+    expect(url).toBe('https://api.minimaxi.com/v1/token_plan/remains')
   })
 
   it('queries the international MiniMax endpoint for `minimax`/`minimax-token-plan`', async () => {

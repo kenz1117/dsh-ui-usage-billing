@@ -80,6 +80,7 @@ export const PLAN_KNOWLEDGE: Readonly<Record<string, PlanKnowledgeEntry>> = {
   'ark-token-plan': { type: 'code' },
   'doubao-token-plan': { type: 'code' },
   'minimax': { type: 'code' },
+  'minimax-cn': { type: 'code' },
   'minimax-token-plan': { type: 'code' },
   'minimax-token-plan-cn': { type: 'code' },
 }
