@@ -70,6 +70,9 @@ export interface AggregateOptions {
     /** 工作区标题解析：给定会话 cwd 返回项目显示标题；undefined = 回退到 cwd 末级目录名
      *  （host 的 workspaceRegistry 为可选依赖，缺失时不注入，行为保持不变）。 */
     resolveWorkspaceTitle?: (cwd: string) => string | undefined;
+    /** 独立的持久用量账本。启用后，已经成功折叠过的会话即使随后从
+     *  sessionPersistence 中永久删除，也会继续计入累计用量。 */
+    ledger?: UsageLedgerStore;
 }
 /** 每会话折叠缓存默认上限：超过则按 LRU 淘汰（P1-6 峰值内存治理）。 */
 export declare const DEFAULT_MAX_CACHE_SESSIONS = 400;
@@ -264,7 +267,7 @@ export interface PerfSample {
     estimated: boolean;
 }
 /** One persisted session's folded usage plus drill-down metadata. */
-interface SessionFold {
+export interface SessionFold {
     total: ModelUsage;
     byModel: Map<string, ModelUsage>;
     byDay: Map<string, ModelUsage>;
@@ -294,6 +297,39 @@ interface RoleFold {
     inputCost: number;
     /** 输出侧成本（人民币元）。 */
     outputCost: number;
+}
+/** JSON-safe form of one session fold, used by the durable usage ledger. */
+export interface SerializedSessionFold {
+    total: ModelUsage;
+    byModel: Record<string, ModelUsage>;
+    byDay: Record<string, ModelUsage>;
+    byDayModels: Record<string, Record<string, ModelUsage>>;
+    bySite: Record<string, ModelUsage>;
+    unpricedModels: string[];
+    planCalls: Record<string, number>;
+    turns: SessionTurnRow[];
+    perf: PerfSample[];
+    roles: RoleFold;
+    lastActive: number;
+}
+/** One independently retained session in the durable usage ledger. */
+export interface UsageLedgerSession {
+    id: string;
+    cwd?: string;
+    /** Stable log stamp (mtime + size) when the persistence backend exposes it. */
+    stamp?: string;
+    fold: SerializedSessionFold;
+}
+/** On-disk durable usage ledger. Versioned independently from the dashboard document. */
+export interface UsageLedgerDocument {
+    version: 1;
+    updatedAt: number;
+    sessions: UsageLedgerSession[];
+}
+/** Storage seam for the durable ledger; the host supplies an atomic file implementation. */
+export interface UsageLedgerStore {
+    load(): Promise<unknown | undefined>;
+    save(document: UsageLedgerDocument): Promise<void>;
 }
 /**
  * 消息文本长度：user/tool 角色分摊输入成本的启发式依据。字符串内容取其

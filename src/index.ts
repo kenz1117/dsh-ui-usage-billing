@@ -30,7 +30,7 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { settingsNamespace, type SettingsProvider, type SettingsScope } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
-import { createUsageAggregator, dayStamp } from './aggregate.ts'
+import { createUsageAggregator, dayStamp, type UsageLedgerStore } from './aggregate.ts'
 import { applyLivePricing, formatMoney, formatTokens } from './client/pricing.ts'
 import { queryBalances, queryCustomBalances } from './balance.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
@@ -92,6 +92,9 @@ const UsageBillingSettingsSchema: z<UsageBillingSettings> = z.object({
 export interface UsageBillingConfig {
   /** Absolute path to a `.dsh-usage-stats.json` fallback file. */
   statsPath?: string
+  /** 独立持久用量账本的绝对路径；默认 `~/.dsh/.dsh-usage-ledger.json`。
+   *  账本与会话日志解耦，因此永久删除会话不会抹掉已经观测到的用量。 */
+  ledgerPath?: string
   /** 订阅制（coding / token / agent plan）provider id 列表；默认 kimi-coding、xiaomi-token-plan-cn。 */
   subscriptionProviders?: string[]
   /** 订阅套餐额度适配器（kimi / zai / opencode-go）；默认全部内置。 */
@@ -143,6 +146,40 @@ function warnAuthOnce(source: string, provider: string, displayName: string): vo
   if (last !== undefined && now - last < AUTH_WARN_COOLDOWN_MS) return
   authWarnedAt.set(key, now)
   console.warn(`[usage-billing] ${displayName}（${provider}）鉴权失败：请检查 llm-pi-ai 设置中该 provider 的 apiKeyEnv 凭据是否正确/有效。`)
+}
+
+/**
+ * Create the atomic file-backed durable-ledger store. The previous complete file
+ * is retained as `.bak`; a malformed/missing main file falls back to that backup.
+ */
+export function createFileUsageLedgerStore(ledgerPath: string): UsageLedgerStore {
+  return {
+    async load() {
+      for (const path of [ledgerPath, `${ledgerPath}.bak`]) {
+        try {
+          const parsed = JSON.parse(await readFile(path, 'utf8')) as unknown
+          if (parsed !== null && typeof parsed === 'object') {
+            const candidate = parsed as { version?: unknown; sessions?: unknown }
+            if (candidate.version === 1 && Array.isArray(candidate.sessions)) return parsed
+          }
+        } catch {
+          // Main file missing/corrupt: try the backup; both absent means a new ledger.
+        }
+      }
+      return undefined
+    },
+    async save(document) {
+      try {
+        const existing = await readFile(ledgerPath, 'utf8')
+        // Never replace a known-good backup with malformed main-file bytes.
+        JSON.parse(existing)
+        await writeFileAtomic(`${ledgerPath}.bak`, existing, { mode: 0o600, dirMode: 0o700 })
+      } catch {
+        // First write or unreadable old ledger: atomically write the new document.
+      }
+      await writeFileAtomic(ledgerPath, JSON.stringify(document), { mode: 0o600, dirMode: 0o700 })
+    },
+  }
 }
 
 /** Required services: the web server, the persisted session log store, and user settings. */
@@ -309,6 +346,14 @@ export async function resolveSubscriptionKeys(
 export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // usage_stats 工具开关的设置命名空间 scope：settings 服务就绪后注册；HTTP 路由据此读写。
   let usageSettingsScope: SettingsScope<UsageBillingSettings> | undefined
+  const cwd = process.cwd()
+  const snapshotPath = join(homedir(), '.dsh/.dsh-usage-stats.json')
+  const ledgerPath = config.ledgerPath ?? join(homedir(), '.dsh/.dsh-usage-ledger.json')
+
+  // 独立持久账本：主文件损坏时读 `.bak`，写入使用宿主的原子写工具并限制为
+  // 当前用户可读。账本保存每个已成功折叠的会话；删除会话日志不删除账本行。
+  const ledgerStore = createFileUsageLedgerStore(ledgerPath)
+
   // 常驻增量聚合器：按会话缓存折叠结果（日志 mtime+size 失效），
   // 前端 30 秒轮询只重算写过的会话。
   // 项目归属用工作区标题（host workspaceRegistry 可选；缺失时 resolver 为 undefined，回退目录名）。
@@ -321,9 +366,8 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     resolveRoutes: () => readPiAiProviderRoutes(ctx.settings),
     // 项目归属用工作区标题命名（host workspaceRegistry 为可选依赖，缺失时回退目录名）。
     ...(workspaceTitleResolver === undefined ? {} : { resolveWorkspaceTitle: workspaceTitleResolver }),
+    ledger: ledgerStore,
   })
-  const cwd = process.cwd()
-  const snapshotPath = join(homedir(), '.dsh/.dsh-usage-stats.json')
   const candidates = [
     config.statsPath,
     process.env.DSH_USAGE_STATS,
