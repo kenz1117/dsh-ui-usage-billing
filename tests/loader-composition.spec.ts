@@ -115,10 +115,9 @@ async function loadComposition(): Promise<Context> {
 
 /** 参数化组装：默认用正常 persistence；`corrupt` 时注入 readFrom 抛错的替身，
  *  `statsPath` 写入配置指向回退快照文件（聚合失败时走该文件）。 */
-async function loadCompositionWith(options: { corrupt?: boolean; statsPath?: string; ledgerPath?: string } = {}): Promise<Context> {
+async function loadCompositionWith(options: { corrupt?: boolean; statsPath?: string } = {}): Promise<Context> {
   root = await mkdtemp(join(tmpdir(), 'dsh-usage-billing-'))
   const configPath = join(root, 'cordis.yml')
-  const ledgerPath = options.ledgerPath ?? join(root, 'usage-ledger.json')
   await writeFile(configPath, [
     "- name: '@deepseek-ai/dsh-host-webserver'",
     '  config:',
@@ -130,7 +129,12 @@ async function loadCompositionWith(options: { corrupt?: boolean; statsPath?: str
     "- name: '@kenz1117/dsh-ui-usage-billing'",
     '  config:',
     '    monthlyBudget: 100',
-    `    ledgerPath: '${ledgerPath}'`,
+    // 隔离持久化路径：快照/账本/对账基准都写入本测试临时目录，避免读/写
+    // 真实家目录的 `~/.dsh/.dsh-usage-*`（那些是宿主服务运行产生的真实数据，
+    // 测试硬编码读它会导致断言读到污染值而失败）。
+    `    snapshotPath: '${join(root, 'usage-stats.json')}'`,
+    `    ledgerPath: '${join(root, 'usage-ledger.json')}'`,
+    `    reconcilePath: '${join(root, 'usage-reconcile.json')}'`,
     ...(options.statsPath === undefined ? [] : [`    statsPath: '${options.statsPath}'`]),
     '',
   ].join('\n'))

@@ -14,7 +14,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials';
 import { type SettingsProvider } from '@deepseek-ai/dsh-settings';
 import { type UsageLedgerStore } from './aggregate.ts';
-import type { CustomBalanceConfig, SubscriptionPlanConfig } from './pricing-shared.ts';
+import type { CustomBalanceConfig, DeclaredEndpointConfig, SubscriptionPlanConfig } from './pricing-shared.ts';
 import { type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts';
 /**
  * 回环防护守卫：仅接受回环 GET 请求（peer socket 地址 + Host 头同时校验）。
@@ -28,9 +28,14 @@ export declare function guardLoopback(req: IncomingMessage, res: ServerResponse)
 export interface UsageBillingConfig {
     /** Absolute path to a `.dsh-usage-stats.json` fallback file. */
     statsPath?: string;
+    /** 统计快照的持久化路径；默认 `~/.dsh/.dsh-usage-stats.json`。
+     *  测试注入临时目录以隔离真实家目录（聚合失败回退与快照落盘都走此路径）。 */
+    snapshotPath?: string;
     /** 独立持久用量账本的绝对路径；默认 `~/.dsh/.dsh-usage-ledger.json`。
      *  账本与会话日志解耦，因此永久删除会话不会抹掉已经观测到的用量。 */
     ledgerPath?: string;
+    /** 余额差对账基准的持久化路径；默认 `~/.dsh/.dsh-usage-reconcile.json`。 */
+    reconcilePath?: string;
     /** 订阅制（coding / token / agent plan）provider id 列表；默认 kimi-coding、xiaomi-token-plan-cn。 */
     subscriptionProviders?: string[];
     /** 订阅套餐额度适配器（kimi / zai / opencode-go）；默认全部内置。 */
@@ -44,6 +49,13 @@ export interface UsageBillingConfig {
     lowBalanceThreshold?: number;
     /** 自定义 Provider 余额查询（任意 HTTP 端点 + extract 规则，适配 NewApi/LiteLLM 等）。 */
     customBalances?: readonly CustomBalanceConfig[];
+    /**
+     * 声明端点（declarative endpoints）：为内置表没有的供应商自声明余额/额度接口。
+     * 绑定到某条已配置 provider 的同源地址，`fields` / `windows` 写响应里的取值路径；
+     * 安全边界（origin 绑定、单斜杠 path、只 GET、跨源重定向失败、凭据取自 apiKeyEnv）
+     * 写死在 declarative.ts。缺省空。
+     */
+    declaredEndpoints?: readonly DeclaredEndpointConfig[];
     /** `usage_stats` 工具注入的组合 base（默认 false：不注入）；与设置命名空间同字段，
      *  作为用户设置（设置 Tab 开关）的组合兜底。该工具占用每次请求的上下文，coding 场景多在仪表盘查看。 */
     enableUsageStatsTool?: boolean;

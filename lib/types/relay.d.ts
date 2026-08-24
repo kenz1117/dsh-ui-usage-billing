@@ -45,6 +45,12 @@ export declare function parseNewApiStatus(data: unknown): {
     windows?: readonly SubscriptionWindow[];
 } | null;
 /**
+ * 判断一个 baseURL 是否指向已知官方端点（而非第三方中转站）。
+ * @param baseURL - llm-pi-ai provider 路由的端点地址。
+ * @returns 官方端点返回 true（中转站面板应排除）。
+ */
+export declare function isOfficialBaseUrl(baseURL: string): boolean;
+/**
  * 查询单个中转站路由的额度。先试 Sub2API，再试 New API；任一读出额度即返回。
  * @param ctx - host context carrying the credentials seam.
  * @param route - 待探测的路由（baseURL + apiKeyEnv）。

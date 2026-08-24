@@ -33,10 +33,12 @@ import z from '@deepseek-ai/schemastery'
 import { createUsageAggregator, dayStamp, type UsageLedgerStore } from './aggregate.ts'
 import { applyLivePricing, formatMoney, formatTokens } from './client/pricing.ts'
 import { queryBalances, queryCustomBalances } from './balance.ts'
+import { queryDeclaredEndpoints } from './declarative.ts'
+import { reconcileBalanceDelta, type BalanceRef, type ReconcileEvent } from './reconcile.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
-import type { CustomBalanceConfig, LivePricing, RelayQuota, SubscriptionPlanConfig, SubscriptionQuota } from './pricing-shared.ts'
+import type { CustomBalanceConfig, DeclaredEndpointConfig, LivePricing, RelayQuota, SubscriptionPlanConfig, SubscriptionQuota } from './pricing-shared.ts'
 import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts'
-import { queryRelayQuotas, type RelayRoute } from './relay.ts'
+import { isOfficialBaseUrl, queryRelayQuotas, type RelayRoute } from './relay.ts'
 import { planTypeOf, subscriptionFeeCnyOf } from './client/plan-knowledge.ts'
 import {
   BILLING_SETTINGS_NAMESPACE,
@@ -92,9 +94,14 @@ const UsageBillingSettingsSchema: z<UsageBillingSettings> = z.object({
 export interface UsageBillingConfig {
   /** Absolute path to a `.dsh-usage-stats.json` fallback file. */
   statsPath?: string
+  /** 统计快照的持久化路径；默认 `~/.dsh/.dsh-usage-stats.json`。
+   *  测试注入临时目录以隔离真实家目录（聚合失败回退与快照落盘都走此路径）。 */
+  snapshotPath?: string
   /** 独立持久用量账本的绝对路径；默认 `~/.dsh/.dsh-usage-ledger.json`。
    *  账本与会话日志解耦，因此永久删除会话不会抹掉已经观测到的用量。 */
   ledgerPath?: string
+  /** 余额差对账基准的持久化路径；默认 `~/.dsh/.dsh-usage-reconcile.json`。 */
+  reconcilePath?: string
   /** 订阅制（coding / token / agent plan）provider id 列表；默认 kimi-coding、xiaomi-token-plan-cn。 */
   subscriptionProviders?: string[]
   /** 订阅套餐额度适配器（kimi / zai / opencode-go）；默认全部内置。 */
@@ -108,6 +115,13 @@ export interface UsageBillingConfig {
   lowBalanceThreshold?: number
   /** 自定义 Provider 余额查询（任意 HTTP 端点 + extract 规则，适配 NewApi/LiteLLM 等）。 */
   customBalances?: readonly CustomBalanceConfig[]
+  /**
+   * 声明端点（declarative endpoints）：为内置表没有的供应商自声明余额/额度接口。
+   * 绑定到某条已配置 provider 的同源地址，`fields` / `windows` 写响应里的取值路径；
+   * 安全边界（origin 绑定、单斜杠 path、只 GET、跨源重定向失败、凭据取自 apiKeyEnv）
+   * 写死在 declarative.ts。缺省空。
+   */
+  declaredEndpoints?: readonly DeclaredEndpointConfig[]
   /** `usage_stats` 工具注入的组合 base（默认 false：不注入）；与设置命名空间同字段，
    *  作为用户设置（设置 Tab 开关）的组合兜底。该工具占用每次请求的上下文，coding 场景多在仪表盘查看。 */
   enableUsageStatsTool?: boolean
@@ -335,7 +349,29 @@ export async function resolveSubscriptionKeys(
   if (providers?.['zai-coding-cn']?.apiKeyEnv !== undefined && keys.zaiApiKey !== '') {
     keys.zaiRegion = 'bigmodel-cn'
   }
+  // OpenCode 便捷回退：opencode(opencode-go) 路由没配 apiKeyEnv 时，读本机 OpenCode
+  // 客户端自存的凭据文件（~/.local/share/opencode/auth.json）。文件不存在/读不动/格式变
+  // 一律视为「没有凭据」安静退回，绝不报错——这只是一次便利，不是必须具备。
+  if (keys.opencodeApiKey === '') {
+    keys.opencodeApiKey = await readOpenCodeToken()
+  }
   return { keys, identified: identifySubscriptionPlans(providers) }
+}
+
+/** 读本机 OpenCode 客户端的凭据 token；取不到返回空串（安静退回）。 */
+async function readOpenCodeToken(): Promise<string> {
+  try {
+    const auth = JSON.parse(await readFile(join(homedir(), '.local', 'share', 'opencode', 'auth.json'), 'utf8')) as unknown
+    if (typeof auth === 'string' && auth !== '') return auth
+    if (auth !== null && typeof auth === 'object') {
+      const record = auth as Record<string, unknown>
+      const token = record.token ?? record.key ?? record.apiKey
+      if (typeof token === 'string' && token !== '') return token
+    }
+  } catch {
+    // 文件不存在 / 读不动 / JSON 解析失败 → 视为没有凭据，不报错。
+  }
+  return ''
 }
 
 /**
@@ -347,12 +383,39 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // usage_stats 工具开关的设置命名空间 scope：settings 服务就绪后注册；HTTP 路由据此读写。
   let usageSettingsScope: SettingsScope<UsageBillingSettings> | undefined
   const cwd = process.cwd()
-  const snapshotPath = join(homedir(), '.dsh/.dsh-usage-stats.json')
+  const snapshotPath = config.snapshotPath ?? join(homedir(), '.dsh/.dsh-usage-stats.json')
   const ledgerPath = config.ledgerPath ?? join(homedir(), '.dsh/.dsh-usage-ledger.json')
 
   // 独立持久账本：主文件损坏时读 `.bak`，写入使用宿主的原子写工具并限制为
   // 当前用户可读。账本保存每个已成功折叠的会话；删除会话日志不删除账本行。
   const ledgerStore = createFileUsageLedgerStore(ledgerPath)
+
+  // 余额差对账基准：持久化到独立文件（跨重启保留当日基准），随每次 balance
+  // 轮询刷新。仅官方 DeepSeek 方向对账，见 reconcile.ts。
+  const reconcilePath = config.reconcilePath ?? join(homedir(), '.dsh/.dsh-usage-reconcile.json')
+  let reconcileRef: BalanceRef | null = null
+  void (async () => {
+    try {
+      const doc = JSON.parse(await readFile(reconcilePath, 'utf8')) as { ref?: unknown }
+      const ref = doc.ref
+      if (ref !== null && typeof ref === 'object') {
+        const candidate = ref as BalanceRef
+        if (typeof candidate.date === 'string' && typeof candidate.total === 'number'
+          && typeof candidate.granted === 'number' && typeof candidate.topped === 'number'
+          && typeof candidate.currency === 'string') {
+          reconcileRef = candidate
+        }
+      }
+    } catch {
+      // 基准文件缺失/损坏：视为首次，重新打基准。
+    }
+  })()
+  const persistReconcileRef = (): void => {
+    if (reconcileRef === null) return
+    const payload = JSON.stringify({ ref: reconcileRef })
+    void writeFileAtomic(reconcilePath, payload, { mode: 0o600, dirMode: 0o700 })
+      .catch(() => { /* 基准写失败不影响余额查询主流程 */ })
+  }
 
   // 常驻增量聚合器：按会话缓存折叠结果（日志 mtime+size 失效），
   // 前端 30 秒轮询只重算写过的会话。
@@ -585,11 +648,33 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
         const balances = await queryBalances(ctx, providers)
         // 自定义 Provider 余额（任意 HTTP 端点）：独立于内置三家，逐个成败。
         const custom = await queryCustomBalances(ctx, config.customBalances ?? [])
+        // 声明端点（declarative）：为内置表没有的供应商自声明余额/额度接口。
+        // 绑定到某条已配置 provider 的同源地址，安全边界由 declarative.ts 强制执行。
+        const declared = await queryDeclaredEndpoints(ctx, piProviders, config.declaredEndpoints ?? [])
         // P1-5 鉴权分类告警：区分「配置错了 key」与「上游不可达」，协助定位。
-        for (const row of [...balances, ...custom]) {
+        for (const row of [...balances, ...custom, ...declared]) {
           if (row.error === 'unauthorized') warnAuthOnce('balance', row.provider, row.displayName)
         }
-        res.end(JSON.stringify({ balances: [...balances, ...custom] }))
+        // 余额差对账：用官方余额当日变动反推消费，与本地账本今日官方费用比对。
+        // 只对 DeepSeek 官方余额行做（订阅/第三方不动官方余额）；取不到余额时不打扰。
+        const official = balances.find(row => row.provider === 'deepseek')
+        let reconcile: ReconcileEvent | undefined
+        if (official !== undefined && official.totalBalance !== undefined) {
+          const now = Date.now()
+          const today = dayStamp(now)
+          let todayOfficialCost = 0
+          try {
+            const stats = await aggregator.aggregate()
+            todayOfficialCost = stats.byDay[today]?.officialCost ?? 0
+          } catch {
+            // 聚合失败时不阻塞余额查询；对账基准确认可用后仍返回（消费计 0 下次再核）。
+          }
+          const result = reconcileBalanceDelta(reconcileRef, official, todayOfficialCost, today, now)
+          reconcileRef = result.ref
+          if (result.event !== null && result.event.kind !== 'flat') reconcile = { ...result.event, provider: official.displayName }
+          if (result.ref !== null) persistReconcileRef()
+        }
+        res.end(JSON.stringify({ balances: [...balances, ...custom, ...declared], ...(reconcile === undefined ? {} : { reconcile }) }))
       },
     }),
     'usage-billing: balance route',
@@ -687,6 +772,10 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     const routes: RelayRoute[] = []
     for (const [route, entry] of Object.entries(providers)) {
       if (entry.baseURL === undefined || entry.apiKeyEnv === undefined) continue
+      // 官方厂商端点（DeepSeek/OpenAI 等）卖的是官方按量余额而非中转站额度，
+      // 探测其 /v1/usage、/api/status 只会得到 404 或非中转站格式，面板应排除
+      // 这类域，避免误判为「未识别」。中转站面板只列真正的第三方中转程序。
+      if (isOfficialBaseUrl(entry.baseURL)) continue
       routes.push({
         route,
         baseURL: entry.baseURL,

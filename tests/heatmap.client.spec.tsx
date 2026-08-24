@@ -5,10 +5,12 @@
  * lights a level-1+ cell.
  */
 
-import { describe, expect, it } from 'vitest'
-import { fireEvent, render } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 import { UsageHeatmap, type HeatmapDay } from '../src/client/heatmap.tsx'
 import { activeDaysOf, streakDaysOf } from '../src/client/UsageBilling.tsx'
+
+afterEach(() => { cleanup() })
 
 const t = (key: 'billing.costAbbr' | 'billing.noData' | 'billing.heatmapLess' | 'billing.heatmapMore'): string =>
   key === 'billing.noData' ? '多' : key === 'billing.heatmapLess' ? '少' : key === 'billing.heatmapMore' ? '多' : '费用'
@@ -64,6 +66,18 @@ describe('UsageHeatmap', () => {
     // 有值日点亮（≥2 个 data-level>0）。
     const lit = cells.filter(cell => Number(cell.getAttribute('data-level')) > 0)
     expect(lit.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('labels the year range with month headers and weekday rows', () => {
+    const { getByTestId } = render(<UsageHeatmap days={DAYS} currency="cny" now={NOW} t={t} range="year" />)
+    // 月份标题：月初列标注月份缩写（如 Aug）。
+    const months = getByTestId('heatmap-year-months')
+    expect(months.textContent).toMatch(/[A-Z][a-z]{2}/)
+    // 周几标注 Mon / Wed / Fri 都出现。
+    const body = getByTestId('heatmap-year').textContent ?? ''
+    expect(body).toContain('Mon')
+    expect(body).toContain('Wed')
+    expect(body).toContain('Fri')
   })
 })
 

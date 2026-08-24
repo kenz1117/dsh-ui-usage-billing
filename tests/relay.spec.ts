@@ -5,7 +5,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { parseNewApiStatus, parseSub2ApiUsage, queryRelayQuota } from '../src/relay.ts'
+import { isOfficialBaseUrl, parseNewApiStatus, parseSub2ApiUsage, queryRelayQuota } from '../src/relay.ts'
 
 /** A minimal context whose credentials seam resolves each env ref to a fixed value. */
 function fakeContext(envValue: string | undefined) {
@@ -49,6 +49,23 @@ describe('parseNewApiStatus', () => {
 
   it('returns null when no usable percentage is present', () => {
     expect(parseNewApiStatus({ data: {} })).toBeNull()
+  })
+})
+
+describe('isOfficialBaseUrl', () => {
+  it('returns true for known official hosts with a valid origin', () => {
+    expect(isOfficialBaseUrl('https://api.deepseek.com')).toBe(true)
+    expect(isOfficialBaseUrl('https://api.openai.com/v1')).toBe(true)
+    expect(isOfficialBaseUrl('http://api.moonshot.cn')).toBe(true)
+  })
+
+  it('returns false for third-party relay stations', () => {
+    expect(isOfficialBaseUrl('https://relay.example.com')).toBe(false)
+    expect(isOfficialBaseUrl('https://my-own-gateway.com/api/v1')).toBe(false)
+  })
+
+  it('returns false when the value has no parseable origin (not a URL)', () => {
+    expect(isOfficialBaseUrl('not-a-url')).toBe(false)
   })
 })
 

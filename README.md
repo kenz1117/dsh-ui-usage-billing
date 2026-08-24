@@ -44,6 +44,7 @@
 
   ![明细：厂商计费与订阅（余额、套餐额度、模型用量）](screenshots/3.png)
 - **自定义 Provider 余额**：配置任意 HTTP 端点查余额（`extract` 支持常量 / 点路径 / add-subtract / divide，请求头 `{{ENV}}` 经凭据 seam）；DeepSeek / Kimi / 阶跃星辰 / 硅基流动内置官方余额，余额列按近 7 天日均折算「约可撑 N 天」。
+- **声明端点 + 余额对账**：**声明端点**（`declaredEndpoints`）为内置表没有的供应商自声明余额/额度接口——只写「数字在哪里」的点路径（无表达式），请求由匹配到同源 provider 的 origin 构造，单斜杠绝对路径 / 仅 GET / 拒跨源重定向 / 响应体与超时上限 / 凭据只取匹配 provider 自有 `apiKeyEnv` 等安全边界由 `src/declarative.ts` 强制执行，取错路径在界面标注 `declared` 与 reason；**余额差对账**（`reconcilePath`）用官方（仅 DeepSeek 官方方向）余额当日变动与本地账本当日的官方渠道费用交叉校验，偏差超阈值（0.3 元且 >15%）时提示核对价格表或近期账单，充值 / 授信 / 币种变化重置基准而非告警、余额未减少（走订阅扣费）静默。
 - **真实用量聚合**：服务端从会话日志实时聚合（增量缓存只重算写过的会话），单会话损坏容错、快照落盘回退；`usage_stats` 工具让模型自查今天 / 本月 / 当前会话 / 累计费用，还可查 `bySite`（按站点归组）与 `relay`（只看中转站）的汇总。
 - **多语种 + 双币种**：¥ / $ 切换随币种双语（USD→英文、CNY→中文，仅本插件生效）；费率表按所选币种换算。
 - **模型健康 + 未收录标注**：厂商接入状态圆点（绿 / 红 / 灰）；模型 id 不在目录时标「未收录」按兜底价估算、厂商自动推断（如 `mi-mimo-2.5` → 小米）；估算价模型标注「估算价」。
@@ -154,6 +155,8 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | `monthlyBudget`         | 未设置                                  | 月度预算默认金额（人民币元）；随 usage-stats 下发，作为仪表盘预算条的初始金额（用户在界面上的设置优先并本地持久化）                                             |
 | `lowBalanceThreshold`   | `50`                                 | 余额不足告警阈值（人民币元）；随 usage-stats 下发，任一厂商余额折算人民币低于此值时每天提醒一次                                                       |
 | `subscriptionPlans`     | 自动识别                                 | 订阅额度适配器白名单（`{ provider, baseUrl?, region? }`）；缺省时自动从 `llm-pi-ai` 设置识别所有订阅类 provider（有额度 API 的查额度，无 API 的仅标识） |
+| `declaredEndpoints`     | 未设置                                  | 声明端点（`{ displayName, origin, path, fields?, windows?, raw? }`）：为内置表没有的供应商自声明余额/额度接口，只写「数字在哪里」的点路径、无表达式；请求由匹配到同源 provider 的 origin 构造，安全边界（单斜杠绝对路径、仅 GET、拒绝跨源重定向、响应体/超时上限、凭据只取匹配 provider 自有的 apiKeyEnv）由 `src/declarative.ts` 强制执行 |
+| `reconcilePath`         | `~/.dsh/.dsh-usage-reconcile.json`     | 余额差对账基准的绝对路径；用官方（仅 DeepSeek 官方方向）余额当日变动与本地账本当日的官方渠道费用做交叉校验，偏差超阈值（0.3 元且 >15%）时提示核对；充值/授信/币种变化重置基准而非告警 |
 
 ## 开发
 

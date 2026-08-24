@@ -111,6 +111,15 @@ export declare function foldUsage(acc: ModelUsage, usage: TokenUsage, key: strin
 export declare function dayStamp(time: number): string;
 /** Local-time hour stamp `YYYY-MM-DDTHH` — the performance series bucket key. */
 export declare function hourStamp(time: number): string;
+/**
+ * 宿主进程的 IANA 时区名与 UTC 偏移，供面板标注「天按哪个时区切分」。
+ * `getTimezoneOffset` 是 UTC 以西的分钟数，符号与日常写法相反，故取反。
+ * @returns `{ name, offset }`，如 `{ name: "Asia/Shanghai", offset: "UTC+08:00" }`。
+ */
+export declare function hostTimeZone(now?: Date): {
+    name: string;
+    offset: string;
+};
 /** cwd 未知时工作区聚合的占位名（UI 显示 em dash，保持语言无关）。 */
 export declare const UNKNOWN_WORKSPACE_NAME = "\u2014";
 /** 工作区名：取 cwd 的末级目录名；无 cwd 时返回 {@link UNKNOWN_WORKSPACE_NAME}。 */
@@ -127,6 +136,11 @@ export interface UsageStatsDocument {
     version: number;
     updatedAt: number;
     source: 'session-logs';
+    /** 宿主进程时区（IANA 名 + UTC 偏移）：天按此切分，面板据此标注。 */
+    timezone?: {
+        name: string;
+        offset: string;
+    };
     total: ModelUsage;
     byModel: Record<string, ModelUsage>;
     byDay: Record<string, ModelUsage>;
@@ -325,7 +339,31 @@ export interface UsageLedgerDocument {
     version: 1;
     updatedAt: number;
     sessions: UsageLedgerSession[];
+    /** 已应用的一次性配置迁移 id 列表（随文档落盘；缺省 = 尚未跑过任何迁移）。 */
+    appliedMigrations?: string[];
 }
+/**
+ * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
+ * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并
+ * bump {@link UsageLedgerDocument.version}；引擎保证幂等，重启不会重复执行。
+ */
+export interface LedgerMigration {
+    id: string;
+    /** 对原始文档执行就地变更；返回是否产生了需要落盘的实际修改。 */
+    apply(document: UsageLedgerDocument): boolean;
+}
+/**
+ * 账本迁移注册表。当前账本 schema（version 1）尚无字段变更需求，故为空表；
+ * 机制已就绪，schema 变更时在此登记幂等迁移，见 {@link LedgerMigration}。
+ */
+export declare const LEDGER_MIGRATIONS: readonly LedgerMigration[];
+/**
+ * 在加载边界对账本文档应用未执行的迁移，并记录已应用 id 供写回。
+ * @param document - 从持久化读出的原始账本文档。
+ * @param migrations - 待执行的迁移注册表；缺省用模块级 {@link LEDGER_MIGRATIONS}。
+ * @returns 是否发生了需要重新落盘的修改。
+ */
+export declare function runLedgerMigrations(document: UsageLedgerDocument, migrations?: readonly LedgerMigration[]): boolean;
 /** Storage seam for the durable ledger; the host supplies an atomic file implementation. */
 export interface UsageLedgerStore {
     load(): Promise<unknown | undefined>;
@@ -350,6 +388,7 @@ export declare function foldSession(events: readonly {
     type: string;
     time: number;
     data: never;
+    seq?: number;
 }[], subscriptionProviders: ReadonlySet<string>, officialProviderIds?: ReadonlySet<string>, routes?: Readonly<Record<string, ProviderRouteView>>): SessionFold;
 /**
  * 增量聚合器：按会话缓存折叠结果，用日志文件的 mtime+size 作失效键——

@@ -14,6 +14,7 @@ import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-s
 import { type ClientPerf } from './PerfPanel.tsx';
 import type { createBillingBudgetStore } from './budget-store.ts';
 import { type CatalogModel } from './pricing.ts';
+import type { ReconcileNotice } from '../pricing-shared.ts';
 import { NS, type UsageBillingKey } from './locales.ts';
 /** Model-connectivity health reported by the host model directory probe. */
 export interface ModelHealth {
@@ -35,8 +36,8 @@ export interface ModelHealth {
 /** 仪表盘分区 Tab id。 */
 export type DashboardTab = 'overview' | 'token' | 'trends' | 'providers' | 'pricing' | 'settings';
 /**
- * Tab 定义（顺序即渲染顺序）：概览=主数字/KPI/热力图，趋势=趋势图/每轮费用，
- * 明细=厂商计费与订阅，统计=工作区/会话明细，费率=模型单价表，设置=预算与峰谷提醒。
+ * Tab 定义（顺序即渲染顺序）：概览=主数字/KPI/热力图，账单=厂商计费与订阅，
+ * 用量=Token 用量，趋势=趋势图/每轮费用，费率=模型单价表，设置=预算与峰谷提醒。
  * 导出供测试断言 tab 与文案 key 对齐、decor 锚点落在正确分区。
  */
 export declare const DASHBOARD_TABS: readonly {
@@ -121,6 +122,11 @@ interface SessionBillingRow {
 export interface UsageStats {
     /** 服务端聚合时间戳（毫秒）；旧快照可能缺失。 */
     updatedAt?: number;
+    /** 宿主进程时区（IANA 名 + UTC 偏移）：天按此切分，副标题据此标注；旧快照可能缺失。 */
+    timezone?: {
+        name: string;
+        offset: string;
+    };
     /** 月度预算（人民币元）：宿主 Config 注入；未配置时不渲染预算条。 */
     budget?: number;
     /** 余额不足告警阈值（人民币元）：宿主 Config 注入；未配置时客户端用默认值。 */
@@ -215,6 +221,11 @@ export interface UsageStats {
     /** 插件版本号（服务端读自包 package.json；旧快照缺失）。 */
     pluginVersion?: string;
 }
+/**
+ * 拉取官方余额差对账提示（drift 时非空），供余额面板展示；失败返回 undefined。
+ * @returns the reconcile notice, or undefined on any failure / no drift.
+ */
+export declare function fetchReconcile(): Promise<ReconcileNotice | undefined>;
 /** 组件注入面：探活 + 计费指标写入（billing 自身写入，主题插件经服务读取）。 */
 export interface UsageBillingInjected {
     checkModels: () => Promise<ModelHealth>;
