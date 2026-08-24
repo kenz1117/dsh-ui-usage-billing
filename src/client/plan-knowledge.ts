@@ -83,7 +83,6 @@ export const PLAN_KNOWLEDGE: Readonly<Record<string, PlanKnowledgeEntry>> = {
   'minimax-cn': { type: 'code' },
   'minimax-token-plan': { type: 'code' },
   'minimax-token-plan-cn': { type: 'code' },
-  'minimax-cn': { type: 'code' },
 }
 
 /**
