@@ -179,9 +179,9 @@
 }
 
 /* 分档降级：按卡片实际分配到的宽度逐级收敛，保证「当月金额」始终可见且不溢出。
-   —— 中档（不足 ~300px）：趋势 sparkline 让位，微收内边距/间距；
+   —— 中档（不足 ~280px）：趋势 sparkline 让位，微收内边距/间距；
    —— 窄档（不足 ~230px）：副行（今日/本周）与趋势整体隐藏，仅保留 icon + 当月金额。 */
-@container billing-trigger (max-width: 300px) {
+@container billing-trigger (max-width: 280px) {
   .trigger {
     gap: 6px;
     padding: 8px 10px;
