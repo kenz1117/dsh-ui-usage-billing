@@ -116,6 +116,9 @@ export interface AggregateOptions {
   /** 工作区标题解析：给定会话 cwd 返回项目显示标题；undefined = 回退到 cwd 末级目录名
    *  （host 的 workspaceRegistry 为可选依赖，缺失时不注入，行为保持不变）。 */
   resolveWorkspaceTitle?: (cwd: string) => string | undefined
+  /** 独立的持久用量账本。启用后，已经成功折叠过的会话即使随后从
+   *  sessionPersistence 中永久删除，也会继续计入累计用量。 */
+  ledger?: UsageLedgerStore
 }
 
 /** 每会话折叠缓存默认上限：超过则按 LRU 淘汰（P1-6 峰值内存治理）。 */
@@ -383,7 +386,7 @@ interface StepPerf {
 }
 
 /** One persisted session's folded usage plus drill-down metadata. */
-interface SessionFold {
+export interface SessionFold {
   total: ModelUsage
   byModel: Map<string, ModelUsage>
   byDay: Map<string, ModelUsage>
@@ -414,6 +417,101 @@ interface RoleFold {
   inputCost: number
   /** 输出侧成本（人民币元）。 */
   outputCost: number
+}
+
+/** JSON-safe form of one session fold, used by the durable usage ledger. */
+export interface SerializedSessionFold {
+  total: ModelUsage
+  byModel: Record<string, ModelUsage>
+  byDay: Record<string, ModelUsage>
+  byDayModels: Record<string, Record<string, ModelUsage>>
+  bySite: Record<string, ModelUsage>
+  unpricedModels: string[]
+  planCalls: Record<string, number>
+  turns: SessionTurnRow[]
+  perf: PerfSample[]
+  roles: RoleFold
+  lastActive: number
+}
+
+/** One independently retained session in the durable usage ledger. */
+export interface UsageLedgerSession {
+  id: string
+  cwd?: string
+  /** Stable log stamp (mtime + size) when the persistence backend exposes it. */
+  stamp?: string
+  fold: SerializedSessionFold
+}
+
+/** On-disk durable usage ledger. Versioned independently from the dashboard document. */
+export interface UsageLedgerDocument {
+  version: 1
+  updatedAt: number
+  sessions: UsageLedgerSession[]
+}
+
+/** Storage seam for the durable ledger; the host supplies an atomic file implementation. */
+export interface UsageLedgerStore {
+  load(): Promise<unknown | undefined>
+  save(document: UsageLedgerDocument): Promise<void>
+}
+
+/** Serialize Map/Set-heavy fold state into a JSON-safe ledger entry. */
+function serializeFold(fold: SessionFold): SerializedSessionFold {
+  return {
+    total: fold.total,
+    byModel: Object.fromEntries(fold.byModel),
+    byDay: Object.fromEntries(fold.byDay),
+    byDayModels: Object.fromEntries([...fold.byDayModels].map(([day, models]) => [day, Object.fromEntries(models)])),
+    bySite: Object.fromEntries(fold.bySite),
+    unpricedModels: [...fold.unpricedModels],
+    planCalls: Object.fromEntries(fold.planCalls),
+    turns: fold.turns,
+    perf: fold.perf,
+    roles: fold.roles,
+    lastActive: fold.lastActive,
+  }
+}
+
+/** Restore a JSON-safe ledger fold into the in-memory Map/Set representation. */
+function deserializeFold(fold: SerializedSessionFold): SessionFold {
+  return {
+    total: fold.total,
+    byModel: new Map(Object.entries(fold.byModel)),
+    byDay: new Map(Object.entries(fold.byDay)),
+    byDayModels: new Map(Object.entries(fold.byDayModels).map(([day, models]) => [day, new Map(Object.entries(models))])),
+    bySite: new Map(Object.entries(fold.bySite)),
+    unpricedModels: new Set(fold.unpricedModels),
+    planCalls: new Map(Object.entries(fold.planCalls)),
+    turns: fold.turns,
+    perf: fold.perf,
+    roles: fold.roles,
+    lastActive: fold.lastActive,
+  }
+}
+
+/** Runtime boundary for a user-editable/corrupt ledger file. Invalid rows are ignored. */
+function ledgerSessionsOf(value: unknown): UsageLedgerSession[] {
+  if (value === null || typeof value !== 'object') return []
+  const document = value as { version?: unknown; sessions?: unknown }
+  if (document.version !== 1 || !Array.isArray(document.sessions)) return []
+  return document.sessions.filter((entry): entry is UsageLedgerSession => {
+    if (entry === null || typeof entry !== 'object') return false
+    const row = entry as { id?: unknown; fold?: unknown }
+    if (typeof row.id !== 'string' || row.id === '' || row.fold === null || typeof row.fold !== 'object') return false
+    const fold = row.fold as Partial<SerializedSessionFold>
+    return fold.total !== undefined
+      && fold.byModel !== undefined
+      && fold.byDay !== undefined
+      && fold.byDayModels !== undefined
+      && fold.bySite !== undefined
+      && Array.isArray(fold.unpricedModels)
+      && fold.planCalls !== undefined
+      && Array.isArray(fold.turns)
+      && Array.isArray(fold.perf)
+      && fold.roles !== undefined
+      && typeof fold.lastActive === 'number'
+  })
 }
 
 /**
@@ -748,10 +846,28 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
     : new Set(options.officialProviderIds)
   const maxCacheSessions = options.maxCacheSessions ?? DEFAULT_MAX_CACHE_SESSIONS
   const cache = new Map<string, { stamp: string | null; fold: SessionFold }>()
+  // Durable rows stay JSON-safe in memory. The LRU above still bounds the
+  // heavier Map/Set representation used for active-session incremental folds.
+  const ledger = new Map<string, UsageLedgerSession>()
+  let ledgerLoaded = false
+  let ledgerNeedsSave = false
   let lastDoc: UsageStatsDocument | undefined
   let lastAt = 0
   /** 每次聚合取最新的 provider 路由视图（中转站零配置发现）；缺省按空处理（全部未知路由）。 */
   const routesOf = (): Readonly<Record<string, ProviderRouteView>> => options.resolveRoutes?.() ?? {}
+
+  const ensureLedgerLoaded = async (): Promise<void> => {
+    if (ledgerLoaded || options.ledger === undefined) return
+    ledgerLoaded = true
+    try {
+      const stored = await options.ledger.load()
+      for (const entry of ledgerSessionsOf(stored)) ledger.set(entry.id, entry)
+    } catch (error) {
+      // A damaged ledger must not take down the dashboard. The host store normally
+      // tries its .bak first; if both fail, current logs rebuild a fresh ledger.
+      console.warn('[usage-billing] failed to load durable usage ledger; rebuilding from current sessions:', error)
+    }
+  }
 
   /** 失效键：日志文件的 mtime+size；拿不到（后端无 locate / 文件丢失）时每次重折。 */
   const stampOf = async (meta: SessionHeader): Promise<string | null> => {
@@ -770,9 +886,21 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const now = Date.now()
       if (lastDoc !== undefined && now - lastAt < AGGREGATE_TTL_MS) return lastDoc
 
-      const metas = await persistence.list()
+      await ensureLedgerLoaded()
+
+      let metas: readonly SessionHeader[]
+      try {
+        metas = await persistence.list()
+      } catch (error) {
+        if (options.ledger === undefined || ledger.size === 0) throw error
+        // The independent ledger is also the last-resort source when the session
+        // backend itself is temporarily unavailable; no live rows are pruned.
+        console.warn('[usage-billing] session list unavailable; serving durable usage ledger:', error)
+        metas = []
+      }
       const seen = new Set<string>()
-      const folds: { meta: SessionHeader; fold: SessionFold }[] = []
+      const included = new Set<string>()
+      const folds: { id: string; cwd?: string; fold: SessionFold }[] = []
       // skipped：记录未能读取的会话 id，聚合末尾统一告警。
       const skipped: string[] = []
       for (const meta of metas) {
@@ -784,7 +912,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           // LRU touch：复用命中的会话移到缓存末尾，供上方上限清理优先淘汰最久未用。
           cache.delete(id)
           cache.set(id, hit)
-          folds.push({ meta, fold: hit.fold })
+          folds.push({ id, ...(meta.cwd === undefined ? {} : { cwd: meta.cwd }), fold: hit.fold })
+          included.add(id)
           continue
         }
         // 单个损坏/不可读的会话日志（如 zstd torn frame）不能拖垮整份聚合：
@@ -798,7 +927,27 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           // durable 边界：日志事件是外部 JSON，foldSession 内做运行时收窄。
           const fold = foldSession(events as { type: string; time: number; data: never }[], subscriptionProviders, officialProviderIds, routesOf())
           cache.set(id, { stamp, fold })
-          folds.push({ meta, fold })
+          folds.push({ id, ...(meta.cwd === undefined ? {} : { cwd: meta.cwd }), fold })
+          included.add(id)
+          if (options.ledger !== undefined) {
+            const entry: UsageLedgerSession = {
+              id,
+              ...(meta.cwd === undefined ? {} : { cwd: meta.cwd }),
+              ...(stamp === null ? {} : { stamp }),
+              fold: serializeFold(fold),
+            }
+            const previous = ledger.get(id)
+            // A no-locate backend has no stable stamp, so compare the serialized row;
+            // located logs use the cheap stamp and metadata check.
+            const changed = previous === undefined
+              || previous.stamp !== entry.stamp
+              || previous.cwd !== entry.cwd
+              || (stamp === null && JSON.stringify(previous.fold) !== JSON.stringify(entry.fold))
+            if (changed) {
+              ledger.set(id, entry)
+              ledgerNeedsSave = true
+            }
+          }
         } catch (error) {
           skipped.push(id)
           console.warn('[usage-billing] skip unreadable session', id, error)
@@ -813,6 +962,33 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         const oldest = cache.keys().next()
         if (oldest.done === true) break
         cache.delete(oldest.value)
+      }
+      // The durable ledger is deliberately not pruned by `seen`: missing rows are
+      // history, not cache garbage. Unreadable live sessions also fall back to their
+      // last successfully folded ledger row.
+      if (options.ledger !== undefined) {
+        for (const entry of ledger.values()) {
+          if (included.has(entry.id)) continue
+          try {
+            folds.push({
+              id: entry.id,
+              ...(entry.cwd === undefined ? {} : { cwd: entry.cwd }),
+              fold: deserializeFold(entry.fold),
+            })
+            included.add(entry.id)
+          } catch (error) {
+            console.warn('[usage-billing] skip invalid durable ledger session', entry.id, error)
+          }
+        }
+        if (ledgerNeedsSave) {
+          try {
+            await options.ledger.save({ version: 1, updatedAt: now, sessions: [...ledger.values()] })
+            ledgerNeedsSave = false
+          } catch (error) {
+            // Keep serving the correct in-memory total; a later changed aggregation retries.
+            console.warn('[usage-billing] failed to persist durable usage ledger:', error)
+          }
+        }
       }
       // 只读路径无坏会话时无需区分：stampOf 命中或新会话，失败均已在上面跳过。
       if (skipped.length > 0) {
@@ -834,8 +1010,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       // 性能样本跨会话累加（按模型 / 小时分桶，聚合时才算均值/分位）。
       const perfModel = new Map<string, PerfModelAccum>()
       const perfHour = new Map<string, PerfHourAccum>()
-      for (const { meta, fold } of folds) {
-        const sessionId = String(meta.id)
+      for (const { id: sessionId, cwd, fold } of folds) {
         mergeUsageInto(total, fold.total)
         roles.userChars += fold.roles.userChars
         roles.toolChars += fold.roles.toolChars
@@ -873,9 +1048,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         // 每轮明细：跨会话的轮次统一按起始时间倒序（展示最近 N 轮）。
         for (const row of fold.turns) turnRows.push({ sessionId, ...row })
         // 工作区聚合：按 cwd 归并（优先用宿主工作区标题，未注入/未命中回退到末级目录名）。
-        const wsName = (options.resolveWorkspaceTitle !== undefined && meta.cwd !== undefined)
-          ? (options.resolveWorkspaceTitle(meta.cwd) ?? workspaceNameOf(meta.cwd))
-          : workspaceNameOf(meta.cwd)
+        const wsName = (options.resolveWorkspaceTitle !== undefined && cwd !== undefined)
+          ? (options.resolveWorkspaceTitle(cwd) ?? workspaceNameOf(cwd))
+          : workspaceNameOf(cwd)
         const ws = workspaceMap.get(wsName) ?? { name: wsName, calls: 0, cost: 0, input: 0, output: 0, lastActive: 0 }
         ws.calls += fold.total.calls
         ws.cost += fold.total.cost
@@ -888,7 +1063,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
             id: sessionId,
             // exactOptionalPropertyTypes：缺失的可选字段不带 key。
             ...(fold.title !== undefined ? { title: fold.title } : {}),
-            ...(meta.cwd !== undefined ? { cwd: meta.cwd } : {}),
+            ...(cwd !== undefined ? { cwd } : {}),
             calls: fold.total.calls,
             cost: fold.total.cost,
             lastActive: fold.lastActive,
