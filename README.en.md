@@ -22,6 +22,10 @@
 
 > **Peak/off-peak pricing update (from 2026-08-23 (Sun) 00:00 Beijing)**: DeepSeek models follow the new official rule — **weekdays (Mon–Fri)** keep the original peak/off-peak split (peak 09:00–12:00 / 14:00–18:00, ×2); **weekends (Sat/Sun)** are no longer split and are billed at the **off-peak price** all day. The plugin's billing engine, rate table and per-turn peak/off-peak bands all reflect this.
 
+<div align="center">
+  <img src="screenshots/demo.png" alt="dsh-ui-usage-billing — billing dashboard overview" width="80%">
+</div>
+
 ### Demo GIF
 
 ![Demo](screenshots/demo.gif)
