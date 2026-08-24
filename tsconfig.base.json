@@ -1,0 +1,30 @@
+{
+  // Fork-local host-side compiler base. Mirrors the DSH monorepo's
+  // tsconfig.base.json but omits the monorepo `paths` map (which resolves
+  // @deepseek-ai/* to monorepo source). A standalone fork resolves those
+  // specifiers from node_modules (workspace symlinks or published packages),
+  // so the map is neither portable nor needed here.
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "declaration": true,
+    "sourceMap": true,
+    "declarationMap": true,
+    "composite": true,
+    "incremental": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "verbatimModuleSyntax": false,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "types": ["node"]
+  }
+}

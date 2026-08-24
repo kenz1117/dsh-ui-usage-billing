@@ -1,0 +1,12 @@
+{
+  // Fork-local client-side compiler base: browser library API, React JSX, no
+  // ambient node types (packages that need them override locally). Mirrors the
+  // DSH monorepo's tsconfig.base.client.json, extended from the fork's own
+  // host base rather than the monorepo copy.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": []
+  }
+}
