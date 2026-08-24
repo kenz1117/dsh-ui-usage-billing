@@ -2627,13 +2627,38 @@
 }
 
 /* ── 模型用量悬浮窗（左下角 hover 浮窗）─────────────────────────────── */
-/* 订阅卡模式：浮窗比触发卡更宽（向右扩展 + 收敛），放得下完整订阅卡与进度条。 */
+/* 订阅卡模式：与综合模式一致，宽度贴合下方触发卡（left/right:0），随卡片宽度收缩。
+   订阅卡内部用收敛规则（见下），窄宽下进度条弹性、标签与重置时间可换行，不被裁切。 */
 .triggerPopSubscription {
-  left: auto;
-  right: auto;
-  width: max-content;
-  min-width: 300px;
-  max-width: 360px;
+  left: 0;
+  right: 0;
+  width: auto;
+}
+
+/* 订阅卡在浮窗内的窄宽自适应：允许内容收敛/换行，避免被裁切。 */
+.triggerPopSubscription .subscriptionCard {
+  min-width: 0;
+}
+.triggerPopSubscription .subscriptionHead {
+  row-gap: 4px;
+}
+.triggerPopSubscription .subscriptionWindow {
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.triggerPopSubscription .subscriptionWindowLabel {
+  flex: 0 0 auto;
+}
+.triggerPopSubscription .subscriptionMeta {
+  min-width: 0;
+  max-width: 100%;
+}
+.triggerPopSubscription .subscriptionPct {
+  min-width: 0;
+}
+.triggerPopSubscription .subscriptionReset {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* 无指定目标时的空态提示。 */
