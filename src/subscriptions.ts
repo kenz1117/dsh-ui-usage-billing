@@ -112,7 +112,6 @@ const SUBSCRIPTION_ADAPTERS: Readonly<Record<string, {
   'minimax-cn': { collect: collectMiniMax },
   'minimax-token-plan': { collect: collectMiniMax },
   'minimax-token-plan-cn': { collect: collectMiniMax },
-  'minimax-cn': { collect: collectMiniMax },
   'openrouter': { collect: collectOpenRouter },
 }
 
