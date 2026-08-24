@@ -191,6 +191,7 @@ npm publish --access public
 ## Contributors
 
 - [@ciphoo](https://github.com/ciphoo) — MiniMax 国内域 Token Plan 订阅额度支持（PR #5）
+- [@fabulousyuann-tech](https://github.com/fabulousyuann-tech) — 会话删除后用量保留的持久 ledger 功能（PR #8）
 
 ## 许可证
 
