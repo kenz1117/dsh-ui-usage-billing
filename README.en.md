@@ -189,6 +189,7 @@ None. This plugin is a pure UI surface: it registers no tools, injects no system
 ## Contributors
 
 - [@ciphoo](https://github.com/ciphoo) — MiniMax CN Token Plan quota support (PR #5)
+- [@fabulousyuann-tech](https://github.com/fabulousyuann-tech) — durable ledger that retains usage after session deletion (PR #8)
 
 ## License
 
