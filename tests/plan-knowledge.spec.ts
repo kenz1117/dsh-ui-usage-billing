@@ -13,7 +13,10 @@ describe('planTypeOf', () => {
     expect(planTypeOf('kimi-coding')).toBe('code')
     expect(planTypeOf('zai-coding-cn')).toBe('code')
     // MiniMax CN：与 xiaomi-token-plan-cn / qwen-token-plan-cn 同口径，订阅卡片
-    // 必须按 code 计算月费，否则会把它误归到 token 桶里丢档位知识。
+    // 必须按 code 计算月费，否则会把它误归到 token 桶里丢档位知识。`minimax-cn`
+    // 是 DSH pi-ai catalog 自己 ship 的官方国内 route id，与 plugin 起的别名
+    // `minimax-token-plan-cn` 等价。
+    expect(planTypeOf('minimax-cn')).toBe('code')
     expect(planTypeOf('minimax-token-plan-cn')).toBe('code')
   })
 
