@@ -26,18 +26,24 @@ export interface TrendPoint {
     cost: number;
     /** API calls that day (total across models). */
     calls: number;
+    /** Total tokens that day (input+output+cache); used by the `tokens` metric. */
+    tokens?: number;
     /** Per-model cost that day (stats key → CNY); absent entries plot zero. */
     byModel?: Readonly<Record<string, number>>;
 }
+/** Metric rendered by the chart columns: daily cost (stacked by model) or total tokens. */
+export type TrendMetric = 'cost' | 'tokens';
 /**
- * Render the daily stacked cost bars plus the total-calls line.
+ * Render the daily bars plus the total-calls line.
  * @param props.data - sorted daily rows (ascending date).
- * @param props.models - the model legend, in bar order.
+ * @param props.models - the model legend, in bar order (used by the `cost` metric).
  * @param props.currency - display currency for the cost labels.
+ * @param props.metric - `cost` (stacked per-model CNY, default) or `tokens` (single-color total tokens).
  */
-export declare function TrendChart({ data, models, currency }: {
+export declare function TrendChart({ data, models, currency, metric }: {
     data: readonly TrendPoint[];
     models?: readonly TrendSeriesModel[];
     currency?: CostCurrency;
+    metric?: TrendMetric;
 }): React.ReactNode;
 //# sourceMappingURL=TrendChart.d.ts.map

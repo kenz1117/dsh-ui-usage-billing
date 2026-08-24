@@ -20,6 +20,9 @@ export type UsageBillingKey =
   | 'billing.trend'
   | 'billing.trend7d'
   | 'billing.trend30d'
+  | 'billing.trendMetric'
+  | 'billing.trendMetricCost'
+  | 'billing.trendMetricTokens'
   | 'billing.trendEmpty'
   | 'billing.budget'
   | 'billing.sessions'
@@ -81,6 +84,7 @@ export type UsageBillingKey =
   | 'billing.floatNoTargetsHint'
   | 'billing.floatPrev'
   | 'billing.floatNext'
+  | 'billing.subscriptionsStale'
   | 'billing.heatmapLess'
   | 'billing.heatmapMore'
   | 'billing.currency'
@@ -244,6 +248,9 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.trend': '每日费用与调用趋势',
   'billing.trend7d': '7 天',
   'billing.trend30d': '30 天',
+  'billing.trendMetric': '趋势指标',
+  'billing.trendMetricCost': '费用',
+  'billing.trendMetricTokens': 'Token',
   'billing.trendEmpty': '暂无趋势数据',
   'billing.budget': '本月预算',
   'billing.sessions': '会话明细',
@@ -305,6 +312,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.floatNoTargetsHint': '暂无可选的订阅通道。',
   'billing.floatPrev': '上一张订阅',
   'billing.floatNext': '下一张订阅',
+  'billing.subscriptionsStale': '订阅额度刷新失败，以下为缓存数据',
   'billing.heatmapLess': '少',
   'billing.heatmapMore': '多',
   'billing.currency': '币种',
@@ -467,6 +475,9 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.trend': 'Daily cost & calls',
   'billing.trend7d': '7D',
   'billing.trend30d': '30D',
+  'billing.trendMetric': 'Trend metric',
+  'billing.trendMetricCost': 'Cost',
+  'billing.trendMetricTokens': 'Tokens',
   'billing.trendEmpty': 'No trend data yet',
   'billing.budget': 'Monthly budget',
   'billing.sessions': 'Sessions',
@@ -528,6 +539,7 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.floatNoTargetsHint': 'No subscription channel available.',
   'billing.floatPrev': 'Previous subscription',
   'billing.floatNext': 'Next subscription',
+  'billing.subscriptionsStale': 'Subscription refresh failed — showing cached data',
   'billing.heatmapLess': 'Less',
   'billing.heatmapMore': 'More',
   'billing.currency': 'Currency',
