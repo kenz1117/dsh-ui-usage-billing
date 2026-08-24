@@ -260,3 +260,37 @@ describe('parseOpenRouterCredits', () => {
     expect(parseOpenRouterCredits(null)).toEqual([])
   })
 })
+
+describe('vendor hints (Management Key / OpenCode auth note)', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('tells the user that OpenRouter needs a Management Key when it 401s', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 401, json: async () => ({}) })))
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, openrouterApiKey: 'inference-key' },
+      [{ provider: 'openrouter' }],
+    )
+    expect(quotas[0]).toMatchObject({ status: 'unauthorized' })
+    expect(quotas[0]?.hint).toContain('Management Key')
+  })
+
+  it('notes the Management Key requirement when the OpenRouter key is unconfigured', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS },
+      [{ provider: 'openrouter' }],
+    )
+    expect(quotas[0]).toMatchObject({ status: 'not-configured' })
+    expect(quotas[0]?.hint).toContain('Management Key')
+  })
+
+  it('notes the auth.json fallback when the OpenCode key is unconfigured', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS },
+      [{ provider: 'opencode-go' }],
+    )
+    expect(quotas[0]).toMatchObject({ status: 'not-configured' })
+    expect(quotas[0]?.hint).toContain('auth.json')
+  })
+})

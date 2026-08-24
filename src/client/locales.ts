@@ -62,6 +62,8 @@ export type UsageBillingKey =
   | 'billing.estimatedPricing'
   | 'billing.balanceDays'
   | 'billing.balanceLowBody'
+  | 'billing.reconcileDrift'
+  | 'billing.reconcileDismiss'
   | 'billing.subscriptions'
   | 'billing.subscriptionNotConfigured'
   | 'billing.subscriptionUnauthorized'
@@ -290,6 +292,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.estimatedPricing': '估算价',
   'billing.balanceDays': '约可撑 {days} 天',
   'billing.balanceLowBody': '{name} 余额 {balance}，约可撑 {days} 天，请及时充值',
+  'billing.reconcileDrift': '系统监控到{provider}官方余额变动 {spent}，本面板记录 {today}，差额通常由其它工具或 API 的消耗所致',
+  'billing.reconcileDismiss': '知道了',
   'billing.subscriptions': '订阅套餐',
   'billing.subscriptionNotConfigured': '未配置密钥',
   'billing.subscriptionUnauthorized': '密钥无效',
@@ -330,7 +334,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.costAbbr': '费用',
   'billing.tabOverview': '概览',
   'billing.tabTrends': '趋势',
-  'billing.tabProviders': '明细',
+  'billing.tabProviders': '账单',
   'billing.tabDetails': '统计',
   'billing.tabPricing': '费率',
   'billing.tabSettings': '设置',
@@ -517,6 +521,8 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.estimatedPricing': 'Estimated',
   'billing.balanceDays': '~{days} days left',
   'billing.balanceLowBody': '{name} balance {balance}, ~{days} days left, please top up',
+  'billing.reconcileDrift': 'Detected {provider} official balance moved {spent}, this panel recorded {today}; the gap usually comes from other tools or APIs consuming too',
+  'billing.reconcileDismiss': 'Got it',
   'billing.subscriptions': 'Subscriptions',
   'billing.subscriptionNotConfigured': 'Key not set',
   'billing.subscriptionUnauthorized': 'Bad key',
@@ -557,7 +563,7 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.costAbbr': 'cost',
   'billing.tabOverview': 'Overview',
   'billing.tabTrends': 'Trends',
-  'billing.tabProviders': 'Details',
+  'billing.tabProviders': 'Bills',
   'billing.tabDetails': 'Stats',
   'billing.tabPricing': 'Rates',
   'billing.tabSettings': 'Settings',

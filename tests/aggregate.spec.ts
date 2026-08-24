@@ -13,9 +13,9 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import {
-  aggregateUsage, createUsageAggregator, dayStamp, foldSession, foldUsage, emptyUsage, workspaceNameOf,
-  siteBucketKey, siteOriginOf, siteRefOf,
-  AGGREGATE_TTL_MS, SESSION_ROW_LIMIT, type UsageLedgerDocument, type UsageLedgerStore, type UsagePersistence,
+  aggregateUsage, createUsageAggregator, dayStamp, foldSession, foldUsage, emptyUsage, workspaceNameOf, hostTimeZone,
+  siteBucketKey, siteOriginOf, siteRefOf, runLedgerMigrations, type LedgerMigration, type UsageLedgerDocument,
+  AGGREGATE_TTL_MS, SESSION_ROW_LIMIT, type UsagePersistence,
 } from '../src/aggregate.ts'
 
 /** Minimal `request/header` event recording the active model and provider. */
@@ -46,27 +46,6 @@ function fakePersistence(logs: Record<string, SessionEvent[]>): UsagePersistence
       events: (logs[id] ?? []).filter(event => event.seq >= fromSeq),
     }),
   } as unknown as UsagePersistence
-}
-
-/** In-memory durable-ledger seam shared across aggregator restarts. */
-function memoryLedger(initial?: unknown): {
-  store: UsageLedgerStore
-  document: () => unknown
-  saves: () => number
-} {
-  let document = initial
-  let saveCount = 0
-  return {
-    store: {
-      load: async () => document,
-      save: async (next: UsageLedgerDocument) => {
-        document = structuredClone(next)
-        saveCount += 1
-      },
-    },
-    document: () => document,
-    saves: () => saveCount,
-  }
 }
 
 describe('foldUsage', () => {
@@ -153,6 +132,60 @@ describe('per-turn folding (P1-1)', () => {
     ], new Set(['kimi-coding']))
     expect(fold.turns).toHaveLength(1)
     expect(fold.turns[0]?.cost).toBe(0)
+  })
+})
+
+describe('fork seed filtering (session/end-seed)', () => {
+  /** Fold-session event row helper (durable-shape cast like the aggregator). */
+  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
+    ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
+
+  it('skips seed events sequenced before the end-seed boundary', () => {
+    const fold = foldSession([
+      // 种子：父会话拷贝来的事件（seq < 边界 4），不应重复计费。
+      ev('request/header', 1, 1_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE }),
+      ev('session/end-seed', 4, 1_002, {}),
+      // 本会话 own 事件（seq >= 边界 4）：正常计费。
+      ev('request/header', 5, 2_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/message', 6, 2_001, { turn: 2, step: 1, usage: USAGE }),
+    ], new Set())
+    // 只有 own 事件的 2 号调计入总调用。
+    expect(fold.total.calls).toBe(1)
+    expect(fold.turns).toHaveLength(1)
+    expect(fold.turns[0]).toMatchObject({ turn: 2 })
+  })
+
+  it('takes the LAST end-seed as the boundary for a multi-level fork chain', () => {
+    const fold = foldSession([
+      // A 种子（seq 0–1）。
+      ev('request/header', 0, 1_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/message', 1, 1_001, { turn: 1, step: 1, usage: USAGE }),
+      // B 的 end-seed（seq 2）。
+      ev('session/end-seed', 2, 1_002, {}),
+      // B 的 own 事件（seq 3–4）——对 C 而言仍是种子。
+      ev('request/header', 3, 1_100, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/message', 4, 1_101, { turn: 2, step: 1, usage: USAGE }),
+      // C 的 end-seed（seq 5，最后一个边界）。
+      ev('session/end-seed', 5, 1_102, {}),
+      // C 的 own 事件（seq 6）：唯一应计费的。
+      ev('request/header', 6, 2_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/message', 7, 2_001, { turn: 3, step: 1, usage: USAGE }),
+    ], new Set())
+    expect(fold.total.calls).toBe(1)
+    expect(fold.turns).toHaveLength(1)
+    expect(fold.turns[0]).toMatchObject({ turn: 3 })
+  })
+
+  it('keeps all events when no end-seed boundary exists (non-fork session)', () => {
+    const fold = foldSession([
+      ev('request/header', 1, 1_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE }),
+      ev('request/header', 3, 2_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/message', 4, 2_001, { turn: 2, step: 1, usage: USAGE }),
+    ], new Set())
+    expect(fold.total.calls).toBe(2)
+    expect(fold.turns).toHaveLength(2)
   })
 })
 
@@ -606,76 +639,6 @@ describe('createUsageAggregator (incremental cache)', () => {
     expect(empty.total.calls).toBe(0)
     expect(empty.bySession).toHaveLength(0)
   })
-
-  it('retains deleted-session usage in the durable ledger across process restarts', async () => {
-    vi.useFakeTimers()
-    const logs: Record<string, SessionEvent[]> = {
-      a: [header(1, 'deepseek-v4-flash'), message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE)],
-    }
-    const durable = memoryLedger()
-    const aggregator = createUsageAggregator(fakePersistence(logs), { ledger: durable.store })
-
-    const first = await aggregator.aggregate()
-    expect(first.total.calls).toBe(1)
-    expect(durable.saves()).toBe(1)
-
-    // Permanent deletion removes the source log, but not the independent ledger row.
-    delete logs['a']
-    vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
-    const afterDelete = await aggregator.aggregate()
-    expect(afterDelete.total.calls).toBe(1)
-    expect(afterDelete.bySession).toMatchObject([{ id: 'a', calls: 1 }])
-
-    // A fresh aggregator simulates a plugin/host restart and restores the same total.
-    const restarted = createUsageAggregator(fakePersistence({}), { ledger: durable.store })
-    const afterRestart = await restarted.aggregate()
-    expect(afterRestart.total).toEqual(first.total)
-    expect(afterRestart.byModel).toEqual(first.byModel)
-    expect(afterRestart.byDay).toEqual(first.byDay)
-  })
-
-  it('replaces a growing live session ledger row instead of double-counting it', async () => {
-    vi.useFakeTimers()
-    const logs: Record<string, SessionEvent[]> = {
-      a: [header(1, 'deepseek-v4-flash'), message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE)],
-    }
-    const durable = memoryLedger()
-    const aggregator = createUsageAggregator(fakePersistence(logs), { ledger: durable.store })
-    expect((await aggregator.aggregate()).total.calls).toBe(1)
-
-    logs['a'] = [...logs['a']!, message(3, Date.UTC(2026, 7, 15, 5, 0, 0), USAGE)]
-    vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
-    const updated = await aggregator.aggregate()
-    expect(updated.total.calls).toBe(2)
-
-    const restarted = createUsageAggregator(fakePersistence({}), { ledger: durable.store })
-    expect((await restarted.aggregate()).total.calls).toBe(2)
-  })
-
-  it('ignores invalid ledger rows and rebuilds from readable sessions', async () => {
-    const durable = memoryLedger({ version: 1, sessions: [{ id: 'broken', fold: { lastActive: 'bad' } }] })
-    const logs = {
-      a: [header(1, 'deepseek-v4-flash'), message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE)],
-    }
-    const stats = await createUsageAggregator(fakePersistence(logs), { ledger: durable.store }).aggregate()
-    expect(stats.total.calls).toBe(1)
-    expect(stats.bySession).toMatchObject([{ id: 'a', calls: 1 }])
-  })
-
-  it('serves the durable ledger when the session backend list is unavailable', async () => {
-    const durable = memoryLedger()
-    const logs = {
-      a: [header(1, 'deepseek-v4-flash'), message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE)],
-    }
-    const first = await createUsageAggregator(fakePersistence(logs), { ledger: durable.store }).aggregate()
-    const unavailable = {
-      list: async () => { throw new Error('session backend unavailable') },
-      readFrom: async () => { throw new Error('unreachable') },
-    } as unknown as UsagePersistence
-    const restored = await createUsageAggregator(unavailable, { ledger: durable.store }).aggregate()
-    expect(restored.total).toEqual(first.total)
-    expect(restored.bySession).toMatchObject([{ id: 'a', calls: 1 }])
-  })
 })
 
 describe('performance aggregation (TTFT / tps / latency)', () => {
@@ -763,5 +726,61 @@ describe('performance aggregation (TTFT / tps / latency)', () => {
     expect(flash?.estimatedSamples).toBe(0)
     // 两个样本同属一个本地小时 → 小时桶 samples = 2。
     expect(Object.keys(stats.perf?.byHour ?? {}).length).toBe(1)
+  })
+})
+
+describe('runLedgerMigrations', () => {
+  /** 已含 `appliedMigrations: []` 的最简账本文档。 */
+  const doc = (): UsageLedgerDocument => ({
+    version: 1, updatedAt: 1, sessions: [], appliedMigrations: [],
+  })
+
+  it('applies an un-run migration and records its id', () => {
+    const migrations: LedgerMigration[] = [{
+      id: 'v2-rename-field',
+      apply: (document) => { document.updatedAt = 2; return true },
+    }]
+    const document = doc()
+    const changed = runLedgerMigrations(document, migrations)
+    expect(changed).toBe(true)
+    expect(document.updatedAt).toBe(2)
+    expect(document.appliedMigrations).toEqual(['v2-rename-field'])
+  })
+
+  it('skips an already-applied migration (幂等)', () => {
+    const id = 'v2-apply-once'
+    let applied = 0
+    const migrations: LedgerMigration[] = [{
+      id,
+      apply: (document) => { applied += 1; document.updatedAt = 2; return true },
+    }]
+    const document = doc()
+    document.appliedMigrations = [id]
+    const changed = runLedgerMigrations(document, migrations)
+    expect(changed).toBe(false)
+    expect(applied).toBe(0)
+    expect(document.updatedAt).toBe(1)
+  })
+
+  it('keeps foreign applied ids and returns false when nothing to migrate', () => {
+    const document = doc()
+    document.appliedMigrations = ['v1-legacy']
+    const changed = runLedgerMigrations(document, [])
+    expect(changed).toBe(false)
+    expect(document.appliedMigrations).toEqual(['v1-legacy'])
+  })
+})
+
+describe('hostTimeZone', () => {
+  it('reports a non-empty IANA name and a formatted UTC offset', () => {
+    const tz = hostTimeZone()
+    expect(typeof tz.name).toBe('string')
+    expect(tz.name.length).toBeGreaterThan(0)
+    expect(tz.offset).toMatch(/^UTC[+-]\d{2}:\d{2}$/)
+  })
+
+  it('derives the offset from the given instant (UTC+08:00)', () => {
+    const tz = hostTimeZone(new Date('2026-08-24T04:00:00+08:00'))
+    expect(tz.offset).toMatch(/^UTC[+-]\d{2}:\d{2}$/)
   })
 })

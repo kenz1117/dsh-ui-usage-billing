@@ -43,6 +43,9 @@ const LEVEL_COLORS: readonly string[] = [
   'var(--dsw-static-green-500)',
 ]
 
+/** 月份缩写（年度热力图横轴标签，GitHub 风格）。 */
+const MONTH_ABBR: readonly string[] = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
 /** Local-time `YYYY-MM-DD` stamp (matches the dashboard's day keys). */
 function dayStamp(date: Date): string {
   const pad = (n: number): string => String(n).padStart(2, '0')
@@ -165,22 +168,50 @@ export function UsageHeatmap({ days, currency, now, t, range = 'month' }: { days
   if (range === 'year') {
     // Year view: compact per-week column grid (GitHub style); tooltip via title.
     const yearWeeks = buildYearWeeks(days, now ?? new Date())
+    // 月份标签：每列一周，月初列标注月份缩写（与参考图的横轴月份一致）。
+    const monthLabels: { index: number; label: string }[] = []
+    let lastMonth = -1
+    yearWeeks.forEach((week, i) => {
+      const m = Number(week[0]?.date.slice(5, 7) ?? 0)
+      if (m !== lastMonth) {
+        monthLabels.push({ index: i, label: MONTH_ABBR[m - 1] ?? '' })
+        lastMonth = m
+      }
+    })
+    // 左侧周几标注：参考图只标 Mon / Wed / Fri（周日起始，行号 1 / 3 / 5）。
+    const weekdayRows: readonly { label: string; row: number }[] = [
+      { label: 'Mon', row: 1 },
+      { label: 'Wed', row: 3 },
+      { label: 'Fri', row: 5 },
+    ]
     return (
-      <div className={css.heatmap}>
-        <div className={css.heatmapYearScroll}>
-          <div className={css.heatmapYearGrid} role="img" aria-label="yearly cost heatmap" data-testid="heatmap-year-grid">
-            {yearWeeks.flat().map(cell => (
-              <button
-                key={cell.date}
-                type="button"
-                className={css.heatmapYearCell}
-                data-testid="heatmap-year-cell"
-                data-level={cell.level}
-                style={{ background: LEVEL_COLORS[cell.level] }}
-                title={`${cell.date} · ${money(cell.value)}`}
-                aria-label={`${cell.date}: ${money(cell.value)}`}
-              />
+      <div className={css.heatmapYear} data-testid="heatmap-year">
+        <div className={css.heatmapYearBody}>
+          <div className={css.heatmapYearWeekdays} aria-hidden="true">
+            {weekdayRows.map(item => (
+              <span key={item.label} className={css.heatmapYearWeekday} style={{ gridRow: item.row }}>{item.label}</span>
             ))}
+          </div>
+          <div className={css.heatmapYearScroll}>
+            <div className={css.heatmapYearMonths} aria-hidden="true" data-testid="heatmap-year-months">
+              {monthLabels.map(m => (
+                <span key={m.index} className={css.heatmapYearMonth} style={{ gridColumn: m.index + 1 }}>{m.label}</span>
+              ))}
+            </div>
+            <div className={css.heatmapYearGrid} role="img" aria-label="yearly cost heatmap" data-testid="heatmap-year-grid">
+              {yearWeeks.flat().map(cell => (
+                <button
+                  key={cell.date}
+                  type="button"
+                  className={css.heatmapYearCell}
+                  data-testid="heatmap-year-cell"
+                  data-level={cell.level}
+                  style={{ background: LEVEL_COLORS[cell.level] }}
+                  title={`${cell.date} · ${money(cell.value)}`}
+                  aria-label={`${cell.date}: ${money(cell.value)}`}
+                />
+              ))}
+            </div>
           </div>
         </div>
         <div className={css.heatmapFooter}>

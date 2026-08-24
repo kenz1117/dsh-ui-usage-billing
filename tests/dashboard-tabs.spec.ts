@@ -10,7 +10,7 @@ import { en, zh } from '../src/client/locales.ts'
 
 describe('DASHBOARD_TABS', () => {
   it('defines the six sections in display order', () => {
-    expect(DASHBOARD_TABS.map(tab => tab.id)).toEqual(['overview', 'token', 'trends', 'providers', 'pricing', 'settings'])
+    expect(DASHBOARD_TABS.map(tab => tab.id)).toEqual(['overview', 'providers', 'token', 'trends', 'pricing', 'settings'])
   })
 
   it('has zh and en copy for every tab label', () => {

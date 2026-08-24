@@ -35,7 +35,7 @@ import {
   formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
   modelOf, resolveToken, tierAt, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
-import type { BalanceResponse, LivePricing, ProviderBalance, RelayQuota, RelayResponse } from '../pricing-shared.ts'
+import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
 import { localizeProviderName } from './provider-display.ts'
@@ -69,15 +69,15 @@ const SESSION_DISPLAY_LIMIT = 20
 export type DashboardTab = 'overview' | 'token' | 'trends' | 'providers' | 'pricing' | 'settings'
 
 /**
- * Tab 定义（顺序即渲染顺序）：概览=主数字/KPI/热力图，趋势=趋势图/每轮费用，
- * 明细=厂商计费与订阅，统计=工作区/会话明细，费率=模型单价表，设置=预算与峰谷提醒。
+ * Tab 定义（顺序即渲染顺序）：概览=主数字/KPI/热力图，账单=厂商计费与订阅，
+ * 用量=Token 用量，趋势=趋势图/每轮费用，费率=模型单价表，设置=预算与峰谷提醒。
  * 导出供测试断言 tab 与文案 key 对齐、decor 锚点落在正确分区。
  */
 export const DASHBOARD_TABS: readonly { id: DashboardTab; labelKey: UsageBillingKey }[] = [
   { id: 'overview', labelKey: 'billing.tabOverview' },
+  { id: 'providers', labelKey: 'billing.tabProviders' },
   { id: 'token', labelKey: 'billing.tabToken' },
   { id: 'trends', labelKey: 'billing.tabTrends' },
-  { id: 'providers', labelKey: 'billing.tabProviders' },
   { id: 'pricing', labelKey: 'billing.tabPricing' },
   { id: 'settings', labelKey: 'billing.tabSettings' },
 ]
@@ -392,6 +392,8 @@ const RELAY_KIND_CLASS: Record<RelayQuota['kind'], string | undefined> = {
 export interface UsageStats {
   /** 服务端聚合时间戳（毫秒）；旧快照可能缺失。 */
   updatedAt?: number
+  /** 宿主进程时区（IANA 名 + UTC 偏移）：天按此切分，副标题据此标注；旧快照可能缺失。 */
+  timezone?: { name: string; offset: string }
   /** 月度预算（人民币元）：宿主 Config 注入；未配置时不渲染预算条。 */
   budget?: number
   /** 余额不足告警阈值（人民币元）：宿主 Config 注入；未配置时客户端用默认值。 */
@@ -620,6 +622,25 @@ async function fetchBalances(): Promise<readonly ProviderBalance[]> {
     return []
   } catch {
     return []
+  }
+}
+
+/**
+ * 拉取官方余额差对账提示（drift 时非空），供余额面板展示；失败返回 undefined。
+ * @returns the reconcile notice, or undefined on any failure / no drift.
+ */
+export async function fetchReconcile(): Promise<ReconcileNotice | undefined> {
+  try {
+    const response = await fetch(BALANCE_PATH)
+    if (!response.ok) return undefined
+    const text = await response.text()
+    const parsed = JSON.parse(text) as unknown
+    if (parsed !== null && typeof parsed === 'object' && 'reconcile' in parsed) {
+      return (parsed as BalanceResponse).reconcile
+    }
+    return undefined
+  } catch {
+    return undefined
   }
 }
 
@@ -992,6 +1013,8 @@ interface BillingDashboardProps {
   onClose: () => void
   health: ModelHealth
   balances: readonly ProviderBalance[]
+  /** 官方余额差对账提示（drift 时非空，展示在余额区块）。 */
+  reconcile?: ReconcileNotice
   quotas: readonly SubscriptionQuota[]
   /** 中转站额度（New API / Sub2API 的余额与滚动窗口）。 */
   relayQuotas: readonly RelayQuota[]
@@ -1070,7 +1093,7 @@ function BalanceDetailRow({ label, value }: { label: string; value: string }): R
 }
 
 function BillingDashboard({
-  stats, t, onClose, health, balances, quotas, relayQuotas, currency, onCurrency, turns,
+  stats, t, onClose, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, turns,
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
   peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, quotasStale,
 }: BillingDashboardProps): React.ReactNode {
@@ -1081,6 +1104,23 @@ function BillingDashboard({
   const [tab, setTab] = useState<DashboardTab>('overview')
   // 趋势窗口：7 天 / 30 天切换（30 天窗口数据不足时按日补零）。
   const [trendDays, setTrendDays] = useState<7 | 30>(7)
+  // 对账偏差忽略：用户可能同时在其它 agent / 直接接入 API 里消耗官方余额，此时 drift
+  // 属正常。点击「忽略今天」后当天不再显示（localStorage 持久化，仅客户端侧）。
+  const [reconcileDismissedDay, setReconcileDismissedDay] = useState<string>(() => {
+    try { return window.localStorage.getItem('dsh-billing:reconcile-dismissed') ?? '' } catch { return '' }
+  })
+  const dayStampLocal = (): string => {
+    const d = new Date()
+    const pad = (n: number): string => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  }
+  const dismissReconcile = useCallback((): void => {
+    const day = dayStampLocal()
+    setReconcileDismissedDay(day)
+    try { window.localStorage.setItem('dsh-billing:reconcile-dismissed', day) } catch { /* 写入失败可忽略 */ }
+  }, [])
+  // 概览用量热力图范围：月（日历月）/ 年（GitHub 风格年度贡献图，含月份与周几标注）。
+  const [heatmapRange, setHeatmapRange] = useState<'month' | 'year'>('month')
 
   // 浮窗「指定订阅卡」的可选目标：只列已接入（查询成功且有额度数据）的订阅，
   // 避免内置 alias 造成的同名重复与未接入项。
@@ -1220,7 +1260,6 @@ function BillingDashboard({
   const monthPrefix = today.slice(0, 7)
   const yearPrefix = today.slice(0, 4)
   const monthCost = dates.reduce((sum, d) => sum + (d.startsWith(monthPrefix) ? (byDay[d]?.cost ?? 0) : 0), 0)
-  const monthCalls = dates.reduce((sum, d) => sum + (d.startsWith(monthPrefix) ? (byDay[d]?.calls ?? 0) : 0), 0)
   const yearCost = dates.reduce((sum, d) => sum + (d.startsWith(yearPrefix) ? (byDay[d]?.cost ?? 0) : 0), 0)
 
   // 本月预计总花费（forecast）：按本月已有记录的平均日消耗 × 本月天数外推的
@@ -1448,6 +1487,7 @@ function BillingDashboard({
             </div>
             <p className={css.dashboardSubtitle}>
               {t('billing.lastUpdated')} {latestDate}
+              {stats.timezone === undefined ? null : ` · ${stats.timezone.name} (${stats.timezone.offset})`}
             </p>
           </div>
           <div className={css.dashboardRight}>
@@ -1510,6 +1550,34 @@ function BillingDashboard({
         <div className={css.dashboardBody}>
           {tab === 'overview' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-overview">
+              {/* 对账说明条：官方余额变动与本地账本当日费用偏差超阈值（drift）时，
+                  以一条中性说明提示「本面板只统计本机 dsh 会话」，避免用户以为统计有误。
+                  属信息性说明而非告警；点击「知道了」当天不再显示，非 drift 不渲染。 */}
+              {reconcile?.kind === 'drift' && reconcile.spent !== undefined && reconcileDismissedDay !== dayStampLocal() && (
+                <div className={css.reconcileNotice} data-testid="billing-reconcile-notice" role="note">
+                  <span className={css.reconcileIcon} aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="9" />
+                      <line x1="12" y1="10" x2="12" y2="16" />
+                      <line x1="12" y1="7.5" x2="12.01" y2="7.5" />
+                    </svg>
+                  </span>
+                  <span className={css.reconcileText}>
+                    {t('billing.reconcileDrift')
+                      .replace('{provider}', reconcile.provider ?? '')
+                      .replace('{spent}', money(reconcile.spent))
+                      .replace('{today}', money(reconcile.todayOfficialCost ?? 0))}
+                  </span>
+                  <button
+                    type="button"
+                    className={css.reconcileDismiss}
+                    data-testid="billing-reconcile-dismiss"
+                    onClick={dismissReconcile}
+                  >
+                    {t('billing.reconcileDismiss')}
+                  </button>
+                </div>
+              )}
               {/* Hero: 液晶读数大屏 —— 左上「本月费用」大数字液晶表，右上环形仪表盘，底部一条「本年 / 今日 / 本月预计」读数排。 */}
               <section
                 className={css.hero}
@@ -1528,9 +1596,6 @@ function BillingDashboard({
                         {money(monthCost).slice(1)}
                       </span>
                     </div>
-                    <span className={css.heroMeta}>
-                      {monthCalls.toLocaleString()} {t('billing.calls')}
-                    </span>
                   </div>
                   {/* 环形仪表盘：SVG stroke-dasharray 画弧，中心显示百分比与标签，
                   超支转红（预算口径下）。无预算时按本月占本年装饰。 */}
@@ -1634,11 +1699,25 @@ function BillingDashboard({
                   <h3 className={css.panelTitle}>
                     {t('billing.heatmap')}
                   </h3>
+                  <div className={css.heatmapRangeSwitch} data-testid="billing-heatmap-range" role="group" aria-label={t('billing.heatmap')}>
+                    {(['month', 'year'] as const).map(r => (
+                      <button
+                        key={r}
+                        type="button"
+                        className={clsx(css.heatmapRangeButton, heatmapRange === r && css.heatmapRangeButtonActive)}
+                        data-testid={`billing-heatmap-range-${r}`}
+                        aria-pressed={heatmapRange === r}
+                        onClick={() => { setHeatmapRange(r) }}
+                      >
+                        {r === 'month' ? t('billing.heatmapMonth') : t('billing.heatmapYear')}
+                      </button>
+                    ))}
+                  </div>
                   <span className={css.panelHint} data-testid="billing-heatmap-summary">
                     {t('billing.activeDays')} {activeDays} · {t('billing.streakDays')} {streakDays}
                   </span>
                 </div>
-                <UsageHeatmap days={heatmapDays} currency={currency} t={t} range="month" />
+                <UsageHeatmap days={heatmapDays} currency={currency} t={t} range={heatmapRange} />
               </section>
             </div>
           )}
@@ -2598,6 +2677,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const [stats, setStats] = useState<UsageStats>(EMPTY_STATS)
   const [health, setHealth] = useState<ModelHealth>(IDLE_HEALTH)
   const [balances, setBalances] = useState<readonly ProviderBalance[]>([])
+  const [reconcile, setReconcile] = useState<ReconcileNotice | undefined>(undefined)
   const [quotas, setQuotas] = useState<readonly SubscriptionQuota[]>([])
   // 订阅刷新是否失败：失败时保留上次成功快照并标记 stale（展示「缓存」）。
   const [quotasStale, setQuotasStale] = useState(false)
@@ -2631,6 +2711,9 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     })
     void fetchBalances().then((list) => {
       if (list.length > 0) setBalances(list)
+    })
+    void fetchReconcile().then((notice) => {
+      setReconcile(notice)
     })
     void fetchSubscriptions().then((list) => {
       if (list.length > 0) {
@@ -2907,6 +2990,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           onClose={close}
           health={health}
           balances={balances}
+          {...(reconcile === undefined ? {} : { reconcile })}
           quotas={quotas}
           relayQuotas={relayQuotas}
           currency={currency}

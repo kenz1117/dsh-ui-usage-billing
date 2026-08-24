@@ -8,27 +8,11 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ComponentProps } from 'react'
-import { useSyncExternalStore } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import { UsageBilling, providerFromModelKey } from '../src/client/UsageBilling.tsx'
 import { createBillingBudgetStore } from '../src/client/budget-store.ts'
 import { zh } from '../src/client/locales.ts'
-
-// 本地 uSES 桥：替代宿主的 `@deepseek-ai/dsh-client-web-react`（该包部分 DSH 版本已
-// retire，且独立 fork 不应依赖 monorepo 内部包）。仅覆盖测试需要的「按选择器读取」
-// 语义，不实现 eq/浅比较缓存。
-/** 可观察快照源的最小读取面（引擎 store 满足该形状）。 */
-interface TestObservable<T> {
-  readonly subscribe: (fn: () => void) => () => void
-  readonly getSnapshot: () => T
-}
-function bindSnapshotSelector<T>(store: TestObservable<T>) {
-  const subscribe = (fn: () => void) => store.subscribe(fn)
-  const getSnapshot = () => store.getSnapshot()
-  return function useSelector<S>(sel: (s: T) => S): S {
-    return sel(useSyncExternalStore(subscribe, getSnapshot, getSnapshot))
-  }
-}
 
 beforeEach(() => { localStorage.clear() })
 

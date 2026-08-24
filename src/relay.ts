@@ -165,6 +165,34 @@ function originOf(baseURL: string): string {
   }
 }
 
+/**
+ * 已知官方（非中转站）端点 host 判定：这些域是厂商自己的官方 API，卖的是
+ * 官方按量余额而非中转站按 key 的额度，探测其 `/v1/usage`、`/api/status`
+ * 子路径只会得到 404/非中转站格式，因而面板应排除它们，避免误判为
+ * 「未识别」。中转站面板只列真正的第三方中转程序。
+ */
+const OFFICIAL_HOSTS: ReadonlySet<string> = new Set([
+  'api.deepseek.com',
+  'api.openai.com',
+  'open.bigmodel.cn',
+  'api.moonshot.cn',
+  'api.siliconflow.cn',
+  'api.stepfun.com',
+  'api.x.ai',
+  'api.anthropic.com',
+  'generativelanguage.googleapis.com',
+])
+
+/**
+ * 判断一个 baseURL 是否指向已知官方端点（而非第三方中转站）。
+ * @param baseURL - llm-pi-ai provider 路由的端点地址。
+ * @returns 官方端点返回 true（中转站面板应排除）。
+ */
+export function isOfficialBaseUrl(baseURL: string): boolean {
+  const host = originOf(baseURL).replace(/^https?:\/\//, '')
+  return host !== baseURL && OFFICIAL_HOSTS.has(host)
+}
+
 /** 构造端点 URL：`/v1/usage` 与 `/api/status` 都以 baseURL 为宿主解析。 */
 function endpointOf(baseURL: string, path: string): string {
   return new URL(path, baseURL).toString()
