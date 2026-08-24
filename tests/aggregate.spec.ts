@@ -15,7 +15,7 @@ import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import {
   aggregateUsage, createUsageAggregator, dayStamp, foldSession, foldUsage, emptyUsage, workspaceNameOf,
   siteBucketKey, siteOriginOf, siteRefOf,
-  AGGREGATE_TTL_MS, SESSION_ROW_LIMIT, type UsagePersistence,
+  AGGREGATE_TTL_MS, SESSION_ROW_LIMIT, type UsageLedgerDocument, type UsageLedgerStore, type UsagePersistence,
 } from '../src/aggregate.ts'
 
 /** Minimal `request/header` event recording the active model and provider. */
@@ -46,6 +46,27 @@ function fakePersistence(logs: Record<string, SessionEvent[]>): UsagePersistence
       events: (logs[id] ?? []).filter(event => event.seq >= fromSeq),
     }),
   } as unknown as UsagePersistence
+}
+
+/** In-memory durable-ledger seam shared across aggregator restarts. */
+function memoryLedger(initial?: unknown): {
+  store: UsageLedgerStore
+  document: () => unknown
+  saves: () => number
+} {
+  let document = initial
+  let saveCount = 0
+  return {
+    store: {
+      load: async () => document,
+      save: async (next: UsageLedgerDocument) => {
+        document = structuredClone(next)
+        saveCount += 1
+      },
+    },
+    document: () => document,
+    saves: () => saveCount,
+  }
 }
 
 describe('foldUsage', () => {
@@ -584,6 +605,76 @@ describe('createUsageAggregator (incremental cache)', () => {
     const empty = await createUsageAggregator(persistence2).aggregate()
     expect(empty.total.calls).toBe(0)
     expect(empty.bySession).toHaveLength(0)
+  })
+
+  it('retains deleted-session usage in the durable ledger across process restarts', async () => {
+    vi.useFakeTimers()
+    const logs: Record<string, SessionEvent[]> = {
+      a: [header(1, 'deepseek-v4-flash'), message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE)],
+    }
+    const durable = memoryLedger()
+    const aggregator = createUsageAggregator(fakePersistence(logs), { ledger: durable.store })
+
+    const first = await aggregator.aggregate()
+    expect(first.total.calls).toBe(1)
+    expect(durable.saves()).toBe(1)
+
+    // Permanent deletion removes the source log, but not the independent ledger row.
+    delete logs['a']
+    vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
+    const afterDelete = await aggregator.aggregate()
+    expect(afterDelete.total.calls).toBe(1)
+    expect(afterDelete.bySession).toMatchObject([{ id: 'a', calls: 1 }])
+
+    // A fresh aggregator simulates a plugin/host restart and restores the same total.
+    const restarted = createUsageAggregator(fakePersistence({}), { ledger: durable.store })
+    const afterRestart = await restarted.aggregate()
+    expect(afterRestart.total).toEqual(first.total)
+    expect(afterRestart.byModel).toEqual(first.byModel)
+    expect(afterRestart.byDay).toEqual(first.byDay)
+  })
+
+  it('replaces a growing live session ledger row instead of double-counting it', async () => {
+    vi.useFakeTimers()
+    const logs: Record<string, SessionEvent[]> = {
+      a: [header(1, 'deepseek-v4-flash'), message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE)],
+    }
+    const durable = memoryLedger()
+    const aggregator = createUsageAggregator(fakePersistence(logs), { ledger: durable.store })
+    expect((await aggregator.aggregate()).total.calls).toBe(1)
+
+    logs['a'] = [...logs['a']!, message(3, Date.UTC(2026, 7, 15, 5, 0, 0), USAGE)]
+    vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
+    const updated = await aggregator.aggregate()
+    expect(updated.total.calls).toBe(2)
+
+    const restarted = createUsageAggregator(fakePersistence({}), { ledger: durable.store })
+    expect((await restarted.aggregate()).total.calls).toBe(2)
+  })
+
+  it('ignores invalid ledger rows and rebuilds from readable sessions', async () => {
+    const durable = memoryLedger({ version: 1, sessions: [{ id: 'broken', fold: { lastActive: 'bad' } }] })
+    const logs = {
+      a: [header(1, 'deepseek-v4-flash'), message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE)],
+    }
+    const stats = await createUsageAggregator(fakePersistence(logs), { ledger: durable.store }).aggregate()
+    expect(stats.total.calls).toBe(1)
+    expect(stats.bySession).toMatchObject([{ id: 'a', calls: 1 }])
+  })
+
+  it('serves the durable ledger when the session backend list is unavailable', async () => {
+    const durable = memoryLedger()
+    const logs = {
+      a: [header(1, 'deepseek-v4-flash'), message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE)],
+    }
+    const first = await createUsageAggregator(fakePersistence(logs), { ledger: durable.store }).aggregate()
+    const unavailable = {
+      list: async () => { throw new Error('session backend unavailable') },
+      readFrom: async () => { throw new Error('unreachable') },
+    } as unknown as UsagePersistence
+    const restored = await createUsageAggregator(unavailable, { ledger: durable.store }).aggregate()
+    expect(restored.total).toEqual(first.total)
+    expect(restored.bySession).toMatchObject([{ id: 'a', calls: 1 }])
   })
 })
 
