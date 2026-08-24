@@ -2635,28 +2635,45 @@
   width: auto;
 }
 
-/* 订阅卡在浮窗内的窄宽自适应：允许内容收敛/换行，避免被裁切。 */
-.triggerPopSubscription .subscriptionCard {
+/* 浮窗内订阅信息：轻量直排（无卡片壳），直接融入浮窗，与综合模式协调。 */
+.floatSub {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   min-width: 0;
 }
-.triggerPopSubscription .subscriptionHead {
-  row-gap: 4px;
+.floatSubHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
 }
-.triggerPopSubscription .subscriptionWindow {
+.floatSubName {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+}
+.floatSubPlan {
+  font-size: 10px;
+  color: var(--dsw-alias-label-secondary);
+}
+/* 窗口行在窄宽下的收敛：进度条弹性、标签与重置时间可换行，不被裁切。 */
+.floatSub .subscriptionWindow {
   flex-wrap: wrap;
   gap: 4px 10px;
 }
-.triggerPopSubscription .subscriptionWindowLabel {
+.floatSub .subscriptionWindowLabel {
   flex: 0 0 auto;
 }
-.triggerPopSubscription .subscriptionMeta {
+.floatSub .subscriptionMeta {
   min-width: 0;
   max-width: 100%;
 }
-.triggerPopSubscription .subscriptionPct {
+.floatSub .subscriptionPct {
   min-width: 0;
 }
-.triggerPopSubscription .subscriptionReset {
+.floatSub .subscriptionReset {
   white-space: normal;
   overflow-wrap: anywhere;
 }
