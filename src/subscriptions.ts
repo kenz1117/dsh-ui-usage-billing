@@ -156,11 +156,12 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10
 }
 
-/** Number → ISO string (seconds treated as epoch seconds, ms as epoch ms). */
+/** Number → ISO string. Real epoch-seconds are far below 1e11 (~year 5138), while
+ *  epoch-ms for any 1973+ instant is >= 1e11 — so treat < 1e11 as seconds. */
 function toIso(value: unknown): string | null {
   if (value === null || value === undefined || value === '') return null
   if (typeof value === 'number' && Number.isFinite(value)) {
-    const date = new Date(value < 2_000_000_000_000 ? value * 1000 : value)
+    const date = new Date(value < 1e11 ? value * 1000 : value)
     return Number.isNaN(date.getTime()) ? null : date.toISOString()
   }
   const date = new Date(String(value))
