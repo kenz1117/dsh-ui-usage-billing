@@ -25,7 +25,7 @@ import type {} from '@deepseek-ai/dsh-credentials'
 // Type-only: merges the ctx.tools service declaration（usage_stats 动态工具）。
 import type {} from '@deepseek-ai/dsh-tools'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
+import { writeFileAtomic, withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { settingsNamespace, type SettingsProvider, type SettingsScope } from '@deepseek-ai/dsh-settings'
@@ -169,15 +169,21 @@ export function createFileUsageLedgerStore(ledgerPath: string): UsageLedgerStore
       return undefined
     },
     async save(document) {
-      try {
-        const existing = await readFile(ledgerPath, 'utf8')
-        // Never replace a known-good backup with malformed main-file bytes.
-        JSON.parse(existing)
-        await writeFileAtomic(`${ledgerPath}.bak`, existing, { mode: 0o600, dirMode: 0o700 })
-      } catch {
-        // First write or unreadable old ledger: atomically write the new document.
-      }
-      await writeFileAtomic(ledgerPath, JSON.stringify(document), { mode: 0o600, dirMode: 0o700 })
+      // P0: cross-writer serialization. Concurrent MoveFileExW calls against the
+      // same target on Windows return EPERM (errno -4048). withFileLock holds a
+      // wx-created `<file>.lock` sibling with exponential backoff so only one
+      // writer at a time commits the .bak + tmp → ledger rename chain.
+      await withFileLock(ledgerPath, async () => {
+        try {
+          const existing = await readFile(ledgerPath, 'utf8')
+          // Never replace a known-good backup with malformed main-file bytes.
+          JSON.parse(existing)
+          await writeFileAtomic(`${ledgerPath}.bak`, existing, { mode: 0o600, dirMode: 0o700 })
+        } catch {
+          // First write or unreadable old ledger: atomically write the new document.
+        }
+        await writeFileAtomic(ledgerPath, JSON.stringify(document), { mode: 0o600, dirMode: 0o700 })
+      })
     },
   }
 }
