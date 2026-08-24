@@ -31,6 +31,8 @@ export interface TrendPoint {
   cost: number
   /** API calls that day (total across models). */
   calls: number
+  /** Total tokens that day (input+output+cache); used by the `tokens` metric. */
+  tokens?: number
   /** Per-model cost that day (stats key → CNY); absent entries plot zero. */
   byModel?: Readonly<Record<string, number>>
 }
@@ -78,15 +80,22 @@ interface Bar {
   topRounded: boolean
 }
 
+/** Metric rendered by the chart columns: daily cost (stacked by model) or total tokens. */
+export type TrendMetric = 'cost' | 'tokens'
+
 /**
- * Render the daily stacked cost bars plus the total-calls line.
+ * Render the daily bars plus the total-calls line.
  * @param props.data - sorted daily rows (ascending date).
- * @param props.models - the model legend, in bar order.
+ * @param props.models - the model legend, in bar order (used by the `cost` metric).
  * @param props.currency - display currency for the cost labels.
+ * @param props.metric - `cost` (stacked per-model CNY, default) or `tokens` (single-color total tokens).
  */
-export function TrendChart({ data, models = [], currency = 'cny' }: { data: readonly TrendPoint[]; models?: readonly TrendSeriesModel[]; currency?: CostCurrency }): React.ReactNode {
+export function TrendChart({ data, models = [], currency = 'cny', metric = 'cost' }: { data: readonly TrendPoint[]; models?: readonly TrendSeriesModel[]; currency?: CostCurrency; metric?: TrendMetric }): React.ReactNode {
   const [hover, setHover] = useState<number | null>(null)
   const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
+  const axisOf = (value: number): string => metric === 'tokens' ? shortNumber(value) : money(value)
+  // Column value source by metric: cost (stacked) vs total tokens (single color).
+  const valueOf = (d: TrendPoint): number => metric === 'tokens' ? (d.tokens ?? 0) : d.cost
 
   const layout = useMemo(() => {
     const n = data.length
@@ -98,10 +107,13 @@ export function TrendChart({ data, models = [], currency = 'cny' }: { data: read
       return PAD.left + (plotW * i) / (n - 1)
     }
     // 刻度按「单日总费用」：堆叠柱顶端即当日总费用，直方更饱满。
-    const maxCost = Math.max(
-      ...data.map(d => Math.max(d.cost, Object.values(d.byModel ?? {}).reduce((sum, v) => sum + v, 0))),
-      0.0001,
-    )
+    // 刻度按当前指标的最大值：费用用堆叠顶端，Token 用当日总量。
+    const maxCost = metric === 'tokens'
+      ? Math.max(...data.map(d => d.tokens ?? 0), 0.0001)
+      : Math.max(
+          ...data.map(d => Math.max(d.cost, Object.values(d.byModel ?? {}).reduce((sum, v) => sum + v, 0))),
+          0.0001,
+        )
     const yCost = (value: number): number => PAD.top + plotH - (value / maxCost) * plotH
     // 调用量比例尺：独立右轴，柱（费用）与线（调用）各用各的刻度。
     const maxCalls = Math.max(...data.map(d => d.calls), 1)
@@ -113,9 +125,9 @@ export function TrendChart({ data, models = [], currency = 'cny' }: { data: read
     // 堆叠柱：每天一根柱，各模型费用自下而上拼成色段；顶部段圆角收尾。
     const bars: Bar[] = data.flatMap((d, i) => {
       const x = inner(i) - barW / 2
-      if (models.length === 0) {
-        // 无模型明细：单色总费用柱兜底。
-        return [{ date: d.date, model: TOTAL_MODEL, x, base: 0, value: d.cost, topRounded: true }]
+      if (models.length === 0 || metric === 'tokens') {
+        // 无模型明细或 Token 指标：单色总费用/总量柱兜底。
+        return [{ date: d.date, model: TOTAL_MODEL, x, base: 0, value: valueOf(d), topRounded: true }]
       }
       // 顶部圆角给当天最后一个有量的模型段。
       let topKey: string | null = null
@@ -139,7 +151,7 @@ export function TrendChart({ data, models = [], currency = 'cny' }: { data: read
       return `${i === 0 ? 'M' : 'L'}${inner(i)} ${y}`
     }).join(' ')
     return { n, plotW, plotH, inner, yCost, yCalls, barW, bars, costTicks, callsTicks, linePath }
-  }, [data, models])
+  }, [data, models, metric])
 
   if (layout === null) {
     return <div className={css.chartEmpty}>暂无趋势数据</div>
@@ -172,7 +184,7 @@ export function TrendChart({ data, models = [], currency = 'cny' }: { data: read
             <g key={`cost-${idx}`}>
               <line x1={PAD.left} x2={W - PAD.right} y1={y} y2={y} className={css.chartGrid} />
               <text x={PAD.left - 8} y={y + 3} textAnchor="end" className={css.chartAxisLabel}>
-                {money(value)}
+                {axisOf(value)}
               </text>
             </g>
           )
@@ -250,7 +262,7 @@ export function TrendChart({ data, models = [], currency = 'cny' }: { data: read
           style={{ left: `${(inner(hover) / W) * 100}%`, top: `${(yCost(activePoint.cost) / H) * 100}%` }}
         >
           <div className={css.chartTooltipDate}>{activePoint.date}</div>
-          {models.filter(model => (activePoint.byModel?.[model.key] ?? 0) > 0).map(model => (
+          {metric !== 'tokens' && models.filter(model => (activePoint.byModel?.[model.key] ?? 0) > 0).map(model => (
             <div key={model.key} className={css.chartTooltipRow}>
               <span className={css.chartTooltipSwatch} style={{ background: model.color }} />
               {model.name} <strong>{money(activePoint.byModel?.[model.key] ?? 0)}</strong>
@@ -258,7 +270,7 @@ export function TrendChart({ data, models = [], currency = 'cny' }: { data: read
           ))}
           <div className={css.chartTooltipRow}>
             <span className={css.chartLegendBar} />
-            总计 <strong>{money(activePoint.cost)}</strong>
+            总计 <strong>{metric === 'tokens' ? shortNumber(activePoint.tokens ?? 0) : money(activePoint.cost)}</strong>
           </div>
           <div className={css.chartTooltipRow}>
             <span className={css.chartLegendLine} />
@@ -268,7 +280,7 @@ export function TrendChart({ data, models = [], currency = 'cny' }: { data: read
       )}
 
       {/* Model legend: colored squares are per-model cost, the line is calls. */}
-      {models.length > 0 && (
+      {models.length > 0 && metric !== 'tokens' && (
         <div className={css.chartLegend}>
           {models.map(model => (
             <span key={model.key}>

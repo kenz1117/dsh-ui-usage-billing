@@ -2762,6 +2762,20 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+/* 订阅额度刷新失败时的缓存提示条（stale）。 */
+.staleNotice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--dsw-static-amber-500);
+  background: color-mix(in srgb, var(--dsw-static-amber-500) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--dsw-static-amber-500) 30%, transparent);
+}
+
 /* 插件信息卡（设置 Tab）：单行「标签 - 值」列表，链接可点击外链。 */
 .pluginInfo {
   display: flex;

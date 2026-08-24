@@ -21,7 +21,7 @@ import {
   loadFloatWindowPrefs,
   saveFloatWindowPrefs,
 } from './usage-billing-settings.ts'
-import { TrendChart, type TrendPoint } from './TrendChart.tsx'
+import { TrendChart, type TrendMetric, type TrendPoint } from './TrendChart.tsx'
 import { PerfPanel, type ClientPerf } from './PerfPanel.tsx'
 import { PluginInfoCard } from './PluginInfoCard.tsx'
 import { TokenPanel } from './TokenPanel.tsx'
@@ -628,18 +628,14 @@ async function fetchBalances(): Promise<readonly ProviderBalance[]> {
  * @returns the quota rows, or an empty list on any failure.
  */
 async function fetchSubscriptions(): Promise<readonly SubscriptionQuota[]> {
-  try {
-    const response = await fetch(SUBSCRIPTIONS_PATH)
-    if (!response.ok) return []
-    const text = await response.text()
-    const parsed = JSON.parse(text) as unknown
-    if (parsed !== null && typeof parsed === 'object' && 'quotas' in parsed) {
-      return (parsed as SubscriptionResponse).quotas
-    }
-    return []
-  } catch {
-    return []
+  const response = await fetch(SUBSCRIPTIONS_PATH)
+  if (!response.ok) throw new Error(`subscriptions HTTP ${String(response.status)}`)
+  const text = await response.text()
+  const parsed = JSON.parse(text) as unknown
+  if (parsed !== null && typeof parsed === 'object' && 'quotas' in parsed) {
+    return (parsed as SubscriptionResponse).quotas
   }
+  throw new Error('subscriptions: invalid response')
 }
 
 /**
@@ -1021,6 +1017,8 @@ interface BillingDashboardProps {
   floatPrefs: FloatWindowPrefs
   /** 模型用量悬浮窗偏好更新（父组件持久化）。 */
   onFloatPrefs: (next: FloatWindowPrefs) => void
+  /** 订阅刷新是否失败（保留旧快照并标记缓存）。 */
+  quotasStale: boolean
 }
 
 /**
@@ -1074,8 +1072,10 @@ function BalanceDetailRow({ label, value }: { label: string; value: string }): R
 function BillingDashboard({
   stats, t, onClose, health, balances, quotas, relayQuotas, currency, onCurrency, turns,
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
-  peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs,
+  peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, quotasStale,
 }: BillingDashboardProps): React.ReactNode {
+  // 趋势图指标：费用（堆叠/默认）或 Token（单色总量）。
+  const [trendMetric, setTrendMetric] = useState<TrendMetric>('cost')
   const { total, byModel, byDay } = stats
   // 分区 Tab：默认概览；各区块已进入二级 Tab，全部默认展开（无折叠交互）。
   const [tab, setTab] = useState<DashboardTab>('overview')
@@ -1284,7 +1284,13 @@ function BillingDashboard({
         }
       }
       const day = byDay[date]
-      return { date, cost: day?.cost ?? 0, calls: day?.calls ?? 0, byModel }
+      return {
+        date,
+        cost: day?.cost ?? 0,
+        calls: day?.calls ?? 0,
+        byModel,
+        tokens: day === undefined ? 0 : day.input + day.output + day.cacheHit + day.cacheMiss,
+      }
     }),
     [trendDates, byDay, stats.byDayModels],
   )
@@ -1885,11 +1891,25 @@ function BillingDashboard({
                       </button>
                     ))}
                   </span>
+                  <span className={css.rangeToggle} role="group" aria-label={t('billing.trendMetric')}>
+                    {(['cost', 'tokens'] as const).map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        className={clsx(css.rangeButton, trendMetric === m && css.rangeButtonActive)}
+                        aria-pressed={trendMetric === m}
+                        data-testid={`billing-trend-metric-${m}`}
+                        onClick={() => { setTrendMetric(m) }}
+                      >
+                        {m === 'cost' ? t('billing.trendMetricCost') : t('billing.trendMetricTokens')}
+                      </button>
+                    ))}
+                  </span>
                   <span className={css.panelHint}>
                     {latestDate}
                   </span>
                 </div>
-                <TrendChart data={trend} models={chartModels} currency={currency} />
+                <TrendChart data={trend} models={chartModels} currency={currency} metric={trendMetric} />
               </section>
 
               {/* 每轮费用 + 成本突增异常（趋势 Tab 内默认展开）。 */}
@@ -2033,6 +2053,11 @@ function BillingDashboard({
                       : ''}
                   </span>
                 </div>
+                {quotasStale && (
+                  <div className={css.staleNotice} data-testid="billing-subscriptions-stale">
+                    {t('billing.subscriptionsStale')}
+                  </div>
+                )}
                 {providerGroups.length === 0 ? (
                   <div className={css.emptyRow} data-testid="billing-provider-empty">
                     {t('billing.noData')}
@@ -2574,6 +2599,8 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const [health, setHealth] = useState<ModelHealth>(IDLE_HEALTH)
   const [balances, setBalances] = useState<readonly ProviderBalance[]>([])
   const [quotas, setQuotas] = useState<readonly SubscriptionQuota[]>([])
+  // 订阅刷新是否失败：失败时保留上次成功快照并标记 stale（展示「缓存」）。
+  const [quotasStale, setQuotasStale] = useState(false)
   const [relayQuotas, setRelayQuotas] = useState<readonly RelayQuota[]>([])
   const [currency, setCurrency] = useState<CostCurrency>('cny')
   // 模型用量悬浮窗偏好：localStorage 持久化（修改即写回，仅 client 侧）。
@@ -2606,7 +2633,16 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       if (list.length > 0) setBalances(list)
     })
     void fetchSubscriptions().then((list) => {
-      if (list.length > 0) setQuotas(list)
+      if (list.length > 0) {
+        setQuotas(list)
+        setQuotasStale(false)
+      } else {
+        // 成功但无订阅数据：非 stale。
+        setQuotasStale(false)
+      }
+    }).catch(() => {
+      // 刷新失败：保留上次成功快照，标记缓存（stale）。
+      setQuotasStale(true)
     })
     void fetchRelayQuotas().then((list) => {
       if (list.length > 0) setRelayQuotas(list)
@@ -2886,6 +2922,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           onPreviewPeak={previewPeak}
           floatPrefs={floatPrefs}
           onFloatPrefs={updateFloatPrefs}
+          quotasStale={quotasStale}
         />
       )}
       {(peakHit !== null || peakPreview !== null) && (
