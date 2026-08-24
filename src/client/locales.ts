@@ -73,6 +73,14 @@ export type UsageBillingKey =
   | 'billing.subscriptionExhausted'
   | 'billing.subscriptionReset'
   | 'billing.subscriptionNoApi'
+  | 'billing.floatWindow'
+  | 'billing.floatModeCombined'
+  | 'billing.floatModeSubscription'
+  | 'billing.floatWindowHint'
+  | 'billing.floatNoTargets'
+  | 'billing.floatNoTargetsHint'
+  | 'billing.floatPrev'
+  | 'billing.floatNext'
   | 'billing.heatmapLess'
   | 'billing.heatmapMore'
   | 'billing.currency'
@@ -289,6 +297,14 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.subscriptionExhausted': '已用尽',
   'billing.subscriptionReset': '{date} 重置',
   'billing.subscriptionNoApi': '该厂商暂未提供用量查询接口',
+  'billing.floatWindow': '模型用量悬浮窗',
+  'billing.floatModeCombined': '综合',
+  'billing.floatModeSubscription': '指定订阅卡',
+  'billing.floatWindowHint': '悬浮在左下角计费卡上的用量速览；综合=当前样式，指定订阅卡=每次展示一张订阅额度卡（可切换）。',
+  'billing.floatNoTargets': '未指定订阅通道，请在设置中勾选要展示的订阅。',
+  'billing.floatNoTargetsHint': '暂无可选的订阅通道。',
+  'billing.floatPrev': '上一张订阅',
+  'billing.floatNext': '下一张订阅',
   'billing.heatmapLess': '少',
   'billing.heatmapMore': '多',
   'billing.currency': '币种',
@@ -504,6 +520,14 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.subscriptionExhausted': 'Exhausted',
   'billing.subscriptionReset': 'Resets {date}',
   'billing.subscriptionNoApi': 'Provider does not offer a usage API',
+  'billing.floatWindow': 'Model usage popover',
+  'billing.floatModeCombined': 'Combined',
+  'billing.floatModeSubscription': 'Subscription cards',
+  'billing.floatWindowHint': 'Usage summary floating on the footer card; Combined=current style, Subscription cards=one quota card at a time (switchable).',
+  'billing.floatNoTargets': 'No subscription selected — pick some in Settings.',
+  'billing.floatNoTargetsHint': 'No subscription channel available.',
+  'billing.floatPrev': 'Previous subscription',
+  'billing.floatNext': 'Next subscription',
   'billing.heatmapLess': 'Less',
   'billing.heatmapMore': 'More',
   'billing.currency': 'Currency',

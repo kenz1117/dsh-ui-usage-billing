@@ -17,4 +17,24 @@ export interface UsageBillingSettings {
 }
 /** 默认值：工具不注入（贴合 issue 诉求）。 */
 export declare const DEFAULT_ENABLE_USAGE_STATS_TOOL = false;
+/** 模型用量悬浮窗的展示模式。 */
+export type FloatWindowMode = 'combined' | 'subscription';
+/**
+ * 模型用量悬浮窗（左下角计费卡 hover 浮窗）的展示偏好。
+ * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
+ */
+export interface FloatWindowPrefs {
+    /** 展示模式：综合（当前样式）/ 指定订阅卡。 */
+    mode: FloatWindowMode;
+    /** `subscription` 模式下可切换展示的订阅通道 provider id 列表（每次显示一张）。 */
+    targets: string[];
+}
+/** 默认浮窗偏好：综合模式、无指定目标（向后兼容现有综合速览卡）。 */
+export declare const DEFAULT_FLOAT_WINDOW_PREFS: FloatWindowPrefs;
+/** localStorage key（与 budget store 的 `dsh.ui-usage-billing.*` 命名空间一致）。 */
+export declare const FLOAT_WINDOW_STORAGE_KEY = "dsh.ui-usage-billing.float";
+/** 读取浮窗偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
+export declare function loadFloatWindowPrefs(): FloatWindowPrefs;
+/** 写入浮窗偏好。失败静默（展示偏好非关键）。 */
+export declare function saveFloatWindowPrefs(prefs: FloatWindowPrefs): void;
 //# sourceMappingURL=usage-billing-settings.d.ts.map
