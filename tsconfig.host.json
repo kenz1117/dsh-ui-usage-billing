@@ -1,5 +1,5 @@
 {
-  "extends": "/Users/ken/deepseek-harness/tsconfig.base.json",
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "lib/types",
@@ -10,9 +10,14 @@
     "src/invariant.ts",
     "src/aggregate.ts",
     "src/client/pricing.ts",
+    "src/client/plan-knowledge.ts",
+    "src/client/usage-billing-settings.ts",
     "src/pricing-fetch.ts",
     "src/pricing-shared.ts",
-    "src/balance.ts"
+    "src/balance.ts",
+    "src/subscriptions.ts",
+    "src/resilience.ts",
+    "src/relay.ts"
   ],
   "references": []
 }
