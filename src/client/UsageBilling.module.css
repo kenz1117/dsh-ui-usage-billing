@@ -2626,6 +2626,100 @@
   cursor: pointer;
 }
 
+/* ── 模型用量悬浮窗（左下角 hover 浮窗）─────────────────────────────── */
+/* 订阅卡模式：浮窗比触发卡更宽（向右扩展 + 收敛），放得下完整订阅卡与进度条。 */
+.triggerPopSubscription {
+  left: auto;
+  right: auto;
+  width: max-content;
+  min-width: 300px;
+  max-width: 360px;
+}
+
+/* 无指定目标时的空态提示。 */
+.triggerPopEmpty {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary);
+  padding: 2px 0;
+}
+
+/* 订阅卡切换器（上一张 / 下一张 + 计数）。 */
+.triggerPopSwitcher {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.triggerPopSwitchBtn {
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.triggerPopSwitchBtn:hover {
+  color: var(--dsw-alias-label-primary);
+  background: color-mix(in srgb, var(--dsw-alias-border-l1) 45%, transparent);
+}
+
+.triggerPopSwitchCount {
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 设置 Tab 浮窗模式选择（综合 / 指定订阅卡）。 */
+.floatModeRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.floatModeBtn {
+  flex: 1;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 75%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 60%, transparent);
+  color: var(--dsw-alias-label-secondary);
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.floatModeBtnOn {
+  border-color: var(--dsw-static-blue-500);
+  color: var(--dsw-alias-label-primary);
+  background: color-mix(in srgb, var(--dsw-static-blue-500) 16%, transparent);
+}
+
+/* 订阅目标多选。 */
+.floatTargets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.floatTarget {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.floatTargetLabel {
+  color: var(--dsw-alias-label-secondary);
+}
+
 /* 插件信息卡（设置 Tab）：单行「标签 - 值」列表，链接可点击外链。 */
 .pluginInfo {
   display: flex;

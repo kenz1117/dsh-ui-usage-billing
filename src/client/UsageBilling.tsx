@@ -15,7 +15,12 @@ import clsx from 'clsx'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
-import { DEFAULT_ENABLE_USAGE_STATS_TOOL } from './usage-billing-settings.ts'
+import {
+  DEFAULT_ENABLE_USAGE_STATS_TOOL,
+  type FloatWindowPrefs,
+  loadFloatWindowPrefs,
+  saveFloatWindowPrefs,
+} from './usage-billing-settings.ts'
 import { TrendChart, type TrendPoint } from './TrendChart.tsx'
 import { PerfPanel, type ClientPerf } from './PerfPanel.tsx'
 import { PluginInfoCard } from './PluginInfoCard.tsx'
@@ -752,6 +757,84 @@ interface ProviderBillingGroup {
 }
 
 /**
+ * 完整订阅额度卡片（含进度条）：dashboard 与「指定订阅卡」浮窗共用同一视觉。
+ * 只依赖单个 quota，不绑定厂商组；testid 与 dashboard 订阅卡一致。
+ */
+function SubscriptionCardView({ quota, t, money }: {
+  quota: SubscriptionQuota
+  t: (key: UsageBillingKey) => string
+  money: (cny: number) => string
+}): React.ReactNode {
+  const statusText = subscriptionStatusText(quota.status, t)
+  return (
+    <div className={css.subscriptionCard} data-testid="billing-subscription-card">
+      <div className={css.subscriptionHead}>
+        <span className={css.subscriptionName}>{quota.displayName}</span>
+        {/* plan 双口径徽标（dsh-spend）：订阅制/按量；订阅制附月费。 */}
+        {quota.planType === 'code' && (() => {
+          const tier = tierInfoOf(quota.provider)
+          const tierFee = tier !== undefined
+            ? t('billing.subscriptionFeePerMonth').replace('{amount}', tier.currency === 'USD' ? `$${tier.amount}` : `¥${tier.amount}`)
+            : undefined
+          return (
+            <span className={css.subscriptionPlan} data-kind="code">
+              {tierFee ?? (quota.subscriptionAmount !== undefined && quota.subscriptionAmount > 0
+                ? t('billing.subscriptionFeePerMonth').replace('{amount}', money(quota.subscriptionAmount))
+                : t('billing.planTypeCode'))}
+              {tier?.label !== undefined && (
+                <span className={css.subscriptionTier} data-testid={`billing-tier-${quota.provider}`}>{tier.label}</span>
+              )}
+              {tier !== undefined && (
+                <span className={css.subscriptionAuto} data-testid={`billing-auto-${quota.provider}`}>{t('billing.subscriptionAutoDetect')}</span>
+              )}
+            </span>
+          )
+        })()}
+        {quota.planType === 'token' && <span className={css.subscriptionPlan} data-kind="token">{t('billing.planTypeToken')}</span>}
+        {quota.plan !== undefined && <span className={css.subscriptionPlan}>{quota.plan}</span>}
+      </div>
+      {statusText !== '' && <div className={css.subscriptionStatus}>{statusText}</div>}
+      {quota.windows.length === 0 && statusText === '' && (
+        <div className={css.subscriptionStatus}>{t('billing.subscriptionNoApi')}</div>
+      )}
+      {quota.windows.map(window => (() => {
+        const used = Math.min(100, Math.max(0, window.usedPercent))
+        const remaining = Math.min(100, Math.max(0, window.remainingPercent))
+        const exhausted = remaining <= 0
+        return (
+          <div key={window.kind} className={css.subscriptionWindow}>
+            <span className={css.subscriptionWindowLabel}>{subscriptionWindowLabel(window.kind, t)}</span>
+            <span className={css.subscriptionTrack} aria-hidden="true">
+              {/* 进度条按「已用」比例填充（与预算条同语义）：用尽时满格红，行恒可见。 */}
+              <span
+                className={clsx(
+                  css.subscriptionFill,
+                  used >= 100 && css.subscriptionFillOver,
+                  used >= 80 && used < 100 && css.subscriptionFillWarn,
+                )}
+                style={{ width: `${used}%` }}
+              />
+            </span>
+            <span className={css.subscriptionMeta}>
+              <span className={clsx(css.subscriptionPct, exhausted && css.subscriptionExhausted)}>
+                {exhausted
+                  ? t('billing.subscriptionExhausted')
+                  : t('billing.subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
+              </span>
+              {window.resetsAt !== undefined && (
+                <span className={css.subscriptionReset}>
+                  {t('billing.subscriptionReset').replace('{date}', `${localDayStamp(new Date(window.resetsAt).getTime())} ${formatClock(new Date(window.resetsAt).getTime())}`)}
+                </span>
+              )}
+            </span>
+          </div>
+        )
+      })())}
+    </div>
+  )
+}
+
+/**
  * Sidebar footer trigger: compact pill in wide mode, icon in rail mode.
  * ZINE 模式下入口由主题插件的贴纸层承担，本触发器由 CSS
  * （body[data-zine-mode] 选择器）隐藏，组件本身无 zine 分支。
@@ -778,9 +861,34 @@ function UsageBillingTrigger(
     calls: number
      updatedAt: string | undefined
    }
+  /** 模型用量悬浮窗偏好（模式 + 指定订阅卡目标）。 */
+  floatPrefs: FloatWindowPrefs
+  /** 订阅配额列表（「指定订阅卡」模式的数据来源）。 */
+  subscriptions: readonly SubscriptionQuota[]
+  /** 币种换算（USD 时把 CNY 金额按实时汇率显示）。 */
+  money: (cny: number) => string
   },
 ): React.ReactNode {
-  const { wide, t, onOpen, monthCost, todayCost, weekCost, days, vendorStatus, dash } = props
+  const {
+    wide, t, onOpen, monthCost, todayCost, weekCost, days, vendorStatus, dash,
+    floatPrefs, subscriptions, money,
+  } = props
+
+  // 「指定订阅卡」浮窗：可用订阅列表 + 当前展示索引（每次一张，可前后切换）。
+  const targetSubs = useMemo(
+    () => floatPrefs.targets
+      .map(id => subscriptions.find(s => s.provider === id))
+      .filter((s): s is SubscriptionQuota => s !== undefined),
+    [floatPrefs.targets, subscriptions],
+  )
+  const [subIndex, setSubIndex] = useState(0)
+  const effectiveSubIndex = targetSubs.length === 0 ? 0 : Math.min(subIndex, targetSubs.length - 1)
+  const currentSub = targetSubs[effectiveSubIndex]
+  const stepSub = (delta: number): void => {
+    const n = targetSubs.length
+    if (n < 2) return
+    setSubIndex((index) => (index + delta + n) % n)
+  }
 
   // 计费 icon：圆角矩 + 细线描边，窄栏与宽栏共用。
   const cardIcon = (
@@ -841,7 +949,42 @@ function UsageBillingTrigger(
       </button>
       {/* hover 速览：参考图风格「数据卡」——标题 + 更新时间 + 两列指标网格 + 底部主力消耗/额度提醒。
           纯 CSS 悬停呈现；「展开详情」按钮可点，其余不抢点击。 */}
-      <span className={css.triggerPop} data-testid="billing-trigger-pop" aria-hidden="true">
+      <span className={clsx(css.triggerPop, floatPrefs.mode === 'subscription' && css.triggerPopSubscription)} data-testid="billing-trigger-pop" aria-hidden="true">
+        {floatPrefs.mode === 'subscription' ? (
+          <>
+            {targetSubs.length === 0 ? (
+              <span className={css.triggerPopEmpty}>{t('billing.floatNoTargets')}</span>
+            ) : (
+              <>
+                {currentSub !== undefined && <SubscriptionCardView quota={currentSub} t={t} money={money} />}
+                {targetSubs.length > 1 && (
+                  <span className={css.triggerPopSwitcher} data-testid="billing-float-switcher">
+                    <button
+                      type="button"
+                      className={css.triggerPopSwitchBtn}
+                      data-testid="billing-float-prev"
+                      onClick={() => stepSub(-1)}
+                      aria-label={t('billing.floatPrev')}
+                    >
+                      ‹
+                    </button>
+                    <span className={css.triggerPopSwitchCount}>{effectiveSubIndex + 1}/{targetSubs.length}</span>
+                    <button
+                      type="button"
+                      className={css.triggerPopSwitchBtn}
+                      data-testid="billing-float-next"
+                      onClick={() => stepSub(1)}
+                      aria-label={t('billing.floatNext')}
+                    >
+                      ›
+                    </button>
+                  </span>
+                )}
+              </>
+            )}
+          </>
+        ) : (
+          <>
         <span className={css.triggerPopMetrics}>
           <span className={css.triggerPopMetric}>
             <span className={css.triggerPopMetricLabel}>{t('billing.monthCost')}</span>
@@ -894,6 +1037,8 @@ function UsageBillingTrigger(
             )}
           </span>
         </span>
+          </>
+        )}
       </span>
     </span>
   )
@@ -930,6 +1075,10 @@ interface BillingDashboardProps {
   onPeakConfig: (config: PeakAlertConfig) => void
   /** 预览峰谷提醒浮层（不触真实去重）。 */
   onPreviewPeak: () => void
+  /** 模型用量悬浮窗偏好（设置 Tab 编辑）。 */
+  floatPrefs: FloatWindowPrefs
+  /** 模型用量悬浮窗偏好更新（父组件持久化）。 */
+  onFloatPrefs: (next: FloatWindowPrefs) => void
 }
 
 /**
@@ -983,13 +1132,21 @@ function BalanceDetailRow({ label, value }: { label: string; value: string }): R
 function BillingDashboard({
   stats, t, onClose, health, balances, quotas, relayQuotas, currency, onCurrency, turns,
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
-  peakConfig, onPeakConfig, onPreviewPeak,
+  peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs,
 }: BillingDashboardProps): React.ReactNode {
   const { total, byModel, byDay } = stats
   // 分区 Tab：默认概览；各区块已进入二级 Tab，全部默认展开（无折叠交互）。
   const [tab, setTab] = useState<DashboardTab>('overview')
   // 趋势窗口：7 天 / 30 天切换（30 天窗口数据不足时按日补零）。
   const [trendDays, setTrendDays] = useState<7 | 30>(7)
+
+  // 浮窗「指定订阅卡」的可选目标：内置订阅通道 + 已查询到的订阅（displayName 优先）。
+  const subscriptionOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const id of Object.keys(SUBSCRIPTION_VENDORS)) map.set(id, SUBSCRIPTION_VENDORS[id] ?? id)
+    for (const quota of quotas) map.set(quota.provider, quota.displayName)
+    return [...map.entries()].map(([id, label]) => ({ id, label }))
+  }, [quotas])
 
   // 余额详情弹窗：记录打开的厂商（按 provider 标识）；点击「约可撑 N 天」圆圈切换。
   const [balanceDetailFor, setBalanceDetailFor] = useState<string | undefined>()
@@ -1700,6 +1857,58 @@ function BillingDashboard({
                   </span>
                 </div>
                 <p className={css.budgetHint}>{t('billing.usageStatsToolHint')}</p>
+              </section>
+
+              {/* 模型用量悬浮窗：展示模式（综合 / 指定订阅卡）+ 订阅目标多选。 */}
+              <section className={css.budget} data-testid="billing-float-setting">
+                <div className={css.budgetHead}>
+                  <span className={css.budgetLabel}>{t('billing.floatWindow')}</span>
+                </div>
+                <div className={css.floatModeRow} data-testid="billing-float-mode">
+                  <button
+                    type="button"
+                    className={clsx(css.floatModeBtn, floatPrefs.mode === 'combined' && css.floatModeBtnOn)}
+                    data-testid="billing-float-mode-combined"
+                    onClick={() => onFloatPrefs({ mode: 'combined', targets: floatPrefs.targets })}
+                  >
+                    {t('billing.floatModeCombined')}
+                  </button>
+                  <button
+                    type="button"
+                    className={clsx(css.floatModeBtn, floatPrefs.mode === 'subscription' && css.floatModeBtnOn)}
+                    data-testid="billing-float-mode-subscription"
+                    onClick={() => onFloatPrefs({ mode: 'subscription', targets: floatPrefs.targets })}
+                  >
+                    {t('billing.floatModeSubscription')}
+                  </button>
+                </div>
+                {floatPrefs.mode === 'subscription' && (
+                  <div className={css.floatTargets} data-testid="billing-float-targets">
+                    {subscriptionOptions.map((option) => {
+                      const on = floatPrefs.targets.includes(option.id)
+                      return (
+                        <label key={option.id} className={css.floatTarget}>
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            data-testid={`billing-float-target-${option.id}`}
+                            onChange={() => onFloatPrefs({
+                              mode: 'subscription',
+                              targets: on
+                                ? floatPrefs.targets.filter(id => id !== option.id)
+                                : [...floatPrefs.targets, option.id],
+                            })}
+                          />
+                          <span className={css.floatTargetLabel}>{option.label}</span>
+                        </label>
+                      )
+                    })}
+                    {subscriptionOptions.length === 0 && (
+                      <span className={css.budgetHint}>{t('billing.floatNoTargetsHint')}</span>
+                    )}
+                  </div>
+                )}
+                <p className={css.budgetHint}>{t('billing.floatWindowHint')}</p>
               </section>
 
               {/* 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
@@ -2424,6 +2633,14 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const [quotas, setQuotas] = useState<readonly SubscriptionQuota[]>([])
   const [relayQuotas, setRelayQuotas] = useState<readonly RelayQuota[]>([])
   const [currency, setCurrency] = useState<CostCurrency>('cny')
+  // 显示币种换算：usd 时把 CNY 金额按当前汇率换算显示。
+  const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
+  // 模型用量悬浮窗偏好：localStorage 持久化（修改即写回，仅 client 侧）。
+  const [floatPrefs, setFloatPrefs] = useState<FloatWindowPrefs>(() => loadFloatWindowPrefs())
+  const updateFloatPrefs = useCallback((next: FloatWindowPrefs): void => {
+    setFloatPrefs(next)
+    saveFloatWindowPrefs(next)
+  }, [])
   // 严格联动（仅本插件，不影响宿主全局语言）：币种=USD 时面板文案切英文，CNY 时切中文。
   // 用本包自带 zh/en 字典构建本地 t；key 未覆盖时回退宿主 t。
   const lang = currency === 'usd' ? 'en' : 'zh'
@@ -2703,6 +2920,9 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
         days={last7}
         vendorStatus={vendorStatus}
         dash={dash}
+        floatPrefs={floatPrefs}
+        subscriptions={quotas}
+        money={money}
       />
       {open && (
         <BillingDashboard
@@ -2724,6 +2944,8 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           peakConfig={peakConfig}
           onPeakConfig={updatePeakConfig}
           onPreviewPeak={previewPeak}
+          floatPrefs={floatPrefs}
+          onFloatPrefs={updateFloatPrefs}
         />
       )}
       {(peakHit !== null || peakPreview !== null) && (
