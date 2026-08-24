@@ -102,7 +102,7 @@
   min-width: 0;
 }
 
-/* 本月主金额：等宽数字，主色，醒目。 */
+/* 本月主金额：等宽数字，主色，醒目。空间不足时省略号兜底，永不溢出卡片。 */
 .triggerAmount {
   font-size: 17px;
   line-height: 21px;
@@ -111,6 +111,9 @@
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 副行：今日 / 本周 费用，次层级。 */
@@ -132,6 +135,9 @@
   letter-spacing: 0.02em;
   font-weight: 600;
   text-transform: uppercase;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 近 7 天 sparkline：常驻迷你趋势，底对齐。 */
@@ -158,13 +164,55 @@
 /* 触发卡外壳：hover 速览卡的定位上下文。
    footerActions 槽位容器是横向 flex 行（无 gap 无 wrap）：作为 flex item 需允许
    收缩（flex:1 1 auto）并放 opener min-width:0，否则 width:100% 会把同槽位的其他
-   插件按钮挤出侧栏边界（实测共存插件卡被压重叠）。 */
+   插件按钮挤出侧栏边界（实测共存插件卡被压重叠）。
+   container-type/name: 以卡片自身实际分配到的宽度为容器，做分档响应式降级——侧边栏
+   变窄或兄弟图标增多导致卡片可用宽度不足时，逐级隐藏次要信息，核心「当月金额」始终
+   可见，且不会溢出卡片/挤压兄弟。 */
 .triggerWrap {
   position: relative;
   display: block;
   flex: 1 1 auto;
   min-width: 0;
   width: 100%;
+  container-type: inline-size;
+  container-name: billing-trigger;
+}
+
+/* 分档降级：按卡片实际分配到的宽度逐级收敛，保证「当月金额」始终可见且不溢出。
+   —— 中档（不足 ~300px）：趋势 sparkline 让位，微收内边距/间距；
+   —— 窄档（不足 ~230px）：副行（今日/本周）与趋势整体隐藏，仅保留 icon + 当月金额。 */
+@container billing-trigger (max-width: 300px) {
+  .trigger {
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .triggerSpark {
+    display: none;
+  }
+}
+
+@container billing-trigger (max-width: 230px) {
+  .triggerSub {
+    display: none;
+  }
+  .triggerMeta {
+    letter-spacing: 0;
+  }
+}
+
+/* 极窄档（不足 ~120px）：仅保留「当月金额」，icon/趋势/标签全部让位，金额居中。
+   极端窄的侧边栏下仍能看到成本数字，不残缺、不溢出。 */
+@container billing-trigger (max-width: 120px) {
+  .triggerIcon,
+  .triggerSpark,
+  .triggerSub,
+  .triggerMeta {
+    display: none;
+  }
+  .trigger {
+    justify-content: center;
+    padding: 8px 6px;
+  }
 }
 
 /* hover 速览卡：实底浮层，悬停触发卡时向上浮现；不抢点击。 */
