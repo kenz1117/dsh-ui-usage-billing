@@ -79,13 +79,18 @@ const SUBSCRIPTION_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   'minimax': 'MiniMax Coding Plan',
   'minimax-token-plan': 'MiniMax Token Plan',
   'minimax-token-plan-cn': 'MiniMax Token Plan（国内）',
+  // DSH pi-ai catalog ships `minimax-cn` as the official domestic route id
+  // (https://api.minimaxi.com), so the subscription card treats it the same
+  // way it treats `minimax-token-plan-cn`. The two ids are aliases of the
+  // same plan; users see the official id in the Models page.
+  'minimax-cn': 'MiniMax Token Plan（国内）',
   'openrouter': 'OpenRouter',
 }
 
 /** 订阅类 provider id 判定：带 coding / agent-plan / token-plan 后缀，或已知订阅通道。 */
 const SUBSCRIPTION_ID_RE = new RegExp(
   '(?:^|-)(?:coding|agent[-_]?plan|token[-_]?plan)(?:$|-|_)|' +
-    '^(?:opencode|opencode-go|kimi-coding|zai-coding|minimax|minimax-token-plan|minimax-token-plan-cn|openrouter)',
+    '^(?:opencode|opencode-go|kimi-coding|zai-coding|minimax|minimax-cn|minimax-token-plan|minimax-token-plan-cn|openrouter)',
   'i',
 )
 
@@ -106,6 +111,7 @@ const SUBSCRIPTION_ADAPTERS: Readonly<Record<string, {
   'minimax': { collect: collectMiniMax },
   'minimax-token-plan': { collect: collectMiniMax },
   'minimax-token-plan-cn': { collect: collectMiniMax },
+  'minimax-cn': { collect: collectMiniMax },
   'openrouter': { collect: collectOpenRouter },
 }
 
@@ -509,7 +515,13 @@ export function parseMiniMaxRemains(body: unknown): SubscriptionWindow[] {
  */
 function resolveMiniMaxBaseUrl(config: SubscriptionPlanConfig): string {
   if (typeof config.baseUrl === 'string' && config.baseUrl.trim() !== '') return config.baseUrl
-  return config.provider === 'minimax-token-plan-cn' ? 'https://api.minimaxi.com' : 'https://www.minimaxi.com'
+  // Both `minimax-cn` (DSH pi-ai official domestic id) and
+  // `minimax-token-plan-cn` (this plugin's earlier chosen name) are CN
+  // routes against api.minimaxi.com. Everything else (international) keeps
+  // the www.minimaxi.com default.
+  return config.provider === 'minimax-cn' || config.provider === 'minimax-token-plan-cn'
+    ? 'https://api.minimaxi.com'
+    : 'https://www.minimaxi.com'
 }
 
 /** Display name for a MiniMax quota row, aligned with the display-name map. */

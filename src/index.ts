@@ -124,6 +124,8 @@ const SUBSCRIPTION_KEY_SOURCES: ReadonlyArray<{ provider: string; key: Exclude<k
   { provider: 'opencode-go', key: 'opencodeApiKey' },
   { provider: 'minimax', key: 'minmaxApiKey' },
   { provider: 'minimax-token-plan', key: 'minmaxApiKey' },
+  { provider: 'minimax-token-plan-cn', key: 'minmaxApiKey' },
+  { provider: 'minimax-cn', key: 'minmaxApiKey' },
   { provider: 'openrouter', key: 'openrouterApiKey' },
 ]
 
