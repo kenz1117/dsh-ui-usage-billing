@@ -13,6 +13,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials';
 import { type SettingsProvider } from '@deepseek-ai/dsh-settings';
+import { type UsageLedgerStore } from './aggregate.ts';
 import type { CustomBalanceConfig, SubscriptionPlanConfig } from './pricing-shared.ts';
 import { type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts';
 /**
@@ -27,6 +28,9 @@ export declare function guardLoopback(req: IncomingMessage, res: ServerResponse)
 export interface UsageBillingConfig {
     /** Absolute path to a `.dsh-usage-stats.json` fallback file. */
     statsPath?: string;
+    /** 独立持久用量账本的绝对路径；默认 `~/.dsh/.dsh-usage-ledger.json`。
+     *  账本与会话日志解耦，因此永久删除会话不会抹掉已经观测到的用量。 */
+    ledgerPath?: string;
     /** 订阅制（coding / token / agent plan）provider id 列表；默认 kimi-coding、xiaomi-token-plan-cn。 */
     subscriptionProviders?: string[];
     /** 订阅套餐额度适配器（kimi / zai / opencode-go）；默认全部内置。 */
@@ -44,6 +48,11 @@ export interface UsageBillingConfig {
      *  作为用户设置（设置 Tab 开关）的组合兜底。该工具占用每次请求的上下文，coding 场景多在仪表盘查看。 */
     enableUsageStatsTool?: boolean;
 }
+/**
+ * Create the atomic file-backed durable-ledger store. The previous complete file
+ * is retained as `.bak`; a malformed/missing main file falls back to that backup.
+ */
+export declare function createFileUsageLedgerStore(ledgerPath: string): UsageLedgerStore;
 /** Required services: the web server, the persisted session log store, and user settings. */
 export declare const inject: string[];
 /**
