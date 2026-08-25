@@ -1,7 +1,7 @@
 /**
  * 峰谷切换提醒浮层：切档前状态条（右下角或居中）。用 `position: fixed` 即可在
- * 任意宿主容器内覆盖整个视口，因此不需要 portal。布局为「档位徽标 + 大号等宽
- * 倒计时 + 一句说明 + 关闭」，克制冷调、无重力阴影。渲染是受控的：父组件把命中
+ * 任意宿主容器内覆盖整个视口，因此不需要 portal。布局按设计 peak-card：头部
+ * （档位 tag + 关闭）→ 大号等宽倒计时 → 一句说明。渲染是受控的：父组件把命中
  * （hit）与偏好传入，显示剩余分钟并在切换后消失。
  */
 
@@ -39,23 +39,29 @@ export function PeakAlertBanner({ hit, config, t, onDismiss }: PeakAlertBannerPr
   const entering = hit.entering
   const tag = entering === 'peak' ? t('billing.tierPeak') : t('billing.tierOff')
   const desc = entering === 'peak' ? t('billing.peakAlertDescPeak') : t('billing.peakAlertDescOff')
+  const isPeak = entering === 'peak'
 
   return (
     <div
       className={clsx(
-        css.peakAlert,
-        entering === 'peak' ? css.peakAlertPeak : css.peakAlertOff,
-        config.position === 'center' ? css.peakAlertCenter : css.peakAlertCorner,
+        css.peakCard,
+        isPeak ? css.peakCardPeak : css.peakCardOff,
+        config.position === 'center' ? css.peakCardCenter : css.peakCardCorner,
       )}
       data-testid="billing-peak-alert"
       role="alert"
     >
-      <span className={css.peakAlertTag}>{tag}</span>
-      <span className={css.peakAlertCountdown}>{minutes}m</span>
-      <span className={css.peakAlertText}>{desc}</span>
-      <button type="button" className={css.peakAlertClose} onClick={onDismiss} aria-label={t('billing.close')}>
-        ×
-      </button>
+      <div className={css.peakHead}>
+        <span className={clsx(css.peakTag, isPeak ? css.peakTagPrimary : css.peakTagSuccess)}>
+          <span className={clsx(css.peakDot, isPeak ? css.peakDotPrimary : css.peakDotSuccess)} aria-hidden="true" />
+          {tag}
+        </span>
+        <button type="button" className={css.peakClose} onClick={onDismiss} aria-label={t('billing.close')}>
+          ×
+        </button>
+      </div>
+      <div className={clsx(css.peakCount, isPeak ? css.peakCountPrimary : css.peakCountSuccess)}>{minutes}min</div>
+      <p className={css.peakDesc}>{desc}</p>
     </div>
   )
 }

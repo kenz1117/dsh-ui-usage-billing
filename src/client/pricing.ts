@@ -424,6 +424,21 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'dsw-static-amber-500',
     price: { currency: 'CNY', input: 2.1, cacheHit: 0.42, output: 8.4 },
   },
+  // MiniMax-M2.7 / M2.7-highspeed：官方按量价（元 / 每百万 token，2026-08）。
+  {
+    key: 'minimax-m2.7',
+    name: 'MiniMax-M2.7',
+    provider: 'MiniMax',
+    colorVar: 'dsw-static-amber-400',
+    price: { currency: 'CNY', input: 2.1, cacheHit: 0.42, output: 8.4 },
+  },
+  {
+    key: 'minimax-m2.7-highspeed',
+    name: 'MiniMax-M2.7-highspeed',
+    provider: 'MiniMax',
+    colorVar: 'dsw-static-amber-500',
+    price: { currency: 'CNY', input: 4.2, cacheHit: 0.42, output: 16.8 },
+  },
   // 百度文心 (OpenAI-compatible, 千帆 2026-08).
   {
     key: 'ernie',
@@ -609,6 +624,13 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'minimax-m1': 'minimax',
   'minimax-m2': 'minimax',
   'minimax-m3': 'minimax',
+  // MiniMax-M2.7 / M2.7-highspeed：按量通道的独立目录键（点/横杠/大小写变体归一）。
+  'minimax-m2.7': 'minimax-m2.7',
+  'minimax-m2.7-highspeed': 'minimax-m2.7-highspeed',
+  'minimax-m2.7-high-speed': 'minimax-m2.7-highspeed',
+  'minimax-m2-7': 'minimax-m2.7',
+  'minimax-m2-7-highspeed': 'minimax-m2.7-highspeed',
+  'minimax-m2-7-high-speed': 'minimax-m2.7-highspeed',
 }
 
 /**

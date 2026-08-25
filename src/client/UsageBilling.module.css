@@ -34,7 +34,9 @@
   stroke-width: 2;
 }
 
-/* Wide mode: dashboard-style data card — icon badge, month figure, sparkline. */
+/* Wide mode: dashboard-style data card — icon badge, month figure, sparkline.
+   向设计「trigger-card」中性卡片看齐：实底 + 1px 边框 + 轻投影，去除重毛玻璃靠模糊，
+   图标徽章保留蓝色渐变为整卡唯一色彩焦点。 */
 .trigger {
   position: relative;
   display: flex;
@@ -45,13 +47,10 @@
   min-width: 0;
   padding: 9px 12px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 82%, transparent);
+  border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 14px;
-  /* 玻璃质地：半透明底 + 背景模糊 + 顶部高光，营造仪表感。 */
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 78%, transparent);
-  backdrop-filter: blur(10px) saturate(1.2);
-  -webkit-backdrop-filter: blur(10px) saturate(1.2);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--dsw-alias-label-primary) 7%, transparent);
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
   text-align: left;
@@ -61,23 +60,23 @@
 .trigger:hover,
 .trigger:focus-visible {
   border-color: var(--dsw-static-blue-500);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--dsw-alias-label-primary) 10%, transparent), 0 6px 18px -6px color-mix(in srgb, var(--dsw-static-blue-500) 45%, transparent);
+  box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--dsw-static-blue-500) 45%, transparent);
   transform: translateY(-1px);
   outline: none;
 }
 
-/* 图标徽章：渐变蓝底 + 细线描边，整卡唯一色彩焦点。 */
+/* 图标徽章：设计 trigger-icon —— 中性边框方块，取消渐变蓝底（唯一色彩让位给数字）。 */
 .triggerIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 30px;
-  height: 30px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--dsw-static-blue-500), var(--dsw-static-blue-400));
-  color: var(--dsw-static-neutral-bluish-00);
-  box-shadow: 0 3px 10px -3px color-mix(in srgb, var(--dsw-static-blue-500) 60%, transparent), inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 22%, transparent);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-secondary);
+  opacity: 0.8;
 }
 
 .triggerIcon svg {
@@ -86,26 +85,46 @@
   stroke-width: 2;
 }
 
-/* 文本主体：本月主数字 + 今日/本周副行。 */
-.triggerBody {
+/* 文本主体：当月（标签 + ¥ + 数字分离）+ 今日/本周 副行。 */
+.triggerMain {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
-.triggerRow {
+.triggerPrimary {
   display: inline-flex;
   align-items: baseline;
   gap: 5px;
   min-width: 0;
 }
 
-/* 本月主金额：等宽数字，主色，醒目。空间不足时省略号兜底，永不溢出卡片。 */
-.triggerAmount {
-  font-size: 17px;
-  line-height: 21px;
+/* 维度标签（当月）：小灰字。 */
+.triggerLabel {
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 币种符号：小号弱化。 */
+.triggerYen {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 当月主数值：等宽主色。空间不足时省略号兜底，永不溢出卡片。 */
+.triggerMetric {
+  font-size: 20px;
+  line-height: 24px;
   font-weight: 700;
   color: var(--dsw-alias-label-primary);
   letter-spacing: -0.02em;
@@ -122,20 +141,6 @@
   line-height: 14px;
   color: var(--dsw-alias-label-tertiary);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* 维度标签 */
-.triggerMeta {
-  font-size: 9.5px;
-  line-height: 12px;
-  color: var(--dsw-alias-label-tertiary);
-  white-space: nowrap;
-  letter-spacing: 0.02em;
-  font-weight: 600;
-  text-transform: uppercase;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -179,9 +184,9 @@
 }
 
 /* 分档降级：按卡片实际分配到的宽度逐级收敛，保证「当月金额」始终可见且不溢出。
-   —— 中档（不足 ~280px）：趋势 sparkline 让位，微收内边距/间距；
-   —— 窄档（不足 ~230px）：副行（今日/本周）与趋势整体隐藏，仅保留 icon + 当月金额。 */
-@container billing-trigger (max-width: 280px) {
+   —— 中档（不足 ~200px）：趋势 sparkline 让位，微收内边距/间距；
+   —— 窄档（不足 ~170px）：副行（今日/本周）与趋势整体隐藏，仅保留 icon + 当月金额。 */
+@container billing-trigger (max-width: 200px) {
   .trigger {
     gap: 6px;
     padding: 8px 10px;
@@ -191,22 +196,22 @@
   }
 }
 
-@container billing-trigger (max-width: 230px) {
+@container billing-trigger (max-width: 170px) {
   .triggerSub {
     display: none;
   }
-  .triggerMeta {
-    letter-spacing: 0;
+  .triggerLabel {
+    display: none;
   }
 }
 
-/* 极窄档（不足 ~120px）：仅保留「当月金额」，icon/趋势/标签全部让位，金额居中。
+/* 极窄档（不足 ~110px）：仅保留「当月金额」，icon/趋势/标签全部让位，金额居中。
    极端窄的侧边栏下仍能看到成本数字，不残缺、不溢出。 */
-@container billing-trigger (max-width: 120px) {
+@container billing-trigger (max-width: 110px) {
   .triggerIcon,
   .triggerSpark,
   .triggerSub,
-  .triggerMeta {
+  .triggerLabel {
     display: none;
   }
   .trigger {
@@ -260,6 +265,97 @@
   opacity: 1;
   transform: translateY(0);
 }
+
+/* 设计 pop-card 内容：标题行 / 3 列指标网格 / 主力消耗模型行 */
+.popHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.popTitle {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+}
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px 8px;
+}
+.metricCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.metricLabel {
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.metricValue {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.metricValuePrimary { color: var(--dsw-static-amber-500); }
+.metricValueSuccess { color: var(--dsw-static-green-500); }
+.popModel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+.popModelLabel {
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.popModelRow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.popDot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+.popDotDirect { background: var(--dsw-static-green-500); }
+.popDotSub { background: var(--dsw-static-amber-500); }
+.popDotNeutral { background: var(--dsw-alias-label-tertiary); }
+.popTagPrimary,
+.popTagSub {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 600;
+  flex: none;
+  white-space: nowrap;
+}
+.popTagPrimary { background: color-mix(in srgb, var(--dsw-static-blue-500) 14%, transparent); color: var(--dsw-static-blue-500); }
+.popTagSub { background: color-mix(in srgb, var(--dsw-static-amber-500) 18%, transparent); color: var(--dsw-static-amber-500); }
+.popModelName {
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.popModelStatus {
+  margin-left: auto;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.popModelStatusLow { color: var(--dsw-static-red-500); }
 
 .triggerPopRow {
   display: flex;
@@ -502,13 +598,14 @@
 
 /* ── Dashboard modal ────────────────────────────────────────────────── */
 
-/* 实底弹窗：1px 边框 + 阴影，无渐变描边。 */
+/* 实底弹窗：1px 边框 + 阴影，向设计「modal」的干净浅底卡片看齐（radius-16）。 */
 .dashboardModal {
   width: min(760px, calc(100vw - 48px));
   max-height: min(760px, 88vh);
   border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 16px;
   background: var(--dsw-alias-bg-layer-1);
-  box-shadow: var(--dsw-shadow-lv3);
+  box-shadow: 0 12px 32px -12px rgb(0 0 0 / 0.18), 0 2px 8px rgb(0 0 0 / 0.06);
   animation: dashboardIn 180ms ease-out;
 }
 
@@ -532,25 +629,25 @@
 
 .dashboardHead {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 20px 24px 14px;
+  padding: 20px 24px;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
 
 .dashboardTitle {
   margin: 0;
-  font-size: 17px;
+  font-size: 16px;
   line-height: 24px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
 }
 
 .dashboardSubtitle {
-  margin: 3px 0 0;
-  font-size: 12px;
-  line-height: 17px;
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 16px;
   color: var(--dsw-alias-label-caption);
 }
 
@@ -558,19 +655,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   flex: none;
-  border: none;
+  border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 8px;
   background: transparent;
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
-  transition: background-color 140ms ease;
+  transition: background-color 140ms ease, color 140ms ease;
 }
 
 .closeButton:hover {
   background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
 }
 
 .closeButton svg {
@@ -587,42 +685,58 @@
   overflow-y: auto;
 }
 
-/* ── Tab 导航（概览 / 趋势 / 厂商 / 明细） ──────────────────────────── */
+/* 底部公共细条（ub-footer）：轮询说明 + 版本/许可证，所有 Tab 共享。 */
+.modalFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 24px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ── Tab 导航（概览 / 明细 / 用量 / 趋势 / 费率 / 设置） ────────────── */
 
 .tabNav {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 10px 24px;
+  padding: 0 24px;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
 
 .tabButton {
+  margin: 8px 0;
   border: none;
-  border-radius: 999px;
-  padding: 5px 14px;
+  border-radius: 8px;
+  padding: 6px 12px;
   background: transparent;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 12.5px;
-  line-height: 18px;
+  font-size: 13px;
+  line-height: 20px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+  transition: background-color 160ms ease, color 160ms ease;
 }
 
 .tabButton:hover,
 .tabButton:focus-visible {
   color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-3) 62%, transparent);
   outline: none;
 }
 
-/* 激活项：实色蓝底 + 白字，无渐变。 */
+/* 激活项：中性分段态（设计 tab.is-active = overlay 底 + 主字 + medium），
+   替代原实色蓝 pill，更贴近设计中性 token 语言。 */
 .tabButtonActive,
 .tabButtonActive:hover,
 .tabButtonActive:focus-visible {
-  background: var(--dsw-static-blue-500);
-  color: var(--dsw-static-neutral-bluish-00);
+  background: var(--dsw-alias-bg-layer-3);
+  color: var(--dsw-alias-label-primary);
   font-weight: 600;
 }
 
@@ -686,21 +800,18 @@
 
 /* ── Hero ───────────────────────────────────────────────────────────── */
 
-/* 液晶读数大屏：整块面板像一个仪表盘屏幕。
-   左上「本月费用」液晶大数字，右上环形仪表盘，底部一条「本年/今日/本月预计」读数组。
-   用一层深色屏幕底 + 内嵌读数格营造仪表质感，深浅主题各走令牌。 */
+/* 本月费用大卡：向设计「hero」中性卡片看齐——次级浅底 + 1px 边框 + radius-12，
+   去除产品化的液晶屏渐变，收敛为一个干净的读数卡。 */
 .hero {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: 22px 24px;
+  padding: 24px;
   overflow: hidden;
   border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 16px;
-  background:
-    linear-gradient(180deg, var(--dsw-alias-bg-layer-2), var(--dsw-alias-bg-layer-1));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 30%, transparent);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 /* 顶部：左侧液晶读数 + 右侧环形仪表盘，同排。 */
@@ -723,12 +834,10 @@
   font-size: 11px;
   line-height: 16px;
   color: var(--dsw-alias-label-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   white-space: nowrap;
 }
 
-/* 液晶读数：单位小号、数字超大，等宽数码感。 */
+/* 读数：单位小号、数字超大，等宽数码感（设计 hero__amount 40px 口径）。 */
 .heroReadout {
   display: flex;
   align-items: baseline;
@@ -737,20 +846,20 @@
 
 /* 币种符号：小号，弱化为读数前缀，突出右侧大数字。 */
 .heroCurrency {
-  font-size: 20px;
-  line-height: 30px;
+  font-size: 22px;
+  line-height: 28px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--dsw-alias-label-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-/* 本月主数字：56px 超大等宽数字，液晶显示感。 */
+/* 本月主数字：40px 等宽数字（设计 hero__amount），保持读数感但收敛尺寸。 */
 .heroValue {
-  font-size: 56px;
-  line-height: 64px;
+  font-size: 40px;
+  line-height: 48px;
   font-weight: 700;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: var(--dsw-alias-label-primary);
@@ -826,6 +935,53 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* 底部预算进度条：设计 Hero 的预算行——标签 + 进度 + 「已用/总额 · 百分比」。
+   与环形仪表盘同口径，仅在启用预算且金额 >0 时由组件渲染；超支满格转红。 */
+.heroBudget {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.heroBudgetLabel {
+  flex: none;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+.heroBudgetTrack {
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--dsw-alias-border-l1);
+}
+
+.heroBudgetFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--dsw-static-blue-500);
+  transition: width 220ms ease;
+}
+
+.heroBudgetFillOver {
+  background: var(--dsw-static-red-500);
+}
+
+.heroBudgetValue {
+  flex: none;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* 底部读数排：本年 / 今日 / 本月预计 三等分，上缘细分隔线与顶层区隔。 */
 .heroSide {
   display: flex;
@@ -841,10 +997,13 @@
   gap: 3px;
   min-width: 0;
   padding-left: 16px;
+  /* 设计「副行分隔」：分隔项间以细竖线区隔，替代纯留白。 */
+  border-left: 1px solid var(--dsw-alias-border-l1);
 }
 
 .heroSideItem:first-child {
   padding-left: 0;
+  border-left: none;
 }
 
 .heroSideLabel {
@@ -913,11 +1072,11 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 14px 15px;
+  padding: 16px;
   overflow: hidden;
   border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 14px;
-  background: var(--dsw-alias-bg-layer-1);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2);
   transition: border-color 160ms ease;
 }
 
@@ -932,8 +1091,8 @@
 }
 
 .kpiValue {
-  font-size: 22px;
-  line-height: 28px;
+  font-size: 24px;
+  line-height: 32px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
@@ -961,8 +1120,8 @@
   gap: 10px;
   padding: 16px 18px;
   border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 16px;
-  background: var(--dsw-alias-bg-layer-1);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2);
   transition: border-color 160ms ease;
 }
 
@@ -1501,6 +1660,334 @@
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
+/* ── 费率 Tab：ub-alert（汇率条）+ ub-card（单价表 / 计价说明） ────── */
+
+.ubAlert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--dsw-static-blue-500) 30%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--dsw-static-blue-500) 8%, transparent);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.ubAlertLeft {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ubRate {
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ubAlertNote {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.ubTag,
+.ubTagSuccess,
+.ubTagNeutral,
+.ubTagAlert {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ubTagSuccess { background: color-mix(in srgb, var(--dsw-static-green-500) 14%, transparent); color: var(--dsw-static-green-500); }
+.ubTagNeutral { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-secondary); }
+.ubTagAlert { background: color-mix(in srgb, var(--dsw-static-amber-500) 16%, transparent); color: var(--dsw-static-amber-500); }
+
+.ubCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.ubCardHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ubCardTitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.ubCardSub {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.ubTablewrap {
+  overflow: auto;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+}
+
+.ubTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.ubTable th,
+.ubTable td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  text-align: left;
+}
+
+.ubTable tbody tr:last-child td { border-bottom: 0; }
+
+.ubTable thead th {
+  color: var(--dsw-alias-label-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ubModel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ubModelDot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.ubModelName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.ubPricepair {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ubChipPeak,
+.ubChipOff {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ubChipLabel {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.ubChipPeak { background: color-mix(in srgb, var(--dsw-static-blue-500) 14%, transparent); color: var(--dsw-static-blue-500); }
+.ubChipOff { background: color-mix(in srgb, var(--dsw-static-green-500) 14%, transparent); color: var(--dsw-static-green-500); }
+
+.ubNotes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ubNotesItem {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.ubNotesTerm {
+  flex: 0 0 72px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.ubNotesDesc {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 趋势头部右侧控件组（7天/30天 与 费用/Token 分段）。 */
+.ubCardControlGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 趋势「异常/突增」徽标：红系 error tag。 */
+.ubTagError {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--dsw-static-red-500) 14%, transparent);
+  color: var(--dsw-static-red-500);
+}
+
+/* 明细 Tab：官方/三方 stat-card 网格（2 列）。 */
+.ubStatGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ubStatCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.ubStatLabel {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.ubStatValue {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.ubStatDetail {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 明细 Tab：工作区 rowlist（名称 + 费用/调用 + 下钻箭头）。 */
+.rowlist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rowline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.rowline:hover {
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-3) 60%, transparent);
+  border-color: var(--dsw-alias-border-l1);
+}
+
+.rowlineName {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowlineRight {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.rowlineMuted {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.rowlineChev {
+  font-size: 14px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.rowlineDrillWrap {
+  padding-left: 12px;
+}
+
+.rowlineDrill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  border-left: 1px solid var(--dsw-alias-border-l1);
+  font-size: 12px;
+}
+
 .modelTable,
 .pricingTable {
   width: 100%;
@@ -1869,45 +2356,48 @@
 /* ── 即时代费用条（composer dock）──────────────────────────────────── */
 
 /* 会话 composer 输入框下方的统计条：与宿主 StatsLine 同姿态，一行小字。 */
-.liveCostBar {
+/* 设计 fee-bar：圆角胶囊条 —— 档位 chip → 倒计时 → 档位说明 → 本轮/会话 → 额度预警 chips。 */
+.feeBar {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-static-neutral-400);
+  color: var(--dsw-alias-label-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-.liveCostItem {
+.feeCount { color: var(--dsw-alias-label-primary); font-weight: 600; }
+.feeSuffix { color: var(--dsw-alias-label-tertiary); }
+.feeItem { color: var(--dsw-alias-label-secondary); white-space: nowrap; }
+.feeNum { color: var(--dsw-alias-label-primary); }
+.feeSep { color: var(--dsw-alias-label-tertiary); }
+
+/* 档位 / 额度预警 chip：小胶囊，状态色 surface 底 + 状态色字。 */
+.feeChipPrimary,
+.feeChipOff,
+.feeChipAlert,
+.feeChipError {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 14px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.liveCostSep {
-  color: var(--dsw-static-neutral-300);
-}
-
-/* 峰谷档位 chip：峰时蓝、平价青绿（token 派生，明暗自适应）。 */
-.liveTierPeak {
-  color: var(--dsw-static-blue-500);
   font-weight: 600;
 }
-
-.liveTierOff {
-  color: var(--dsw-static-green-500);
-  font-weight: 600;
-}
-
-/* 额度预警 chips：剩余 ≤20% 警报，≤10% 红色。 */
-.liveQuotaWarn {
-  color: var(--dsw-static-amber-500);
-  font-weight: 600;
-}
-
-.liveQuotaCrit {
-  color: var(--dsw-static-red-500);
-  font-weight: 600;
-}
+.feeChipPrimary { background: color-mix(in srgb, var(--dsw-static-blue-500) 14%, transparent); color: var(--dsw-static-blue-500); }
+.feeChipOff { background: color-mix(in srgb, var(--dsw-static-green-500) 14%, transparent); color: var(--dsw-static-green-500); }
+.feeChipAlert { background: color-mix(in srgb, var(--dsw-static-amber-500) 16%, transparent); color: var(--dsw-static-amber-500); }
+.feeChipError { background: color-mix(in srgb, var(--dsw-static-red-500) 14%, transparent); color: var(--dsw-static-red-500); }
 
 /* ── 余额天数提示 ───────────────────────────────────────────────────── */
 
@@ -2195,9 +2685,9 @@
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-layer-2);
+  border: none;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
   margin-right: 8px;
 }
 
@@ -2208,13 +2698,14 @@
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
-  padding: 4px 7px;
-  border-radius: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .currencyButtonActive {
-  background: var(--dsw-alias-bg-layer-1);
+  background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-primary);
 }
 
@@ -2850,6 +3341,7 @@
   padding: 7px 10px;
   border-radius: 10px;
   font-size: 12px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -2894,7 +3386,108 @@
   border: 1px solid color-mix(in srgb, var(--dsw-static-amber-500) 30%, transparent);
 }
 
-/* 插件信息卡（设置 Tab）：单行「标签 - 值」列表，链接可点击外链。 */
+/* 插件信息卡（设计 plg-card）：图标 + 名称/版本 tag + 描述 → 元信息网格。 */
+.plgHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.plgIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.plgTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.plgNameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plgName {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.plgTag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-layer-3);
+  white-space: nowrap;
+}
+
+.plgDesc {
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.plgGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.plgItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plgLabel {
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.plgVal {
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--dsw-alias-label-primary);
+  word-break: break-all;
+}
+
+.plgLink {
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--dsw-static-blue-500);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.plgLink:hover {
+  text-decoration: underline;
+}
+
+/* 插件信息卡（旧版单行列表，已弃用但保留类定义）。 */
 .pluginInfo {
   display: flex;
   flex-direction: column;
@@ -2996,93 +3589,73 @@
   }
 }
 
-/* ── 峰谷切换提醒 ────────────────────────────────────────────────── */
+/* ── 峰谷切换提醒（设计 peak-card） ─────────────────────────────── */
 
-/* 浮层：档位徽标 + 大号等宽倒计时 + 说明 + 关闭；克制冷调、无重力阴影。 */
-.peakAlert {
+/* 浮层：头部（档位 tag + 关闭）→ 大号等宽倒计时 → 一句说明；克制冷调、轻投影。 */
+.peakCard {
   position: fixed;
   z-index: 2000;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 300px;
-  max-width: 460px;
-  padding: 10px 12px;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 280px;
+  max-width: 380px;
+  padding: 16px;
   border-radius: 12px;
   border: 1px solid var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-bg-layer-1);
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 82%, transparent);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   animation: peakAlertIn 200ms ease;
 }
 
-.peakAlertCorner {
+.peakCardCorner {
   right: 18px;
   bottom: 18px;
 }
 
-.peakAlertCenter {
+.peakCardCenter {
   left: 50%;
   top: 20%;
   transform: translateX(-50%);
 }
 
-/* 档位徽标：小圆点 + 档位名；峰时琥珀 / 平价蓝。 */
-.peakAlertTag {
+.peakCardPeak { color: var(--dsw-static-blue-500); }
+.peakCardOff { color: var(--dsw-static-green-500); }
+
+/* 头部：档位 tag（圆点 + 名）+ 关闭按钮。 */
+.peakHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.peakTag {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex: none;
-  padding: 3px 9px;
-  border-radius: 999px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 6px;
   font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.01em;
-  color: var(--dsw-alias-label-secondary);
-  background: var(--dsw-alias-bg-layer-3);
+  line-height: 14px;
+  font-weight: 600;
   white-space: nowrap;
 }
+.peakTagPrimary { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-static-blue-500); }
+.peakTagSuccess { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-static-green-500); }
+.peakDot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+.peakDotPrimary { background: var(--dsw-static-blue-500); }
+.peakDotSuccess { background: var(--dsw-static-green-500); }
 
-.peakAlertTag::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.peakAlertPeak .peakAlertTag {
-  color: var(--dsw-static-amber-500);
-}
-
-.peakAlertOff .peakAlertTag {
-  color: var(--dsw-static-blue-500);
-}
-
-/* 大号等宽倒计时：突出剩余分钟。 */
-.peakAlertCountdown {
-  flex: none;
-  font-size: 18px;
-  line-height: 1;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--dsw-alias-label-primary);
-}
-
-.peakAlertText {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.peakAlertClose {
-  flex: none;
+.peakClose {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border: 0;
   background: transparent;
   color: var(--dsw-alias-label-secondary);
@@ -3093,9 +3666,26 @@
   transition: background-color 140ms ease, color 140ms ease;
 }
 
-.peakAlertClose:hover {
+.peakClose:hover {
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-alias-bg-layer-2);
+}
+
+/* 大号等宽倒计时：突出剩余分钟。 */
+.peakCount {
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.peakCountPrimary { color: var(--dsw-static-blue-500); }
+.peakCountSuccess { color: var(--dsw-static-green-500); }
+
+.peakDesc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
 }
 
 @keyframes peakAlertIn {
@@ -3181,6 +3771,184 @@
 
 .peakAlertPreview:hover {
   background: var(--dsw-alias-bg-layer-3);
+}
+
+/* ── 设置 Tab：set-card（头部 标题+说明+开关 → 控制列） ───────────── */
+
+.setCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.setCardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.setCardMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.setCardTitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.setCardDesc {
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 控制列：label + 控件（输入框 / 下拉 / 复选框 / 按钮 / 进度条）。 */
+.ctlCol {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.ctlRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 28px;
+}
+
+.ctlRowStretch {
+  display: flex;
+}
+
+.ctlLabel {
+  flex: 0 0 96px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.ctlGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 单选项（位置 / 提醒模式）：圆点 + 文案，一行内排布。 */
+.rdo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rdo input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.rdoDot {
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.rdo input:checked + .rdoDot {
+  border-color: var(--dsw-static-blue-500);
+}
+
+.rdo input:checked + .rdoDot::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--dsw-static-blue-500);
+}
+
+.inp {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.affix {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.sel {
+  padding: 3px 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.prog {
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-module-platform);
+  overflow: hidden;
+}
+
+.progFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--dsw-static-blue-500);
+  transition: width 200ms ease;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
+}
+
+.btn:hover {
+  border-color: var(--dsw-static-blue-500);
+  color: var(--dsw-alias-label-primary);
+  background: color-mix(in srgb, var(--dsw-static-blue-500) 12%, var(--dsw-alias-bg-layer-1));
 }
 
 /* ── 设置 Tab：分区标题 + 分组说明 ─────────────────────────────────── */

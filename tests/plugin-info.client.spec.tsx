@@ -19,7 +19,10 @@ describe('PluginInfoCard', () => {
     expect(screen.getAllByText('@kenz1117/dsh-ui-usage-billing').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('v0.9.4')).toBeTruthy()
     expect(screen.getByText(/KenZ \(kenz1117\)/)).toBeTruthy()
-    expect(screen.getByText('https://github.com/kenz1117/dsh-ui-usage-billing')).toBeTruthy()
+    // 仓库行：链接文本「GitHub」，href 指向仓库主页。
+    const repoLink = screen.getByRole('link', { name: 'GitHub' })
+    expect(repoLink).toBeTruthy()
+    expect(repoLink.getAttribute('href')).toBe('https://github.com/kenz1117/dsh-ui-usage-billing')
     expect(screen.getByText('MIT')).toBeTruthy()
   })
 

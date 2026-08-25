@@ -1,7 +1,8 @@
 /**
- * PluginInfoCard: 「设置 → 插件信息」卡——展示头像/作者、GitHub 仓库、版本号、
- * 许可证等插件元信息。版本号来自服务端 usage-stats 的 `pluginVersion`（读自
- * 包 package.json），其余元信息静态来自 `plugin-info.ts`。无版本号时显示 em dash。
+ * PluginInfoCard: 「设置 → 插件信息」卡——图标 + 插件名/版本 tag + 描述，下接
+ * 元信息网格（作者 / 仓库 / npm / 许可证）。版本号来自服务端 usage-stats 的
+ * `pluginVersion`（读自包 package.json），其余元信息静态来自 `plugin-info.ts`。
+ * 无版本号时显示 em dash。
  */
 
 import css from './UsageBilling.module.css'
@@ -19,44 +20,43 @@ import type { UsageBillingKey } from './locales.ts'
 /** 信息卡 props：locale 函数 + 版本号（服务端下发，可为空）。 */
 export function PluginInfoCard({ t, version }: { t: (key: UsageBillingKey) => string; version: string | undefined }): React.ReactNode {
   return (
-    <section className={css.panel} data-testid="billing-plugin-info">
-      <div className={css.panelHead}>
-        <h3 className={css.panelTitle}>{t('billing.pluginInfo')}</h3>
+    <section className={css.setCard} data-testid="billing-plugin-info">
+      <div className={css.plgHead}>
+        <span className={css.plgIcon} aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a2 2 0 0 0 4 0V4a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1a2 2 0 0 0 4 0 1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-1a2 2 0 0 0 0 4h1a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-1a2 2 0 0 0-4 0v1a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-2a2 2 0 0 0-4 0v1a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1a2 2 0 0 0-4 0 1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1h1a2 2 0 0 0 0-4H3a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1h1a2 2 0 0 0 4 0z" />
+          </svg>
+        </span>
+        <div className={css.plgTitle}>
+          <div className={css.plgNameRow}>
+            <h3 className={css.plgName}>{PLUGIN_NAME}</h3>
+            <span className={css.plgTag}>{version === undefined ? '—' : `v${version}`}</span>
+          </div>
+          <p className={css.plgDesc}>{PLUGIN_DESCRIPTION}</p>
+        </div>
       </div>
-      <div className={css.pluginInfo}>
-        <div className={css.pluginInfoRow}>
-          <span className={css.pluginInfoLabel}>{t('billing.pluginName')}</span>
-          <span className={css.pluginInfoValue}>{PLUGIN_NAME}</span>
-        </div>
-        <div className={css.pluginInfoRow}>
-          <span className={css.pluginInfoLabel}>{t('billing.pluginDescription')}</span>
-          <span className={css.pluginInfoValue}>{PLUGIN_DESCRIPTION}</span>
-        </div>
-        <div className={css.pluginInfoRow}>
-          <span className={css.pluginInfoLabel}>{t('billing.pluginVersion')}</span>
-          <span className={css.pluginInfoValue}>{version === undefined ? '—' : `v${version}`}</span>
-        </div>
-        <div className={css.pluginInfoRow}>
-          <span className={css.pluginInfoLabel}>{t('billing.pluginAuthor')}</span>
-          <a className={css.pluginInfoLink} href={`https://github.com/${PLUGIN_AUTHOR_HANDLE}`} target="_blank" rel="noreferrer">
+      <div className={css.plgGrid}>
+        <div className={css.plgItem}>
+          <span className={css.plgLabel}>{t('billing.pluginAuthor')}</span>
+          <a className={css.plgLink} href={`https://github.com/${PLUGIN_AUTHOR_HANDLE}`} target="_blank" rel="noreferrer">
             {PLUGIN_AUTHOR_NAME} ({PLUGIN_AUTHOR_HANDLE})
           </a>
         </div>
-        <div className={css.pluginInfoRow}>
-          <span className={css.pluginInfoLabel}>{t('billing.pluginRepository')}</span>
-          <a className={css.pluginInfoLink} href={PLUGIN_REPOSITORY} target="_blank" rel="noreferrer">
-            {PLUGIN_REPOSITORY}
+        <div className={css.plgItem}>
+          <span className={css.plgLabel}>{t('billing.pluginRepository')}</span>
+          <a className={css.plgLink} href={PLUGIN_REPOSITORY} target="_blank" rel="noreferrer">
+            GitHub
           </a>
         </div>
-        <div className={css.pluginInfoRow}>
-          <span className={css.pluginInfoLabel}>{t('billing.pluginNpm')}</span>
-          <a className={css.pluginInfoLink} href={PLUGIN_NPM_URL} target="_blank" rel="noreferrer">
+        <div className={css.plgItem}>
+          <span className={css.plgLabel}>{t('billing.pluginNpm')}</span>
+          <a className={css.plgLink} href={PLUGIN_NPM_URL} target="_blank" rel="noreferrer">
             {PLUGIN_NAME}
           </a>
         </div>
-        <div className={css.pluginInfoRow}>
-          <span className={css.pluginInfoLabel}>{t('billing.pluginLicense')}</span>
-          <span className={css.pluginInfoValue}>{PLUGIN_LICENSE}</span>
+        <div className={css.plgItem}>
+          <span className={css.plgLabel}>{t('billing.pluginLicense')}</span>
+          <span className={css.plgVal}>{PLUGIN_LICENSE}</span>
         </div>
       </div>
     </section>

@@ -152,7 +152,7 @@ cost (CNY) = (missInput × p_input + cacheHit × p_cacheHit + output × p_output
 | Doubao    | Seed-2.0 Pro, Seed-2.0 Mini, Seed-1.6                                                         |
 | Moonshot  | Kimi K3, K2.7 Code, K2.7 Code HighSpeed, K2.6                                                 |
 | Xiaomi    | MiMo V2.5 (exempt when billed via a token-plan subscription channel)¹                         |
-| MiniMax   | MiniMax-M3                                                                                  |
+| MiniMax   | MiniMax-M3, MiniMax-M2.7, MiniMax-M2.7-highspeed                                            |
 | Baidu     | ERNIE-5.1                                                                                   |
 | Tencent   | Hunyuan T1, Hunyuan Hy3                                                                     |
 | 01.AI     | Yi-Lightning                                                                                |

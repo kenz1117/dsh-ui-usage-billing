@@ -152,7 +152,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | 字节豆包     | Doubao Seed-2.0 Pro、Seed-2.0 Mini、Seed-1.6                                              |
 | 月之暗面     | Kimi K3、K2.7 Code、K2.7 Code HighSpeed、K2.6                                              |
 | 小米       | MiMo V2.5（走 token plan 订阅通道时豁免计费）¹                                                      |
-| MiniMax  | MiniMax-M3                                                                              |
+| MiniMax  | MiniMax-M3、MiniMax-M2.7、MiniMax-M2.7-highspeed                                                |
 | 百度       | ERNIE-5.1                                                                               |
 | 腾讯       | 混元 T1、混元 Hy3                                                                            |
 | 零一万物     | Yi-Lightning                                                                            |

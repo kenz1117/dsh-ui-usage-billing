@@ -191,36 +191,32 @@ export function LiveCostBar({ useSession, t }: LiveCostBarProps): React.ReactNod
 
   if (sessionId === undefined) return null
   const hasCost = sessionCost > 0 || turnCost > 0
+  const isPeak = tier.tier === 'peak'
+  // 设计 fee-bar：档位 chip → 倒计时 → 档位说明 → 本轮/会话 → 额度预警 chips。
   return (
-    <span className={css.liveCostBar} data-testid="billing-live-cost-bar">
-      {/* 峰谷档位 + 切换倒计时：无费用数据也常驻（平价时段提示省钱窗口）。 */}
-      <span
-        className={tier.tier === 'peak' ? css.liveTierPeak : css.liveTierOff}
-        data-testid="billing-live-tier"
-      >
-        {tier.tier === 'peak' ? t('billing.tierPeak') : t('billing.tierOff')}
-        {' · '}
-        {formatSwitchCountdown(tier.nextSwitchInMs)}
-        {' '}
-        {tier.tier === 'peak' ? t('billing.tierToOff') : t('billing.tierToPeak')}
+    <span className={css.feeBar} data-testid="billing-live-cost-bar">
+      <span className={isPeak ? css.feeChipPrimary : css.feeChipOff} data-testid="billing-live-tier">
+        {isPeak ? t('billing.tierPeak') : t('billing.tierOff')}
       </span>
+      <span className={css.feeCount}>{formatSwitchCountdown(tier.nextSwitchInMs)}</span>
+      <span className={css.feeSuffix}>{isPeak ? t('billing.tierToOff') : t('billing.tierToPeak')}</span>
       {hasCost && (
         <>
-          <span className={css.liveCostSep} aria-hidden="true">·</span>
-          <span className={css.liveCostItem} data-testid="billing-live-turn">
-            {t('billing.liveTurn')} {money(turnCost)}
+          <span className={css.feeSep} aria-hidden="true">·</span>
+          <span className={css.feeItem} data-testid="billing-live-turn">
+            {t('billing.liveTurn')} <span className={css.feeNum}>{money(turnCost)}</span>
           </span>
-          <span className={css.liveCostSep} aria-hidden="true">·</span>
-          <span className={css.liveCostItem} data-testid="billing-live-session">
-            {t('billing.liveSession')} {money(sessionCost)}
+          <span className={css.feeSep} aria-hidden="true">·</span>
+          <span className={css.feeItem} data-testid="billing-live-session">
+            {t('billing.liveSession')} <span className={css.feeNum}>{money(sessionCost)}</span>
           </span>
         </>
       )}
       {/* 额度预警 chips：套餐窗口剩余 ≤20% 时浮现（剩余最少者优先，最多 3 枚）。 */}
       {chips.map(chip => (
         <span key={`${chip.name}:${chip.kind}`}>
-          <span className={css.liveCostSep} aria-hidden="true">·</span>
-          <span className={chip.pct <= 10 ? css.liveQuotaCrit : css.liveQuotaWarn} data-testid="billing-live-quota">
+          <span className={css.feeSep} aria-hidden="true">·</span>
+          <span className={chip.pct <= 10 ? css.feeChipError : css.feeChipAlert} data-testid="billing-live-quota">
             {chip.name} {t(windowLabelKey(chip.kind))} {chip.pct}%
           </span>
         </span>
