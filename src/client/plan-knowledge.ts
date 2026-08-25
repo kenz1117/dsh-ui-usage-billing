@@ -83,6 +83,22 @@ export const PLAN_KNOWLEDGE: Readonly<Record<string, PlanKnowledgeEntry>> = {
   'minimax-cn': { type: 'code' },
   'minimax-token-plan': { type: 'code' },
   'minimax-token-plan-cn': { type: 'code' },
+  // 其余有 Coding/Token/Agent 订阅的厂商（显式 plan id 判定为订阅；裸厂名仍按量 API）。
+  // 月费/额度走 llm-pi-ai 官方 quota 接口，此处仅标注 plan 类型（quota 缺失时回退档位卡）。
+  'hunyuan-token-plan': { type: 'code' },
+  'tencent-token-plan': { type: 'code' },
+  'hy-token-plan': { type: 'code' },
+  'xinghuo-token-plan': { type: 'code' },
+  'xfyun-coding': { type: 'code' },
+  'spark-coding': { type: 'code' },
+  'huawei-token-plan': { type: 'code' },
+  'pangu-token-plan': { type: 'code' },
+  'huawei-maas-token-plan': { type: 'code' },
+  'volcengine-agent-plan': { type: 'code' },
+  'ark-agent-plan': { type: 'code' },
+  'baidu-token-plan': { type: 'code' },
+  'ernie-token-plan': { type: 'code' },
+  'wenxin-token-plan': { type: 'code' },
 }
 
 /**

@@ -40,6 +40,7 @@ import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
 import { localizeProviderName } from './provider-display.ts'
 import { tierInfoOf } from './plan-knowledge.ts'
+import { vendorLogoOf } from './vendor-logos.ts'
 import { computePeakAlert, loadPeakAlertConfig, savePeakAlertConfig, type PeakAlertConfig, type PeakAlertHit } from './peak-alert.ts'
 import { PeakAlertBanner } from './PeakAlertBanner.tsx'
 import css from './UsageBilling.module.css'
@@ -123,6 +124,12 @@ export const PROVIDER_ALIASES: Readonly<Record<string, readonly string[]>> = {
   'Google': ['google', 'gemini'],
   'xAI': ['xai', 'grok'],
   'Meta': ['meta', 'llama'],
+  'Anthropic': ['claude', 'anthropic'],
+  'Mistral AI': ['mistral', 'ministral', 'devstral'],
+  'Cohere': ['cohere', 'command'],
+  '美团': ['longcat', 'meituan'],
+  '面壁智能': ['minicpm', 'modelbest'],
+  '小红书': ['dots', 'rednote', 'xiaohongshu'],
 }
 
 /** Normalize a provider name for dot matching: lower case, no spaces. */
@@ -206,6 +213,20 @@ const SUBSCRIPTION_VENDORS: Readonly<Record<string, string>> = {
   'minimax-cn': 'MiniMax',
   'minimax-token-plan': 'MiniMax',
   'minimax-token-plan-cn': 'MiniMax',
+  'hunyuan-token-plan': '腾讯混元',
+  'tencent-token-plan': '腾讯混元',
+  'hy-token-plan': '腾讯混元',
+  'xinghuo-token-plan': '讯飞星火',
+  'xfyun-coding': '讯飞星火',
+  'spark-coding': '讯飞星火',
+  'huawei-token-plan': '华为云',
+  'pangu-token-plan': '华为云',
+  'huawei-maas-token-plan': '华为云',
+  'volcengine-agent-plan': '字节豆包',
+  'ark-agent-plan': '字节豆包',
+  'baidu-token-plan': '百度文心',
+  'ernie-token-plan': '百度文心',
+  'wenxin-token-plan': '百度文心',
   'opencode': 'OpenCode',
   'opencode-go': 'OpenCode',
 }
@@ -2285,6 +2306,7 @@ function BillingDashboard({
                                   <tr key={row.key}>
                                     <td>
                                       <span className={css.modelCell}>
+                                        <VendorLogo provider={row.provider} colorVar={row.color} />
                                         <span>
                                           <span className={css.modelName}>
                                             {row.name}
@@ -2676,7 +2698,7 @@ function BillingDashboard({
                           <tr key={entry.key}>
                             <td>
                               <span className={css.ubModel}>
-                                <span className={css.ubModelDot} style={{ background: resolveToken(entry.colorVar) }} aria-hidden="true" />
+                                <VendorLogo provider={entry.provider} colorVar={resolveToken(entry.colorVar)} />
                                 <span className={css.ubModelName}>
                                   {entry.name}
                                   {/* 探活命中但无内置/models.dev 价：明确标注，不参与计价。 */}
@@ -2761,6 +2783,27 @@ function BillingDashboard({
         </footer>
       </div>
     </Modal>
+  )
+}
+
+/**
+ * VendorLogo: 模型名前显示厂商 logo（内嵌 SVG data URI，来自 models.dev）。
+ * 未收录 logo 的厂商（字节豆包/文心/讯飞/商汤/百川/零一/面壁/小红书 等）回退为
+ * 品牌色字母徽章，保证所有厂商都有可辨识标记，且不引入外部素材/版权风险。
+ */
+function VendorLogo({ provider, colorVar }: { provider: string; colorVar?: string }): React.ReactNode {
+  const logo = vendorLogoOf(provider)
+  if (logo !== undefined) {
+    return <img className={css.vendorLogo} src={logo} alt="" aria-hidden="true" />
+  }
+  return (
+    <span
+      className={css.vendorLetter}
+      style={colorVar !== undefined ? { background: colorVar } : undefined}
+      aria-hidden="true"
+    >
+      {provider.trim().charAt(0).toUpperCase()}
+    </span>
   )
 }
 
