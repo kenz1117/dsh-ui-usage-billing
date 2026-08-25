@@ -872,11 +872,12 @@ function UsageBillingTrigger(
         title={`${t('billing.title')} · ${formatMoney(monthCost)}`}
       >
         <span className={css.triggerIcon} data-testid="billing-trigger-icon">{cardIcon}</span>
-        {/* 本月费用为主数字，右侧 sparkline 常驻（近 7 天趋势一眼可读）。 */}
-        <span className={css.triggerBody}>
-          <span className={css.triggerRow}>
-            <span className={css.triggerMeta}>{t('billing.triggerMonth')}</span>
-            <span className={css.triggerAmount}>{formatMoney(monthCost)}</span>
+        {/* 设计 trigger-card：当月 = 标签 + ¥ + 数字(分离)，下方一行 今日/本周 副行。 */}
+        <span className={css.triggerMain}>
+          <span className={css.triggerPrimary}>
+            <span className={css.triggerLabel}>{t('billing.triggerMonth')}</span>
+            <span className={css.triggerYen} aria-hidden="true">{formatMoney(monthCost).charAt(0)}</span>
+            <span className={css.triggerMetric}>{formatMoney(monthCost).slice(1)}</span>
           </span>
           <span className={css.triggerSub} data-testid="billing-trigger-today">
             {t('billing.triggerToday')} {formatMoney(todayCost)} · {t('billing.weekCost')} {formatMoney(weekCost)}
@@ -951,58 +952,70 @@ function UsageBillingTrigger(
           </>
         ) : (
           <>
-        <span className={css.triggerPopMetrics}>
-          <span className={css.triggerPopMetric}>
-            <span className={css.triggerPopMetricLabel}>{t('billing.monthCost')}</span>
-            <span className={clsx(css.triggerPopMetricValue, css.triggerPopMetricHighlight)}>{formatMoney(monthCost)}</span>
-          </span>
-          <span className={css.triggerPopMetric}>
-            <span className={css.triggerPopMetricLabel}>{t('billing.tokenTotal')}</span>
-            <span className={css.triggerPopMetricValue}>{formatTokens(dash.totalToken)}</span>
-          </span>
-          <span className={css.triggerPopMetric}>
-            <span className={css.triggerPopMetricLabel}>{t('billing.input')}</span>
-            <span className={css.triggerPopMetricValue}>{formatTokens(dash.input)}</span>
-          </span>
-          <span className={css.triggerPopMetric}>
-            <span className={css.triggerPopMetricLabel}>{t('billing.output')}</span>
-            <span className={css.triggerPopMetricValue}>{formatTokens(dash.output)}</span>
-          </span>
-          <span className={css.triggerPopMetric}>
-            <span className={css.triggerPopMetricLabel}>{t('billing.cacheHit')}</span>
-            <span className={css.triggerPopMetricValue}>{formatTokens(dash.cacheRead)}</span>
-          </span>
-          <span className={css.triggerPopMetric}>
-            <span className={css.triggerPopMetricLabel}>{t('billing.calls')}</span>
-            <span className={css.triggerPopMetricValue}>{dash.calls.toLocaleString()}</span>
-          </span>
-        </span>
-        <span className={css.triggerPopFoot}>
-          <span className={css.triggerPopFootTitle}>{t('billing.popTodayModel')}</span>
-          <span className={css.triggerPopFootNotes}>
-            {vendorStatus.direct !== undefined && (
-              <span className={css.triggerPopFootNote}>
-                <span className={clsx(css.triggerPopBadge, css.triggerPopBadgeDirect)}>{t('billing.popDirectLead')}</span>
-                <span className={css.triggerPopFootName}>{vendorStatus.direct.name}</span>
-                <span className={clsx(css.triggerPopFootStatus, vendorStatus.direct.low && css.triggerPopFootStatusLow)}>
-                  {vendorStatus.direct.text}
-                </span>
+            {/* 设计 pop-card：顶部金流光条 ::before + 标题行 + 3 列指标网格 + 主力消耗模型行 */}
+            <span className={css.popHead}>
+              <span className={css.popTitle}>{t('billing.popTitle')}</span>
+            </span>
+            <span className={css.metricGrid}>
+              <span className={css.metricCell}>
+                <span className={css.metricLabel}>{t('billing.monthCost')}</span>
+                <span className={clsx(css.metricValue, css.metricValuePrimary)}>{formatMoney(monthCost)}</span>
               </span>
-            )}
-            {vendorStatus.sub !== undefined && (
-              <span className={css.triggerPopFootNote}>
-                <span className={clsx(css.triggerPopBadge, css.triggerPopBadgeSub)}>{t('billing.popSubLead')}</span>
-                <span className={css.triggerPopFootName}>{vendorStatus.sub.name}</span>
-                <span className={clsx(css.triggerPopFootStatus, vendorStatus.sub.low && css.triggerPopFootStatusLow)}>
-                  {vendorStatus.sub.text}
-                </span>
+              <span className={css.metricCell}>
+                <span className={css.metricLabel}>{t('billing.tokenTotal')}</span>
+                <span className={css.metricValue}>{formatTokens(dash.totalToken)}</span>
               </span>
-            )}
-            {vendorStatus.direct === undefined && vendorStatus.sub === undefined && (
-              <span className={css.triggerPopFootNote}>{t('billing.popNoConsumption')}</span>
-            )}
-          </span>
-        </span>
+              <span className={css.metricCell}>
+                <span className={css.metricLabel}>{t('billing.input')}</span>
+                <span className={css.metricValue}>{formatTokens(dash.input)}</span>
+              </span>
+              <span className={css.metricCell}>
+                <span className={css.metricLabel}>{t('billing.output')}</span>
+                <span className={css.metricValue}>{formatTokens(dash.output)}</span>
+              </span>
+              <span className={css.metricCell}>
+                <span className={css.metricLabel}>{t('billing.cacheHit')}</span>
+                <span className={clsx(css.metricValue, css.metricValueSuccess)}>{formatTokens(dash.cacheRead)}</span>
+              </span>
+              <span className={css.metricCell}>
+                <span className={css.metricLabel}>{t('billing.calls')}</span>
+                <span className={css.metricValue}>{dash.calls.toLocaleString()}</span>
+              </span>
+            </span>
+            <span className={css.popModel}>
+              <span className={css.popModelLabel}>{t('billing.popTodayModel')}</span>
+              {(vendorStatus.direct !== undefined || vendorStatus.sub !== undefined)
+                ? (
+                  <>
+                    {vendorStatus.direct !== undefined && (
+                      <span className={css.popModelRow}>
+                        <span className={clsx(css.popDot, css.popDotDirect)} aria-hidden="true" />
+                        <span className={css.popTagPrimary}>{t('billing.popDirectLead')}</span>
+                        <span className={css.popModelName}>{vendorStatus.direct.name}</span>
+                        <span className={clsx(css.popModelStatus, vendorStatus.direct.low && css.popModelStatusLow)}>
+                          {vendorStatus.direct.text}
+                        </span>
+                      </span>
+                    )}
+                    {vendorStatus.sub !== undefined && (
+                      <span className={css.popModelRow}>
+                        <span className={clsx(css.popDot, css.popDotSub)} aria-hidden="true" />
+                        <span className={css.popTagSub}>{t('billing.popSubLead')}</span>
+                        <span className={css.popModelName}>{vendorStatus.sub.name}</span>
+                        <span className={clsx(css.popModelStatus, vendorStatus.sub.low && css.popModelStatusLow)}>
+                          {vendorStatus.sub.text}
+                        </span>
+                      </span>
+                    )}
+                  </>
+                )
+                : (
+                  <span className={css.popModelRow}>
+                    <span className={clsx(css.popDot, css.popDotNeutral)} aria-hidden="true" />
+                    <span className={css.popModelStatus}>{t('billing.popNoConsumption')}</span>
+                  </span>
+                )}
+            </span>
           </>
         )}
       </span>
@@ -1297,6 +1310,9 @@ function BillingDashboard({
     }
   }, [budgetEnabled, budgetAmount, monthCost, yearCost, t])
 
+  // Hero 底部预算进度条：与环形仪表盘同口径（预算启用且 >0），仅在启用预算时展示。
+  const heroBudgetPct = budgetEnabled && budgetAmount > 0 ? (monthCost / budgetAmount) * 100 : 0
+
   // 最近 N 天窗口（含今天）：缺失的日期补零，图表固定为整段区间。
   const trendDates = useMemo(() => {
     const out: string[] = []
@@ -1522,7 +1538,7 @@ function BillingDashboard({
                   title={unit === 'cny' ? t('billing.currencyCny') : t('billing.currencyUsd')}
                   onClick={() => { onCurrency(unit) }}
                 >
-                  {unit === 'cny' ? '¥' : '$'}
+                  {unit === 'cny' ? '¥ CNY' : '$ USD'}
                 </button>
               ))}
             </span>
@@ -1616,6 +1632,10 @@ function BillingDashboard({
                         {money(monthCost).slice(1)}
                       </span>
                     </div>
+                    {/* 调用副行：呼应设计 Hero 的「758 调用」读法。 */}
+                    <span className={css.heroMeta}>
+                      {total.calls.toLocaleString()} {t('billing.calls')}
+                    </span>
                   </div>
                   {/* 环形仪表盘：SVG stroke-dasharray 画弧，中心显示百分比与标签，
                   超支转红（预算口径下）。无预算时按本月占本年装饰。 */}
@@ -1642,6 +1662,29 @@ function BillingDashboard({
                     </span>
                   </div>
                 </div>
+                {/* 预算进度条：设计 Hero 的底部预算行——标签 + 进度 + 「已用/总额 · 百分比」。
+                    与环形仪表盘同口径，仅在启用预算且金额 >0 时展示；环形仪表盘本身始终可见。 */}
+                {budgetEnabled && budgetAmount > 0 && (
+                  <div className={css.heroBudget} data-testid="billing-hero-budget">
+                    <span className={css.heroBudgetLabel}>{t('billing.budget')}</span>
+                    <div
+                      className={css.heroBudgetTrack}
+                      role="progressbar"
+                      aria-valuenow={Math.min(heroBudgetPct, 100)}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={t('billing.budget')}
+                    >
+                      <div
+                        className={clsx(css.heroBudgetFill, heroBudgetPct >= 100 && css.heroBudgetFillOver)}
+                        style={{ width: `${Math.min(heroBudgetPct, 100)}%` }}
+                      />
+                    </div>
+                    <span className={css.heroBudgetValue}>
+                      {money(monthCost)} / {money(budgetAmount)} · {heroBudgetPct.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
                 <div className={css.heroSide}>
                   <div className={css.heroSideItem}>
                     <span className={css.heroSideLabel}>
@@ -1744,19 +1787,32 @@ function BillingDashboard({
 
           {tab === 'settings' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-settings">
-              <div className={css.settingsHead}>
-                <h3 className={css.settingsTitle}>{t('billing.settingsHead')}</h3>
-                <p className={css.settingsHint}>{t('billing.settingsHint')}</p>
-              </div>
-              {/* 月度预算：开关控制显隐（持久化到 localStorage），金额可编辑，宿主 monthlyBudget 作为默认值；超支进度条转红。 */}
-              <section className={css.budget} data-testid="billing-budget">
-                <div className={css.budgetHead}>
-                  <span className={css.budgetLabel}>{t('billing.budget')}</span>
-                  <span className={css.budgetControls}>
-                    {budgetEnabled && (
-                      <span className={css.budgetInputWrap} data-testid="billing-budget-input-wrap">
+              {/* 1. 月度预算：set-card——头部(标题+说明+开关) + 控制列(金额/进度/说明)。 */}
+              <section className={css.setCard} data-testid="billing-budget">
+                <div className={css.setCardHead}>
+                  <div className={css.setCardMeta}>
+                    <h3 className={css.setCardTitle}>{t('billing.budget')}</h3>
+                    <p className={css.setCardDesc}>{t('billing.budgetHint')}</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={budgetEnabled}
+                    aria-label={t('billing.budget')}
+                    data-testid="billing-budget-toggle"
+                    className={clsx(css.switch, budgetEnabled && css.switchOn)}
+                    onClick={onToggleBudget}
+                  >
+                    <span className={css.switchKnob} />
+                  </button>
+                </div>
+                {budgetEnabled && (
+                  <div className={css.ctlCol}>
+                    <div className={css.ctlRow}>
+                      <span className={css.ctlLabel}>{t('billing.budgetAmount')}</span>
+                      <span className={css.inp} data-testid="billing-budget-input-wrap">
                         {/* 单位符号：预算以人民币元计，避免误填分/美元。 */}
-                        <span className={css.budgetUnit} aria-hidden="true">¥</span>
+                        <span className={css.affix} aria-hidden="true">¥</span>
                         <input
                           className={css.budgetInput}
                           data-testid="billing-budget-input"
@@ -1770,47 +1826,45 @@ function BillingDashboard({
                           onChange={(e) => { onBudgetAmount(e.target.valueAsNumber) }}
                         />
                       </span>
-                    )}
-                    {budgetEnabled && budgetAmount > 0 && (() => {
+                    </div>
+                    {budgetAmount > 0 && (() => {
                       const pct = (monthCost / budgetAmount) * 100
                       return (
-                        <span className={css.budgetValue} data-testid="billing-budget-value">
-                          {money(monthCost)} / {money(budgetAmount)} · {pct.toFixed(1)}%
-                        </span>
+                        <div className={css.ctlRowStretch}>
+                          <div
+                            className={css.prog}
+                            role="progressbar"
+                            aria-valuenow={Math.min(pct, 100)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={t('billing.budget')}
+                            data-testid="billing-budget-track"
+                          >
+                            {/* 分档变色：≥80% 琥珀警示，≥100% 红色脉冲。 */}
+                            <div
+                              className={clsx(css.progFill, pct >= 100 && css.budgetFillOver, pct >= 80 && pct < 100 && css.budgetFillWarn)}
+                              style={{ width: `${Math.min(pct, 100)}%` }}
+                            />
+                          </div>
+                        </div>
                       )
                     })()}
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={budgetEnabled}
-                      aria-label={t('billing.budget')}
-                      data-testid="billing-budget-toggle"
-                      className={clsx(css.switch, budgetEnabled && css.switchOn)}
-                      onClick={onToggleBudget}
-                    >
-                      <span className={css.switchKnob} />
-                    </button>
-                  </span>
-                </div>
-                <p className={css.budgetHint}>{t('billing.budgetHint')}</p>
-                {budgetEnabled && budgetAmount > 0 && (() => {
-                  const pct = (monthCost / budgetAmount) * 100
-                  return (
-                    <div className={css.budgetTrack} data-testid="billing-budget-track">
-                      {/* 分档变色：≥80% 琥珀警示，≥100% 红色脉冲。 */}
-                      <div
-                        className={clsx(css.budgetFill, pct >= 100 && css.budgetFillOver, pct >= 80 && pct < 100 && css.budgetFillWarn)}
-                        style={{ width: `${Math.min(pct, 100)}%` }}
-                      />
-                    </div>
-                  )
-                })()}
+                    {budgetAmount > 0 && (
+                      <p className={css.setCardDesc} data-testid="billing-budget-value">
+                        {t('billing.budgetSummary').replace('{used}', money(monthCost)).replace('{total}', money(budgetAmount))}
+                      </p>
+                    )}
+                  </div>
+                )}
               </section>
 
-              {/* 峰谷切换提醒：开关 + 提前量/位置/模式/系统通知 + 预览（偏好持久化到 localStorage）。 */}
-              <section className={css.peakAlertPanel} data-testid="billing-peak-alert-settings">
-                <div className={css.peakAlertPanelHead}>
-                  <span className={css.peakAlertPanelLabel}>{t('billing.peakAlert')}</span>
+              {/* 2. 峰谷切换提醒：set-card——头部 + 控制列(提前量/位置/模式/系统通知/预览)。 */}
+              <section className={css.setCard} data-testid="billing-peak-alert-settings">
+                <div className={css.setCardHead}>
+                  <div className={css.setCardMeta}>
+                    <h3 className={css.setCardTitle}>{t('billing.peakAlert')}</h3>
+                    <p className={css.setCardDesc}>{t('billing.peakAlertHint')}</p>
+                  </div>
                   <button
                     type="button"
                     role="switch"
@@ -1823,207 +1877,234 @@ function BillingDashboard({
                     <span className={css.switchKnob} />
                   </button>
                 </div>
-                <p className={css.peakAlertHint}>{t('billing.peakAlertHint')}</p>
                 {peakConfig.enabled && (
-                  <div className={css.peakAlertPanelBody}>
-                    <label className={css.peakAlertField}>
-                      <span>{t('billing.peakAlertLeadMin')}</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={30}
-                        step={1}
-                        value={peakConfig.leadMin}
-                        className={css.peakAlertNum}
-                        aria-label={t('billing.peakAlertLeadMin')}
-                        onChange={(e) => {
-                          const v = Number(e.target.valueAsNumber)
-                          onPeakConfig({
-                            ...peakConfig,
-                            leadMin: Number.isFinite(v) ? Math.min(30, Math.max(1, Math.round(v))) : peakConfig.leadMin,
-                          })
-                        }}
-                      />
+                  <div className={css.ctlCol}>
+                    <label className={css.ctlRow}>
+                      <span className={css.ctlLabel}>{t('billing.peakAlertLeadMin')}</span>
+                      <span className={css.inp}>
+                        <input
+                          type="number"
+                          min={1}
+                          max={30}
+                          step={1}
+                          value={peakConfig.leadMin}
+                          className={css.budgetInput}
+                          aria-label={t('billing.peakAlertLeadMin')}
+                          onChange={(e) => {
+                            const v = Number(e.target.valueAsNumber)
+                            onPeakConfig({
+                              ...peakConfig,
+                              leadMin: Number.isFinite(v) ? Math.min(30, Math.max(1, Math.round(v))) : peakConfig.leadMin,
+                            })
+                          }}
+                        />
+                      </span>
                     </label>
-                    <label className={css.peakAlertField}>
-                      <span>{t('billing.peakAlertPosCorner')}</span>
-                      <select
-                        value={peakConfig.position}
-                        className={css.peakAlertSelect}
-                        onChange={(e) => { onPeakConfig({ ...peakConfig, position: e.target.value === 'center' ? 'center' : 'bottom-right' }) }}
-                      >
-                        <option value="bottom-right">{t('billing.peakAlertPosCorner')}</option>
-                        <option value="center">{t('billing.peakAlertPosCenter')}</option>
-                      </select>
-                    </label>
-                    <label className={css.peakAlertField}>
-                      <span>{t('billing.peakAlert')}</span>
-                      <select
-                        value={peakConfig.mode}
-                        className={css.peakAlertSelect}
-                        onChange={(e) => {
-                          const m = e.target.value
-                          onPeakConfig({ ...peakConfig, mode: m === 'peak' || m === 'offPeak' ? m : 'both' })
-                        }}
-                      >
-                        <option value="both">{t('billing.peakAlertModeBoth')}</option>
-                        <option value="peak">{t('billing.peakAlertModePeak')}</option>
-                        <option value="offPeak">{t('billing.peakAlertModeOff')}</option>
-                      </select>
-                    </label>
-                    <label className={css.peakAlertCheck}>
+                    <div className={css.ctlRow}>
+                      <span className={css.ctlLabel}>{t('billing.peakAlertPos')}</span>
+                      <div className={css.ctlGroup} role="radiogroup" aria-label={t('billing.peakAlertPos')}>
+                        {(['bottom-right', 'center'] as const).map(pos => (
+                          <label key={pos} className={css.rdo}>
+                            <input
+                              type="radio"
+                              name="peak-pos"
+                              checked={peakConfig.position === pos}
+                              onChange={() => onPeakConfig({ ...peakConfig, position: pos })}
+                            />
+                            <span className={css.rdoDot} aria-hidden="true" />
+                            {pos === 'bottom-right' ? t('billing.peakAlertPosCorner') : t('billing.peakAlertPosCenter')}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div className={css.ctlRow}>
+                      <span className={css.ctlLabel}>{t('billing.peakAlertMode')}</span>
+                      <div className={css.ctlGroup} role="radiogroup" aria-label={t('billing.peakAlertMode')}>
+                        {(['both', 'peak', 'offPeak'] as const).map(m => (
+                          <label key={m} className={css.rdo}>
+                            <input
+                              type="radio"
+                              name="peak-mode"
+                              checked={peakConfig.mode === m}
+                              onChange={() => onPeakConfig({ ...peakConfig, mode: m })}
+                            />
+                            <span className={css.rdoDot} aria-hidden="true" />
+                            {m === 'both' ? t('billing.peakAlertModeBoth') : m === 'peak' ? t('billing.peakAlertModePeak') : t('billing.peakAlertModeOff')}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <label className={css.ctlRow}>
+                      <span className={css.ctlLabel}>{t('billing.peakAlertWebNotify')}</span>
                       <input
                         type="checkbox"
                         checked={peakConfig.webNotify}
+                        aria-label={t('billing.peakAlertWebNotify')}
                         onChange={(e) => { onPeakConfig({ ...peakConfig, webNotify: e.target.checked }) }}
                       />
-                      <span>{t('billing.peakAlertWebNotify')}</span>
                     </label>
-                    <button type="button" className={css.peakAlertPreview} onClick={onPreviewPeak}>
-                      {t('billing.peakAlertPreview')}
-                    </button>
+                    <div className={css.ctlRow}>
+                      <button type="button" className={css.btn} onClick={onPreviewPeak}>
+                        {t('billing.peakAlertPreview')}
+                      </button>
+                    </div>
                   </div>
                 )}
               </section>
 
-              {/* usage_stats 工具开关：设置命名空间持久化（默认关闭，重启生效）。 */}
-              <section className={css.budget} data-testid="billing-usage-stats-tool-setting">
-                <div className={css.budgetHead}>
-                  <span className={css.budgetLabel}>{t('billing.usageStatsTool')}</span>
-                  <span className={css.budgetControls}>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={usageStatsEnabled}
-                      aria-label={t('billing.usageStatsTool')}
-                      data-testid="billing-usage-stats-tool-toggle"
-                      className={clsx(css.switch, usageStatsEnabled && css.switchOn)}
-                      onClick={toggleUsageStats}
-                    >
-                      <span className={css.switchKnob} />
-                    </button>
-                  </span>
-                </div>
-                <p className={css.budgetHint}>{t('billing.usageStatsToolHint')}</p>
-              </section>
-
-              {/* 模型用量悬浮窗：展示模式（综合 / 指定订阅卡）+ 订阅目标多选。 */}
-              <section className={css.budget} data-testid="billing-float-setting">
-                <div className={css.budgetHead}>
-                  <span className={css.budgetLabel}>{t('billing.floatWindow')}</span>
-                </div>
-                <div className={css.floatModeRow} data-testid="billing-float-mode">
-                  <button
-                    type="button"
-                    className={clsx(css.floatModeBtn, floatPrefs.mode === 'combined' && css.floatModeBtnOn)}
-                    data-testid="billing-float-mode-combined"
-                    onClick={() => onFloatPrefs({ mode: 'combined', targets: floatPrefs.targets })}
-                  >
-                    {t('billing.floatModeCombined')}
-                  </button>
-                  <button
-                    type="button"
-                    className={clsx(css.floatModeBtn, floatPrefs.mode === 'subscription' && css.floatModeBtnOn)}
-                    data-testid="billing-float-mode-subscription"
-                    onClick={() => onFloatPrefs({ mode: 'subscription', targets: floatPrefs.targets })}
-                  >
-                    {t('billing.floatModeSubscription')}
-                  </button>
-                </div>
-                {floatPrefs.mode === 'subscription' && (
-                  <div className={css.floatTargets} data-testid="billing-float-targets">
-                    {subscriptionOptions.map((option) => {
-                      const on = floatPrefs.targets.includes(option.id)
-                      return (
-                        <label key={option.id} className={css.floatTarget}>
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            data-testid={`billing-float-target-${option.id}`}
-                            onChange={() => onFloatPrefs({
-                              mode: 'subscription',
-                              targets: on
-                                ? floatPrefs.targets.filter(id => id !== option.id)
-                                : [...floatPrefs.targets, option.id],
-                            })}
-                          />
-                          <span className={css.floatTargetLabel}>{option.label}</span>
-                        </label>
-                      )
-                    })}
-                    {subscriptionOptions.length === 0 && (
-                      <span className={css.budgetHint}>{t('billing.floatNoTargetsHint')}</span>
-                    )}
+              {/* 3. usage_stats 工具开关：set-card——仅头部(标题+说明+开关)，默认关闭重启生效。 */}
+              <section className={css.setCard} data-testid="billing-usage-stats-tool-setting">
+                <div className={css.setCardHead}>
+                  <div className={css.setCardMeta}>
+                    <h3 className={css.setCardTitle}>{t('billing.usageStatsTool')}</h3>
+                    <p className={css.setCardDesc}>{t('billing.usageStatsToolHint')}</p>
                   </div>
-                )}
-                <p className={css.budgetHint}>{t('billing.floatWindowHint')}</p>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={usageStatsEnabled}
+                    aria-label={t('billing.usageStatsTool')}
+                    data-testid="billing-usage-stats-tool-toggle"
+                    className={clsx(css.switch, usageStatsEnabled && css.switchOn)}
+                    onClick={toggleUsageStats}
+                  >
+                    <span className={css.switchKnob} />
+                  </button>
+                </div>
               </section>
 
-              {/* 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
+              {/* 4. 模型用量悬浮窗：set-card——头部 + 控制列(展示模式 / 订阅目标多选)。 */}
+              <section className={css.setCard} data-testid="billing-float-setting">
+                <div className={css.setCardHead}>
+                  <div className={css.setCardMeta}>
+                    <h3 className={css.setCardTitle}>{t('billing.floatWindow')}</h3>
+                    <p className={css.setCardDesc}>{t('billing.floatWindowHint')}</p>
+                  </div>
+                </div>
+                <div className={css.ctlCol}>
+                  <div className={css.ctlRow}>
+                    <span className={css.ctlLabel}>{t('billing.floatMode')}</span>
+                    <div className={css.ctlGroup} data-testid="billing-float-mode">
+                      <button
+                        type="button"
+                        className={clsx(css.floatModeBtn, floatPrefs.mode === 'combined' && css.floatModeBtnOn)}
+                        data-testid="billing-float-mode-combined"
+                        onClick={() => onFloatPrefs({ mode: 'combined', targets: floatPrefs.targets })}
+                      >
+                        {t('billing.floatModeCombined')}
+                      </button>
+                      <button
+                        type="button"
+                        className={clsx(css.floatModeBtn, floatPrefs.mode === 'subscription' && css.floatModeBtnOn)}
+                        data-testid="billing-float-mode-subscription"
+                        onClick={() => onFloatPrefs({ mode: 'subscription', targets: floatPrefs.targets })}
+                      >
+                        {t('billing.floatModeSubscription')}
+                      </button>
+                    </div>
+                  </div>
+                  {floatPrefs.mode === 'subscription' && (
+                    <div className={css.ctlRow}>
+                      <span className={css.ctlLabel}>{t('billing.floatTargets')}</span>
+                      <span className={css.ctlGroup} data-testid="billing-float-targets">
+                        {subscriptionOptions.map((option) => {
+                          const on = floatPrefs.targets.includes(option.id)
+                          return (
+                            <label key={option.id} className={css.floatTarget}>
+                              <input
+                                type="checkbox"
+                                checked={on}
+                                data-testid={`billing-float-target-${option.id}`}
+                                onChange={() => onFloatPrefs({
+                                  mode: 'subscription',
+                                  targets: on
+                                    ? floatPrefs.targets.filter(id => id !== option.id)
+                                    : [...floatPrefs.targets, option.id],
+                                })}
+                              />
+                              <span className={css.floatTargetLabel}>{option.label}</span>
+                            </label>
+                          )
+                        })}
+                        {subscriptionOptions.length === 0 && (
+                          <span className={css.setCardDesc}>{t('billing.floatNoTargetsHint')}</span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {/* 5. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
               <PluginInfoCard t={t} version={stats.pluginVersion} />
             </div>
           )}
 
           {tab === 'trends' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-trends">
-              {/* Trend chart */}
+              {/* 1. 费用趋势：ub-card —— 头部(标题 + 7天/30天 与 费用/Token 分段) + 堆叠面积图。 */}
               <section
-                className={clsx(css.panel, css.trendPanel)}
+                className={clsx(css.ubCard, css.trendPanel)}
                 data-testid="billing-panel-trend"
               >
-                <div className={css.panelHead}>
-                  <h3 className={css.panelTitle}>
+                <div className={css.ubCardHead}>
+                  <h3 className={css.ubCardTitle}>
                     {t('billing.trend')}
                   </h3>
                   {renderSlot('billing.dashboard.decor', { position: 'trend' })}
-                  <span className={css.rangeToggle} role="group" aria-label={t('billing.trend')}>
-                    {([7, 30] as const).map(days => (
-                      <button
-                        key={days}
-                        type="button"
-                        className={clsx(css.rangeButton, trendDays === days && css.rangeButtonActive)}
-                        aria-pressed={trendDays === days}
-                        data-testid={`billing-trend-${days}d`}
-                        onClick={() => { setTrendDays(days) }}
-                      >
-                        {days === 7 ? t('billing.trend7d') : t('billing.trend30d')}
-                      </button>
-                    ))}
+                  <span className={css.ubCardControlGroup}>
+                    <span className={css.rangeToggle} role="group" aria-label={t('billing.trend')}>
+                      {([7, 30] as const).map(days => (
+                        <button
+                          key={days}
+                          type="button"
+                          className={clsx(css.rangeButton, trendDays === days && css.rangeButtonActive)}
+                          aria-pressed={trendDays === days}
+                          data-testid={`billing-trend-${days}d`}
+                          onClick={() => { setTrendDays(days) }}
+                        >
+                          {days === 7 ? t('billing.trend7d') : t('billing.trend30d')}
+                        </button>
+                      ))}
+                    </span>
+                    <span className={css.rangeToggle} role="group" aria-label={t('billing.trendMetric')}>
+                      {(['cost', 'tokens'] as const).map(m => (
+                        <button
+                          key={m}
+                          type="button"
+                          className={clsx(css.rangeButton, trendMetric === m && css.rangeButtonActive)}
+                          aria-pressed={trendMetric === m}
+                          data-testid={`billing-trend-metric-${m}`}
+                          onClick={() => { setTrendMetric(m) }}
+                        >
+                          {m === 'cost' ? t('billing.trendMetricCost') : t('billing.trendMetricTokens')}
+                        </button>
+                      ))}
+                    </span>
                   </span>
-                  <span className={css.rangeToggle} role="group" aria-label={t('billing.trendMetric')}>
-                    {(['cost', 'tokens'] as const).map(m => (
-                      <button
-                        key={m}
-                        type="button"
-                        className={clsx(css.rangeButton, trendMetric === m && css.rangeButtonActive)}
-                        aria-pressed={trendMetric === m}
-                        data-testid={`billing-trend-metric-${m}`}
-                        onClick={() => { setTrendMetric(m) }}
-                      >
-                        {m === 'cost' ? t('billing.trendMetricCost') : t('billing.trendMetricTokens')}
-                      </button>
-                    ))}
-                  </span>
-                  <span className={css.panelHint}>
+                  <span className={css.ubCardSub}>
                     {latestDate}
                   </span>
                 </div>
                 <TrendChart data={trend} models={chartModels} currency={currency} metric={trendMetric} />
               </section>
 
-              {/* 每轮费用 + 成本突增异常（趋势 Tab 内默认展开）。 */}
+              {/* 2. 每轮费用：ub-card —— 头部(标题 + 异常徽标) + 说明 + 柱状图。 */}
               {turns.length > 0 && (
-                <section className={css.panel} data-testid="billing-panel-rounds">
-                  <div className={css.panelHead}>
-                    <h3 className={css.panelTitle}>
+                <section className={css.ubCard} data-testid="billing-panel-rounds">
+                  <div className={css.ubCardHead}>
+                    <h3 className={css.ubCardTitle}>
                       {t('billing.rounds')}
                     </h3>
                     {roundFlags.length > 0 && (
-                      <span className={css.roundsFlagBadge} data-testid="billing-rounds-flag-count">
+                      <span className={css.ubTagError} data-testid="billing-rounds-flag-count">
                         {roundFlags.length} {t('billing.anomaly')}
                       </span>
                     )}
                   </div>
+                  <p className={css.ubCardSub}>
+                    {t('billing.roundsHint').replace('{count}', String(turns.length))}
+                  </p>
                   <RoundCostChart
                     rounds={turns}
                     flags={roundFlags}
@@ -2033,18 +2114,18 @@ function BillingDashboard({
                 </section>
               )}
 
-              {/* 峰谷时段占比：近 N 轮费用按北京时间高峰/空闲分摊（精确到轮）。 */}
+              {/* 3. 峰谷时段占比：ub-card —— 头部 + 分摊条 + 图例。 */}
               {turns.length > 0 && (() => {
                 const shareTotal = peakShare.peak + peakShare.offPeak
                 if (shareTotal <= 0) return null
                 const peakPct = (peakShare.peak / shareTotal) * 100
                 return (
-                  <section className={css.panel} data-testid="billing-panel-share">
-                    <div className={css.panelHead}>
-                      <h3 className={css.panelTitle}>
+                  <section className={css.ubCard} data-testid="billing-panel-share">
+                    <div className={css.ubCardHead}>
+                      <h3 className={css.ubCardTitle}>
                         {t('billing.peakShare')}
                       </h3>
-                      <span className={css.panelHint}>
+                      <span className={css.ubCardSub}>
                         {t('billing.peakShareHint').replace('{count}', String(turns.length))}
                       </span>
                     </div>
@@ -2410,98 +2491,84 @@ function BillingDashboard({
                   </div>
                 </section>
               )}
-              {/* 官方 vs 三方汇总：官方 = DeepSeek 官方直连，三方 = 其余中转/代理。 */}
-              {bucketSummary !== undefined && (
-                <section className={css.panel} data-testid="billing-panel-buckets">
-                  <div className={css.panelHead}>
-                    <h3 className={css.panelTitle}>
-                      {t('billing.official')} / {t('billing.thirdParty')}
-                    </h3>
-                  </div>
-                  <div className={css.bucketSummary}>
-                    <div className={css.bucketStat}>
-                      <span className={css.bucketStatLabel}>{t('billing.official')}</span>
-                      <span className={css.bucketStatValue}>{money(bucketSummary.officialCost)}</span>
-                      <span className={css.bucketStatSub}>{bucketSummary.officialCalls} {t('billing.calls')}</span>
+              {/* 官方 vs 三方汇总：设计 stat-card 两列——label + 大数 + 调用/占比。 */}
+              {bucketSummary !== undefined && (() => {
+                const totalCost = bucketSummary.officialCost + bucketSummary.thirdCost
+                const officialPct = totalCost > 0 ? (bucketSummary.officialCost / totalCost) * 100 : 0
+                return (
+                  <div className={css.ubStatGrid} data-testid="billing-panel-buckets">
+                    <div className={css.ubStatCard}>
+                      <span className={css.ubStatLabel}>{t('billing.official')}（=DeepSeek 直连）</span>
+                      <span className={css.ubStatValue}>{money(bucketSummary.officialCost)}</span>
+                      <span className={css.ubStatDetail}>{bucketSummary.officialCalls} {t('billing.calls')} · {officialPct.toFixed(1)}%</span>
                     </div>
-                    <div className={css.bucketStat}>
-                      <span className={css.bucketStatLabel}>{t('billing.thirdParty')}</span>
-                      <span className={css.bucketStatValue}>{money(bucketSummary.thirdCost)}</span>
-                      <span className={css.bucketStatSub}>{bucketSummary.thirdCalls} {t('billing.calls')}</span>
+                    <div className={css.ubStatCard}>
+                      <span className={css.ubStatLabel}>{t('billing.thirdParty')}（中转）</span>
+                      <span className={css.ubStatValue}>{money(bucketSummary.thirdCost)}</span>
+                      <span className={css.ubStatDetail}>{bucketSummary.thirdCalls} {t('billing.calls')} · {(100 - officialPct).toFixed(1)}%</span>
                     </div>
                   </div>
-                </section>
-              )}
-              {/* 工作区统计：按 cwd 末级目录归并。 */}
+                )
+              })()}
+              {/* 工作区统计：设计 rowlist —— 名称 + 费用/调用 + 下钻箭头（点击展开前 5 会话）。 */}
               {stats.byWorkspace !== undefined && stats.byWorkspace.length > 0 && (
-                <section className={css.panel} data-testid="billing-panel-workspaces">
-                  <div className={css.panelHead}>
-                    <h3 className={css.panelTitle}>
+                <section className={css.ubCard} data-testid="billing-panel-workspaces">
+                  <div className={css.ubCardHead}>
+                    <h3 className={css.ubCardTitle}>
                       {t('billing.workspaces')}
                     </h3>
+                    <span className={css.ubCardSub}>
+                      {t('billing.workspacesHint')}
+                    </span>
                   </div>
-                  <div className={css.tableScroll}>
-                    <table className={css.modelTable}>
-                      <thead>
-                        <tr>
-                          <th>{t('billing.project')}</th>
-                          <th className={css.numCol}>{t('billing.calls')}</th>
-                          <th className={css.numCol}>{t('billing.inputTokens')}</th>
-                          <th className={css.numCol}>{t('billing.outputTokens')}</th>
-                          <th className={css.numCol}>{t('billing.actual')}</th>
-                          <th className={css.numCol}>{t('billing.lastActive')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stats.byWorkspace.map(row => (
-                          <Fragment key={row.name}>
-                            <tr onClick={() => { setExpandedProject(expandedProject === row.name ? undefined : row.name) }} style={{ cursor: 'pointer' }}>
-                              <td><span className={css.modelName}>{row.name}</span></td>
-                              <td className={css.numCol}>{row.calls.toLocaleString()}</td>
-                              <td className={css.numCol}>{formatTokens(row.input)}</td>
-                              <td className={css.numCol}>{formatTokens(row.output)}</td>
-                              <td className={css.numCol}>{money(row.cost)}</td>
-                              <td className={css.numCol}>
-                                {row.lastActive > 0 ? `${localDayStamp(row.lastActive)}` : '—'}
-                              </td>
-                            </tr>
-                            {/* 项目下钻：展开时列出该项目成本最高的会话（最多 5 条）。 */}
-                            {expandedProject === row.name && (
-                              <tr>
-                                <td colSpan={6} style={{ padding: '0' }}>
-                                  <table className={css.modelTable} style={{ margin: 0, border: 'none', background: 'var(--dsw-alias-bg-layer-1)' }}>
-                                    <tbody>
-                                      {stats.bySession
-                                        ?.filter(s => projectName(s.cwd) === row.name)
-                                        .slice(0, 5)
-                                        .map(s => (
-                                          <tr key={s.id}>
-                                            <td><span className={css.modelName}>{s.title ?? s.id.slice(0, 8)}</span></td>
-                                            <td className={css.numCol}>{s.calls.toLocaleString()}</td>
-                                            <td className={css.numCol}>{money(s.cost)}</td>
-                                            <td className={css.numCol}>{localDayStamp(s.lastActive)}</td>
-                                          </tr>
-                                        ))}
-                                    </tbody>
-                                  </table>
-                                </td>
-                              </tr>
-                            )}
-                          </Fragment>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ul className={css.rowlist}>
+                    {stats.byWorkspace.map(row => (
+                      <Fragment key={row.name}>
+                        <li>
+                          <button
+                            type="button"
+                            className={css.rowline}
+                            data-testid={`billing-workspace-${row.name}`}
+                            onClick={() => { setExpandedProject(expandedProject === row.name ? undefined : row.name) }}
+                          >
+                            <span className={css.rowlineName}>{row.name}</span>
+                            <span className={css.rowlineRight}>
+                              <span className={css.num}>{money(row.cost)}</span>
+                              <span className={css.rowlineMuted}>{row.calls} {t('billing.calls')}</span>
+                              <span className={css.rowlineChev} aria-hidden="true">›</span>
+                            </span>
+                          </button>
+                        </li>
+                        {/* 项目下钻：展开时列出该项目成本最高的会话（最多 5 条）。 */}
+                        {expandedProject === row.name && (
+                          <li className={css.rowlineDrillWrap}>
+                            {stats.bySession
+                              ?.filter(s => projectName(s.cwd) === row.name)
+                              .slice(0, 5)
+                              .map(s => (
+                                <div key={s.id} className={css.rowlineDrill}>
+                                  <span className={css.rowlineName}>{s.title ?? s.id.slice(0, 8)}</span>
+                                  <span className={css.rowlineRight}>
+                                    <span className={css.num}>{money(s.cost)}</span>
+                                    <span className={css.rowlineMuted}>{s.calls} {t('billing.calls')}</span>
+                                  </span>
+                                </div>
+                              ))}
+                          </li>
+                        )}
+                      </Fragment>
+                    ))}
+                  </ul>
                 </section>
               )}
-              {/* 会话明细：按费用倒序，回答「钱花在哪」。 */}
+              {/* 会话明细：设计 card——表（标题/项目/调用/费用/最后活跃）+ 溢出说明。 */}
               {stats.bySession !== undefined && (
-                <section className={css.panel} data-testid="billing-panel-sessions">
-                  <div className={css.panelHead}>
-                    <h3 className={css.panelTitle}>
+                <section className={css.ubCard} data-testid="billing-panel-sessions">
+                  <div className={css.ubCardHead}>
+                    <h3 className={css.ubCardTitle}>
                       {t('billing.sessions')}
                     </h3>
-                    <span className={css.panelHint}>
+                    <span className={css.ubCardSub}>
                       {stats.bySession.length > SESSION_DISPLAY_LIMIT
                         ? t('billing.sessionOverflow')
                           .replace('{limit}', String(SESSION_DISPLAY_LIMIT))
@@ -2509,11 +2576,11 @@ function BillingDashboard({
                         : `${stats.bySession.length}`}
                     </span>
                   </div>
-                  <div className={css.tableScroll} data-testid="billing-sessions-table">
-                    <table className={css.modelTable}>
+                  <div className={css.ubTablewrap} data-testid="billing-sessions-table">
+                    <table className={css.ubTable}>
                       <thead>
                         <tr>
-                          <th>{t('billing.sessions')}</th>
+                          <th>{t('billing.sessionTitle')}</th>
                           <th>{t('billing.project')}</th>
                           <th className={css.numCol}>{t('billing.calls')}</th>
                           <th className={css.numCol}>{t('billing.actual')}</th>
@@ -2572,32 +2639,34 @@ function BillingDashboard({
 
           {tab === 'pricing' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-pricing">
-              {/* 模型单价表：独立 Tab 常驻展开，附汇率来源徽标。 */}
-              <section
-                className={css.panel}
-                data-testid="billing-panel-pricing"
-              >
-                <div className={css.panelHead}>
-                  <h3 className={css.panelTitle}>
-                    {t('billing.pricing')}
-                  </h3>
-                  <span className={css.panelHint}>
+              {/* 1. 汇率与峰谷说明条（中性 alert）。 */}
+              <div className={css.ubAlert} role="note">
+                <div className={css.ubAlertLeft}>
+                  <span className={css.ubRate} data-testid="billing-rate">
                     {t('billing.todayRate')} 1 USD = {formatMoney(rateInfo.rate)}
-                    <span className={clsx(css.rateBadge, rateInfo.live ? css.rateBadgeLive : css.rateBadgeBuiltin)}>
-                      {rateInfo.live ? t('billing.rateLive') : t('billing.rateBuiltin')}
-                    </span>
+                  </span>
+                  <span className={clsx(css.ubTag, rateInfo.live ? css.ubTagSuccess : css.ubTagNeutral)}>
+                    {rateInfo.live ? t('billing.rateLive') : t('billing.rateBuiltin')}
                   </span>
                 </div>
-                <p className={css.pricingTip}>{t('billing.pricingTip')}</p>
-                <div className={css.tableScroll}>
-                  <table className={css.pricingTable}>
+                <p className={css.ubAlertNote}>{t('billing.pricingTip')}</p>
+              </div>
+
+              {/* 2. 模型单价表：ub-card —— 头部(标题+单位) + 表格（模型点+名 / 峰谷 chips / 未收录行）。 */}
+              <section className={css.ubCard} data-testid="billing-panel-pricing">
+                <div className={css.ubCardHead}>
+                  <h3 className={css.ubCardTitle}>{t('billing.pricing')}</h3>
+                  <span className={css.ubCardSub}>{t('billing.pricingUnit')}</span>
+                </div>
+                <div className={css.ubTablewrap}>
+                  <table className={css.ubTable}>
                     <thead>
                       <tr>
-                        <th>Model</th>
-                        <th className={css.numCol}>{t('billing.input')}</th>
-                        <th className={css.numCol}>{t('billing.cacheHit')}</th>
+                        <th>{t('billing.thModel')}</th>
+                        <th className={css.numCol}>{t('billing.thInputMiss')}</th>
+                        <th className={css.numCol}>{t('billing.thInputHit')}</th>
                         <th className={css.numCol}>{t('billing.output')}</th>
-                        <th>{t('billing.band')}</th>
+                        <th className={css.numCol}>{t('billing.band')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2606,68 +2675,49 @@ function BillingDashboard({
                         return (
                           <tr key={entry.key}>
                             <td>
-                              <span className={css.modelCell}>
-                                <span className={css.modelDot} style={{ background: resolveToken(entry.colorVar) }} />
-                                <span>
-                                  <span className={css.modelName}>
-                                    {entry.name}
-                                    {/* 探活命中但无内置/models.dev 价：明确标注，不参与计价。 */}
-                                    {entry.uncatalogued && (
-                                      <span className={css.uncataloguedTag} data-testid="billing-price-uncatalogued">
-                                        {t('billing.uncatalogued')}
-                                      </span>
-                                    )}
-                                  </span>
-                                  <span className={css.modelProvider}>{providerName(entry.provider)}</span>
+                              <span className={css.ubModel}>
+                                <span className={css.ubModelDot} style={{ background: resolveToken(entry.colorVar) }} aria-hidden="true" />
+                                <span className={css.ubModelName}>
+                                  {entry.name}
+                                  {/* 探活命中但无内置/models.dev 价：明确标注，不参与计价。 */}
+                                  {entry.uncatalogued && (
+                                    <span className={css.ubTagAlert} data-testid="billing-price-uncatalogued">
+                                      {t('billing.uncatalogued')}
+                                    </span>
+                                  )}
                                 </span>
                               </span>
                             </td>
                             <td className={css.numCol}>
-                              {hasPrice ? entry.price.offPeak !== undefined
-                                ? (
-                                  <span className={css.bandPrice}>
-                                    <span>{unitMoney(entry.price.input, entry.price.currency)}</span>
-                                    <span className={css.bandPriceOff}>{unitMoney(entry.price.offPeak.input, entry.price.currency)}</span>
-                                  </span>
-                                )
-                                : unitMoney(entry.price.input, entry.price.currency)
-                                : <span className={css.na}>—</span>}
+                              {hasPrice ? unitMoney(entry.price.input, entry.price.currency) : <span className={css.na}>—</span>}
                             </td>
                             <td className={css.numCol}>
-                              {hasPrice ? entry.price.offPeak !== undefined
+                              {hasPrice ? unitMoney(entry.price.cacheHit, entry.price.currency) : <span className={css.na}>—</span>}
+                            </td>
+                            <td className={css.numCol}>
+                              {hasPrice ? unitMoney(entry.price.output, entry.price.currency) : <span className={css.na}>—</span>}
+                            </td>
+                            <td className={css.numCol}>
+                              {hasPrice && entry.price.offPeak !== undefined && entry.peakHours !== undefined
                                 ? (
-                                  <span className={css.bandPrice}>
-                                    <span>{unitMoney(entry.price.cacheHit, entry.price.currency)}</span>
-                                    <span className={css.bandPriceOff}>
-                                      {unitMoney(entry.price.offPeak.cacheHit, entry.price.currency)}
+                                  <span className={css.ubPricepair}>
+                                    <span className={css.ubChipPeak}>
+                                      <span className={css.ubChipLabel}>{t('billing.ubPeak')}</span>
+                                      <span className={css.num}>
+                                        {unitMoney(entry.price.input, entry.price.currency)} / {unitMoney(entry.price.output, entry.price.currency)}
+                                      </span>
+                                    </span>
+                                    <span className={css.ubChipOff}>
+                                      <span className={css.ubChipLabel}>{t('billing.ubOff')}</span>
+                                      <span className={css.num}>
+                                        {unitMoney(entry.price.offPeak.input, entry.price.currency)} / {unitMoney(entry.price.offPeak.output, entry.price.currency)}
+                                      </span>
                                     </span>
                                   </span>
                                 )
-                                : unitMoney(entry.price.cacheHit, entry.price.currency)
-                                : <span className={css.na}>—</span>}
-                            </td>
-                            <td className={css.numCol}>
-                              {hasPrice ? entry.price.offPeak !== undefined
-                                ? (
-                                  <span className={css.bandPrice}>
-                                    <span>{unitMoney(entry.price.output, entry.price.currency)}</span>
-                                    <span className={css.bandPriceOff}>
-                                      {unitMoney(entry.price.offPeak.output, entry.price.currency)}
-                                    </span>
-                                  </span>
-                                )
-                                : unitMoney(entry.price.output, entry.price.currency)
-                                : <span className={css.na}>—</span>}
-                            </td>
-                            <td>
-                              {entry.price.offPeak !== undefined && entry.peakHours !== undefined
-                                ? (
-                                  <span className={css.bandTag}>
-                                    <span>{t('billing.peak')} {entry.peakHours}</span>
-                                    <span className={css.bandTagOff}>{t('billing.offPeak')} 50%</span>
-                                  </span>
-                                )
-                                : <span className={css.flatTag}>{t('billing.flat')}</span>}
+                                : hasPrice
+                                  ? <span className={css.flatTag}>{t('billing.flat')}</span>
+                                  : <span className={css.na}>—</span>}
                             </td>
                           </tr>
                         )
@@ -2676,12 +2726,39 @@ function BillingDashboard({
                   </table>
                 </div>
               </section>
+
+              {/* 3. 计价说明：ub-card —— 头部 + 说明列表。 */}
+              <section className={css.ubCard}>
+                <div className={css.ubCardHead}>
+                  <h3 className={css.ubCardTitle}>{t('billing.pricingNotes')}</h3>
+                </div>
+                <ul className={css.ubNotes}>
+                  <li className={css.ubNotesItem}>
+                    <span className={css.ubNotesTerm}>{t('billing.cacheHit')}</span>
+                    <span className={css.ubNotesDesc}>{t('billing.noteCache')}</span>
+                  </li>
+                  <li className={css.ubNotesItem}>
+                    <span className={css.ubNotesTerm}>{t('billing.peakBand')}</span>
+                    <span className={css.ubNotesDesc}>{t('billing.noteBand')}</span>
+                  </li>
+                  <li className={css.ubNotesItem}>
+                    <span className={css.ubNotesTerm}>{t('billing.pricingSource')}</span>
+                    <span className={css.ubNotesDesc}>{t('billing.noteSource')}</span>
+                  </li>
+                </ul>
+              </section>
             </div>
           )}
 
           {/* ZINE: 装饰孔位（footer 锚点：条码装饰底部），所有 Tab 共享常驻。 */}
           {renderSlot('billing.dashboard.decor', { position: 'footer' })}
         </div>
+
+        {/* 底部公共细条（ub-footer）：轮询说明 + 版本/许可证，所有 Tab 共享。 */}
+        <footer className={css.modalFooter} data-testid="billing-footer">
+          <span>{t('billing.footer')}</span>
+          <span>{t('billing.footerCredit').replace('{version}', stats.pluginVersion === undefined ? '—' : `v${stats.pluginVersion}`)}</span>
+        </footer>
       </div>
     </Modal>
   )

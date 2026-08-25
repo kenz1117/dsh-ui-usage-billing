@@ -296,7 +296,7 @@
       "createdAt": 1787616000006,
       "canvasData": {
         "x": 0,
-        "y": 2931,
+        "y": 2940,
         "group": 0,
         "layoutSnapshot": {
           "version": 1,
@@ -313,7 +313,7 @@
     }
   ],
   "config": {
-    "autoLayout": true,
+    "autoLayout": false,
     "deviceType": "desktop",
     "projectName": "用量计费仪表盘 UI/UX 重构",
     "designLibrary": {
