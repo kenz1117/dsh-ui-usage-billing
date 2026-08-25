@@ -142,31 +142,39 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 
 统计中的 `input` 为总输入（cacheHit + cacheMiss），估算按命中 / 未命中分拆计价，避免重复计费。支持双档计费的模型按 `DEFAULT_PEAK_SHARE`（默认 0.5）混合高峰与低谷档；周末（北京时间周六 / 周日）全天按低谷价计费。
 
-### 支持模型（2026-08-21 主流阵容，OpenAI 兼容系列）
+### 支持模型（2026-08 主流阵容，OpenAI 兼容系列，共 73 款）
 
-| 厂商       | 模型                                                                                      |
-| -------- | --------------------------------------------------------------------------------------- |
-| DeepSeek | V4 Flash、V4 Flash Vision (Exp)、V4 Pro（按时段峰谷计费：工作日高峰 09:00-12:00 / 14:00-18:00 北京 = 低谷 2 倍；周末全天低谷） |
-| 智谱 AI    | GLM-5.3、GLM-5.2、GLM-5.1、GLM-5-Turbo、GLM-4.7、GLM-4.6、GLM-4.5-Air、GLM-5V-Turbo                                  |
-| 阿里通义     | Qwen3.8 Max、Qwen3.7-Max、Qwen3.5-Plus、Qwen3.5-Flash                                      |
-| 字节豆包     | Doubao Seed-2.0 Pro、Seed-2.0 Mini、Seed-1.6                                              |
-| 月之暗面     | Kimi K3、K2.7 Code、K2.7 Code HighSpeed、K2.6                                              |
-| 小米       | MiMo V2.5（走 token plan 订阅通道时豁免计费）¹                                                      |
-| MiniMax  | MiniMax-M3、MiniMax-M2.7、MiniMax-M2.7-highspeed                                                |
-| 百度       | ERNIE-5.1                                                                               |
-| 腾讯       | 混元 T1、混元 Hy3                                                                            |
-| 零一万物     | Yi-Lightning                                                                            |
-| 阶跃星辰     | Step 3.7 Flash                                                                          |
-| 科大讯飞     | Spark 4.0 Ultra（套餐制）¹                                                                   |
-| 商汤       | SenseNova 6.5（公测中）¹                                                                     |
-| 百川智能     | Baichuan M3-Plus                                                                        |
-| OpenAI   | GPT-5.6 Sol / Terra / Luna                                                              |
-| Google   | Gemini 3.1 Pro、3.6 Flash（Standard / Flex 双档，Flex = -50%）                                |
-| xAI      | Grok 4.6、Grok 4.3                                                                       |
-| Meta     | Llama 4 Maverick、Scout                                                                  |
-| 其他       | 未收录模型的统一回退定价                                                                            |
+完整目录见费率 Tab 及源码 `src/client/pricing.ts` 的 `MODEL_CATALOG`，此处每厂商仅列代表型号。
 
-> ¹ 讯飞、商汤、小米未公布按量单价，表内为估算价；这些模型走订阅通道（coding / token plan / opencode）时费用记 0，正式定价公布后自动校准。订阅通道与 pi-ai 内置提供方对齐（kimi-coding、zai-coding-cn、opencode、opencode-go、qwen/xiaomi 的 token-plan 各区域变体），可按 `subscriptionProviders` 配置覆盖。
+| 厂商       | 代表模型                                        |
+| -------- | -------------------------------------------- |
+| DeepSeek | V4 Flash、V4 Pro（等 3 款；峰谷计费：工作日高峰 ×2、周末全天低谷） |
+| 智谱 AI    | GLM-5.3、GLM-5.2（等 10 款）                     |
+| 阿里通义     | Qwen3.8 Max、Qwen3-Coder 480B（等 7 款）         |
+| 字节豆包     | Doubao Seed-2.1 Pro、Doubao-Seed-Evolving（等 8 款） |
+| 月之暗面     | Kimi K3、Kimi K2.7 Code（等 9 款）               |
+| 小米       | MiMo V2.5（等 2 款）¹                            |
+| MiniMax  | MiniMax-M3、MiniMax-M2.7（等 3 款）              |
+| 百度文心     | ERNIE-5.1、ERNIE-4.5 300B（等 2 款）             |
+| 腾讯混元     | 混元 T1、混元 Hy3（等 2 款）                       |
+| Anthropic | Claude Opus 4.6、Claude Sonnet 4.6（等 5 款）    |
+| Mistral AI | Mistral Large 3、Mistral Small 4（等 3 款）     |
+| Cohere    | Command A、Command R（等 2 款）                 |
+| OpenAI   | GPT-5.6 Sol / Terra / Luna（等 3 款）           |
+| Google   | Gemini 3.1 Pro、Gemini 3.6 Flash（等 2 款）      |
+| xAI      | Grok 4.6（等 2 款）                             |
+| Meta     | Llama 4 Maverick（等 2 款）                     |
+| 美团       | LongCat 2.0（估算价）                             |
+| 面壁智能     | MiniCPM-V 4.5（估算价）                           |
+| 小红书      | Dots3-Note Preview（估算价）                      |
+| 零一万物     | Yi-Lightning                                  |
+| 阶跃星辰     | Step 3.7 Flash                                |
+| 科大讯飞     | Spark 4.0 Ultra（套餐制）¹                       |
+| 商汤       | SenseNova 6.5（公测中）¹                         |
+| 百川智能     | Baichuan M3-Plus                              |
+| 其他       | 未收录模型的统一回退定价（费用记 0）                      |
+
+> ¹ 讯飞、商汤、小米及美团 / 面壁智能 / 小红书等未公布官方按量单价的模型，表内为估算价（`estimated`）；这些模型走订阅通道（coding / token plan / opencode）时费用记 0。订阅通道与 pi-ai 内置提供方对齐（kimi-coding、zai-coding-cn、opencode、opencode-go、qwen / xiaomi 的 token-plan 各区域变体），可按 `subscriptionProviders` 配置覆盖。
 
 新增模型：在 `MODEL_CATALOG` 追加条目，并在 `src/client/pricing.ts` 的 `MODEL_KEY_ALIASES` 中映射真实模型 id（聚合层与客户端渲染共用同一张表）。
 

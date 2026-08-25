@@ -1785,6 +1785,30 @@
   border-radius: 50%;
 }
 
+/* 厂商 logo：内嵌 SVG data URI，置于模型名前。 */
+.vendorLogo {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+/* 厂商字母徽章兜底：无 logo 素材（字节/文心/讯飞/商汤/百川/零一/面壁/小红书）时使用。 */
+.vendorLetter {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
 .ubModelName {
   display: inline-flex;
   align-items: center;
