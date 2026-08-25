@@ -319,6 +319,44 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'dsw-static-blue-400',
     price: { currency: 'CNY', input: 4, cacheHit: 0.8, output: 16 },
   },
+  // 智谱 GLM 其余按量价（元 / 每百万 token，≤32K 档，官方 open.bigmodel.cn / 百炼）。
+  {
+    key: 'glm-4.5-air',
+    name: 'GLM-4.5-Air',
+    provider: '智谱 AI',
+    colorVar: 'dsw-static-blue-300',
+    price: { currency: 'CNY', input: 0.8, cacheHit: 0.16, output: 2 },
+  },
+  {
+    key: 'glm-4.7',
+    name: 'GLM-4.7',
+    provider: '智谱 AI',
+    colorVar: 'dsw-static-blue-400',
+    price: { currency: 'CNY', input: 4, cacheHit: 1, output: 16 },
+    // GLM-4.7 无公开按量价：按其在 coding-plan 的抵扣系数相对 GLM-5-Turbo 的比例估算。
+    estimated: true,
+  },
+  {
+    key: 'glm-5-turbo',
+    name: 'GLM-5-Turbo',
+    provider: '智谱 AI',
+    colorVar: 'dsw-static-blue-500',
+    price: { currency: 'CNY', input: 5, cacheHit: 1.2, output: 22 },
+  },
+  {
+    key: 'glm-5.1',
+    name: 'GLM-5.1',
+    provider: '智谱 AI',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'CNY', input: 6, cacheHit: 1.2, output: 24 },
+  },
+  {
+    key: 'glm-5v-turbo',
+    name: 'GLM-5V-Turbo',
+    provider: '智谱 AI',
+    colorVar: 'dsw-static-blue-300',
+    price: { currency: 'CNY', input: 5, cacheHit: 1.2, output: 22 },
+  },
   // 阿里通义千问 (OpenAI-compatible, 百炼 2026-08).
   {
     key: 'qwen-3.8-max',
@@ -610,6 +648,14 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'deepseek-v4-flash-vision-exp': 'flash-vision-exp',
   'deepseek-v4-pro': 'pro',
   'glm-5.2': 'glm',
+  // 智谱 GLM 其余按量变体：独立目录键（点/横杠/大小写变体归一）。
+  'glm-4.5-air': 'glm-4.5-air',
+  'glm-4.5air': 'glm-4.5-air',
+  'glm-4.7': 'glm-4.7',
+  'glm-5-turbo': 'glm-5-turbo',
+  'glm-5.1': 'glm-5.1',
+  'glm-5v-turbo': 'glm-5v-turbo',
+  'glm-5v.1': 'glm-5v-turbo',
   'qwen3.8-max': 'qwen-3.8-max',
   'qwen3.7-max': 'qwen-max',
   'qwen-max': 'qwen-max',
@@ -746,9 +792,8 @@ export function isPriced(key: string): boolean {
 export function catalogEntries(): readonly ModelEntry[] {
   const entries: ModelEntry[] = [...MODEL_CATALOG, ...(liveExtraModels ?? []).map(extraEntryOf)]
   const known = new Set<string>(entries.map(entry => entry.key.toLowerCase()))
+  const knownCanon = new Set<string>(entries.map(entry => canonModelId(entry.key)))
   for (const model of liveCatalogModels ?? []) {
-    // 探活 id 是厂商原始模型 id（如 deepseek-v4.5-flash）；先按原始 id（小写）
-    // 匹配 models.dev 抓到的实时价，再按别名归一化匹配内置目录，两套键都对得上。
     const rawKey = model.id.toLowerCase()
     const builtin = (() => {
       const aliasKey = resolveCatalogKey(model.id)
@@ -756,32 +801,41 @@ export function catalogEntries(): readonly ModelEntry[] {
     })()
     // 内置目录收录：跳过，避免与内置行重复（key 用内置目录键）。
     if (builtin !== undefined) continue
-    if (known.has(rawKey)) continue
-    // models.dev 补充条目已在上方 `known` 收录（其 key 已小写入集），此处命中的
-    // 探活模型必然已 continue，故无需再查 extra；直接查 dsh-spend 官方价兜底。
-    const fallbackLive = livePriceOf(rawKey)
+    const idCanon = canonModelId(model.id)
+    // 已收录（内置 / models.dev 补充）：按归一化 id 去重，避免同一模型的重复行。
+    if (known.has(rawKey) || (idCanon !== '' && knownCanon.has(idCanon))) continue
+    // 目录外但有 models.dev 价：直接复用其 USD 价（按归一化 id 匹配），否则走
+    // dsh-spend 官方价兜底；两者都没有才标「未收录」。
+    const extra = (liveExtraModels ?? []).find(item => canonModelId(item.key) === idCanon)
     let entry: ModelEntry
-    if (fallbackLive !== undefined) {
-      entry = {
-        key: rawKey,
-        name: model.name ?? model.id,
-        provider: model.provider,
-        colorVar: 'dsw-static-neutral-400',
-        price: { currency: 'USD', input: fallbackLive.input, cacheHit: fallbackLive.cacheHit, output: fallbackLive.output },
-      }
+    if (extra !== undefined) {
+      entry = extraEntryOf(extra)
+      if (model.name !== undefined && model.name !== '') entry = { ...entry, name: model.name }
     } else {
-      const aliasKey = resolveCatalogKey(model.id)
-      entry = {
-        key: aliasKey,
-        name: model.name ?? model.id,
-        provider: model.provider,
-        colorVar: 'dsw-static-neutral-400',
-        price: { currency: 'USD', input: 0, cacheHit: 0, output: 0 },
-        // 探活命中但无内置/models.dev/dsh-spend 价：标记未收录，费率表显示「未收录」。
-        uncatalogued: true,
+      const fallbackLive = livePriceOf(rawKey)
+      if (fallbackLive !== undefined) {
+        entry = {
+          key: rawKey,
+          name: model.name ?? model.id,
+          provider: model.provider,
+          colorVar: 'dsw-static-neutral-400',
+          price: { currency: 'USD', input: fallbackLive.input, cacheHit: fallbackLive.cacheHit, output: fallbackLive.output },
+        }
+      } else {
+        const aliasKey = resolveCatalogKey(model.id)
+        entry = {
+          key: aliasKey,
+          name: model.name ?? model.id,
+          provider: model.provider,
+          colorVar: 'dsw-static-neutral-400',
+          price: { currency: 'USD', input: 0, cacheHit: 0, output: 0 },
+          // 探活命中但无内置/models.dev/dsh-spend 价：标记未收录，费率表显示「未收录」。
+          uncatalogued: true,
+        }
       }
     }
     known.add(entry.key.toLowerCase())
+    if (idCanon !== '') knownCanon.add(idCanon)
     entries.push(entry)
   }
   return entries
