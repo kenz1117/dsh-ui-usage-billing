@@ -147,7 +147,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | 厂商       | 模型                                                                                      |
 | -------- | --------------------------------------------------------------------------------------- |
 | DeepSeek | V4 Flash、V4 Flash Vision (Exp)、V4 Pro（按时段峰谷计费：工作日高峰 09:00-12:00 / 14:00-18:00 北京 = 低谷 2 倍；周末全天低谷） |
-| 智谱 AI    | GLM-5.3、GLM-5.2、GLM-4.6                                                                 |
+| 智谱 AI    | GLM-5.3、GLM-5.2、GLM-5.1、GLM-5-Turbo、GLM-4.7、GLM-4.6、GLM-4.5-Air、GLM-5V-Turbo                                  |
 | 阿里通义     | Qwen3.8 Max、Qwen3.7-Max、Qwen3.5-Plus、Qwen3.5-Flash                                      |
 | 字节豆包     | Doubao Seed-2.0 Pro、Seed-2.0 Mini、Seed-1.6                                              |
 | 月之暗面     | Kimi K3、K2.7 Code、K2.7 Code HighSpeed、K2.6                                              |

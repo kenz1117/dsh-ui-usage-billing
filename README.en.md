@@ -147,7 +147,7 @@ cost (CNY) = (missInput × p_input + cacheHit × p_cacheHit + output × p_output
 | Provider  | Models                                                                                       |
 | -------- | ------------------------------------------------------------------------------------------- |
 | DeepSeek | V4 Flash, V4 Flash Vision (Exp), V4 Pro (peak/off-peak billing: weekdays peak 09:00-12:00 / 14:00-18:00 Beijing = 2× off-peak; weekends off-peak all day) |
-| Zhipu AI  | GLM-5.3, GLM-5.2, GLM-4.6                                                                    |
+| Zhipu AI  | GLM-5.3, GLM-5.2, GLM-5.1, GLM-5-Turbo, GLM-4.7, GLM-4.6, GLM-4.5-Air, GLM-5V-Turbo                                       |
 | Aliyun    | Qwen3.8 Max, Qwen3.7-Max, Qwen3.5-Plus, Qwen3.5-Flash                                        |
 | Doubao    | Seed-2.0 Pro, Seed-2.0 Mini, Seed-1.6                                                         |
 | Moonshot  | Kimi K3, K2.7 Code, K2.7 Code HighSpeed, K2.6                                                 |
