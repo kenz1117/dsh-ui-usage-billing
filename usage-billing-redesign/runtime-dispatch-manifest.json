@@ -1,0 +1,766 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-08-24T23:29:35.535Z",
+  "source": "build-page-dispatch-manifest.mjs",
+  "mode": "library-bound",
+  "summary_path": "runtime-orchestration-summary.json",
+  "skillProvenance": {
+    "name": "solo-design",
+    "version": "2026.07.06.8",
+    "version_source": "skill-release-manifest.json",
+    "read_status": "ok"
+  },
+  "dispatchPreflightManifest": [
+    {
+      "recorded_at": "2026-08-24T23:29:35.523Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "LibraryBoundPagePacket",
+      "laneContract": {
+        "resolvedLane": "library_bound",
+        "packetType": "LibraryBoundPagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-library-bound/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+      "nodeId": "page-overview",
+      "htmlSrc": "pages/overview.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/overview.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/overview.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design",
+        "deterministicToolDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-design-workspace.mjs",
+          "validateFinishReadiness": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-finish-readiness.mjs",
+          "validateRestoreContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign' --node-id='page-overview' --html-src='pages/overview.html' --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css",
+      "htmlFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/overview.html",
+      "brandPrefix": "color",
+      "aestheticsMode": "library-bound",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/overview.html' --title='概览 Overview' --lang='zh-CN' --prefix='color' --replace-head",
+      "headFillMode": "replace-head-after-body",
+      "viewportMode": null,
+      "completionSchemaExpected": "full",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {
+        "usage-billing-redesign.design": "c9fa52e9989f3aae16d4c321dd6a425d7dd78a9b7b13265c17e9ca56747ea9a6"
+      },
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-library-bound/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md"
+        ],
+        "optionalContextFiles": [
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    },
+    {
+      "recorded_at": "2026-08-24T23:29:35.523Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "LibraryBoundPagePacket",
+      "laneContract": {
+        "resolvedLane": "library_bound",
+        "packetType": "LibraryBoundPagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-library-bound/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+      "nodeId": "page-providers",
+      "htmlSrc": "pages/providers.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/providers.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/providers.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design",
+        "deterministicToolDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-design-workspace.mjs",
+          "validateFinishReadiness": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-finish-readiness.mjs",
+          "validateRestoreContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign' --node-id='page-providers' --html-src='pages/providers.html' --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css",
+      "htmlFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/providers.html",
+      "brandPrefix": "color",
+      "aestheticsMode": "library-bound",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/providers.html' --title='明细 Providers' --lang='zh-CN' --prefix='color'",
+      "headFillMode": "skeleton-first",
+      "viewportMode": null,
+      "completionSchemaExpected": "full",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {
+        "usage-billing-redesign.design": "c9fa52e9989f3aae16d4c321dd6a425d7dd78a9b7b13265c17e9ca56747ea9a6"
+      },
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-library-bound/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md"
+        ],
+        "optionalContextFiles": [
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    },
+    {
+      "recorded_at": "2026-08-24T23:29:35.523Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "LibraryBoundPagePacket",
+      "laneContract": {
+        "resolvedLane": "library_bound",
+        "packetType": "LibraryBoundPagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-library-bound/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+      "nodeId": "page-tokens",
+      "htmlSrc": "pages/tokens.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/tokens.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/tokens.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design",
+        "deterministicToolDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-design-workspace.mjs",
+          "validateFinishReadiness": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-finish-readiness.mjs",
+          "validateRestoreContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign' --node-id='page-tokens' --html-src='pages/tokens.html' --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css",
+      "htmlFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/tokens.html",
+      "brandPrefix": "color",
+      "aestheticsMode": "library-bound",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/tokens.html' --title='用量 Token' --lang='zh-CN' --prefix='color'",
+      "headFillMode": "skeleton-first",
+      "viewportMode": null,
+      "completionSchemaExpected": "full",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {
+        "usage-billing-redesign.design": "c9fa52e9989f3aae16d4c321dd6a425d7dd78a9b7b13265c17e9ca56747ea9a6"
+      },
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-library-bound/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md"
+        ],
+        "optionalContextFiles": [
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    },
+    {
+      "recorded_at": "2026-08-24T23:29:35.523Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "LibraryBoundPagePacket",
+      "laneContract": {
+        "resolvedLane": "library_bound",
+        "packetType": "LibraryBoundPagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-library-bound/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+      "nodeId": "page-trends",
+      "htmlSrc": "pages/trends.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/trends.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/trends.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design",
+        "deterministicToolDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-design-workspace.mjs",
+          "validateFinishReadiness": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-finish-readiness.mjs",
+          "validateRestoreContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign' --node-id='page-trends' --html-src='pages/trends.html' --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css",
+      "htmlFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/trends.html",
+      "brandPrefix": "color",
+      "aestheticsMode": "library-bound",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/trends.html' --title='趋势 Trends' --lang='zh-CN' --prefix='color'",
+      "headFillMode": "skeleton-first",
+      "viewportMode": null,
+      "completionSchemaExpected": "full",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {
+        "usage-billing-redesign.design": "c9fa52e9989f3aae16d4c321dd6a425d7dd78a9b7b13265c17e9ca56747ea9a6"
+      },
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-library-bound/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md"
+        ],
+        "optionalContextFiles": [
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    },
+    {
+      "recorded_at": "2026-08-24T23:29:35.523Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "LibraryBoundPagePacket",
+      "laneContract": {
+        "resolvedLane": "library_bound",
+        "packetType": "LibraryBoundPagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-library-bound/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+      "nodeId": "page-pricing",
+      "htmlSrc": "pages/pricing.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/pricing.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/pricing.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design",
+        "deterministicToolDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-design-workspace.mjs",
+          "validateFinishReadiness": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-finish-readiness.mjs",
+          "validateRestoreContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign' --node-id='page-pricing' --html-src='pages/pricing.html' --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css",
+      "htmlFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/pricing.html",
+      "brandPrefix": "color",
+      "aestheticsMode": "library-bound",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/pricing.html' --title='费率 Pricing' --lang='zh-CN' --prefix='color'",
+      "headFillMode": "skeleton-first",
+      "viewportMode": null,
+      "completionSchemaExpected": "full",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {
+        "usage-billing-redesign.design": "c9fa52e9989f3aae16d4c321dd6a425d7dd78a9b7b13265c17e9ca56747ea9a6"
+      },
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-library-bound/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md"
+        ],
+        "optionalContextFiles": [
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    },
+    {
+      "recorded_at": "2026-08-24T23:29:35.523Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "LibraryBoundPagePacket",
+      "laneContract": {
+        "resolvedLane": "library_bound",
+        "packetType": "LibraryBoundPagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-library-bound/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+      "nodeId": "page-settings",
+      "htmlSrc": "pages/settings.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/settings.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/settings.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design",
+        "deterministicToolDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-design-workspace.mjs",
+          "validateFinishReadiness": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-finish-readiness.mjs",
+          "validateRestoreContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign' --node-id='page-settings' --html-src='pages/settings.html' --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css",
+      "htmlFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/settings.html",
+      "brandPrefix": "color",
+      "aestheticsMode": "library-bound",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/settings.html' --title='设置 Settings' --lang='zh-CN' --prefix='color'",
+      "headFillMode": "skeleton-first",
+      "viewportMode": null,
+      "completionSchemaExpected": "full",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {
+        "usage-billing-redesign.design": "c9fa52e9989f3aae16d4c321dd6a425d7dd78a9b7b13265c17e9ca56747ea9a6"
+      },
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-library-bound/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md"
+        ],
+        "optionalContextFiles": [
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    },
+    {
+      "recorded_at": "2026-08-24T23:29:35.523Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "LibraryBoundPagePacket",
+      "laneContract": {
+        "resolvedLane": "library_bound",
+        "packetType": "LibraryBoundPagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-library-bound/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-library-bound/library-bound-page-runtime.md",
+      "nodeId": "page-surfaces",
+      "htmlSrc": "pages/surfaces.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/surfaces.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/surfaces.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design",
+        "deterministicToolDir": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-design-workspace.mjs",
+          "validateFinishReadiness": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-finish-readiness.mjs",
+          "validateRestoreContract": "/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/record-dispatch-completion.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign' --node-id='page-surfaces' --html-src='pages/surfaces.html' --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css",
+      "htmlFilePath": "/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/surfaces.html",
+      "brandPrefix": "color",
+      "aestheticsMode": "library-bound",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": "node '/Users/ken/.trae-cn/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/apply-html-head-contract.mjs' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/colors_and_type.css' '/Users/ken/dsh-ui-usage-billing/usage-billing-redesign/pages/surfaces.html' --title='常驻与浮层表面' --lang='zh-CN' --prefix='color'",
+      "headFillMode": "skeleton-first",
+      "viewportMode": null,
+      "completionSchemaExpected": "full",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {
+        "usage-billing-redesign.design": "c9fa52e9989f3aae16d4c321dd6a425d7dd78a9b7b13265c17e9ca56747ea9a6"
+      },
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-library-bound/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md"
+        ],
+        "optionalContextFiles": [
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    }
+  ],
+  "deterministicCommandsByPage": {
+    "pages/overview.html": {},
+    "pages/providers.html": {},
+    "pages/tokens.html": {},
+    "pages/trends.html": {},
+    "pages/pricing.html": {},
+    "pages/settings.html": {},
+    "pages/surfaces.html": {}
+  }
+}

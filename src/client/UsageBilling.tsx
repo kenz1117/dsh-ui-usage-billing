@@ -587,62 +587,73 @@ async function loadUsageStats(): Promise<UsageStats | null> {
  * fabricate.
  * @param attempt - current retry index (0-based).
  */
+/** 实时定价重试链是否已在进行：挂载/开弹窗/轮询多个调用点会并发触发 loadLivePricing，
+ *  若都在 `builtin` 时各自起 setTimeout 重试链会叠加出多余请求，这里只保留一条。 */
+let livePricingRetryPending = false
+
 async function loadLivePricing(attempt = 0): Promise<void> {
   const MAX_ATTEMPTS = 4
   try {
     const response = await fetch(PRICING_PATH)
-    if (!response.ok) return
+    if (!response.ok) {
+      livePricingRetryPending = false
+      return
+    }
     const text = await response.text()
     const parsed = JSON.parse(text) as unknown
-    if (parsed === null || typeof parsed !== 'object' || !('source' in parsed)) return
+    if (parsed === null || typeof parsed !== 'object' || !('source' in parsed)) {
+      livePricingRetryPending = false
+      return
+    }
     const pricing = parsed as LivePricing
     if (pricing.source === 'builtin' && attempt < MAX_ATTEMPTS - 1) {
       // 节点端启动拉取可能仍在进行中：稍后重试，避免把「更新中」误判成永久内置。
+      if (attempt === 0) {
+        // 已有重试链在跑则不叠加新链；否则标记并启动本链。
+        if (livePricingRetryPending) return
+        livePricingRetryPending = true
+      }
       setTimeout(() => { void loadLivePricing(attempt + 1) }, 2000)
       return
     }
+    livePricingRetryPending = false
     applyLivePricing(pricing)
   } catch {
     // 拉取失败：维持内置目录与内置汇率（默认值降级）。
+    livePricingRetryPending = false
   }
 }
 
 /**
- * 拉取各提供方账户余额（供模型计费明细表的余额列）；失败返回空列表。
- * @returns the balance rows, or an empty list on any failure.
+ * 一次拉取 `/api/billing/balance` 的完整响应（余额行 + 对账提示）。余额与对账
+ * 提示来自同一响应体，拆成两个函数会导致每 30 秒对同一端点发两次请求，故合并
+ * 为单次 fetch；失败返回空值（余额 []、对账 undefined），由调用方降级。
+ * @returns the balances and reconcile notice (both degraded on any failure).
  */
-async function fetchBalances(): Promise<readonly ProviderBalance[]> {
+async function fetchBalanceDoc(): Promise<{ balances: readonly ProviderBalance[]; reconcile?: ReconcileNotice }> {
   try {
     const response = await fetch(BALANCE_PATH)
-    if (!response.ok) return []
+    if (!response.ok) return { balances: [] }
     const text = await response.text()
     const parsed = JSON.parse(text) as unknown
-    if (parsed !== null && typeof parsed === 'object' && 'balances' in parsed) {
-      return (parsed as BalanceResponse).balances
+    if (parsed === null || typeof parsed !== 'object') return { balances: [] }
+    const doc = parsed as Partial<BalanceResponse>
+    return {
+      balances: Array.isArray(doc.balances) ? doc.balances : [],
+      ...(doc.reconcile === undefined ? {} : { reconcile: doc.reconcile }),
     }
-    return []
   } catch {
-    return []
+    return { balances: [] }
   }
 }
 
 /**
  * 拉取官方余额差对账提示（drift 时非空），供余额面板展示；失败返回 undefined。
+ * 复用 {@link fetchBalanceDoc} 的同一响应，导出供对账提示渲染测试单独解析。
  * @returns the reconcile notice, or undefined on any failure / no drift.
  */
 export async function fetchReconcile(): Promise<ReconcileNotice | undefined> {
-  try {
-    const response = await fetch(BALANCE_PATH)
-    if (!response.ok) return undefined
-    const text = await response.text()
-    const parsed = JSON.parse(text) as unknown
-    if (parsed !== null && typeof parsed === 'object' && 'reconcile' in parsed) {
-      return (parsed as BalanceResponse).reconcile
-    }
-    return undefined
-  } catch {
-    return undefined
-  }
+  return (await fetchBalanceDoc()).reconcile
 }
 
 /**
@@ -661,22 +672,18 @@ async function fetchSubscriptions(): Promise<readonly SubscriptionQuota[]> {
 }
 
 /**
- * 拉取中转站额度（New API / Sub2API 的余额与滚动窗口）；失败返回空列表。
- * @returns the relay-site quota rows, or an empty list on any failure.
+ * 拉取中转站额度（New API / Sub2API 的余额与滚动窗口）；失败抛出（调用方据此保留旧快照）。
+ * @returns the relay-site quota rows（成功但无中转配置时为空数组）。
  */
 async function fetchRelayQuotas(): Promise<readonly RelayQuota[]> {
-  try {
-    const response = await fetch(RELAY_PATH)
-    if (!response.ok) return []
-    const text = await response.text()
-    const parsed = JSON.parse(text) as unknown
-    if (parsed !== null && typeof parsed === 'object' && 'quotas' in parsed) {
-      return (parsed as RelayResponse).quotas
-    }
-    return []
-  } catch {
-    return []
+  const response = await fetch(RELAY_PATH)
+  if (!response.ok) throw new Error(`relay-quotas HTTP ${String(response.status)}`)
+  const text = await response.text()
+  const parsed = JSON.parse(text) as unknown
+  if (parsed !== null && typeof parsed === 'object' && 'quotas' in parsed) {
+    return (parsed as RelayResponse).quotas
   }
+  throw new Error('relay-quotas: invalid response')
 }
 
 /**
@@ -792,14 +799,13 @@ function UsageBillingTrigger(
       direct: { name: string; text: string; low: boolean } | undefined
       sub: { name: string; text: string; low: boolean } | undefined
     }
-  /** hover 速览「数据卡」用量数值（累计）：总 Token / 输入 / 输出 / 缓存 / 调用 / 更新时间。 */
+  /** hover 速览「数据卡」用量数值（累计）：总 Token / 输入 / 输出 / 缓存 / 调用。 */
   dash: {
     totalToken: number
     input: number
     output: number
     cacheRead: number
     calls: number
-     updatedAt: string | undefined
    }
   /** 模型用量悬浮窗偏好（模式 + 指定订阅卡目标）。 */
   floatPrefs: FloatWindowPrefs
@@ -873,7 +879,7 @@ function UsageBillingTrigger(
             <span className={css.triggerAmount}>{formatMoney(monthCost)}</span>
           </span>
           <span className={css.triggerSub} data-testid="billing-trigger-today">
-            {t('billing.triggerToday')} {formatMoney(todayCost)} · {weekCost > 0 ? `${t('billing.weekCost')} ${formatMoney(weekCost)}` : ''}
+            {t('billing.triggerToday')} {formatMoney(todayCost)} · {t('billing.weekCost')} {formatMoney(weekCost)}
           </span>
         </span>
         <span className={css.triggerSpark} data-testid="billing-trigger-spark" aria-hidden="true">
@@ -1286,8 +1292,8 @@ function BillingDashboard({
       pct,
       // 超支（>=100% 或用预算口径）时环形转红。
       over: Number.isFinite(budgetPct) && budgetPct >= 100,
-      // 有预算时中心标签显示「预算」，否则显示「本月」。
-      label: t('billing.budget'),
+      // 有预算时中心标签显示「预算」，否则显示「本月」（注释与实现一致）。
+      label: Number.isFinite(budgetPct) ? t('billing.budget') : t('billing.monthCost'),
     }
   }, [budgetEnabled, budgetAmount, monthCost, yearCost, t])
 
@@ -1412,9 +1418,22 @@ function BillingDashboard({
       else list.push(quota)
     }
     const modelsByVendor = new Map<string, ModelRow[]>()
+    // 订阅 vendor 的归一化索引：normalize(vendor名) → vendor名。用于让模型 provider 名
+    // 与订阅 vendor 名在大小写/空格/连字符差异时也能归到同一组。
+    const vendorByNorm = new Map<string, string>()
+    for (const vendor of subscriptionsByVendor.keys()) vendorByNorm.set(normalizeProvider(vendor), vendor)
     for (const row of modelRows) {
-      const list = modelsByVendor.get(row.provider)
-      if (list === undefined) modelsByVendor.set(row.provider, [row])
+      // 厂商组 key：优先取「与某订阅 vendor 归一化匹配」的名字；订阅豁免模型（plan=true）
+      // 即使 catalog 未收录（provider 反推为 Custom），也用模型 id 反推的厂商名归组，
+      // 让订阅卡与模型明细落在同一厂商组，避免被甩到 Custom 独立组。
+      let vendorName = row.provider
+      if (row.plan === true) {
+        const inferred = providerFromModelKey(row.key)
+        if (inferred !== undefined) vendorName = inferred
+      }
+      const key = vendorByNorm.get(normalizeProvider(vendorName)) ?? vendorName
+      const list = modelsByVendor.get(key)
+      if (list === undefined) modelsByVendor.set(key, [row])
       else list.push(row)
     }
     const names = new Set<string>([...modelsByVendor.keys(), ...subscriptionsByVendor.keys()])
@@ -2533,7 +2552,7 @@ function BillingDashboard({
           {tab === 'token' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-token">
               {/* Token 洞察：独立于费用的 token 统计（每日堆叠 / 模型占比 / 结构 KPI / 导出）。 */}
-              <TokenPanel stats={stats} currency={currency} trendDays={trendDays} onTrendDays={setTrendDays} t={t} />
+              <TokenPanel stats={stats} trendDays={trendDays} onTrendDays={setTrendDays} t={t} />
               {/* 性能：按模型 TTFT/P50/P90/生成速度/总延迟 + 按小时曲线（并入「用量」分区）。 */}
               {stats.perf !== undefined && (
                 <section className={css.panel} data-testid="billing-panel-perf">
@@ -2710,11 +2729,10 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     void loadUsageStats().then((data) => {
       if (data !== null) setStats(data)
     })
-    void fetchBalances().then((list) => {
-      if (list.length > 0) setBalances(list)
-    })
-    void fetchReconcile().then((notice) => {
-      setReconcile(notice)
+    void fetchBalanceDoc().then(({ balances, reconcile }) => {
+      // 余额服务端恒返回内置行（空=失败），失败时保留旧快照。
+      if (balances.length > 0) setBalances(balances)
+      setReconcile(reconcile)
     })
     void fetchSubscriptions().then((list) => {
       if (list.length > 0) {
@@ -2729,7 +2747,11 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       setQuotasStale(true)
     })
     void fetchRelayQuotas().then((list) => {
-      if (list.length > 0) setRelayQuotas(list)
+      // 成功返回空数组是合法结果（用户删光中转配置），必须清空旧快照；
+      // 只有请求失败（catch）才保留旧值，与订阅的 stale 语义区分开。
+      setRelayQuotas(list)
+    }).catch(() => {
+      // 刷新失败：保留上次成功快照。
     })
   }, [])
 
@@ -2788,6 +2810,14 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const [peakConfig, setPeakConfig] = useState<PeakAlertConfig>(() => loadPeakAlertConfig())
   const [peakHit, setPeakHit] = useState<PeakAlertHit | null>(null)
   const [peakPreview, setPeakPreview] = useState<PeakAlertHit | null>(null)
+  // 墙钟 tick：驱动峰谷切换提醒按时间周期重算。提醒提前量最小 1 分钟，30 秒
+  // 粒度足以在切换前命中；否则开着面板等到切换点也不会触发（原实现只在挂载/
+  // 配置变更时算一次）。
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), STATS_REFRESH_INTERVAL_MS)
+    return () => { clearInterval(timer) }
+  }, [])
   const updatePeakConfig = useCallback((config: PeakAlertConfig) => {
     setPeakConfig(config)
     savePeakAlertConfig(config)
@@ -2835,13 +2865,13 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   // 弹可视化浮层 +（可选的）系统通知。`lastTierSwitchAt` 去重跨重启生效，
   // 与旧的系统通知共用同一份去重，避免一条切换提醒弹两次。
   useEffect(() => {
-    const upcoming = computePeakAlert(Date.now(), peakConfig, lastTierSwitchAt)
+    const upcoming = computePeakAlert(nowMs, peakConfig, lastTierSwitchAt)
     if (upcoming === null) return
     actions.markTierSwitchAlerted(upcoming.atMs)
     setPeakHit(upcoming)
     if (!peakConfig.webNotify) return
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
-    const minutes = Math.max(1, Math.round((upcoming.atMs - Date.now()) / 60_000))
+    const minutes = Math.max(1, Math.round((upcoming.atMs - nowMs) / 60_000))
     const title = upcoming.entering === 'peak' ? t('billing.peakAlertTitlePeak') : t('billing.peakAlertTitleOff')
     const body = upcoming.entering === 'peak'
       ? t('billing.tierAlertEnterPeak').replace('{minutes}', String(minutes))
@@ -2851,7 +2881,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     } catch {
       // 平台拒绝构造通知：静默跳过，浮层始终可见。
     }
-  }, [lastTierSwitchAt, peakConfig, actions, t])
+  }, [nowMs, lastTierSwitchAt, peakConfig, actions, t])
 
   // 余额不足告警：任一提供方余额低于阈值（折算人民币）时每天提醒一次；
   // 与预算开关无关——余额是硬性约束，无论是否开启预算都要提醒。
@@ -2943,7 +2973,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     }
   }, [stats.byDayModels, stats.byModel, stats.lowBalanceThreshold, balances, quotas, today])
 
-  // hover 速览「数据卡」数值：全量累计用量 + 更新时间（参考图风格）。
+  // hover 速览「数据卡」数值：全量累计用量（参考图风格）。
   const dash = useMemo(() => {
     const total = stats.total
     return {
@@ -2952,7 +2982,6 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       output: total.output,
       cacheRead: total.cacheHit,
       calls: total.calls,
-      updatedAt: stats.updatedAt === undefined ? undefined : `${localDayStamp(stats.updatedAt)} ${formatClock(stats.updatedAt)}`,
     }
   }, [stats])
 

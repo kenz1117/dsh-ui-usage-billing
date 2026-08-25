@@ -61,6 +61,15 @@ describe('modelOf', () => {
   it('falls back to the generic other entry for an unknown key', () => {
     expect(modelOf('totally-unknown-model').key).toBe('other')
   })
+
+  it('normalises MiniMax model ids so MiniMax-M3 resolves to the catalog entry', () => {
+    // 真实日志 id `MiniMax-M3`（大小写各异）应归一化到目录键 `minimax`，而非标未收录。
+    expect(resolveCatalogKey('MiniMax-M3')).toBe('minimax')
+    expect(resolveCatalogKey('minimax-m3')).toBe('minimax')
+    expect(resolveCatalogKey('MINIMAX-M2')).toBe('minimax')
+    expect(modelOf('MiniMax-M3')).toMatchObject({ key: 'minimax', name: 'MiniMax-M3', provider: 'MiniMax' })
+    expect(modelOf('MiniMax-M3').uncatalogued).toBeUndefined()
+  })
 })
 
 describe('estimated-price marker', () => {

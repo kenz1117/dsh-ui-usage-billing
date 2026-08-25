@@ -968,11 +968,12 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
     }
   }
 
-  /** 失效键：日志文件的 mtime+size；拿不到（后端无 locate / 文件丢失）时每次重折。 */
+  /** 失效键：日志文件的 mtime+size；拿不到（后端无 locate / 文件丢失 / locate 抛错）时返回 null，
+   *  让调用方每次重折。locate 调用也纳入 try，避免单个会话的 locate 异常把整份聚合拖垮。 */
   const stampOf = async (meta: SessionHeader): Promise<string | null> => {
-    const location = persistence.locate?.(meta)
-    if (location === undefined) return null
     try {
+      const location = persistence.locate?.(meta)
+      if (location === undefined) return null
       const info = await stat(location.path)
       return `${String(info.mtimeMs)}:${String(info.size)}`
     } catch {

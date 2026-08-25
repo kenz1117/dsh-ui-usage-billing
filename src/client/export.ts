@@ -25,9 +25,15 @@ export interface SessionExportRow {
   lastActive: number
 }
 
-/** CSV 单元格转义：含逗号 / 引号 / 换行的值加双引号并内层引号双写。 */
+/** CSV 单元格转义：含逗号 / 引号 / 换行 / 回车的值加双引号并内层引号双写。 */
 function csvCell(value: string): string {
-  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+}
+
+/** 防 CSV 公式注入：以 `=` / `+` / `-` / `@` / tab / 回车开头的值前置单引号，
+ *  避免在 Excel/WPS 打开时被当作公式执行。用户/模型可控的会话标题会进 CSV。 */
+function csvSafe(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
 }
 
 /** 金额保留两位小数字符串（导出对账用，不做千分位）。 */
@@ -52,7 +58,7 @@ export function siteRowsCsv(bySite: Record<string, DayExportRow>): string {
   const lines = Object.entries(bySite).map(([key, usage]) => {
     const site = key.startsWith('site:') ? key.slice(5) : key.startsWith('direct:') ? key.slice(7) : 'unknown'
     const kind = key.startsWith('site:') ? 'site' : key.startsWith('direct:') ? 'direct' : 'unknown'
-    return [csvCell(site), kind, usage.calls, money(usage.cost)].join(',')
+    return [csvCell(csvSafe(site)), kind, usage.calls, money(usage.cost)].join(',')
   })
   return [header, ...lines].join('\n')
 }
@@ -67,9 +73,9 @@ function projectOf(cwd: string | undefined): string {
 export function sessionRowsCsv(rows: readonly SessionExportRow[]): string {
   const header = 'session_id,title,project,calls,cost_cny,last_active'
   const lines = rows.map(row => [
-    csvCell(row.id),
-    csvCell(row.title ?? ''),
-    csvCell(projectOf(row.cwd)),
+    csvCell(csvSafe(row.id)),
+    csvCell(csvSafe(row.title ?? '')),
+    csvCell(csvSafe(projectOf(row.cwd))),
     row.calls,
     money(row.cost),
     row.lastActive > 0 ? new Date(row.lastActive).toISOString() : '',
@@ -93,5 +99,7 @@ export function downloadText(filename: string, text: string, mime: string): void
   anchor.href = url
   anchor.download = filename
   anchor.click()
-  URL.revokeObjectURL(url)
+  // 延后回收：部分浏览器（旧 Firefox/某些 WebView）在 click() 同拍 revoke 会
+  // 在下载尚未开始时销毁 blob 导致下载失败。
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }

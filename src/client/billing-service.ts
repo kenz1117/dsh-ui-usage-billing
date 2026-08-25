@@ -54,7 +54,15 @@ export function createBillingMetrics(): BillingMetricsRuntime {
     openDashboard: () => { open?.() },
     publishCosts: (next) => {
       costs = next
-      for (const listener of listeners) listener(next)
+      // 逐个 listener 隔离异常：任一消费方抛错不影响其余 listener 收到本次更新，
+      // 也不会让异常冒泡回发布方（组件渲染路径）。
+      for (const listener of listeners) {
+        try {
+          listener(next)
+        } catch {
+          // 消费方回调异常：静默，不阻断发布链。
+        }
+      }
     },
     registerOpen: (handler) => {
       open = handler

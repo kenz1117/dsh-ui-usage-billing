@@ -33,7 +33,8 @@ export interface FloatWindowPrefs {
 export declare const DEFAULT_FLOAT_WINDOW_PREFS: FloatWindowPrefs;
 /** localStorage key（与 budget store 的 `dsh.ui-usage-billing.*` 命名空间一致）。 */
 export declare const FLOAT_WINDOW_STORAGE_KEY = "dsh.ui-usage-billing.float";
-/** 读取浮窗偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
+/** 读取浮窗偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。
+ *  返回全新对象（含 targets 数组拷贝），避免调用方就地修改污染共享默认值。 */
 export declare function loadFloatWindowPrefs(): FloatWindowPrefs;
 /** 写入浮窗偏好。失败静默（展示偏好非关键）。 */
 export declare function saveFloatWindowPrefs(prefs: FloatWindowPrefs): void;

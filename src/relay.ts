@@ -199,6 +199,25 @@ function endpointOf(baseURL: string, path: string): string {
 }
 
 /**
+ * 用已知程序类型查询该路由的额度（用当前 key）。额度按 key 独立，因此即便
+ * 指纹缓存已识别出站点类型，也仍要实际发一次请求读出本 key 的余额/窗口。
+ * @param baseURL - 站点端点。
+ * @param apiKey - 已解析的本路由 key。
+ * @param kind - 已识别出的程序类型。
+ * @returns 解析出的余额/窗口；取不到时返回 null（漂移或端点不可用）。
+ */
+async function readRelayByKind(
+  baseURL: string,
+  apiKey: string,
+  kind: 'sub2api' | 'new-api',
+): Promise<{ balance?: number; windows?: readonly SubscriptionWindow[] } | null> {
+  const path = kind === 'sub2api' ? '/v1/usage' : '/api/status'
+  const res = await fetchRelayJson(endpointOf(baseURL, path), apiKey)
+  if (!res.ok) return null
+  return kind === 'sub2api' ? parseSub2ApiUsage(res.data) : parseNewApiStatus(res.data)
+}
+
+/**
  * 查询单个中转站路由的额度。先试 Sub2API，再试 New API；任一读出额度即返回。
  * @param ctx - host context carrying the credentials seam.
  * @param route - 待探测的路由（baseURL + apiKeyEnv）。
@@ -209,16 +228,39 @@ export async function queryRelayQuota(ctx: Context, route: RelayRoute): Promise<
   // 熔断 key 按「站点 + key」维度：同一中转站多把 key 是独立额度，一把失败不应熔断整站。
   const gateKey = `${route.baseURL}::${route.apiKeyEnv}`
   if (!relayGate.check(gateKey)) return { ...base, kind: 'unknown', status: 'unavailable' }
-  const hit = await ctx.credentials.resolve(credentialRef(route.apiKeyEnv))
+  // resolve 可能抛错（凭据服务异常），单条路由失败不能拖垮整批；与查询体分离，失败降级为 not-configured。
+  let hit: { value: string } | undefined
+  try {
+    hit = await ctx.credentials.resolve(credentialRef(route.apiKeyEnv))
+  } catch {
+    return { ...base, kind: 'unknown', status: 'not-configured' }
+  }
   if (hit === undefined || hit.value === '') return { ...base, kind: 'unknown', status: 'not-configured' }
 
-  // 指纹识别缓存：5 分钟内同 origin 已识别过则直接用结果，不再重复探测。
+  // 指纹识别缓存：5 分钟内同 origin 已识别过程序类型时，跳过「猜哪种程序」，
+  // 但仍按本路由自己的 key 实际查询额度——同站多把 key 是独立额度，缓存命中
+  // 不能吞掉余额/窗口。
   const cached = fingerprintCache.get(base.origin)
-  if (cached !== undefined && Date.now() - cached.at < FINGERPRINT_TTL_MS) {
-    return { ...base, kind: cached.kind, status: 'ok' }
-  }
+  const knownKind = cached !== undefined && Date.now() - cached.at < FINGERPRINT_TTL_MS ? cached.kind : undefined
 
   try {
+    if (knownKind === 'sub2api' || knownKind === 'new-api') {
+      const parsed = await readRelayByKind(route.baseURL, hit.value, knownKind)
+      if (parsed !== null) {
+        relayGate.success(gateKey)
+        return {
+          ...base,
+          kind: knownKind,
+          status: 'ok',
+          ...(parsed.balance !== undefined ? { balance: parsed.balance } : {}),
+          ...(parsed.windows !== undefined ? { windows: parsed.windows } : {}),
+        }
+      }
+      // 识别结果仍在缓存期内却读不出额度：按该类型报 invalid-response，不继续猜。
+      relayGate.fail(gateKey)
+      return { ...base, kind: knownKind, status: 'invalid-response' }
+    }
+
     // 1) Sub2API `/v1/usage`
     const sub2 = await fetchRelayJson(endpointOf(route.baseURL, '/v1/usage'), hit.value)
     if (sub2.ok) {
@@ -238,18 +280,9 @@ export async function queryRelayQuota(ctx: Context, route: RelayRoute): Promise<
       relayGate.fail(gateKey)
       return { ...base, kind: 'sub2api', status: 'invalid-response' }
     }
-    // Sub2API 端点返回 401/403：是 Sub2API 但 key 不对，不再试 New API。
-    if (sub2.status === 401 || sub2.status === 403) {
-      relayGate.fail(gateKey)
-      return { ...base, kind: 'unknown', status: 'unauthorized' }
-    }
 
     // 2) New API `/api/status`
     const na = await fetchRelayJson(endpointOf(route.baseURL, '/api/status'), hit.value)
-    if (na.status === 401 || na.status === 403) {
-      relayGate.fail(gateKey)
-      return { ...base, kind: 'unknown', status: 'unauthorized' }
-    }
     if (na.ok) {
       const parsed = parseNewApiStatus(na.data)
       if (parsed !== null) {
@@ -264,8 +297,11 @@ export async function queryRelayQuota(ctx: Context, route: RelayRoute): Promise<
     relayGate.fail(gateKey)
     return { ...base, kind: 'unknown', status: 'unavailable' }
   } catch (error) {
-    relayGate.fail(gateKey)
-    return { ...base, kind: 'unknown', status: statusOf(error) }
+    // 401/403（鉴权失败）是配置问题而非暂时故障，不计入熔断——配错的 key 应持续
+    // 显示 unauthorized，而不是 3 次后 60 秒内错报 unavailable。其余可重试失败才累计。
+    const status = statusOf(error)
+    if (status !== 'unauthorized') relayGate.fail(gateKey)
+    return { ...base, kind: 'unknown', status }
   }
 }
 

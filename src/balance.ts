@@ -314,10 +314,21 @@ export async function queryBalances(
   ctx: Context,
   providers: Readonly<Record<string, { apiKeyEnv?: string }>>,
 ): Promise<readonly ProviderBalance[]> {
-  return await Promise.all(QUERIERS.map(({ route, querier, displayName }) => {
+  // 同一 displayName 的多条 route（如智谱的 zhipu / zai-coding-cn）共用同一钱包，
+  // 按名字去重：只查询第一个配了 key 的 route，避免对同一钱包重复请求；同名的
+  // 后续 route 无论配没配 key 都跳过，未配置时也只保留一条「未配置」行。
+  const byName = new Map<string, { displayName: string; querier: BalanceQuerier['querier']; env: string | undefined }>()
+  for (const { route, querier, displayName } of QUERIERS) {
     const env = providers[route]?.apiKeyEnv
-    // 未配置 key 的 route 直接标未配置，不走 credentialRef（空 env 会被其拒绝）。
-    if (typeof env !== 'string' || env === '') {
+    const configured = typeof env === 'string' && env !== ''
+    const existing = byName.get(displayName)
+    // 该厂商已确定用某个配了 key 的 route 查询，跳过后续同名 route。
+    if (existing !== undefined && existing.env !== undefined) continue
+    byName.set(displayName, { displayName, querier, env: configured ? env : undefined })
+  }
+  return await Promise.all([...byName.values()].map(({ querier, displayName, env }) => {
+    // 未配置 key 的厂商直接标未配置，不走 credentialRef（空 env 会被其拒绝）。
+    if (env === undefined) {
       return Promise.resolve({ provider: displayName, displayName, error: 'unconfigured' as const })
     }
     return querier(ctx, env)
