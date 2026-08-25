@@ -10,7 +10,7 @@ import { useMemo } from 'react'
 import clsx from 'clsx'
 import css from './UsageBilling.module.css'
 import type { UsageBillingKey } from './locales.ts'
-import { formatTokens, modelOf, type CostCurrency } from './pricing.ts'
+import { formatTokens, modelOf } from './pricing.ts'
 import type { UsageStats } from './UsageBilling.tsx'
 
 /** 本地时区 `YYYY-MM-DD`（与服务端 dayStamp 一致）。 */
@@ -77,12 +77,11 @@ function tokenDayCsv(days: readonly DailyBucket[]): string {
  */
 export function TokenPanel(props: {
   stats: UsageStats
-  currency: CostCurrency
   trendDays: 7 | 30
   onTrendDays: (d: 7 | 30) => void
   t: (key: UsageBillingKey) => string
 }): React.ReactNode {
-  const { stats, currency: _currency, trendDays, onTrendDays, t } = props
+  const { stats, trendDays, onTrendDays, t } = props
   const { byDay, byModel, total } = stats
 
   // 每日 token 窗口（缺日补 0）。
@@ -175,7 +174,7 @@ export function TokenPanel(props: {
     a.href = URL.createObjectURL(blob)
     a.download = `token-daily-${localStamp()}.csv`
     a.click()
-    URL.revokeObjectURL(a.href)
+    setTimeout(() => URL.revokeObjectURL(a.href), 0)
   }
   const exportTokenJson = (): void => {
     const blob = new Blob([JSON.stringify({ days, models, total }, null, 2)], { type: 'application/json' })
@@ -183,7 +182,7 @@ export function TokenPanel(props: {
     a.href = URL.createObjectURL(blob)
     a.download = `token-${localStamp()}.json`
     a.click()
-    URL.revokeObjectURL(a.href)
+    setTimeout(() => URL.revokeObjectURL(a.href), 0)
   }
 
   return (

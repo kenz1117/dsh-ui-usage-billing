@@ -133,6 +133,19 @@ describe('per-turn folding (P1-1)', () => {
     expect(fold.turns).toHaveLength(1)
     expect(fold.turns[0]?.cost).toBe(0)
   })
+
+  it('normalises MiniMax / DeepSeek-vision model ids to catalog keys', () => {
+    const fold = foldSession([
+      ev('request/header', 1, 1_000, { header: { config: { provider: 'minimax-cn', model: 'MiniMax-M3' } } }),
+      ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE }),
+      ev('request/header', 3, 1_002, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash-vision-exp' } } }),
+      ev('assistant/message', 4, 1_003, { turn: 1, step: 1, usage: USAGE }),
+    ], new Set())
+    // MiniMax-M3（大小写、带型号后缀）与 vision-exp 都归到各自目录键，而非保留原始 id/标未收录。
+    expect(fold.byModel.has('minimax')).toBe(true)
+    expect(fold.byModel.has('MiniMax-M3')).toBe(false)
+    expect(fold.byModel.has('flash-vision-exp')).toBe(true)
+  })
 })
 
 describe('fork seed filtering (session/end-seed)', () => {

@@ -281,6 +281,54 @@ describe('parseMiniMaxRemains', () => {
   })
 })
 
+describe('collectMiniMax key/region discrimination (sk-cp- vs sk-)', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  const remains = async () => ({ ok: true, status: 200, json: async () => ({ model_remains: [{ model_name: 'general', current_interval_status: 1, current_interval_remaining_percent: 90, current_weekly_status: 1, current_weekly_remaining_percent: 80 }] }) })
+
+  it('recognises a sk-cp- Token Plan key without a hint', async () => {
+    const fetchSpy = vi.fn(remains)
+    vi.stubGlobal('fetch', fetchSpy)
+    const [row] = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: 'sk-cp-abc123' },
+      [{ provider: 'minimax-cn' }],
+    )
+    expect(row).toMatchObject({ status: 'ok', windows: [{ kind: 'session' }, { kind: 'weekly' }] })
+    expect((row as { hint?: string }).hint).toBeUndefined()
+  })
+
+  it('flags a non sk-cp- key that still returns quota', async () => {
+    const fetchSpy = vi.fn(remains)
+    vi.stubGlobal('fetch', fetchSpy)
+    const [row] = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: 'sk-plain-key' },
+      [{ provider: 'minimax-cn' }],
+    )
+    expect(row).toMatchObject({ status: 'ok' })
+    expect((row as { hint?: string }).hint).toContain('sk-cp-')
+  })
+
+  it('gives a non-token hint when a plain key returns no quota', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ model_remains: [] }) })))
+    const [row] = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: 'sk-plain-key' },
+      [{ provider: 'minimax-cn' }],
+    )
+    expect(row).toMatchObject({ status: 'invalid-response' })
+    expect((row as { hint?: string }).hint).toContain('按量')
+  })
+
+  it('gives a region hint when a sk-cp- key returns no quota', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ model_remains: [] }) })))
+    const [row] = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: 'sk-cp-abc123' },
+      [{ provider: 'minimax-cn' }],
+    )
+    expect(row).toMatchObject({ status: 'invalid-response' })
+    expect((row as { hint?: string }).hint).toContain('region')
+  })
+})
+
 describe('parseOpenRouterCredits', () => {
   it('maps credits usage to a used-percent billing window', () => {
     const windows = parseOpenRouterCredits({ data: { total_credits: 100, total_usage: 25 } })

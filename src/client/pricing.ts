@@ -38,7 +38,11 @@ let liveCatalogModels: readonly CatalogModel[] | undefined
  * @param pricing - the `/api/billing/pricing` response.
  */
 export function applyLivePricing(pricing: LivePricing): void {
-  liveRate = pricing.rate
+  // 实时汇率来自 HTTP 响应（wire 边界）：只接受有限正数，异常值（0/NaN/负）保留内置值，
+  // 避免所有 USD 模型计价被算成 0 或 NaN。
+  liveRate = typeof pricing.rate === 'number' && Number.isFinite(pricing.rate) && pricing.rate > 0
+    ? pricing.rate
+    : undefined
   livePrices = pricing.prices
   liveExtraModels = pricing.extraModels
 }
@@ -600,6 +604,11 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   // 月之暗面 Kimi：coding plan 通道的 model id 是短名 k3。
   'k3': 'kimi-k3',
   'kimi-k3': 'kimi-k3',
+  // MiniMax：官方 OpenAI 兼容 id 为 `MiniMax-M3`（目录键 `minimax`）。日志里大小写/型号后缀
+  // 各异，统一归一化到目录键，避免「厂商计费与订阅」把 MiniMax-M3 标成未收录。
+  'minimax-m1': 'minimax',
+  'minimax-m2': 'minimax',
+  'minimax-m3': 'minimax',
 }
 
 /**
@@ -726,13 +735,11 @@ export function catalogEntries(): readonly ModelEntry[] {
     // 内置目录收录：跳过，避免与内置行重复（key 用内置目录键）。
     if (builtin !== undefined) continue
     if (known.has(rawKey)) continue
-    const extra = (liveExtraModels ?? []).find(item => item.key === rawKey)
-    // models.dev 补充之外，再查 dsh-spend 官方价兜底——命中则按兜底价计。
-    const fallbackLive = extra === undefined ? livePriceOf(rawKey) : undefined
+    // models.dev 补充条目已在上方 `known` 收录（其 key 已小写入集），此处命中的
+    // 探活模型必然已 continue，故无需再查 extra；直接查 dsh-spend 官方价兜底。
+    const fallbackLive = livePriceOf(rawKey)
     let entry: ModelEntry
-    if (extra !== undefined) {
-      entry = { ...extraEntryOf(extra) }
-    } else if (fallbackLive !== undefined) {
+    if (fallbackLive !== undefined) {
       entry = {
         key: rawKey,
         name: model.name ?? model.id,
@@ -813,7 +820,7 @@ export function computeCost(entry: ModelEntry, buckets: TokenUsageBuckets, peakS
  * @param buckets - token usage counts.
  * @param timeMs - the call's wall-clock time (epoch ms); null falls back to the peak-share mix.
  * @param peakShare - fallback mix used only when `timeMs` is missing.
- * @returns the estimated cost in the entry's native currency.
+ * @returns the estimated cost in CNY（USD 计价模型已按当前汇率折算）。
  */
 export function computeCostAt(
   entry: ModelEntry,
@@ -827,9 +834,11 @@ export function computeCostAt(
   return priceBandCost(band, buckets, entry.price.currency)
 }
 
-/** 人民币 → 美元（显示换算用）：1 USD = {@link USD_TO_CNY} CNY。 */
+/** 人民币 → 美元（显示换算用）：用当前生效汇率（实时优先，缺失回退内置），
+ *  与计价链路的 `currentRate()` 同口径，避免实时汇率生效时 USD 显示与计价不一致。 */
 export function cnyToUsd(cny: number): number {
-  return cny / USD_TO_CNY
+  const rate = currentRate()
+  return rate > 0 ? cny / rate : cny
 }
 
 /**

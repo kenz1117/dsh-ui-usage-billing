@@ -223,6 +223,7 @@ export interface UsageStats {
 }
 /**
  * 拉取官方余额差对账提示（drift 时非空），供余额面板展示；失败返回 undefined。
+ * 复用 {@link fetchBalanceDoc} 的同一响应，导出供对账提示渲染测试单独解析。
  * @returns the reconcile notice, or undefined on any failure / no drift.
  */
 export declare function fetchReconcile(): Promise<ReconcileNotice | undefined>;

@@ -10,10 +10,10 @@
  * fabricated samples.
  */
 
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: merges the ctx.sessionPersistence service declaration.
@@ -56,12 +56,28 @@ function isLoopbackPeer(req: IncomingMessage): boolean {
   return address === '::1' || address.startsWith('127.') || address.startsWith('::ffff:127.')
 }
 
-/** 校验 Host 头是本机回环（127.x / ::1 / localhost 或空，供 curl 不带 Host 的极简请求）。 */
+/** 校验 Host 头是本机回环（精确 127.0.0.0/8 / ::1 / localhost 或空，供 curl 不带 Host 的极简请求）。
+ *  拒绝 `127.0.0.1.attacker.com` 这类以 `127.` 开头但解析到外部的 DNS rebinding 域名：
+ *  只用 `startsWith('127.')` 会被它穿透，必须精确匹配回环 IP 的字面量。 */
 function isLoopbackHost(req: IncomingMessage): boolean {
   const host = req.headers.host
   if (host === undefined || host === '') return true
   const name = host.split(':')[0]
-  return name === 'localhost' || name === '::1' || (name !== undefined && name.startsWith('127.'))
+  // 精确匹配：localhost、IPv6 回环、或字面量 IPv4 回环地址（127.0.0.0/8）。
+  return name === 'localhost' || name === '::1' || (name !== undefined && /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(name))
+}
+
+/** 校验 Origin 头是否回环（写操作用，防止跨站表单/fetch 改写设置）。Origin 缺失
+ *  （curl 或同源 fetch 不带）视为放行，交给下方的 Content-Type 校验兜底；Origin 存在
+ *  但主机非回环则拒绝——跨站脚本发起的写请求必带攻击者域名的 Origin。 */
+function isLoopbackOrigin(origin: string | undefined): boolean {
+  if (origin === undefined || origin === '') return true
+  try {
+    const host = new URL(origin).hostname
+    return host === 'localhost' || host === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -187,6 +203,10 @@ export function createFileUsageLedgerStore(ledgerPath: string): UsageLedgerStore
       // same target on Windows return EPERM (errno -4048). withFileLock holds a
       // wx-created `<file>.lock` sibling with exponential backoff so only one
       // writer at a time commits the .bak + tmp → ledger rename chain.
+      // withFileLock 要求父目录已存在（它只开锁文件、不建目录），而 writeFileAtomic
+      // 的 mkdir 在其之后才执行，故此处先建父目录，否则 ledgerPath 在未创建的子目录
+      // 下时开锁会抛 ENOENT。
+      await mkdir(dirname(ledgerPath), { recursive: true, mode: 0o700 })
       await withFileLock(ledgerPath, async () => {
         try {
           const existing = await readFile(ledgerPath, 'utf8')
@@ -647,11 +667,14 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
         if (!guardLoopback(req, res)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         // 余额 key 复用 llm-pi-ai 的 providers（同订阅）：部署为某 provider 配一次即可。
-        // DeepSeek 保留 `balanceApiKeyEnv` 特例：llm-pi-ai 未配 deepseek 时仍可用该 env 查余额。
+        // DeepSeek 保留 `balanceApiKeyEnv` 特例：llm-pi-ai 未配 deepseek key 时仍可用该 env 查余额。
+        // 注意不能只看路由是否存在——路由存在但 apiKeyEnv 缺失（只配了 baseURL 之类）时，
+        // 兜底同样要生效，否则余额会错标「未配置」。
         const piProviders = await readPiAiProviders(ctx.settings)
         const providers = { ...piProviders }
-        if (providers['deepseek'] === undefined) {
-          providers['deepseek'] = { apiKeyEnv: config.balanceApiKeyEnv ?? DEFAULT_BALANCE_API_KEY_ENV }
+        const deepseekKey = providers['deepseek']?.apiKeyEnv
+        if (deepseekKey === undefined || deepseekKey === '') {
+          providers['deepseek'] = { ...providers['deepseek'], apiKeyEnv: config.balanceApiKeyEnv ?? DEFAULT_BALANCE_API_KEY_ENV }
         }
         const balances = await queryBalances(ctx, providers)
         // 自定义 Provider 余额（任意 HTTP 端点）：独立于内置三家，逐个成败。
@@ -707,10 +730,31 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
           res.end(JSON.stringify({ error: 'method not allowed' }))
           return
         }
+        // 跨站写保护：POST 是写操作（改写设置命名空间），必须校验 Origin 头是回环，
+        // 且 Content-Type 为 application/json。跨站表单/fetch 的简单请求只能带
+        // text/plain 等，带不了 application/json（会触发 CORS preflight 而被上方
+        // guardLoopback 的 methodOk 拒绝），从两个维度堵住 CSRF。
+        if (!isLoopbackOrigin(req.headers.origin)) {
+          res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'forbidden: loopback only' }))
+          return
+        }
+        if (!(req.headers['content-type'] ?? '').toLowerCase().includes('application/json')) {
+          res.writeHead(415, { 'content-type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'unsupported content-type' }))
+          return
+        }
         // 读取并解析 JSON body 后写设置命名空间；settings 服务未就绪时拒绝写。
+        // body 只承载一个布尔开关，512 字节上限已足够，防坏/恶意 body 拖住 handler。
         try {
           let body = ''
-          for await (const chunk of req) body += String(chunk)
+          for await (const chunk of req) {
+            body += String(chunk)
+            if (body.length > 512) {
+              res.end(JSON.stringify({ error: 'body too large' }))
+              return
+            }
+          }
           const parsed = JSON.parse(body === '' ? '{}' : body) as { enabled?: unknown }
           if (usageSettingsScope === undefined) {
             res.end(JSON.stringify({ error: 'settings unavailable' }))
@@ -733,9 +777,20 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   let quotaCache: { at: number; quotas: readonly SubscriptionQuota[] } = { at: 0, quotas: [] }
   const refreshQuotas = async (): Promise<void> => {
     const { keys, identified } = await resolveSubscriptionKeys(ctx.settings, ctx.credentials)
+    // 让 llm-pi-ai 的 baseURL 可覆盖订阅查询的 region 默认值（如 MiniMax 国际版需
+    // `api.minimax.io`、或自配中转/staging）：带 baseURL 的 plan 会在各 adapter 里
+    // 优先于内置 region 默认。readPiAiProviders 只取 baseURL/apiKeyEnv/displayName。
+    const piProviders = await readPiAiProviders(ctx.settings)
     const plans = identified
       .filter(item => item.adapter)
-      .map(item => ({ provider: item.provider, ...(item.region === undefined ? {} : { region: item.region }) }))
+      .map((item) => {
+        const baseURL = piProviders[item.provider]?.baseURL
+        return {
+          provider: item.provider,
+          ...(item.region === undefined ? {} : { region: item.region }),
+          ...(typeof baseURL === 'string' && baseURL !== '' ? { baseUrl: baseURL } : {}),
+        }
+      })
     const queried = await collectSubscriptions(keys, plans)
     const rows: SubscriptionQuota[] = [...queried].map((row) => {
       // plan 双口径（引用 dsh-spend）：订阅通道标 code 并带月费，其余 token。
@@ -764,7 +819,14 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       handler: async (req, res) => {
         if (!guardLoopback(req, res)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-        if (Date.now() - quotaCache.at >= SUBSCRIPTION_CACHE_MS) await refreshQuotas()
+        if (Date.now() - quotaCache.at >= SUBSCRIPTION_CACHE_MS) {
+          try {
+            await refreshQuotas()
+          } catch (error) {
+            // 刷新意外抛错时仍用旧缓存响应，绝不让已 writeHead 的响应挂起。
+            console.warn('[usage-billing] refreshQuotas failed; serving cached quotas:', error)
+          }
+        }
         res.end(JSON.stringify({ quotas: quotaCache.quotas }))
       },
     }),
@@ -800,7 +862,14 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       handler: async (req, res) => {
         if (!guardLoopback(req, res)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-        if (Date.now() - relayCache.at >= SUBSCRIPTION_CACHE_MS) await refreshRelay()
+        if (Date.now() - relayCache.at >= SUBSCRIPTION_CACHE_MS) {
+          try {
+            await refreshRelay()
+          } catch (error) {
+            // 刷新意外抛错时仍用旧缓存响应，绝不让已 writeHead 的响应挂起。
+            console.warn('[usage-billing] refreshRelay failed; serving cached relay quotas:', error)
+          }
+        }
         // 诊断：每条路由的归类（origin / kind），供「我的中转站为什么不显示」自查。
         const diagnostics = relayCache.quotas.map(row => ({ route: row.route, origin: row.origin, kind: row.kind }))
         res.end(JSON.stringify({ quotas: relayCache.quotas, diagnostics }))

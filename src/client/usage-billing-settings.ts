@@ -42,11 +42,12 @@ export const DEFAULT_FLOAT_WINDOW_PREFS: FloatWindowPrefs = { mode: 'combined', 
 /** localStorage key（与 budget store 的 `dsh.ui-usage-billing.*` 命名空间一致）。 */
 export const FLOAT_WINDOW_STORAGE_KEY = 'dsh.ui-usage-billing.float'
 
-/** 读取浮窗偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
+/** 读取浮窗偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。
+ *  返回全新对象（含 targets 数组拷贝），避免调用方就地修改污染共享默认值。 */
 export function loadFloatWindowPrefs(): FloatWindowPrefs {
   try {
     const raw = localStorage.getItem(FLOAT_WINDOW_STORAGE_KEY)
-    if (raw === null) return DEFAULT_FLOAT_WINDOW_PREFS
+    if (raw === null) return { ...DEFAULT_FLOAT_WINDOW_PREFS, targets: [...DEFAULT_FLOAT_WINDOW_PREFS.targets] }
     const parsed = JSON.parse(raw) as Partial<FloatWindowPrefs>
     return {
       mode: parsed.mode === 'subscription' ? 'subscription' : 'combined',
@@ -55,7 +56,7 @@ export function loadFloatWindowPrefs(): FloatWindowPrefs {
         : [],
     }
   } catch {
-    return DEFAULT_FLOAT_WINDOW_PREFS
+    return { ...DEFAULT_FLOAT_WINDOW_PREFS, targets: [...DEFAULT_FLOAT_WINDOW_PREFS.targets] }
   }
 }
 

@@ -6,7 +6,6 @@
  *  3. Token 结构 KPI（缓存命中率 / reasoning 占比 / 输入:输出比 / 峰值日）。
  */
 import type { UsageBillingKey } from './locales.ts';
-import { type CostCurrency } from './pricing.ts';
 import type { UsageStats } from './UsageBilling.tsx';
 /**
  * Token 洞察面板。
@@ -16,7 +15,6 @@ import type { UsageStats } from './UsageBilling.tsx';
  */
 export declare function TokenPanel(props: {
     stats: UsageStats;
-    currency: CostCurrency;
     trendDays: 7 | 30;
     onTrendDays: (d: 7 | 30) => void;
     t: (key: UsageBillingKey) => string;
