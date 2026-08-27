@@ -69,6 +69,28 @@ describe('UsageBilling surface', () => {
     expect(await screen.findByText('Overview')).toBeTruthy()
     expect(screen.queryByText('概览')).toBeNull()
   })
+
+  it('switches the trigger card main metric between cost and token usage from the settings tab', async () => {
+    const { container } = render(<UsageBilling {...makeProps()} />)
+    const card = screen.getByTestId('billing-trigger')
+    // 默认 money 视角：副行带 ¥ 币符，tokens 主数字不渲染。
+    expect(card.textContent).toContain('¥')
+    expect(screen.queryByTestId('billing-trigger-month-tokens')).toBeNull()
+    // 设置 Tab → 计费卡显示：切到 Token 消耗。
+    fireEvent.click(card)
+    await screen.findByText('使用统计')
+    fireEvent.click(await screen.findByTestId('billing-tab-settings'))
+    fireEvent.click(await screen.findByTestId('billing-card-tokens'))
+    // 修改即写入 localStorage。
+    expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.card')!)).toEqual({ metric: 'tokens' })
+    // 弹窗开着 trigger 也常驻：主行切为缩写 token（K/M/B），副行不再带币符。
+    expect(screen.getByTestId('billing-trigger-month-tokens').textContent).toBe('0')
+    expect(screen.getByTestId('billing-trigger').textContent).not.toContain('¥')
+    // 切回金额：tokens 主数字消失、币符恢复。
+    fireEvent.click(await screen.findByTestId('billing-card-money'))
+    expect(screen.queryByTestId('billing-trigger-month-tokens')).toBeNull()
+    expect(screen.getByTestId('billing-trigger').textContent).toContain('¥')
+  })
 })
 
 describe('providerFromModelKey (B5 model-id fallback)', () => {

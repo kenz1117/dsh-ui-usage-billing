@@ -1,3 +1,10 @@
 node_modules/
 *.tsbuildinfo
 .DS_Store
+# 构建副产物不入库：npm 包与宿主运行时只需要 lib 下三个 JS 入口 + lib/types 声明文件。
+lib/*.js.map
+lib/types/**/*.js
+lib/types/**/*.js.map
+lib/types/**/*.d.ts.map
+# 设计过程稿件仅本地留存。
+usage-billing-redesign/

@@ -68,3 +68,42 @@ export function saveFloatWindowPrefs(prefs: FloatWindowPrefs): void {
     // ignore: storage full / unavailable — display preference is non-critical.
   }
 }
+
+/** 左下角计费卡的主指标视角。 */
+export type BillingCardMetric = 'money' | 'tokens'
+
+/**
+ * 计费卡显示偏好：卡面主行/副行与迷你柱的计价视角。
+ * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
+ */
+export interface BillingCardPrefs {
+  /** 主指标：花费金额（CNY/USD 按币种）/ Token 消耗。 */
+  metric: BillingCardMetric
+}
+
+/** 默认计费卡偏好：花费金额（向后兼容现有金额视图）。 */
+export const DEFAULT_BILLING_CARD_PREFS: BillingCardPrefs = { metric: 'money' }
+
+/** localStorage key（与 budget store 的 `dsh.ui-usage-billing.*` 命名空间一致）。 */
+export const BILLING_CARD_STORAGE_KEY = 'dsh.ui-usage-billing.card'
+
+/** 读取计费卡偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
+export function loadBillingCardPrefs(): BillingCardPrefs {
+  try {
+    const raw = localStorage.getItem(BILLING_CARD_STORAGE_KEY)
+    if (raw === null) return { ...DEFAULT_BILLING_CARD_PREFS }
+    const parsed = JSON.parse(raw) as Partial<BillingCardPrefs>
+    return { metric: parsed.metric === 'tokens' ? 'tokens' : 'money' }
+  } catch {
+    return { ...DEFAULT_BILLING_CARD_PREFS }
+  }
+}
+
+/** 写入计费卡偏好。失败静默（展示偏好非关键）。 */
+export function saveBillingCardPrefs(prefs: BillingCardPrefs): void {
+  try {
+    localStorage.setItem(BILLING_CARD_STORAGE_KEY, JSON.stringify(prefs))
+  } catch {
+    // ignore: storage full / unavailable — display preference is non-critical.
+  }
+}
