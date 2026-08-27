@@ -148,6 +148,8 @@ const PRICING_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000
 
 /** 订阅套餐额度缓存时长（毫秒）：上游配额 API 低频变化，5 分钟足够。 */
 const SUBSCRIPTION_CACHE_MS = 5 * 60 * 1000
+// 余额接口缓存：与订阅 / 中转站配额一致，5 分钟，避免每 30 秒后台轮询打官方余额 API。
+const BALANCE_CACHE_MS = 5 * 60 * 1000
 
 /** DeepSeek 余额查询的默认凭据引用（与 llm-deepseek 的默认引用一致）。 */
 const DEFAULT_BALANCE_API_KEY_ENV = 'DEEPSEEK_API_KEY'
@@ -659,6 +661,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     'usage-billing: pricing route',
   )
 
+  let balanceCache: { at: number; doc: { balances: Awaited<ReturnType<typeof queryBalances>>; reconcile?: ReconcileEvent } } = { at: 0, doc: { balances: [] } }
   ctx.effect(
     () => ctx.webServer.register({
       kind: 'exact',
@@ -676,36 +679,49 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
         if (deepseekKey === undefined || deepseekKey === '') {
           providers['deepseek'] = { ...providers['deepseek'], apiKeyEnv: config.balanceApiKeyEnv ?? DEFAULT_BALANCE_API_KEY_ENV }
         }
-        const balances = await queryBalances(ctx, providers)
-        // 自定义 Provider 余额（任意 HTTP 端点）：独立于内置三家，逐个成败。
-        const custom = await queryCustomBalances(ctx, config.customBalances ?? [])
-        // 声明端点（declarative）：为内置表没有的供应商自声明余额/额度接口。
-        // 绑定到某条已配置 provider 的同源地址，安全边界由 declarative.ts 强制执行。
-        const declared = await queryDeclaredEndpoints(ctx, piProviders, config.declaredEndpoints ?? [])
-        // P1-5 鉴权分类告警：区分「配置错了 key」与「上游不可达」，协助定位。
-        for (const row of [...balances, ...custom, ...declared]) {
-          if (row.error === 'unauthorized') warnAuthOnce('balance', row.provider, row.displayName)
+        // 外部余额 API 低频变化：缓存 5 分钟，命中直接返回，避免每 30 秒后台轮询都打上游。
+        if (Date.now() - balanceCache.at < BALANCE_CACHE_MS) {
+          res.end(JSON.stringify(balanceCache.doc))
+          return
         }
-        // 余额差对账：用官方余额当日变动反推消费，与本地账本今日官方费用比对。
-        // 只对 DeepSeek 官方余额行做（订阅/第三方不动官方余额）；取不到余额时不打扰。
-        const official = balances.find(row => row.provider === 'deepseek')
-        let reconcile: ReconcileEvent | undefined
-        if (official !== undefined && official.totalBalance !== undefined) {
-          const now = Date.now()
-          const today = dayStamp(now)
-          let todayOfficialCost = 0
-          try {
-            const stats = await aggregator.aggregate()
-            todayOfficialCost = stats.byDay[today]?.officialCost ?? 0
-          } catch {
-            // 聚合失败时不阻塞余额查询；对账基准确认可用后仍返回（消费计 0 下次再核）。
+        try {
+          const balances = await queryBalances(ctx, providers)
+          // 自定义 Provider 余额（任意 HTTP 端点）：独立于内置三家，逐个成败。
+          const custom = await queryCustomBalances(ctx, config.customBalances ?? [])
+          // 声明端点（declarative）：为内置表没有的供应商自声明余额/额度接口。
+          // 绑定到某条已配置 provider 的同源地址，安全边界由 declarative.ts 强制执行。
+          const declared = await queryDeclaredEndpoints(ctx, piProviders, config.declaredEndpoints ?? [])
+          // P1-5 鉴权分类告警：区分「配置错了 key」与「上游不可达」，协助定位。
+          for (const row of [...balances, ...custom, ...declared]) {
+            if (row.error === 'unauthorized') warnAuthOnce('balance', row.provider, row.displayName)
           }
-          const result = reconcileBalanceDelta(reconcileRef, official, todayOfficialCost, today, now)
-          reconcileRef = result.ref
-          if (result.event !== null && result.event.kind !== 'flat') reconcile = { ...result.event, provider: official.displayName }
-          if (result.ref !== null) persistReconcileRef()
+          // 余额差对账：用官方余额当日变动反推消费，与本地账本今日官方费用比对。
+          // 只对 DeepSeek 官方余额行做（订阅/第三方不动官方余额）；取不到余额时不打扰。
+          const official = balances.find(row => row.provider === 'deepseek')
+          let reconcile: ReconcileEvent | undefined
+          if (official !== undefined && official.totalBalance !== undefined) {
+            const now = Date.now()
+            const today = dayStamp(now)
+            let todayOfficialCost = 0
+            try {
+              const stats = await aggregator.aggregate()
+              todayOfficialCost = stats.byDay[today]?.officialCost ?? 0
+            } catch {
+              // 聚合失败时不阻塞余额查询；对账基准确认可用后仍返回（消费计 0 下次再核）。
+            }
+            const result = reconcileBalanceDelta(reconcileRef, official, todayOfficialCost, today, now)
+            reconcileRef = result.ref
+            if (result.event !== null && result.event.kind !== 'flat') reconcile = { ...result.event, provider: official.displayName }
+            if (result.ref !== null) persistReconcileRef()
+          }
+          const doc = { balances: [...balances, ...custom, ...declared], ...(reconcile === undefined ? {} : { reconcile }) }
+          balanceCache = { at: Date.now(), doc }
+          res.end(JSON.stringify(doc))
+        } catch (error) {
+          // 查询失败：保留上次成功快照（从未成功则为空余额），避免每 30 秒把偶发故障刷成「未配置」。
+          console.warn('[usage-billing] refreshBalances failed; serving cached balances:', error)
+          res.end(JSON.stringify(balanceCache.doc))
         }
-        res.end(JSON.stringify({ balances: [...balances, ...custom, ...declared], ...(reconcile === undefined ? {} : { reconcile }) }))
       },
     }),
     'usage-billing: balance route',

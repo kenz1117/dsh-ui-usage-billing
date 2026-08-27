@@ -32,7 +32,7 @@ import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv, siteRowsCsv }
 import type { createBillingBudgetStore } from './budget-store.ts'
 import {
   applyLiveCatalogModels, applyLivePricing, catalogEntries, cnyToUsd, computeCost, convertUnitPrice,
-  formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo,
+  formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, isPromoActive,
   modelOf, resolveToken, tierAt, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
@@ -1050,7 +1050,8 @@ type DashboardRenderSlots = PropsRenderSlots<'billing.dashboard.decor'>
 /** Props of the billing dashboard modal. */
 interface BillingDashboardProps {
   stats: UsageStats
-  t: (key: UsageBillingKey) => string
+  // 双参签名：局部需要插值文案（如促销截止日期）时传 params。
+  t: (key: UsageBillingKey, params?: Record<string, unknown>) => string
   onClose: () => void
   health: ModelHealth
   balances: readonly ProviderBalance[]
@@ -2695,7 +2696,9 @@ function BillingDashboard({
                       {catalogEntries().map((entry) => {
                         const hasPrice = entry.price.input > 0 || entry.price.output > 0
                         return (
-                          <tr key={entry.key}>
+                          // Fragment 携 key：一个目录条目渲染主行 + 附加计价子行多个 tr。
+                          <Fragment key={entry.key}>
+                          <tr>
                             <td>
                               <span className={css.ubModel}>
                                 <VendorLogo provider={entry.provider} colorVar={resolveToken(entry.colorVar)} />
@@ -2705,6 +2708,19 @@ function BillingDashboard({
                                   {entry.uncatalogued && (
                                     <span className={css.ubTagAlert} data-testid="billing-price-uncatalogued">
                                       {t('billing.uncatalogued')}
+                                    </span>
+                                  )}
+                                  {/* 限时促销：生效期内在模型名后挂折扣徽章，悬停提示恢复时点；过期自动消失。 */}
+                                  {entry.promo !== undefined && isPromoActive(entry.promo, Date.now()) && (
+                                    <span
+                                      className={css.ubTagPromo}
+                                      data-testid="billing-price-promo"
+                                      title={entry.promo.endsAtMs === undefined
+                                        // 无截止日的长期活动：提示待厂商公告，不显示具体日期。
+                                        ? t('billing.promoOpenEnded')
+                                        : t('billing.promoUntil', { date: new Date(entry.promo.endsAtMs).toLocaleDateString() })}
+                                    >
+                                      {entry.promo.note ?? t('billing.promoBadge')}
                                     </span>
                                   )}
                                 </span>
@@ -2742,6 +2758,20 @@ function BillingDashboard({
                                   : <span className={css.na}>—</span>}
                             </td>
                           </tr>
+                          {/* 附加计价子行：Batch / 显式缓存等参考价，缩进挂在模型名下，不参与计费。 */}
+                          {(entry.extraRows ?? []).map(row => (
+                            <tr key={`${entry.key}:${row.label}`} className={css.ubExtraRow}>
+                              <td>
+                                <span className={css.ubExtraName}>{row.label}</span>
+                                {row.note !== undefined && <span className={css.ubExtraNote}>{row.note}</span>}
+                              </td>
+                              <td className={css.numCol}>{row.input === undefined ? <span className={css.na}>—</span> : unitMoney(row.input, entry.price.currency)}</td>
+                              <td className={css.numCol}><span className={css.na}>—</span></td>
+                              <td className={css.numCol}>{row.output === undefined ? <span className={css.na}>—</span> : unitMoney(row.output, entry.price.currency)}</td>
+                              <td className={css.numCol}><span className={css.na}>—</span></td>
+                            </tr>
+                          ))}
+                          </Fragment>
                         )
                       })}
                     </tbody>

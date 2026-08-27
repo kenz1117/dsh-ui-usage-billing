@@ -1696,7 +1696,8 @@
 .ubTag,
 .ubTagSuccess,
 .ubTagNeutral,
-.ubTagAlert {
+.ubTagAlert,
+.ubTagPromo {
   display: inline-flex;
   align-items: center;
   height: 18px;
@@ -1710,6 +1711,13 @@
 .ubTagSuccess { background: color-mix(in srgb, var(--dsw-static-green-500) 14%, transparent); color: var(--dsw-static-green-500); }
 .ubTagNeutral { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-secondary); }
 .ubTagAlert { background: color-mix(in srgb, var(--dsw-static-amber-500) 16%, transparent); color: var(--dsw-static-amber-500); }
+/* 限时促销徽章：红色系与「未收录」警示色区分，提示当前价为折扣价。 */
+.ubTagPromo { background: color-mix(in srgb, var(--dsw-static-red-500) 14%, transparent); color: var(--dsw-static-red-500); cursor: help; }
+
+/* 附加计价子行（Batch / 显式缓存等参考价）：整体弱化，避免与主行混读。 */
+.ubExtraRow td { padding-top: 2px; padding-bottom: 2px; opacity: 0.72; font-size: 12px; }
+.ubExtraName { margin-left: 26px; color: var(--dsw-alias-label-secondary); }
+.ubExtraNote { margin-left: 8px; font-size: 10px; color: var(--dsw-alias-label-tertiary); }
 
 .ubCard {
   display: flex;
