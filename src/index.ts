@@ -177,7 +177,7 @@ function warnAuthOnce(source: string, provider: string, displayName: string): vo
   const last = authWarnedAt.get(key)
   if (last !== undefined && now - last < AUTH_WARN_COOLDOWN_MS) return
   authWarnedAt.set(key, now)
-  console.warn(`[usage-billing] ${displayName}（${provider}）鉴权失败：请检查 llm-pi-ai 设置中该 provider 的 apiKeyEnv 凭据是否正确/有效。`)
+  console.warn(`[usage-billing] ${displayName}（${provider}）鉴权失败：请检查 llm-pi-ai 设置中该 provider 的凭据环境变量是否正确/有效。`)
 }
 
 /**
