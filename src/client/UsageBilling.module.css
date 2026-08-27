@@ -357,244 +357,7 @@
 }
 .popModelStatusLow { color: var(--dsw-static-red-500); }
 
-.triggerPopRow {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  white-space: nowrap;
-}
-
-.triggerPopLabel {
-  flex: 0 0 auto;
-  font-size: 10.5px;
-  line-height: 16px;
-  letter-spacing: 0.01em;
-  color: var(--dsw-alias-label-tertiary);
-  white-space: nowrap;
-}
-
-.triggerPopValue {
-  display: inline-flex;
-  align-items: baseline;
-  justify-content: flex-end;
-  gap: 8px;
-  min-width: 0;
-  font-size: 12.5px;
-  line-height: 17px;
-  font-weight: 600;
-  color: var(--dsw-alias-label-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-/* 模型名过长时省略，避免撑爆弹层。 */
-.triggerPopName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 110px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-secondary);
-}
-
-/* 弹层标题行：今日 · 本月（single-line）。 */
-.triggerPopTitle {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--dsw-alias-label-primary);
-  white-space: nowrap;
-}
-.triggerPopTitleMonth {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-tertiary);
-}
-/* 主力消耗/金额为主，模型名次要（triggerPopName 已弱化）。 */
-.triggerPopStrong {
-  margin-left: 8px;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--dsw-alias-label-primary);
-}
-/* 风险提示行：小字警示色（余额不足 / 配额将尽）。 */
-.triggerPopAlert {
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--dsw-static-red-500);
-  white-space: nowrap;
-}
-
-/* 额度提醒条目列表（右对齐多行）。 */
-.triggerPopValueStack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-}
-
-/* 中性占位/正常提示（灰），用于「暂无消耗」「余额与配额正常」。 */
-.triggerPopMuted {
-  color: var(--dsw-alias-label-tertiary);
-  font-weight: 500;
-}
-
 /* ── 参考图风格「数据卡」弹层 ─────────────────────────────────── */
-
-/* 头部：主标题 + 更新时间（右）。 */
-.triggerPopHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-.triggerPopUpdated {
-  font-size: 10px;
-  color: var(--dsw-alias-label-tertiary);
-  white-space: nowrap;
-}
-
-/* 两列指标网格：标签上小灰、数值下大主色。 */
-.triggerPopMetrics {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  column-gap: 12px;
-  row-gap: 7px;
-}
-.triggerPopMetric {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-}
-.triggerPopMetricLabel {
-  font-size: 10px;
-  color: var(--dsw-alias-label-tertiary);
-  white-space: nowrap;
-}
-.triggerPopMetricValue {
-  font-size: 14px;
-  line-height: 18px;
-  font-weight: 700;
-  color: var(--dsw-alias-label-primary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-/* 关键指标（费用）高亮色。 */
-.triggerPopMetricHighlight {
-  color: var(--dsw-static-amber-500);
-}
-
-/* 底部：标题「主力消耗」+ 直联/订阅两行（上下细分割线）。 */
-.triggerPopFoot {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 6px;
-  border-top: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 70%, transparent);
-}
-.triggerPopFootTitle {
-  text-align: center;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  color: var(--dsw-alias-label-tertiary);
-  padding-bottom: 4px;
-  border-bottom: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 70%, transparent);
-}
-.triggerPopFootNotes {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-.triggerPopFootNote {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  min-width: 0;
-}
-/* 前导 + 厂商名：与指标标签同层级的小灰字。 */
-.triggerPopFootName {
-  font-size: 10px;
-  color: var(--dsw-alias-label-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* 「直联/订阅」徽章：小 pill，直联中性色、订阅琥珀色。 */
-.triggerPopBadge {
-  flex: none;
-  padding: 1px 6px;
-  border-radius: 5px;
-  font-size: 9.5px;
-  font-weight: 600;
-  line-height: 14px;
-  white-space: nowrap;
-}
-.triggerPopBadgeDirect {
-  background: color-mix(in srgb, var(--dsw-alias-label-primary) 12%, transparent);
-  color: var(--dsw-alias-label-primary);
-}
-.triggerPopBadgeSub {
-  background: color-mix(in srgb, var(--dsw-static-amber-500) 18%, transparent);
-  color: var(--dsw-static-amber-500);
-}
-.triggerPopFootStrong {
-  color: var(--dsw-alias-label-secondary);
-  font-weight: 600;
-}
-/* 底部数值（余额/配额）：与指标数值同层级的大号主色。 */
-.triggerPopFootStatus {
-  font-size: 14px;
-  line-height: 18px;
-  font-weight: 700;
-  color: var(--dsw-alias-label-primary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.triggerPopFootStatusLow {
-  color: var(--dsw-static-red-500);
-}
-/* 「展开详情」按钮：参考图样式（胶囊、描边、深底）。 */
-.triggerPopOpenBtn {
-  pointer-events: auto;
-  flex: none;
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 80%, transparent);
-  border-radius: 999px;
-  padding: 5px 11px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--dsw-alias-label-primary);
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-3) 70%, transparent);
-  cursor: pointer;
-  transition: border-color 160ms ease, background-color 160ms ease;
-}
-.triggerPopOpenBtn:hover {
-  border-color: var(--dsw-static-blue-500);
-  background: color-mix(in srgb, var(--dsw-static-blue-500) 12%, var(--dsw-alias-bg-layer-3));
-}
-
-/* 近 7 天迷你柱：底对齐，渐变蓝。 */
-.triggerPopBars {
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  height: 22px;
-  margin-top: 4px;
-  padding-top: 8px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
-}
-
-.triggerPopBar {
-  flex: 1;
-  border-radius: 2px;
-  background: var(--dsw-static-blue-500);
-  transition: height 200ms ease;
-}
 
 /* ── Dashboard modal ────────────────────────────────────────────────── */
 
@@ -1148,14 +911,6 @@
   white-space: nowrap;
 }
 
-/* 费率表峰谷规则提示：标题下方的单行灰字说明。 */
-.pricingTip {
-  margin: 0 0 2px;
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--dsw-alias-label-caption);
-}
-
 /* ── 趋势范围切换（7 天 / 30 天分段控件） ────────────────────────────── */
 
 .rangeToggle {
@@ -1290,47 +1045,6 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-/* 官方 vs 三方汇总卡片：两个并列统计块。 */
-.bucketSummary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.bucketStat {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 14px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-2);
-}
-
-.bucketStatLabel {
-  font-size: 11px;
-  line-height: 15px;
-  color: var(--dsw-alias-label-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.bucketStatValue {
-  font-size: 20px;
-  line-height: 26px;
-  font-weight: 700;
-  color: var(--dsw-alias-label-primary);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
-}
-
-.bucketStatSub {
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--dsw-alias-label-caption);
-  font-variant-numeric: tabular-nums;
-}
-
 .shareDot {
   width: 8px;
   height: 8px;
@@ -1346,68 +1060,6 @@
 }
 
 /* ── 月度预算进度条 ─────────────────────────────────────────────────── */
-
-.budget {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 16px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 14px;
-  background: var(--dsw-alias-bg-layer-1);
-}
-
-.budgetHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-/* 设置项标题字体：与「峰谷切换提醒」标题一致（13px 加粗主色），
-   使「本月预算 / 注入用量查询工具 / 模型用量悬浮窗」与之统一。 */
-.budgetLabel {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--dsw-alias-label-primary);
-}
-
-.budgetValue {
-  font-size: 12px;
-  line-height: 17px;
-  color: var(--dsw-alias-label-secondary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* 右侧控件组：金额输入 + 进度文本 + 开关。 */
-.budgetControls {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-/* 预算金额输入框外壳：¥ 单位符号内嵌左側，边框在外壳上。 */
-.budgetInputWrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 6px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-layer-1);
-}
-
-.budgetInputWrap:focus-within {
-  border-color: var(--dsw-alias-border-l3);
-}
-
-.budgetUnit {
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--dsw-alias-label-tertiary);
-}
 
 /* 预算金额输入：无边框（外壳承担），以人民币元为单位。 */
 .budgetInput {
@@ -1458,20 +1110,6 @@
 
 .switchOn .switchKnob {
   transform: translateX(13px);
-}
-
-.budgetTrack {
-  height: 6px;
-  border-radius: 999px;
-  background: var(--dsw-alias-bg-module-platform);
-  overflow: hidden;
-}
-
-.budgetFill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--dsw-static-blue-500);
-  transition: width 200ms ease;
 }
 
 /* 接近超支（≥80%）：琥珀色警示档。 */
@@ -1559,12 +1197,6 @@
   stroke: var(--dsw-alias-label-dimmed);
   stroke-width: 1;
   stroke-dasharray: 3 3;
-}
-
-.chartDot {
-  fill: var(--dsw-static-neutral-bluish-00);
-  stroke: var(--dsw-static-blue-500);
-  stroke-width: 2;
 }
 
 .chartTooltip {
@@ -1784,13 +1416,6 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-}
-
-.ubModelDot {
-  flex: none;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
 }
 
 /* 厂商 logo：内嵌 SVG data URI，置于模型名前。 */
@@ -2067,11 +1692,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.costCol {
-  color: var(--dsw-alias-label-primary);
-  font-weight: 600;
-}
-
 .na {
   color: var(--dsw-alias-label-dimmed);
 }
@@ -2105,41 +1725,9 @@
 
 /* ── Pricing collapse toggle ────────────────────────────────────────── */
 
-.pricingToggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  border: none;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-}
-
 .pricingToggle:hover .panelTitle,
 .pricingToggle:focus-visible .panelTitle {
   color: var(--dsw-alias-label-primary);
-}
-
-/* 汇率来源徽标：实时（绿）/ 内置（中性灰） */
-.rateBadge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 6px;
-  margin-left: 6px;
-  border-radius: 999px;
-  font-size: 10px;
-  line-height: 14px;
-  font-weight: 500;
-  vertical-align: 1px;
-  white-space: nowrap;
-}
-
-.rateBadgeLive {
-  color: var(--dsw-static-green-500);
-  background: var(--dsw-alias-bg-layer-2);
 }
 
 /* 中转站分布 / 额度行：轻量行式，左侧徽标 + 站点名，右侧金额 + 调用或窗口。 */
@@ -2225,67 +1813,7 @@
   color: var(--dsw-static-red-500);
 }
 
-.rateBadgeBuiltin {
-  color: var(--dsw-alias-label-tertiary);
-  background: var(--dsw-alias-bg-layer-2);
-}
-
-.pricingToggleText {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-}
-
-.pricingChevron {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  color: var(--dsw-alias-label-tertiary);
-  transition: transform 160ms ease;
-}
-
-.pricingChevronOpen {
-  transform: rotate(180deg);
-}
-
 /* ── Peak/off-peak band display ─────────────────────────────────────── */
-
-.bandPrice {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.bandPriceOff {
-  color: var(--dsw-alias-label-caption);
-}
-
-.bandPriceOff::before {
-  content: '/';
-  margin-right: 4px;
-  color: var(--dsw-alias-label-dimmed);
-}
-
-.bandTag {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 1px;
-  font-size: 10.5px;
-  line-height: 14px;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.bandTagOff {
-  color: var(--dsw-static-green-500);
-  font-weight: 600;
-}
-
-/* 高峰/低谷两行：高峰主色、低谷绿色加粗，行距紧凑。 */
-.bandTag > span:first-child {
-  font-weight: 500;
-  color: var(--dsw-alias-label-primary);
-}
 
 .flatTag {
   font-size: 10.5px;
@@ -2439,19 +1967,6 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-
-.balanceDays {
-  font-size: 10.5px;
-  line-height: 14px;
-  color: var(--dsw-alias-label-caption);
-  white-space: nowrap;
-}
-
-/* 剩余不足 3 天：红色强调，提醒尽快充值。 */
-.balanceDaysLow {
-  color: var(--dsw-static-red-500);
-  font-weight: 600;
 }
 
 /* 「约可撑 N 天」圆形徽标：点击弹出余额详情。 */
@@ -2985,16 +2500,6 @@
 
 /* ── 每轮费用 + 异常 ───────────────────────────────────────────────── */
 
-.roundsFlagBadge {
-  margin-left: 8px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 800;
-  color: var(--dsw-static-neutral-bluish-00);
-  background: var(--dsw-static-red-500);
-}
-
 .rounds {
   margin-top: 10px;
 }
@@ -3336,33 +2841,10 @@
   margin-top: 2px;
 }
 
-.triggerPopSwitchBtn {
-  border: 0;
-  background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  padding: 2px 4px;
-  border-radius: 6px;
-}
-
-.triggerPopSwitchBtn:hover {
-  color: var(--dsw-alias-label-primary);
-  background: color-mix(in srgb, var(--dsw-alias-border-l1) 45%, transparent);
-}
-
 .triggerPopSwitchCount {
   font-size: 10px;
   color: var(--dsw-alias-label-tertiary);
   font-variant-numeric: tabular-nums;
-}
-
-/* 设置 Tab 浮窗模式选择（综合 / 指定订阅卡）。 */
-.floatModeRow {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
 }
 
 .floatModeBtn {
@@ -3381,14 +2863,6 @@
   border-color: var(--dsw-static-blue-500);
   color: var(--dsw-alias-label-primary);
   background: color-mix(in srgb, var(--dsw-static-blue-500) 16%, transparent);
-}
-
-/* 订阅目标多选。 */
-.floatTargets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
 }
 
 .floatTarget {
@@ -3516,41 +2990,6 @@
 }
 
 .plgLink:hover {
-  text-decoration: underline;
-}
-
-/* 插件信息卡（旧版单行列表，已弃用但保留类定义）。 */
-.pluginInfo {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.pluginInfoRow {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  font-size: 12px;
-}
-
-.pluginInfoLabel {
-  flex: 0 0 72px;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.pluginInfoValue {
-  color: var(--dsw-alias-label-primary);
-  word-break: break-all;
-}
-
-.pluginInfoLink {
-  color: var(--dsw-static-blue-500);
-  text-decoration: none;
-  word-break: break-all;
-}
-
-.pluginInfoLink:hover {
   text-decoration: underline;
 }
 
@@ -3725,86 +3164,6 @@
   to { opacity: 1; }
 }
 
-/* 设置面板：与预算卡片同款。 */
-.peakAlertPanel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 16px;
-  background: var(--dsw-alias-bg-layer-1);
-}
-
-.peakAlertPanelHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.peakAlertPanelLabel {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--dsw-alias-label-primary);
-}
-
-.peakAlertPanelBody {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 16px;
-  align-items: center;
-}
-
-.peakAlertField {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.peakAlertNum {
-  width: 56px;
-  padding: 4px 6px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-label-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.peakAlertSelect {
-  padding: 4px 6px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-label-primary);
-  font-size: 12px;
-}
-
-.peakAlertCheck {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.peakAlertPreview {
-  padding: 5px 10px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-label-primary);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.peakAlertPreview:hover {
-  background: var(--dsw-alias-bg-layer-3);
-}
-
 /* ── 设置 Tab：set-card（头部 标题+说明+开关 → 控制列） ───────────── */
 
 .setCard {
@@ -3935,16 +3294,6 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-.sel {
-  padding: 3px 8px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  font-size: 12px;
-  line-height: 16px;
-}
-
 .prog {
   flex: 1;
   min-width: 0;
@@ -3984,41 +3333,3 @@
 }
 
 /* ── 设置 Tab：分区标题 + 分组说明 ─────────────────────────────────── */
-
-.settingsHead {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 2px;
-}
-
-.settingsTitle {
-  margin: 0;
-  font-size: 15px;
-  line-height: 22px;
-  font-weight: 650;
-  letter-spacing: -0.005em;
-  color: var(--dsw-alias-label-primary);
-}
-
-.settingsHint {
-  margin: 0;
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--dsw-alias-label-caption);
-}
-
-/* 收起态（关闭开关）时用说明文字填充，避免只剩标签+开关显得空。 */
-.budgetHint {
-  margin: 6px 0 0;
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--dsw-alias-label-caption);
-}
-
-.peakAlertHint {
-  margin: 6px 0 0;
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--dsw-alias-label-caption);
-}
