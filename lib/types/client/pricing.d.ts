@@ -12,6 +12,10 @@
  * (weekdays 09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate —
  * weekends (Sat/Sun, Beijing) are charged at the off-peak rate all day.
  * The estimator mixes both bands by a configured peak share ({@link DEFAULT_PEAK_SHARE}).
+ *
+ * Time-limited launch promos ({@link PricePromo}) never mutate the catalog:
+ * entries keep list price and a promo window; the estimator and the rate
+ * table apply the discount factor until the deadline, then auto-revert.
  */
 import type { LivePricing } from '../pricing-shared.ts';
 /**
@@ -124,6 +128,36 @@ export interface ModelPrice extends PriceBand {
     /** Off-peak band (Gemini Flex / DeepSeek 低谷档); absent = flat pricing. */
     offPeak?: PriceBand;
 }
+/**
+ * 限时促销窗口（新模型上线折扣等厂商营销活动）：生效期内该条目所有档位
+ * （主档与 offPeak）单价按 factor 折扣计价与显示，截止时刻起自动恢复刊例价。
+ */
+export interface PricePromo {
+    /** 折扣系数（0.5 = 五折）；仅 (0,1) 区间有效，非法值视为无促销。 */
+    factor: number;
+    /**
+     * 截止时刻（epoch ms）：该时刻及之后恢复刊例价。缺省表示厂商未公布截止日
+     * 的长期活动（如「限时 5 折直至另行通知」），持续生效直至收到公告后补填。
+     */
+    endsAtMs?: number;
+    /** 展示备注（如「限时 5 折至 …」），供界面提示活动性质。 */
+    note?: string;
+}
+/**
+ * 附加计价行（纯展示参考价）：承载主三桶之外的厂商计价维度，如 Batch
+ * 半价档、显式缓存创建/命中等。不参与估算计费——用量统计源只有
+ * input/cacheHit/cacheMiss/output 四桶，无 batch 与显式缓存维度可区分。
+ */
+export interface PriceRow {
+    /** 行标签（沿用目录单语风格，直接中文）。 */
+    label: string;
+    /** 输入侧单价（元或美元 / 每百万 token）；缺省显示 —。 */
+    input?: number;
+    /** 输出侧单价；缺省显示 —。 */
+    output?: number;
+    /** 补充说明（如与标准价的关系）。 */
+    note?: string;
+}
 /** One catalog entry: identity, brand color token, and price. */
 export interface ModelEntry {
     /** Model key used by `.dsh-usage-stats.json` `byModel`. */
@@ -138,6 +172,13 @@ export interface ModelEntry {
     price: ModelPrice;
     /** Peak-hour window label for time-of-day priced models. */
     peakHours?: string;
+    /**
+     * 限时促销：生效期内 price 各档位按 factor 打折，过期自动恢复。
+     * price 表本身永远保存刊例价，促销只在计价/显示出口处折算，不回写目录。
+     */
+    promo?: PricePromo;
+    /** 附加计价行（Batch / 显式缓存等展示性参考价），费率表在该模型行下方列出。 */
+    extraRows?: readonly PriceRow[];
     /**
      * 单价为估算价：厂商未公布按量官方单价（公测 / 套餐制），表内价格为估算，
      * 展示时标注以免误当正式定价；正式定价公布后移除。
@@ -194,11 +235,29 @@ export declare function modelOf(key: string): ModelEntry;
  */
 export declare function isPriced(key: string): boolean;
 /**
- * 费率表渲染的完整目录：内置 + models.dev 补充条目 + 探活模型（无价标记）。
- * 探活模型去重（按归一化 id）：内置/补充已有的不再重复；无价的保留并标记
- * `uncatalogued`，费率表据此显示「未收录」。
+ * 促销在 nowMs 是否生效：factor 必须落在 (0,1) 区间，截止时刻及之后视为过期；
+ * endsAtMs 缺省表示长期活动，在 factor 合法期间持续生效。
+ * 导出供测试：纯函数。
+ * @param promo - 待判定的促销窗口。
+ * @param nowMs - 判定时刻（epoch ms）。
  */
-export declare function catalogEntries(): readonly ModelEntry[];
+export declare function isPromoActive(promo: PricePromo, nowMs: number): boolean;
+/**
+ * 把限时促销折入条目单价：生效期内返回 price 主档与 offPeak 全部乘 factor 的
+ * 副本，其余字段原样保留；不在促销期（过期/未开始/factor 非法）原样返回。
+ * 幂等由调用方保证——计价与费率表显示各自只折一次，勿对已折价副本重复应用。
+ * @param entry - 目录条目（price 保持刊例价口径）。
+ * @param nowMs - 判定时刻（epoch ms）。
+ */
+export declare function applyPromo(entry: ModelEntry, nowMs: number): ModelEntry;
+/**
+ * 费率表渲染的完整目录：内置 + models.dev 补充条目 + 探活模型（无价标记）。
+ * 内置条目按 nowMs 折算限时促销（生效中的条目显示折后单价，过期自动恢复
+ * 刊例价）。探活模型去重（按归一化 id）：内置/补充已有的不再重复；无价的
+ * 保留并标记 `uncatalogued`，费率表据此显示「未收录」。
+ * @param nowMs - 促销判定时刻；缺省当前时刻。
+ */
+export declare function catalogEntries(nowMs?: number): readonly ModelEntry[];
 /** Resolve a price-table row by its CSS variable name (theme token or fallback color). */
 export declare function resolveToken(name: string): string;
 /**
@@ -216,11 +275,12 @@ export declare function resolveToken(name: string): string;
  * @param peakShare - share of traffic in the peak band (0..1); defaults to {@link DEFAULT_PEAK_SHARE}.
  * @returns the estimated cost in CNY.
  */
-export declare function computeCost(entry: ModelEntry, buckets: TokenUsageBuckets, peakShare?: number): number;
+export declare function computeCost(entry: ModelEntry, buckets: TokenUsageBuckets, peakShare?: number, nowMs?: number): number;
 /**
  * 按调用时刻精确判定高峰/空闲档并计价（P0-1：替代固定比例混合）。时刻未知
  * （null/NaN，理论不发生在真实事件流）时回退 {@link DEFAULT_PEAK_SHARE} 混合，
- * 保持旧语义不低估。平档模型（无 offPeak）两个时段同价。
+ * 保持旧语义不低估。平档模型（无 offPeak）两个时段同价。限时促销与峰谷档
+ * 同口径：按事件时刻判定该笔流量当时享受的单价。
  * @param entry - the catalog entry whose prices apply.
  * @param buckets - token usage counts.
  * @param timeMs - the call's wall-clock time (epoch ms); null falls back to the peak-share mix.

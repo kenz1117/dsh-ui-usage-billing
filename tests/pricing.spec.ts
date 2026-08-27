@@ -1,14 +1,14 @@
 /**
  * Billing-engine unit tests: catalog lookup, native-currency pricing
- * (domestic CNY / overseas USD), peak/off-peak and cache-bucket cost, and
- * the display formatters.
+ * (domestic CNY / overseas USD), peak/off-peak and cache-bucket cost,
+ * time-limited launch promos, and the display formatters.
  */
 
 import { describe, expect, it, afterEach } from 'vitest'
 import {
-  applyLiveCatalogModels, applyLivePricing, canonModelId, catalogEntries, cnyToUsd, computeCost,
+  applyLiveCatalogModels, applyLivePricing, applyPromo, canonModelId, catalogEntries, cnyToUsd, computeCost,
   computeCostAt, convertUnitPrice, formatMoney, formatPercent, formatTokens, formatUnitPrice,
-  getRateInfo, isPeakHour, modelOf, MODEL_CATALOG, resolveCatalogKey, tierAt, tierCountdown,
+  getRateInfo, isPeakHour, isPromoActive, modelOf, MODEL_CATALOG, resolveCatalogKey, tierAt, tierCountdown,
 } from '../src/client/pricing.ts'
 import { PROVIDER_ALIASES } from '../src/client/UsageBilling.tsx'
 
@@ -343,5 +343,155 @@ describe('catalogEntries (model health parity)', () => {
     expect(keys.filter(k => k === 'kimi-k3')).toHaveLength(1)
     const acme = entries.find(entry => entry.key === 'acme-model-x')
     expect(acme).toMatchObject({ provider: 'Acme', uncatalogued: true })
+  })
+})
+
+describe('time-limited promo (GLM-5.3-Flash)', () => {
+  const MILLION = 1_000_000
+  // 每档各 1M token：成本数值 = 未命中 + 命中 + 输出三个单价之和（元/百万口径）。
+  const buckets = { input: MILLION, cacheHit: MILLION, cacheMiss: MILLION, output: MILLION }
+  const entry = modelOf('glm-5.3-flash')
+  // 判定时刻一律从 promo 元数据推导，不依赖真实时钟：促销过期后测试依旧稳定。
+  const endsAtMs = entry.promo?.endsAtMs ?? 0
+
+  it('lists the model with list price and the half-price window metadata', () => {
+    expect(entry.name).toBe('GLM-5.3-Flash')
+    expect(resolveCatalogKey('glm-5.3-flash')).toBe('glm-5.3-flash')
+    // 归一化变体（大小写/分隔符/括号附注）落到同一目录键。
+    expect(resolveCatalogKey('GLM.5.3 Flash(v2)')).toBe('glm-5.3-flash')
+    // 目录永远保存刊例价（0.8 / 0.23 / 2.8），促销只是元数据不回写价格。
+    expect(entry.price).toMatchObject({ currency: 'CNY', input: 0.8, cacheHit: 0.23, output: 2.8 })
+    expect(entry.promo?.factor).toBe(0.5)
+    expect(endsAtMs).toBeGreaterThan(0)
+  })
+
+  it('halves all bands for in-window events via computeCostAt', () => {
+    const inside = endsAtMs - 3_600_000
+    // 折后单价合计：(0.4 + 0.115 + 1.4) 元/百万 token。
+    expect(computeCostAt(entry, buckets, inside)).toBeCloseTo(1.915, 10)
+  })
+
+  it('reverts to list price at and after the deadline', () => {
+    const listTotal = 0.8 + 0.23 + 2.8
+    expect(computeCostAt(entry, buckets, endsAtMs)).toBeCloseTo(listTotal, 10)
+    expect(computeCostAt(entry, buckets, endsAtMs + 86_400_000)).toBeCloseTo(listTotal, 10)
+  })
+
+  it('follows the event time so past usage keeps its historical price', () => {
+    // 同一批用量，事件落在促销期内按五折、过期后按刊例价：计价随事件时刻而非墙钟。
+    const during = computeCostAt(entry, buckets, endsAtMs - 86_400_000)
+    const after = computeCostAt(entry, buckets, endsAtMs + 86_400_000)
+    expect(during).toBeCloseTo(after * 0.5, 10)
+  })
+
+  it('respects the explicit nowMs passed to computeCost', () => {
+    const inside = endsAtMs - 3_600_000
+    expect(computeCost(entry, buckets, 1, inside)).toBeCloseTo(1.915, 10)
+    expect(computeCost(entry, buckets, 1, endsAtMs)).toBeCloseTo(3.83, 10)
+  })
+
+  it('scales every band including offPeak while active', () => {
+    // DeepSeek V4 Flash 带 offPeak 分档：促销把主档与低谷档一起打折。
+    const deepseekWithPromo = { ...modelOf('flash'), promo: { factor: 0.5, endsAtMs } }
+    const priced = applyPromo(deepseekWithPromo, endsAtMs - 1000)
+    expect(priced.price.input).toBeCloseTo(1.5, 10) // 主档 ¥3 → ¥1.5
+    expect(priced.price.offPeak?.input).toBeCloseTo(0.75, 10) // 低谷 ¥1.5 → ¥0.75
+  })
+
+  it('returns the entry untouched outside the window or with an invalid factor', () => {
+    const glm = modelOf('glm')
+    // 无促销 / 已过期 / factor 非法：原样返回（引用相等，不改写任何字段）。
+    expect(applyPromo(glm, endsAtMs - 1000)).toBe(glm)
+    expect(applyPromo(entry, endsAtMs)).toBe(entry)
+    const badFactor = { ...entry, promo: { factor: 1, endsAtMs } }
+    expect(applyPromo(badFactor, endsAtMs - 1000)).toBe(badFactor)
+    // 纯判定函数与 applyPromo 口径一致。
+    expect(isPromoActive({ factor: 0.5, endsAtMs }, endsAtMs - 1000)).toBe(true)
+    expect(isPromoActive({ factor: 0.5, endsAtMs }, endsAtMs)).toBe(false)
+  })
+
+  it('shows discounted unit prices in the rate table while active', () => {
+    // 费率表行与计价同源（catalogEntries 折算）：生效中显示折后价，过期自动恢复刊例价。
+    const rowDuring = catalogEntries(endsAtMs - 86_400_000).find(item => item.key === 'glm-5.3-flash')
+    expect(rowDuring?.price.input).toBeCloseTo(0.4, 10)
+    expect(rowDuring?.price.cacheHit).toBeCloseTo(0.115, 10)
+    const rowAfter = catalogEntries(endsAtMs).find(item => item.key === 'glm-5.3-flash')
+    expect(rowAfter?.price.input).toBeCloseTo(0.8, 10)
+  })
+})
+
+describe('Qwen3.8 Max list price with extra pricing rows', () => {
+  const entry = modelOf('qwen3.8-max')
+
+  it('uses the official CNY list price', () => {
+    // 人民币刊例：输入 12 / 缓存命中 1.5 / 输出 36（替换旧美元换算价）。
+    expect(entry.key).toBe('qwen-3.8-max')
+    expect(entry.price).toMatchObject({ currency: 'CNY', input: 12, cacheHit: 1.5, output: 36 })
+  })
+
+  it('carries batch and explicit-cache rows as display-only reference prices', () => {
+    const rows = entry.extraRows ?? []
+    // 四个附加维度齐全：显式缓存创建/命中 + Batch File + Batch Chat。
+    expect(rows.map(row => row.label)).toEqual(['显式缓存创建', '显式缓存命中', 'Batch File', 'Batch Chat'])
+    const batchFile = rows.find(row => row.label === 'Batch File')
+    // Batch File 长期半价档：输入 6 / 输出 18。
+    expect(batchFile).toMatchObject({ input: 6, output: 18 })
+    // Batch Chat 原价与标准价一致；条目无促销元数据（限时活动按需求忽略）。
+    expect(rows.find(row => row.label === 'Batch Chat')).toMatchObject({ input: 12, output: 36 })
+    expect(entry.promo).toBeUndefined()
+  })
+
+  it('keeps extra rows untouched by the promo pipeline in catalogEntries', () => {
+    // 促销折算只作用 price 桶，附加参考价在任何时刻都保持原值。
+    const folded = catalogEntries(Date.now()).find(item => item.key === 'qwen-3.8-max')
+    expect(folded?.extraRows?.find(row => row.label === 'Batch File')?.input).toBe(6)
+  })
+})
+
+describe('Qwen3.8 Flash list price with extra pricing rows', () => {
+  const entry = modelOf('qwen3.8-flash')
+
+  it('uses the official CNY list price', () => {
+    // 人民币刊例：输入 1 / 缓存命中 0.1 / 输出 3。
+    expect(entry.key).toBe('qwen-3.8-flash')
+    expect(entry.price).toMatchObject({ currency: 'CNY', input: 1, cacheHit: 0.1, output: 3 })
+  })
+
+  it('carries batch and explicit-cache rows as display-only reference prices', () => {
+    const rows = entry.extraRows ?? []
+    // 四个附加维度齐全：显式缓存创建/命中 + Batch File + Batch Chat。
+    expect(rows.map(row => row.label)).toEqual(['显式缓存创建', '显式缓存命中', 'Batch File', 'Batch Chat'])
+    // Batch File 长期半价档：输入 0.5 / 输出 1.5；Batch Chat 与标准价一致。
+    expect(rows.find(row => row.label === 'Batch File')).toMatchObject({ input: 0.5, output: 1.5 })
+    expect(rows.find(row => row.label === 'Batch Chat')).toMatchObject({ input: 1, output: 3 })
+    expect(entry.promo).toBeUndefined()
+  })
+})
+
+describe('Qwen3.7-Max list price with open-ended promo', () => {
+  const entry = modelOf('qwen-max')
+
+  it('uses the official CNY list price with the 50% promo folded by catalogEntries', () => {
+    // 刊例：输入 12 / 缓存命中 1.2 / 输出 36；整单限时 5 折（折后 6/0.6/18）。
+    expect(entry.key).toBe('qwen-max')
+    expect(entry.price).toMatchObject({ currency: 'CNY', input: 12, cacheHit: 1.2, output: 36 })
+    // 厂商未公布截止日：promo 无 endsAtMs，表示长期生效直至公告。
+    expect(entry.promo).toMatchObject({ factor: 0.5, note: '限时 5 折' })
+    const folded = catalogEntries(Date.now()).find(item => item.key === 'qwen-max')
+    // 费率表显示折后单价。
+    expect(folded?.price).toMatchObject({ input: 6, cacheHit: 0.6, output: 18 })
+    // 远期时刻不设截止自动恢复——无限期促销在任意远期时刻仍生效。
+    expect(catalogEntries(Date.UTC(2027, 0, 1)).find(item => item.key === 'qwen-max')?.price.input).toBe(6)
+  })
+
+  it('carries batch and explicit-cache rows as display-only reference prices', () => {
+    const rows = entry.extraRows ?? []
+    // 四个附加维度齐全；Batch File 长期半价档：输入 6 / 输出 18（= 折后标准价）。
+    expect(rows.map(row => row.label)).toEqual(['显式缓存创建', '显式缓存命中', 'Batch File', 'Batch Chat'])
+    expect(rows.find(row => row.label === 'Batch File')).toMatchObject({ input: 6, output: 18 })
+    expect(rows.find(row => row.label === 'Batch Chat')).toMatchObject({ input: 12, output: 36 })
+    // 促销管线不折算附加参考价。
+    const folded = catalogEntries(Date.now()).find(item => item.key === 'qwen-max')
+    expect(folded?.extraRows?.find(row => row.label === 'Batch File')?.input).toBe(6)
   })
 })

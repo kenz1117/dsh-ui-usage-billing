@@ -12,6 +12,10 @@
  * (weekdays 09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate —
  * weekends (Sat/Sun, Beijing) are charged at the off-peak rate all day.
  * The estimator mixes both bands by a configured peak share ({@link DEFAULT_PEAK_SHARE}).
+ *
+ * Time-limited launch promos ({@link PricePromo}) never mutate the catalog:
+ * entries keep list price and a promo window; the estimator and the rate
+ * table apply the discount factor until the deadline, then auto-revert.
  */
 
 import type { ExtraModelPrice, LivePrice, LivePricing } from '../pricing-shared.ts'
@@ -214,6 +218,38 @@ export interface ModelPrice extends PriceBand {
   offPeak?: PriceBand
 }
 
+/**
+ * 限时促销窗口（新模型上线折扣等厂商营销活动）：生效期内该条目所有档位
+ * （主档与 offPeak）单价按 factor 折扣计价与显示，截止时刻起自动恢复刊例价。
+ */
+export interface PricePromo {
+  /** 折扣系数（0.5 = 五折）；仅 (0,1) 区间有效，非法值视为无促销。 */
+  factor: number
+  /**
+   * 截止时刻（epoch ms）：该时刻及之后恢复刊例价。缺省表示厂商未公布截止日
+   * 的长期活动（如「限时 5 折直至另行通知」），持续生效直至收到公告后补填。
+   */
+  endsAtMs?: number
+  /** 展示备注（如「限时 5 折至 …」），供界面提示活动性质。 */
+  note?: string
+}
+
+/**
+ * 附加计价行（纯展示参考价）：承载主三桶之外的厂商计价维度，如 Batch
+ * 半价档、显式缓存创建/命中等。不参与估算计费——用量统计源只有
+ * input/cacheHit/cacheMiss/output 四桶，无 batch 与显式缓存维度可区分。
+ */
+export interface PriceRow {
+  /** 行标签（沿用目录单语风格，直接中文）。 */
+  label: string
+  /** 输入侧单价（元或美元 / 每百万 token）；缺省显示 —。 */
+  input?: number
+  /** 输出侧单价；缺省显示 —。 */
+  output?: number
+  /** 补充说明（如与标准价的关系）。 */
+  note?: string
+}
+
 /** One catalog entry: identity, brand color token, and price. */
 export interface ModelEntry {
   /** Model key used by `.dsh-usage-stats.json` `byModel`. */
@@ -228,6 +264,13 @@ export interface ModelEntry {
   price: ModelPrice
   /** Peak-hour window label for time-of-day priced models. */
   peakHours?: string
+  /**
+   * 限时促销：生效期内 price 各档位按 factor 打折，过期自动恢复。
+   * price 表本身永远保存刊例价，促销只在计价/显示出口处折算，不回写目录。
+   */
+  promo?: PricePromo
+  /** 附加计价行（Batch / 显式缓存等展示性参考价），费率表在该模型行下方列出。 */
+  extraRows?: readonly PriceRow[]
   /**
    * 单价为估算价：厂商未公布按量官方单价（公测 / 套餐制），表内价格为估算，
    * 展示时标注以免误当正式定价；正式定价公布后移除。
@@ -313,6 +356,16 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     price: { currency: 'CNY', input: 8, cacheHit: 2, output: 28 },
   },
   {
+    key: 'glm-5.3-flash',
+    name: 'GLM-5.3-Flash',
+    provider: '智谱 AI',
+    colorVar: 'dsw-static-blue-300',
+    // 官方刊例价（元 / 每百万 token）：输入 ¥0.8（未命中）/ ¥0.23（命中）/ 输出 ¥2.8。
+    price: { currency: 'CNY', input: 0.8, cacheHit: 0.23, output: 2.8 },
+    // 上线限时 5 折，至北京时间 2026-09-09 00:00（= 2026-09-08T16:00Z）；到期自动恢复刊例价。
+    promo: { factor: 0.5, endsAtMs: Date.UTC(2026, 8, 8, 16, 0, 0), note: '限时 5 折' },
+  },
+  {
     key: 'glm-4.6',
     name: 'GLM-4.6',
     provider: '智谱 AI',
@@ -363,29 +416,80 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'Qwen3.8 Max',
     provider: '阿里通义',
     colorVar: 'dsw-static-blue-600',
-    // 2026-08-06 发布；官方美元价 $2/$6 换算（缓存 $0.2）。
-    price: { currency: 'CNY', input: 13.58, cacheHit: 1.36, output: 40.74 },
+    // 2026-08-06 发布；人民币刊例：输入 12 / 缓存命中 1.5 / 输出 36。
+    price: { currency: 'CNY', input: 12, cacheHit: 1.5, output: 36 },
+    // 附加计价维度（纯展示，估算计费仍走主价三桶）：
+    // Batch File 为长期半价档；Batch Chat 原价与标准价一致（其限时活动按需求忽略）。
+    extraRows: [
+      { label: '显式缓存创建', input: 15 },
+      { label: '显式缓存命中', input: 1 },
+      { label: 'Batch File', input: 6, output: 18, note: '长期半价' },
+      { label: 'Batch Chat', input: 12, output: 36, note: '与标准价一致' },
+    ],
+  },
+  {
+    key: 'qwen-3.8-flash',
+    name: 'Qwen3.8 Flash',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-blue-400',
+    // 人民币刊例：输入 1 / 缓存命中 0.1 / 输出 3。
+    price: { currency: 'CNY', input: 1, cacheHit: 0.1, output: 3 },
+    // 附加计价维度（纯展示，估算计费仍走主价三桶）：
+    // Batch File 为长期半价档；Batch Chat 原价与标准价一致。
+    extraRows: [
+      { label: '显式缓存创建', input: 1.25 },
+      { label: '显式缓存命中', input: 0.1 },
+      { label: 'Batch File', input: 0.5, output: 1.5, note: '长期半价' },
+      { label: 'Batch Chat', input: 1, output: 3, note: '与标准价一致' },
+    ],
   },
   {
     key: 'qwen-max',
     name: 'Qwen3.7-Max',
     provider: '阿里通义',
     colorVar: 'dsw-static-blue-300',
-    price: { currency: 'CNY', input: 6, cacheHit: 0.6, output: 18 },
+    // 官方刊例价（元 / 每百万 token，0-1M 单一档）：输入 ¥12 / 命中 ¥1.2 / 输出 ¥36。
+    price: { currency: 'CNY', input: 12, cacheHit: 1.2, output: 36 },
+    // 整单限时 5 折（输入 6 / 输出 18），官方未公布截止日；长期生效直至公告后补填。
+    promo: { factor: 0.5, note: '限时 5 折' },
+    // 附加计价维度（纯展示，估算计费仍走主价三桶）：Batch File 为长期半价档；
+    // Batch Chat 原价与标准价一致（其限时活动按惯例忽略）。
+    extraRows: [
+      { label: '显式缓存创建', input: 15 },
+      { label: '显式缓存命中', input: 1.2 },
+      { label: 'Batch File', input: 6, output: 18, note: '长期半价' },
+      { label: 'Batch Chat', input: 12, output: 36, note: '与标准价一致' },
+    ],
   },
   {
     key: 'qwen-plus',
     name: 'Qwen3.5-Plus',
     provider: '阿里通义',
     colorVar: 'dsw-static-blue-500',
+    // 官方刊例价（元 / 每百万 token，≤128K 档）：输入 ¥0.8 / 命中 ¥0.08 / 输出 ¥4.8。
     price: { currency: 'CNY', input: 0.8, cacheHit: 0.08, output: 4.8 },
+    // 附加计价维度（纯展示，估算计费仍走主价三桶；≤128K 档官方价目）：
+    // Batch File 为长期半价档；Batch Chat 原价与标准价一致。
+    extraRows: [
+      { label: '显式缓存创建', input: 1 },
+      { label: '显式缓存命中', input: 0.08 },
+      { label: 'Batch File', input: 0.4, output: 2.4, note: '长期半价' },
+      { label: 'Batch Chat', input: 0.8, output: 4.8, note: '与标准价一致' },
+    ],
   },
   {
     key: 'qwen-flash',
     name: 'Qwen3.5-Flash',
     provider: '阿里通义',
     colorVar: 'dsw-static-blue-400',
+    // 官方刊例价（元 / 每百万 token）：输入 ¥0.2 / 命中 ¥0.02 / 输出 ¥2。
     price: { currency: 'CNY', input: 0.2, cacheHit: 0.02, output: 2 },
+    // 附加计价维度（纯展示，估算计费仍走主价三桶）：显式缓存按百炼统一惯例
+    // 创建 = 输入价 125%、命中 = 10%；批量推理支持情况未核实到官方依据，暂不列示。
+    extraRows: [
+      { label: '显式缓存创建', input: 0.25 },
+      { label: '显式缓存命中', input: 0.02 },
+    ],
   },
   // 字节豆包 (OpenAI-compatible, 火山方舟 2026).
   {
@@ -759,14 +863,28 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'Qwen3.6 Max',
     provider: '阿里通义',
     colorVar: 'dsw-static-orange-500',
+    // 官方刊例价（元 / 每百万 token，0-128K 档）：输入 ¥9 / 命中 ¥0.9 / 输出 ¥54。
     price: { currency: 'CNY', input: 9, cacheHit: 0.9, output: 54 },
+    // 附加计价维度（纯展示，估算计费仍走主价三桶；128K-256K 档为 15/90）：
+    // 显式缓存按百炼统一惯例 创建 = 输入价 125%、命中 = 10%；官方未标 Batch 调用。
+    extraRows: [
+      { label: '显式缓存创建', input: 11.25 },
+      { label: '显式缓存命中', input: 0.9 },
+    ],
   },
   {
     key: 'qwen3-coder-plus',
     name: 'Qwen3-Coder Plus',
     provider: '阿里通义',
     colorVar: 'dsw-static-orange-400',
+    // 官方刊例价（元 / 每百万 token，0-32K 档）：输入 ¥4 / 命中 ¥0.8 / 输出 ¥16。
     price: { currency: 'CNY', input: 4, cacheHit: 0.8, output: 16 },
+    // 附加计价维度（纯展示，估算计费仍走主价三桶；0-32K 档官方价目）：
+    // 该模型不支持批量推理，无 Batch 档可列。
+    extraRows: [
+      { label: '显式缓存创建', input: 5 },
+      { label: '显式缓存命中', input: 0.4 },
+    ],
   },
   {
     key: 'qwen3-coder',
@@ -874,6 +992,7 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'glm-4.7': 'glm-4.7',
   'glm-5-turbo': 'glm-5-turbo',
   'glm-5.1': 'glm-5.1',
+  'glm-5.3-flash': 'glm-5.3-flash',
   'glm-5v-turbo': 'glm-5v-turbo',
   'glm-5v.1': 'glm-5v-turbo',
   // Anthropic Claude / Mistral / Cohere：id 变体归一（点/横杠/短名）。
@@ -914,6 +1033,7 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'doubao-seed-2.1-turbo': 'doubao-seed-2.1-turbo',
   'doubao-seed-2-1-turbo': 'doubao-seed-2.1-turbo',
   'qwen3.8-max': 'qwen-3.8-max',
+  'qwen3.8-flash': 'qwen-3.8-flash',
   'qwen3.7-max': 'qwen-max',
   // 主流缺失/新增模型别名（点/横杠/短名）。
   'qwen3.6-max': 'qwen3.6-max',
@@ -1063,12 +1183,52 @@ export function isPriced(key: string): boolean {
 }
 
 /**
- * 费率表渲染的完整目录：内置 + models.dev 补充条目 + 探活模型（无价标记）。
- * 探活模型去重（按归一化 id）：内置/补充已有的不再重复；无价的保留并标记
- * `uncatalogued`，费率表据此显示「未收录」。
+ * 促销在 nowMs 是否生效：factor 必须落在 (0,1) 区间，截止时刻及之后视为过期；
+ * endsAtMs 缺省表示长期活动，在 factor 合法期间持续生效。
+ * 导出供测试：纯函数。
+ * @param promo - 待判定的促销窗口。
+ * @param nowMs - 判定时刻（epoch ms）。
  */
-export function catalogEntries(): readonly ModelEntry[] {
-  const entries: ModelEntry[] = [...MODEL_CATALOG, ...(liveExtraModels ?? []).map(extraEntryOf)]
+export function isPromoActive(promo: PricePromo, nowMs: number): boolean {
+  const expired = promo.endsAtMs !== undefined && nowMs >= promo.endsAtMs
+  return Number.isFinite(nowMs) && !expired && promo.factor > 0 && promo.factor < 1
+}
+
+/**
+ * 把限时促销折入条目单价：生效期内返回 price 主档与 offPeak 全部乘 factor 的
+ * 副本，其余字段原样保留；不在促销期（过期/未开始/factor 非法）原样返回。
+ * 幂等由调用方保证——计价与费率表显示各自只折一次，勿对已折价副本重复应用。
+ * @param entry - 目录条目（price 保持刊例价口径）。
+ * @param nowMs - 判定时刻（epoch ms）。
+ */
+export function applyPromo(entry: ModelEntry, nowMs: number): ModelEntry {
+  const { promo } = entry
+  if (promo === undefined || !isPromoActive(promo, nowMs)) return entry
+  const scaled = (band: PriceBand): PriceBand => ({
+    input: band.input * promo.factor,
+    cacheHit: band.cacheHit * promo.factor,
+    ...(band.cacheMiss !== undefined ? { cacheMiss: band.cacheMiss * promo.factor } : {}),
+    output: band.output * promo.factor,
+  })
+  return {
+    ...entry,
+    price: {
+      ...scaled(entry.price),
+      currency: entry.price.currency,
+      ...(entry.price.offPeak !== undefined ? { offPeak: scaled(entry.price.offPeak) } : {}),
+    },
+  }
+}
+
+/**
+ * 费率表渲染的完整目录：内置 + models.dev 补充条目 + 探活模型（无价标记）。
+ * 内置条目按 nowMs 折算限时促销（生效中的条目显示折后单价，过期自动恢复
+ * 刊例价）。探活模型去重（按归一化 id）：内置/补充已有的不再重复；无价的
+ * 保留并标记 `uncatalogued`，费率表据此显示「未收录」。
+ * @param nowMs - 促销判定时刻；缺省当前时刻。
+ */
+export function catalogEntries(nowMs: number = Date.now()): readonly ModelEntry[] {
+  const entries: ModelEntry[] = [...MODEL_CATALOG.map(entry => applyPromo(entry, nowMs)), ...(liveExtraModels ?? []).map(extraEntryOf)]
   const known = new Set<string>(entries.map(entry => entry.key.toLowerCase()))
   const knownCanon = new Set<string>(entries.map(entry => canonModelId(entry.key)))
   for (const model of liveCatalogModels ?? []) {
@@ -1160,16 +1320,24 @@ function priceBandCost(band: PriceBand, buckets: TokenUsageBuckets, currency: 'C
  * @param peakShare - share of traffic in the peak band (0..1); defaults to {@link DEFAULT_PEAK_SHARE}.
  * @returns the estimated cost in CNY.
  */
-export function computeCost(entry: ModelEntry, buckets: TokenUsageBuckets, peakShare = DEFAULT_PEAK_SHARE): number {
-  const peak = priceBandCost(entry.price, buckets, entry.price.currency)
-  const off = entry.price.offPeak === undefined ? peak : priceBandCost(entry.price.offPeak, buckets, entry.price.currency)
+export function computeCost(
+  entry: ModelEntry,
+  buckets: TokenUsageBuckets,
+  peakShare = DEFAULT_PEAK_SHARE,
+  nowMs: number = Date.now(),
+): number {
+  // 限时促销按判定时刻折算（无事件时刻的场景以当前时刻为准）。
+  const priced = applyPromo(entry, nowMs)
+  const peak = priceBandCost(priced.price, buckets, priced.price.currency)
+  const off = priced.price.offPeak === undefined ? peak : priceBandCost(priced.price.offPeak, buckets, priced.price.currency)
   return peak * peakShare + off * (1 - peakShare)
 }
 
 /**
  * 按调用时刻精确判定高峰/空闲档并计价（P0-1：替代固定比例混合）。时刻未知
  * （null/NaN，理论不发生在真实事件流）时回退 {@link DEFAULT_PEAK_SHARE} 混合，
- * 保持旧语义不低估。平档模型（无 offPeak）两个时段同价。
+ * 保持旧语义不低估。平档模型（无 offPeak）两个时段同价。限时促销与峰谷档
+ * 同口径：按事件时刻判定该笔流量当时享受的单价。
  * @param entry - the catalog entry whose prices apply.
  * @param buckets - token usage counts.
  * @param timeMs - the call's wall-clock time (epoch ms); null falls back to the peak-share mix.
@@ -1182,10 +1350,12 @@ export function computeCostAt(
   timeMs: number | null | undefined,
   peakShare = DEFAULT_PEAK_SHARE,
 ): number {
-  if (entry.price.offPeak === undefined) return priceBandCost(entry.price, buckets, entry.price.currency)
   if (timeMs === null || timeMs === undefined || !Number.isFinite(timeMs)) return computeCost(entry, buckets, peakShare)
-  const band = tierAt(timeMs) === 'peak' ? entry.price : entry.price.offPeak
-  return priceBandCost(band, buckets, entry.price.currency)
+  // 促销与峰谷档同口径：按事件时刻判定该笔流量当时享受的单价。
+  const priced = applyPromo(entry, timeMs)
+  if (priced.price.offPeak === undefined) return priceBandCost(priced.price, buckets, priced.price.currency)
+  const band = tierAt(timeMs) === 'peak' ? priced.price : priced.price.offPeak
+  return priceBandCost(band, buckets, priced.price.currency)
 }
 
 /** 人民币 → 美元（显示换算用）：用当前生效汇率（实时优先，缺失回退内置），

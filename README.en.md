@@ -21,6 +21,8 @@
 
 ---
 
+> **Qwen family pricing update (2026-08-27)**: aligned with the latest Alibaba Cloud Model Studio list prices — **Qwen3.7-Max** corrected to official list price (input ¥12 / explicit-cache hit ¥1.2 / output ¥36, previously recorded at the discounted promo rate). The current official 50%-off promotion has **no announced end date**: the rate table shows the discounted price with a red promo badge (hover for details), and resumes list-price display once an end date is filled in after the announcement. The Qwen family also gains **supplementary pricing reference rows** (Batch File standing half-price tier, Batch Chat, explicit-cache create/hit — display-only, excluded from estimation); Qwen3-Coder Plus officially does not support batch inference, so only the explicit-cache rows are listed.
+
 > **Peak/off-peak pricing update (from 2026-08-23 (Sun) 00:00 Beijing)**: DeepSeek models follow the new official rule — **weekdays (Mon–Fri)** keep the original peak/off-peak split (peak 09:00–12:00 / 14:00–18:00, ×2); **weekends (Sat/Sun)** are no longer split and are billed at the **off-peak price** all day. The plugin's billing engine, rate table and per-turn peak/off-peak bands all reflect this.
 
 <div align="center">
