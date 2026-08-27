@@ -130,8 +130,8 @@ async function loadCompositionWith(options: { corrupt?: boolean; statsPath?: str
     '  config:',
     '    monthlyBudget: 100',
     // 隔离持久化路径：快照/账本/对账基准都写入本测试临时目录，避免读/写
-    // 真实家目录的 `~/.dsh/.dsh-usage-*`（那些是宿主服务运行产生的真实数据，
-    // 测试硬编码读它会导致断言读到污染值而失败）。
+    // 宿主家目录下的使用统计与账本等真实持久化数据（由宿主服务运行产生，
+    // 测试硬编码读取会导致断言污染值而失败）。
     `    snapshotPath: '${join(root, 'usage-stats.json')}'`,
     `    ledgerPath: '${join(root, 'usage-ledger.json')}'`,
     `    reconcilePath: '${join(root, 'usage-reconcile.json')}'`,
