@@ -16,9 +16,12 @@ import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStor
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
+  type BillingCardPrefs,
   DEFAULT_ENABLE_USAGE_STATS_TOOL,
+  loadBillingCardPrefs,
   type FloatWindowPrefs,
   loadFloatWindowPrefs,
+  saveBillingCardPrefs,
   saveFloatWindowPrefs,
 } from './usage-billing-settings.ts'
 import { TrendChart, type TrendMetric, type TrendPoint } from './TrendChart.tsx'
@@ -814,7 +817,14 @@ function UsageBillingTrigger(
     monthCost: number
     todayCost: number
     weekCost: number
-    days: readonly { date: string; cost: number }[]
+    /** 近 7 天迷你柱数据：cost=当日费用，tokens=当日消耗 token（input+output）。 */
+    days: readonly { date: string; cost: number; tokens: number }[]
+    /** 卡面主指标视角：花费金额 / Token 消耗。 */
+    cardPrefs: BillingCardPrefs
+    /** 当月/今日/本周 累计 token（tokens 视角的主副行数字；口径与悬浮窗总 Token 一致）。 */
+    monthTokens: number
+    todayTokens: number
+    weekTokens: number
     /** hover 速览「主力直联/订阅消耗」+ 对应余额/配额数值文本与低值标记。 */
     vendorStatus: {
       direct: { name: string; text: string; low: boolean } | undefined
@@ -836,7 +846,7 @@ function UsageBillingTrigger(
 ): React.ReactNode {
   const {
     wide, t, onOpen, monthCost, todayCost, weekCost, days, vendorStatus, dash,
-    floatPrefs, subscriptions,
+    floatPrefs, subscriptions, cardPrefs, monthTokens, todayTokens, weekTokens,
   } = props
 
   // 「指定订阅卡」浮窗：可用订阅列表 + 当前展示索引（每次一张，可前后切换）。
@@ -879,9 +889,11 @@ function UsageBillingTrigger(
     )
   }
 
-  // 近 7 天 sparkline 高度：按当日费用归一化到 4~16px。
-  const sparkMax = Math.max(...days.map(d => d.cost), 0)
-  const sparkHeights = days.map(d => sparkMax > 0 ? 4 + (d.cost / sparkMax) * 12 : 4)
+  // 近 7 天 sparkline 高度：随卡面视角取当日费用或当日 token，归一化到 4~16px。
+  const tokenView = cardPrefs.metric === 'tokens'
+  const sparkValues = days.map(d => (tokenView ? d.tokens : d.cost))
+  const sparkMax = Math.max(...sparkValues, 0)
+  const sparkHeights = sparkValues.map(v => sparkMax > 0 ? 4 + (v / sparkMax) * 12 : 4)
 
   return (
     <span className={css.triggerWrap}>
@@ -893,15 +905,26 @@ function UsageBillingTrigger(
         title={`${t('billing.title')} · ${formatMoney(monthCost)}`}
       >
         <span className={css.triggerIcon} data-testid="billing-trigger-icon">{cardIcon}</span>
-        {/* 设计 trigger-card：当月 = 标签 + ¥ + 数字(分离)，下方一行 今日/本周 副行。 */}
+        {/* 设计 trigger-card：当月 = 标签 + ¥ + 数字(分离)，下方一行 今日/本周 副行。
+            tokens 视角：无币符，主副行均为 K/M/B 缩写（口径与悬浮窗总 Token 一致）。 */}
         <span className={css.triggerMain}>
           <span className={css.triggerPrimary}>
-            <span className={css.triggerLabel}>{t('billing.triggerMonth')}</span>
-            <span className={css.triggerYen} aria-hidden="true">{formatMoney(monthCost).charAt(0)}</span>
-            <span className={css.triggerMetric}>{formatMoney(monthCost).slice(1)}</span>
+            <span className={css.triggerLabel}>
+              {tokenView ? t('billing.triggerMonthTokens') : t('billing.triggerMonth')}
+            </span>
+            {tokenView ? (
+              <span className={css.triggerMetric} data-testid="billing-trigger-month-tokens">{formatTokens(monthTokens)}</span>
+            ) : (
+              <>
+                <span className={css.triggerYen} aria-hidden="true">{formatMoney(monthCost).charAt(0)}</span>
+                <span className={css.triggerMetric}>{formatMoney(monthCost).slice(1)}</span>
+              </>
+            )}
           </span>
           <span className={css.triggerSub} data-testid="billing-trigger-today">
-            {t('billing.triggerToday')} {formatMoney(todayCost)} · {t('billing.weekCost')} {formatMoney(weekCost)}
+            {tokenView
+              ? `${t('billing.triggerToday')} ${formatTokens(todayTokens)} · ${t('billing.weekCost')} ${formatTokens(weekTokens)}`
+              : `${t('billing.triggerToday')} ${formatMoney(todayCost)} · ${t('billing.weekCost')} ${formatMoney(weekCost)}`}
           </span>
         </span>
         <span className={css.triggerSpark} data-testid="billing-trigger-spark" aria-hidden="true">
@@ -1082,6 +1105,10 @@ interface BillingDashboardProps {
   floatPrefs: FloatWindowPrefs
   /** 模型用量悬浮窗偏好更新（父组件持久化）。 */
   onFloatPrefs: (next: FloatWindowPrefs) => void
+  /** 计费卡显示偏好（设置 Tab 编辑）。 */
+  cardPrefs: BillingCardPrefs
+  /** 计费卡显示偏好更新（父组件持久化）。 */
+  onCardPrefs: (next: BillingCardPrefs) => void
   /** 订阅刷新是否失败（保留旧快照并标记缓存）。 */
   quotasStale: boolean
 }
@@ -1137,7 +1164,7 @@ function BalanceDetailRow({ label, value }: { label: string; value: string }): R
 function BillingDashboard({
   stats, t, onClose, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, turns,
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
-  peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, quotasStale,
+  peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, quotasStale,
 }: BillingDashboardProps): React.ReactNode {
   // 趋势图指标：费用（堆叠/默认）或 Token（单色总量）。
   const [trendMetric, setTrendMetric] = useState<TrendMetric>('cost')
@@ -2057,7 +2084,40 @@ function BillingDashboard({
                 </div>
               </section>
 
-              {/* 5. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
+              {/* 5. 计费卡显示：卡面主指标二选一（花费金额 / Token 消耗），控件复用浮窗模式按钮样式。 */}
+              <section className={css.setCard} data-testid="billing-card-setting">
+                <div className={css.setCardHead}>
+                  <div className={css.setCardMeta}>
+                    <h3 className={css.setCardTitle}>{t('billing.cardDisplay')}</h3>
+                    <p className={css.setCardDesc}>{t('billing.cardDisplayHint')}</p>
+                  </div>
+                </div>
+                <div className={css.ctlCol}>
+                  <div className={css.ctlRow}>
+                    <span className={css.ctlLabel}>{t('billing.cardMetric')}</span>
+                    <div className={css.ctlGroup} data-testid="billing-card-metric">
+                      <button
+                        type="button"
+                        className={clsx(css.floatModeBtn, cardPrefs.metric === 'money' && css.floatModeBtnOn)}
+                        data-testid="billing-card-money"
+                        onClick={() => onCardPrefs({ metric: 'money' })}
+                      >
+                        {t('billing.cardMetricMoney')}
+                      </button>
+                      <button
+                        type="button"
+                        className={clsx(css.floatModeBtn, cardPrefs.metric === 'tokens' && css.floatModeBtnOn)}
+                        data-testid="billing-card-tokens"
+                        onClick={() => onCardPrefs({ metric: 'tokens' })}
+                      >
+                        {t('billing.cardMetricTokens')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* 6. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
               <PluginInfoCard t={t} version={stats.pluginVersion} />
             </div>
           )}
@@ -2859,6 +2919,12 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     setFloatPrefs(next)
     saveFloatWindowPrefs(next)
   }, [])
+  // 计费卡显示偏好：localStorage 持久化（修改即写回，仅 client 侧）。
+  const [cardPrefs, setCardPrefs] = useState<BillingCardPrefs>(() => loadBillingCardPrefs())
+  const updateCardPrefs = useCallback((next: BillingCardPrefs): void => {
+    setCardPrefs(next)
+    saveBillingCardPrefs(next)
+  }, [])
   // 严格联动（仅本插件，不影响宿主全局语言）：币种=USD 时面板文案切英文，CNY 时切中文。
   // 用本包自带 zh/en 字典构建本地 t；key 未覆盖时回退宿主 t。
   const lang = currency === 'usd' ? 'en' : 'zh'
@@ -2948,7 +3014,24 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const todayCost = stats.byDay[today]?.cost ?? 0
   // 触发卡 hover 速览：本周累计 + 近 7 天迷你柱。
   const weekCost = lastSevenDays(stats.byDay).reduce((sum, d) => sum + d.cost, 0)
-  const last7 = useMemo(() => lastSevenDays(stats.byDay), [stats.byDay])
+  // 近 7 天柱状数据（费用 + 当日 token 合并一份，供 trigger 按视角取列）。
+  // token 口径与悬浮窗「总 Token」一致：input + output（缓存读单列，不并入）。
+  const last7 = useMemo(
+    () => lastSevenDays(stats.byDay).map((day) => {
+      const row = stats.byDay[day.date]
+      return { date: day.date, cost: day.cost, tokens: row === undefined ? 0 : row.input + row.output }
+    }),
+    [stats.byDay],
+  )
+  // tokens 视角的主副行数字：当月/今日/本周 累计 token。
+  const monthTokens = Object.entries(stats.byDay)
+    .filter(([date]) => date.startsWith(today.slice(0, 7)))
+    .reduce((sum, [, day]) => sum + day.input + day.output, 0)
+  const todayTokens = (() => {
+    const row = stats.byDay[today]
+    return row === undefined ? 0 : row.input + row.output
+  })()
+  const weekTokens = last7.reduce((sum, day) => sum + day.tokens, 0)
 
   // 预算偏好：开关与金额经框架 store 读取；用户金额优先，宿主 monthlyBudget
   //（stats.budget）兜底为默认值。
@@ -3160,6 +3243,10 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
         days={last7}
         vendorStatus={vendorStatus}
         dash={dash}
+        cardPrefs={cardPrefs}
+        monthTokens={monthTokens}
+        todayTokens={todayTokens}
+        weekTokens={weekTokens}
         floatPrefs={floatPrefs}
         subscriptions={quotas}
       />
@@ -3186,6 +3273,8 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           onPreviewPeak={previewPeak}
           floatPrefs={floatPrefs}
           onFloatPrefs={updateFloatPrefs}
+          cardPrefs={cardPrefs}
+          onCardPrefs={updateCardPrefs}
           quotasStale={quotasStale}
         />
       )}

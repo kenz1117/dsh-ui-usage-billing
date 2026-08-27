@@ -208,6 +208,12 @@ function clientConfig(id: string, entry: string): UserConfig {
     // Plugin code is fetched outside Vite's module graph, so its own bundle
     // must carry the TS/TSX mapping consumed by browser profiling tools.
     sourcemap: true,
+    // DSH Store 的固定 Commit 审查对运行时文件有 256 KiB 单文件硬上限；
+    // 未压缩 bundle 含内联 CSS/双语字典远超此值，浏览器分发面统一压缩。
+    // (DSH Store fixed-commit review caps a single runtime file at 256 KiB;
+    // the uncompressed bundle inlines CSS and bilingual dictionaries, so ship
+    // the browser artifact minified.)
+    minify: true,
     clean: false,
     external: [...CLIENT_EXTERNALS],
     // Browser bundles inline node-idiom deps (zustand/immer read

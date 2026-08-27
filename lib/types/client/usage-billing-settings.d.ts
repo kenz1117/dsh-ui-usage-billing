@@ -38,4 +38,22 @@ export declare const FLOAT_WINDOW_STORAGE_KEY = "dsh.ui-usage-billing.float";
 export declare function loadFloatWindowPrefs(): FloatWindowPrefs;
 /** 写入浮窗偏好。失败静默（展示偏好非关键）。 */
 export declare function saveFloatWindowPrefs(prefs: FloatWindowPrefs): void;
+/** 左下角计费卡的主指标视角。 */
+export type BillingCardMetric = 'money' | 'tokens';
+/**
+ * 计费卡显示偏好：卡面主行/副行与迷你柱的计价视角。
+ * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
+ */
+export interface BillingCardPrefs {
+    /** 主指标：花费金额（CNY/USD 按币种）/ Token 消耗。 */
+    metric: BillingCardMetric;
+}
+/** 默认计费卡偏好：花费金额（向后兼容现有金额视图）。 */
+export declare const DEFAULT_BILLING_CARD_PREFS: BillingCardPrefs;
+/** localStorage key（与 budget store 的 `dsh.ui-usage-billing.*` 命名空间一致）。 */
+export declare const BILLING_CARD_STORAGE_KEY = "dsh.ui-usage-billing.card";
+/** 读取计费卡偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
+export declare function loadBillingCardPrefs(): BillingCardPrefs;
+/** 写入计费卡偏好。失败静默（展示偏好非关键）。 */
+export declare function saveBillingCardPrefs(prefs: BillingCardPrefs): void;
 //# sourceMappingURL=usage-billing-settings.d.ts.map

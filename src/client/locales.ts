@@ -103,6 +103,12 @@ export type UsageBillingKey =
   | 'billing.floatWindowHint'
   | 'billing.floatNoTargets'
   | 'billing.floatNoTargetsHint'
+  | 'billing.cardDisplay'
+  | 'billing.cardDisplayHint'
+  | 'billing.cardMetric'
+  | 'billing.cardMetricMoney'
+  | 'billing.cardMetricTokens'
+  | 'billing.triggerMonthTokens'
   | 'billing.floatPrev'
   | 'billing.floatNext'
   | 'billing.subscriptionsStale'
@@ -357,6 +363,11 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.floatMode': '展示模式',
   'billing.floatTargets': '订阅目标',
   'billing.floatWindowHint': '悬浮在左下角计费卡上的用量速览；综合=当前样式，订阅卡=每次展示一张订阅额度卡（可切换）。',
+  'billing.cardDisplay': '计费卡显示',
+  'billing.cardDisplayHint': '切换左下角计费卡的主指标：花费金额或 Token 消耗（副行与迷你柱同步切换，悬浮窗不受影响）。',
+  'billing.cardMetric': '主指标',
+  'billing.cardMetricMoney': '花费金额',
+  'billing.cardMetricTokens': 'Token 消耗',
   'billing.floatNoTargets': '未指定订阅通道，请在设置中勾选要展示的订阅。',
   'billing.floatNoTargetsHint': '暂无可选的订阅通道。',
   'billing.floatPrev': '上一张订阅',
@@ -430,6 +441,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.subscriptionFeePerMonth': '{amount}/月',
   'billing.triggerToday': '今日',
   'billing.triggerMonth': '当月',
+  'billing.triggerMonthTokens': '当月 Token',
   'billing.subscriptionIncluded': '订阅包含',
   'billing.free': '免费',
   'billing.official': '官方',
@@ -612,6 +624,11 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.floatMode': 'Display mode',
   'billing.floatTargets': 'Targets',
   'billing.floatWindowHint': 'Usage summary floating on the footer card; Combined=current style, Subscription cards=one quota card at a time (switchable).',
+  'billing.cardDisplay': 'Billing card display',
+  'billing.cardDisplayHint': 'Switch the main metric on the bottom-left billing card between cost and token usage (sub row and sparkline follow; the popover is unaffected).',
+  'billing.cardMetric': 'Main metric',
+  'billing.cardMetricMoney': 'Cost',
+  'billing.cardMetricTokens': 'Token usage',
   'billing.floatNoTargets': 'No subscription selected — pick some in Settings.',
   'billing.floatNoTargetsHint': 'No subscription channel available.',
   'billing.floatPrev': 'Previous subscription',
@@ -685,6 +702,7 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.subscriptionFeePerMonth': '{amount}/mo',
   'billing.triggerToday': 'Today',
   'billing.triggerMonth': 'This month',
+  'billing.triggerMonthTokens': 'Monthly tokens',
   'billing.subscriptionIncluded': 'Included',
   'billing.free': 'Free',
   'billing.official': 'Official',
