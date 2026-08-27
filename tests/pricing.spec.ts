@@ -344,6 +344,30 @@ describe('catalogEntries (model health parity)', () => {
     const acme = entries.find(entry => entry.key === 'acme-model-x')
     expect(acme).toMatchObject({ provider: 'Acme', uncatalogued: true })
   })
+
+  it('keeps the full models.dev supplement out of the table while still pricing probed models from it', () => {
+    // models.dev 补充是数千行全量清单：只允许通过探活匹配进入费率表，
+    // 否则表格被网关厂商的全量模型撑爆。
+    applyLivePricing({
+      source: 'live',
+      rate: 7.5,
+      extraModels: [
+        { key: 'acme-model-x', name: 'Acme X', provider: 'Acme', price: { input: 4, cacheHit: 0.8, output: 16 } },
+        { key: 'nano-gpt-some-model', name: 'Nano GPT Some Model', provider: 'nano-gpt', price: { input: 1, cacheHit: 0.1, output: 2 } },
+      ],
+    })
+    applyLiveCatalogModels([
+      // 目录外但补充条目有价 → 复用其 USD 价渲染一行。
+      { id: 'acme-model-x', name: 'Acme X', provider: 'Acme' },
+    ])
+    const entries = catalogEntries()
+    // 未探活的补充模型不进表；探活命中的复用补充价（extraEntryOf 走 USD 直价，
+    // 条目带 currency: 'USD'，费率表渲染时按 displayCurrency 汇率折算）。
+    expect(entries.map(entry => entry.key)).not.toContain('nano-gpt-some-model')
+    const acme = entries.find(entry => entry.key === 'acme-model-x')
+    expect(acme).toMatchObject({ price: { currency: 'USD', input: 4, cacheHit: 0.8, output: 16 } })
+    expect(acme?.uncatalogued).toBeUndefined()
+  })
 })
 
 describe('time-limited promo (GLM-5.3-Flash)', () => {

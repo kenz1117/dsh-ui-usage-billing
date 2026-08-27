@@ -1221,14 +1221,16 @@ export function applyPromo(entry: ModelEntry, nowMs: number): ModelEntry {
 }
 
 /**
- * 费率表渲染的完整目录：内置 + models.dev 补充条目 + 探活模型（无价标记）。
- * 内置条目按 nowMs 折算限时促销（生效中的条目显示折后单价，过期自动恢复
- * 刊例价）。探活模型去重（按归一化 id）：内置/补充已有的不再重复；无价的
- * 保留并标记 `uncatalogued`，费率表据此显示「未收录」。
+ * 费率表渲染的完整目录：内置 + 探活命中的模型（无价标记未收录）。
+ * models.dev 补充条目**不**整表渲染——那是数百网关厂商的全量模型清单（数千行），
+ * 会把费率表撑爆；它们只作为目录外模型的计价回退源（见 {@link livePriceOf} /
+ * {@link modelOf}）。探活模型在此逐个对价：内置已有的跳过去重；目录外但
+ * models.dev 有价的按归一化 id 复用其 USD 价；两者皆无的标 `uncatalogued`。
+ * 内置条目按 nowMs 折算限时促销（生效中的条目显示折后单价，过期自动恢复刊例价）。
  * @param nowMs - 促销判定时刻；缺省当前时刻。
  */
 export function catalogEntries(nowMs: number = Date.now()): readonly ModelEntry[] {
-  const entries: ModelEntry[] = [...MODEL_CATALOG.map(entry => applyPromo(entry, nowMs)), ...(liveExtraModels ?? []).map(extraEntryOf)]
+  const entries: ModelEntry[] = [...MODEL_CATALOG.map(entry => applyPromo(entry, nowMs))]
   const known = new Set<string>(entries.map(entry => entry.key.toLowerCase()))
   const knownCanon = new Set<string>(entries.map(entry => canonModelId(entry.key)))
   for (const model of liveCatalogModels ?? []) {
