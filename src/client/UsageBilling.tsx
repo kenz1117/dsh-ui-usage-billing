@@ -21,10 +21,13 @@ import {
   loadBillingCardPrefs,
   type FloatWindowPrefs,
   loadFloatWindowPrefs,
+  loadSiteListPrefs,
   loadUserPrices,
   saveBillingCardPrefs,
   saveFloatWindowPrefs,
+  saveSiteListPrefs,
   saveUserPrices,
+  type SiteListPrefs,
   type UserPriceMap,
 } from './usage-billing-settings.ts'
 import { TrendChart, type TrendMetric, type TrendPoint } from './TrendChart.tsx'
@@ -476,6 +479,8 @@ export interface UsageStats {
     cost: number
     /** 输出中的 reasoning（思考）token；已含在 output 内。 */
     reasoning: number
+    /** 联网搜索请求的估算调用数（已按次估值计入 cost）；1.0.9 起新增，旧快照缺失。 */
+    searchCalls?: number
   }
   byModel: Record<string, {
     calls: number
@@ -551,6 +556,8 @@ export interface UsageStats {
   }>
   /** 不可计价模型 id（未收录/无价，费用按 0 计）；旧快照可能缺失。 */
   unpricedModels?: readonly string[]
+  /** 联网搜索请求的单次费用估算（人民币元，配置回显）；0 或缺省 = 未启用估算。 */
+  searchCallEstimateCny?: number
   /** 按角色费用归因（估算口径：输出实测，输入按消息长度摊分）；旧快照可能缺失。 */
   byRole?: { user: number; assistant: number; tool: number }
   /** 性能指标（TTFT/生成速度/总延迟）按模型与按小时；旧快照可能缺失。 */
@@ -645,6 +652,8 @@ async function loadUsageStats(): Promise<UsageStats | null> {
       ...(isObj(candidate.byTool) ? { byTool: candidate.byTool } : {}),
       ...(Array.isArray(candidate.unpricedModels) ? { unpricedModels: candidate.unpricedModels } : {}),
       ...(typeof candidate.staleLedgerSessions === 'number' ? { staleLedgerSessions: candidate.staleLedgerSessions } : {}),
+      // 联网搜索估算：旧快照缺失；数值存在才透传（渲染处据 searchCalls 判定显示）。
+      ...(typeof candidate.searchCallEstimateCny === 'number' ? { searchCallEstimateCny: candidate.searchCallEstimateCny } : {}),
       // 角色归因：旧快照缺失；仅接受对象形状（durable 边界，字段值由渲染处数值化兜底）。
       ...(candidate.byRole !== null && typeof candidate.byRole === 'object'
         ? { byRole: candidate.byRole as { user: number; assistant: number; tool: number } }
@@ -1172,6 +1181,10 @@ interface BillingDashboardProps {
   cardPrefs: BillingCardPrefs
   /** 计费卡显示偏好更新（父组件持久化）。 */
   onCardPrefs: (next: BillingCardPrefs) => void
+  /** 中转站列表展示偏好（issue #17：隐藏未识别条目，设置 Tab 编辑）。 */
+  sitePrefs: SiteListPrefs
+  /** 中转站列表展示偏好更新（父组件持久化）。 */
+  onSitePrefs: (next: SiteListPrefs) => void
   /** 订阅刷新是否失败（保留旧快照并标记缓存）。 */
   quotasStale: boolean
 }
@@ -1286,7 +1299,7 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
 function BillingDashboard({
   stats, t, onClose, userPrices, onUserPrices, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, turns,
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
-  peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, quotasStale,
+  peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, sitePrefs, onSitePrefs, quotasStale,
 }: BillingDashboardProps): React.ReactNode {
   // 趋势图指标：费用（堆叠/默认）或 Token（单色总量）。
   const [trendMetric, setTrendMetric] = useState<TrendMetric>('cost')
@@ -1599,6 +1612,17 @@ function BillingDashboard({
 
   // 按厂商聚合：模型用量与订阅额度都归并到同一厂商组，余额只在厂商头部显示一次。
   // 厂商组同时容纳非订阅按量模型（无订阅额度也成组）与订阅套餐（无用量也成组）。
+  // 中转站列表的可见行（issue #17）：默认隐藏「未知路由」桶与「未识别」类型占位条目。
+  const visibleSiteEntries = useMemo(
+    () => Object.entries(stats.bySite ?? {})
+      .filter(([siteKey]) => !(sitePrefs.hideUnidentified && siteKey === 'unknown'))
+      .sort((a, b) => (b[1].cost ?? 0) - (a[1].cost ?? 0)),
+    [stats.bySite, sitePrefs.hideUnidentified],
+  )
+  const visibleRelayRows = useMemo(
+    () => (sitePrefs.hideUnidentified ? relayQuotas.filter(row => row.kind !== 'unknown') : relayQuotas),
+    [relayQuotas, sitePrefs.hideUnidentified],
+  )
   const providerGroups: ProviderBillingGroup[] = useMemo(() => {
     const subscriptionsByVendor = new Map<string, SubscriptionQuota[]>()
     for (const quota of quotas) {
@@ -1899,6 +1923,15 @@ function BillingDashboard({
               {(stats.unpricedModels?.length ?? 0) > 0 && (
                 <div className={css.unpricedHint} data-testid="billing-unpriced-hint">
                   {t('billing.unpricedHint').replace('{count}', String(stats.unpricedModels?.length ?? 0))}
+                </div>
+              )}
+
+              {/* 联网搜索估算提示：搜索请求无用量事件，费用按次估值计入，口径透明。 */}
+              {(stats.total.searchCalls ?? 0) > 0 && (
+                <div className={css.unpricedHint} data-testid="billing-search-estimate-hint">
+                  {t('billing.searchEstimateHint')
+                    .replace('{count}', String(stats.total.searchCalls ?? 0))
+                    .replace('{each}', money(stats.searchCallEstimateCny ?? 0))}
                 </div>
               )}
 
@@ -2243,10 +2276,31 @@ function BillingDashboard({
                 </div>
               </section>
 
-              {/* 6. 自定义单价：set-card——已存价列表 + 新增行；显示层重估，口径差异见说明。 */}
+              {/* 6. 中转站列表展示：隐藏「未知路由 / 未识别」占位条目（issue #17）。 */}
+              <section className={css.setCard} data-testid="billing-site-list-setting">
+                <div className={css.setCardHead}>
+                  <div className={css.setCardMeta}>
+                    <h3 className={css.setCardTitle}>{t('billing.siteListDisplay')}</h3>
+                    <p className={css.setCardDesc}>{t('billing.siteListDisplayHint')}</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={sitePrefs.hideUnidentified}
+                    aria-label={t('billing.siteListDisplay')}
+                    data-testid="billing-site-hide-unidentified"
+                    className={clsx(css.switch, sitePrefs.hideUnidentified && css.switchOn)}
+                    onClick={() => onSitePrefs({ hideUnidentified: !sitePrefs.hideUnidentified })}
+                  >
+                    <span className={css.switchKnob} />
+                  </button>
+                </div>
+              </section>
+
+              {/* 7. 自定义单价：set-card——已存价列表 + 新增行；显示层重估，口径差异见说明。 */}
               <UserPriceCard userPrices={userPrices} onUserPrices={onUserPrices} t={t} />
 
-              {/* 7. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
+              {/* 8. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
               <PluginInfoCard t={t} version={stats.pluginVersion} />
             </div>
           )}
@@ -2375,15 +2429,15 @@ function BillingDashboard({
           {tab === 'providers' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-providers">
               {/* 中转站分布：按 provider 路由的 baseURL 归组（站点/直连/未知路由），
-                  与「厂商计费」互补——先看钱从哪个站走，再看厂商明细。 */}
-              {stats.bySite !== undefined && Object.keys(stats.bySite).length > 0 && (
+                  与「厂商计费」互补——先看钱从哪个站走，再看厂商明细。未知路由桶
+                  可在设置里隐藏（issue #17，默认隐藏）。 */}
+              {visibleSiteEntries.length > 0 && (
                 <section className={css.panel} data-testid="billing-panel-relay-sites">
                   <div className={css.panelHead}>
                     <h3 className={css.panelTitle}>{t('billing.panelRelay')}</h3>
                   </div>
                   <div className={css.providerGroupList} data-testid="billing-relay-sites">
-                    {Object.entries(stats.bySite)
-                      .sort((a, b) => (b[1].cost ?? 0) - (a[1].cost ?? 0))
+                    {visibleSiteEntries
                       .map(([siteKey, usage]) => {
                         const site = siteBucketLabel(siteKey, t)
                         return (
@@ -2403,14 +2457,15 @@ function BillingDashboard({
                 </section>
               )}
 
-              {/* 中转站额度：识别出的 New API / Sub2API 的余额与滚动窗口。 */}
-              {relayQuotas.length > 0 && (
+              {/* 中转站额度：识别出的 New API / Sub2API 的余额与滚动窗口；未识别
+                  程序类型的占位行可隐藏（issue #17，默认隐藏）。 */}
+              {visibleRelayRows.length > 0 && (
                 <section className={css.panel} data-testid="billing-panel-relay-quota">
                   <div className={css.panelHead}>
                     <h3 className={css.panelTitle}>{t('billing.panelRelayQuota')}</h3>
                   </div>
                   <div className={css.providerGroupList} data-testid="billing-relay-quotas">
-                    {relayQuotas.map(row => (
+                    {visibleRelayRows.map(row => (
                       <div key={row.route} className={css.siteRow} data-testid="billing-relay-quota">
                         <span className={css.siteRowName}>
                           <span className={clsx(css.siteKindTag, RELAY_KIND_CLASS[row.kind])}>{relayKindText(row.kind, t)}</span>
@@ -3066,6 +3121,12 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     setFloatPrefs(next)
     saveFloatWindowPrefs(next)
   }, [])
+  // 中转站列表展示偏好（issue #17）：默认隐藏「未知路由 / 未识别」占位条目。
+  const [sitePrefs, setSitePrefs] = useState<SiteListPrefs>(() => loadSiteListPrefs())
+  const updateSitePrefs = useCallback((next: SiteListPrefs): void => {
+    setSitePrefs(next)
+    saveSiteListPrefs(next)
+  }, [])
   // 计费卡显示偏好：localStorage 持久化（修改即写回，仅 client 侧）。
   const [cardPrefs, setCardPrefs] = useState<BillingCardPrefs>(() => loadBillingCardPrefs())
   const updateCardPrefs = useCallback((next: BillingCardPrefs): void => {
@@ -3438,6 +3499,8 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           onFloatPrefs={updateFloatPrefs}
           cardPrefs={cardPrefs}
           onCardPrefs={updateCardPrefs}
+          sitePrefs={sitePrefs}
+          onSitePrefs={updateSitePrefs}
           quotasStale={quotasStale}
         />
       )}

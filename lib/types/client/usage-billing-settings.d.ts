@@ -56,6 +56,22 @@ export declare const BILLING_CARD_STORAGE_KEY = "dsh.ui-usage-billing.card";
 export declare function loadBillingCardPrefs(): BillingCardPrefs;
 /** 写入计费卡偏好。失败静默（展示偏好非关键）。 */
 export declare function saveBillingCardPrefs(prefs: BillingCardPrefs): void;
+/**
+ * 中转站列表（中转站分布 / 中转站额度）的展示偏好（issue #17）。
+ * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
+ */
+export interface SiteListPrefs {
+    /** 隐藏「未知路由」（bySite 的 unknown 桶）与「未识别」类型的中转站占位条目；默认隐藏。 */
+    hideUnidentified: boolean;
+}
+/** 默认站点列表偏好：隐藏无参考价值的占位条目，净化账单列表。 */
+export declare const DEFAULT_SITE_LIST_PREFS: SiteListPrefs;
+/** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
+export declare const SITE_LIST_STORAGE_KEY = "dsh.ui-usage-billing.sites";
+/** 读取站点列表偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
+export declare function loadSiteListPrefs(): SiteListPrefs;
+/** 写入站点列表偏好。失败静默（展示偏好非关键）。 */
+export declare function saveSiteListPrefs(prefs: SiteListPrefs): void;
 /** 用户自定义单价（与 client/pricing.ts 的 `UserPrice` 同形；此处不 import 以保持 node 半区无 client 依赖）。 */
 export interface StoredUserPrice {
     /** 未命中输入单价（元或美元 / 每百万 token）。 */

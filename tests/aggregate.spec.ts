@@ -15,7 +15,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import {
   aggregateUsage, createUsageAggregator, dayStamp, foldSession, foldUsage, emptyUsage, workspaceNameOf, hostTimeZone,
-  siteBucketKey, siteOriginOf, siteRefOf, runLedgerMigrations, FOLD_VERSION, LEDGER_MIGRATIONS,
+  siteBucketKey, siteOriginOf, siteRefOf, runLedgerMigrations, FOLD_VERSION, LEDGER_MIGRATIONS, foldSearchCall,
   type LedgerMigration, type UsageLedgerDocument, type UsageLedgerSession,
   AGGREGATE_TTL_MS, SESSION_ROW_LIMIT, type UsagePersistence,
 } from '../src/aggregate.ts'
@@ -78,6 +78,57 @@ function fakeLedgerStore(sessions: UsageLedgerSession[]) {
     current: (): UsageLedgerDocument => document,
   }
 }
+
+describe('web search estimate (#15)', () => {
+  /** 最小 `web/deepseek-search-llm-request` 事件（provider 落盘的真实形状）。 */
+  function searchRequest(seq: number, time: number, model = 'deepseek-v4-flash'): SessionEvent {
+    return {
+      type: 'web/deepseek-search-llm-request', seq, time,
+      data: {
+        endpoint: 'https://api.deepseek.com/anthropic/v1/messages',
+        apiVersion: '2023-06-01',
+        body: { model, max_tokens: 4096, messages: [], tools: [] },
+      },
+    } as unknown as SessionEvent
+  }
+
+  it('foldSearchCall counts the call and adds the per-call estimate', () => {
+    const acc = emptyUsage()
+    foldSearchCall(acc, 0.02)
+    expect(acc.calls).toBe(1)
+    expect(acc.searchCalls).toBe(1)
+    expect(acc.officialCalls).toBe(1)
+    expect(acc.cost).toBeCloseTo(0.02, 10)
+    expect(acc.officialCost).toBeCloseTo(0.02, 10)
+    expect(acc.input).toBe(0)
+    expect(acc.output).toBe(0)
+  })
+
+  it('foldSession folds web search requests into total/model/day/site/tier buckets', () => {
+    const events: SessionEvent[] = [searchRequest(1, 1_000), searchRequest(2, 2_000)]
+    const fold = foldSession(events, new Set(), undefined, {}, 0.02)
+    expect(fold.total.calls).toBe(2)
+    expect(fold.total.searchCalls).toBe(2)
+    expect(fold.total.cost).toBeCloseTo(0.04, 10)
+    expect(fold.total.officialCost).toBeCloseTo(0.04, 10)
+    // 模型归一化到计费目录键 flash；token 维度不动。
+    expect(fold.byModel.get('flash')?.searchCalls).toBe(2)
+    expect(fold.byModel.get('flash')?.input).toBe(0)
+    // 搜索绕过 llm-pi-ai 路由直连官方端点：站点桶固定 direct:deepseek。
+    expect(fold.bySite.get('direct:deepseek')?.searchCalls).toBe(2)
+    // 峰谷分桶合计覆盖全部搜索调用。
+    const tiered = (fold.byTier.get('peak')?.searchCalls ?? 0) + (fold.byTier.get('offPeak')?.searchCalls ?? 0)
+    expect(tiered).toBe(2)
+  })
+
+  it('estimate 0 still counts the call but adds no cost', () => {
+    const fold = foldSession([searchRequest(1, 1_000)], new Set(), undefined, {}, 0)
+    expect(fold.total.searchCalls).toBe(1)
+    expect(fold.total.calls).toBe(1)
+    expect(fold.total.cost).toBe(0)
+    expect(fold.total.officialCost).toBe(0)
+  })
+})
 
 describe('foldUsage', () => {
   it('accumulates calls and splits tokens into cache buckets', () => {
