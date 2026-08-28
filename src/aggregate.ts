@@ -334,6 +334,8 @@ export interface SessionUsageRow {
   cost: number
   /** 最后一个事件的时间戳（毫秒）。 */
   lastActive: number
+  /** 数据来自旧算法折叠的持久账本行（日志已删/不可读，无法重算）；UI 据此标注置信度。 */
+  stale?: boolean
 }
 
 /** 每轮费用明细行：仪表盘「每轮费用」图的数据源。 */
@@ -463,6 +465,11 @@ export interface UsageLedgerSession {
   cwd?: string
   /** Stable log stamp (mtime + size) when the persistence backend exposes it. */
   stamp?: string
+  /**
+   * 折叠该行时的算法版本（{@link FOLD_VERSION}）。缺失 = 1.0.6 及更早写入的
+   * 旧算法行（加载边界由迁移统一回填为 1）。
+   */
+  foldVersion?: number
   fold: SerializedSessionFold
 }
 
@@ -476,9 +483,18 @@ export interface UsageLedgerDocument {
 }
 
 /**
+ * 折叠算法版本：归账语义变化时递增。v1 = 按 request/header 归账（稀疏 header 把
+ * 两次 header 之间的用量串到上一个模型，订阅模型首当其冲，issue #14）；v2 =
+ * `assistant/message` 自带 source 归账（1.0.7 起）。持久账本行据此区分新旧算法：
+ * 日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
+ */
+export const FOLD_VERSION = 2
+
+/**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
  * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并
  * bump {@link UsageLedgerDocument.version}；引擎保证幂等，重启不会重复执行。
+ * 可选字段的向后兼容回填（如 foldVersion）不 bump version：旧版本插件仍能读新文件。
  */
 export interface LedgerMigration {
   id: string
@@ -487,10 +503,24 @@ export interface LedgerMigration {
 }
 
 /**
- * 账本迁移注册表。当前账本 schema（version 1）尚无字段变更需求，故为空表；
- * 机制已就绪，schema 变更时在此登记幂等迁移，见 {@link LedgerMigration}。
+ * 账本迁移注册表。首条迁移给 1.0.6 及更早的行回填 foldVersion = 1（它们全部出自
+ * header 归因算法）；此后新写入的行总带当前 {@link FOLD_VERSION}。
  */
-export const LEDGER_MIGRATIONS: readonly LedgerMigration[] = []
+export const LEDGER_MIGRATIONS: readonly LedgerMigration[] = [
+  {
+    id: 'fold-version-backfill',
+    apply(document) {
+      let changed = false
+      for (const session of document.sessions) {
+        if (session.foldVersion === undefined) {
+          session.foldVersion = 1
+          changed = true
+        }
+      }
+      return changed
+    },
+  },
+]
 
 /**
  * 在加载边界对账本文档应用未执行的迁移，并记录已应用 id 供写回。
@@ -960,6 +990,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
   const ledger = new Map<string, UsageLedgerSession>()
   let ledgerLoaded = false
   let ledgerNeedsSave = false
+  // 加载边界跑迁移后留下的已应用 id；save 透传，避免每次重启都把迁移重跑一遍。
+  let ledgerAppliedMigrations: string[] | undefined
   let lastDoc: UsageStatsDocument | undefined
   let lastAt = 0
   /** 每次聚合取最新的 provider 路由视图（中转站零配置发现）；缺省按空处理（全部未知路由）。 */
@@ -974,6 +1006,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         // 配置迁移：对原始文档执行未应用的迁移；有修改时重新落盘（下轮聚合写回）。
         const document = stored as UsageLedgerDocument
         if (runLedgerMigrations(document)) ledgerNeedsSave = true
+        ledgerAppliedMigrations = document.appliedMigrations
       }
       for (const entry of ledgerSessionsOf(stored)) ledger.set(entry.id, entry)
     } catch (error) {
@@ -1015,9 +1048,10 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       }
       const seen = new Set<string>()
       const included = new Set<string>()
-      const folds: { id: string; cwd?: string; fold: SessionFold }[] = []
+      const folds: { id: string; cwd?: string; fold: SessionFold; staleLedger?: true }[] = []
       // skipped：记录未能读取的会话 id，聚合末尾统一告警。
       const skipped: string[] = []
+      let staleLedgerSessions = 0
       for (const meta of metas) {
         const id = String(meta.id)
         seen.add(id)
@@ -1049,6 +1083,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
               id,
               ...(meta.cwd === undefined ? {} : { cwd: meta.cwd }),
               ...(stamp === null ? {} : { stamp }),
+              foldVersion: FOLD_VERSION,
               fold: serializeFold(fold),
             }
             const previous = ledger.get(id)
@@ -1057,6 +1092,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
             const changed = previous === undefined
               || previous.stamp !== entry.stamp
               || previous.cwd !== entry.cwd
+              || previous.foldVersion !== entry.foldVersion
               || (stamp === null && JSON.stringify(previous.fold) !== JSON.stringify(entry.fold))
             if (changed) {
               ledger.set(id, entry)
@@ -1085,19 +1121,28 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         for (const entry of ledger.values()) {
           if (included.has(entry.id)) continue
           try {
+            // 缺失 foldVersion（迁移前的异常路径）按 v1 处理：保守标注旧算法。
+            const stale = (entry.foldVersion ?? 1) < FOLD_VERSION
             folds.push({
               id: entry.id,
               ...(entry.cwd === undefined ? {} : { cwd: entry.cwd }),
+              ...(stale ? { staleLedger: true as const } : {}),
               fold: deserializeFold(entry.fold),
             })
             included.add(entry.id)
+            if (stale) staleLedgerSessions += 1
           } catch (error) {
             console.warn('[usage-billing] skip invalid durable ledger session', entry.id, error)
           }
         }
         if (ledgerNeedsSave) {
           try {
-            await options.ledger.save({ version: 1, updatedAt: now, sessions: [...ledger.values()] })
+            await options.ledger.save({
+              version: 1,
+              updatedAt: now,
+              sessions: [...ledger.values()],
+              ...(ledgerAppliedMigrations === undefined ? {} : { appliedMigrations: ledgerAppliedMigrations }),
+            })
             ledgerNeedsSave = false
           } catch (error) {
             // Keep serving the correct in-memory total; a later changed aggregation retries.
@@ -1125,7 +1170,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       // 性能样本跨会话累加（按模型 / 小时分桶，聚合时才算均值/分位）。
       const perfModel = new Map<string, PerfModelAccum>()
       const perfHour = new Map<string, PerfHourAccum>()
-      for (const { id: sessionId, cwd, fold } of folds) {
+      for (const { id: sessionId, cwd, fold, staleLedger } of folds) {
         mergeUsageInto(total, fold.total)
         roles.userChars += fold.roles.userChars
         roles.toolChars += fold.roles.toolChars
@@ -1179,6 +1224,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
             // exactOptionalPropertyTypes：缺失的可选字段不带 key。
             ...(fold.title !== undefined ? { title: fold.title } : {}),
             ...(cwd !== undefined ? { cwd } : {}),
+            ...(staleLedger === true ? { stale: true } : {}),
             calls: fold.total.calls,
             cost: fold.total.cost,
             lastActive: fold.lastActive,
@@ -1235,6 +1281,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         ...(bySite.size === 0 ? {} : { bySite: toRecord(bySite) }),
         ...(unpricedModels.size === 0 ? {} : { unpricedModels: [...unpricedModels].sort() }),
         ...(perf === undefined ? {} : { perf }),
+        ...(staleLedgerSessions > 0 ? { staleLedgerSessions } : {}),
         // 角色归因：输出成本为实测；输入成本按 user/tool 消息字符占比摊分
         //（无任何消息内容的日志按五五均分兜底，整体属估算口径）。
         byRole: (() => {

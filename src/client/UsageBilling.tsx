@@ -344,6 +344,8 @@ interface SessionBillingRow {
   id: string
   title?: string
   cwd?: string
+  /** 数据来自旧算法折叠的持久账本行（原始日志已删，无法重算）。 */
+  stale?: boolean
   calls: number
   cost: number
   lastActive: number
@@ -506,6 +508,8 @@ export interface UsageStats {
   byRole?: { user: number; assistant: number; tool: number }
   /** 性能指标（TTFT/生成速度/总延迟）按模型与按小时；旧快照可能缺失。 */
   perf?: ClientPerf
+  /** 旧版算法账本行兜底的会话数（模型归属可能失真）；0 或缺省 = 全部数据可信。 */
+  staleLedgerSessions?: number
   /** 插件版本号（服务端读自包 package.json；旧快照缺失）。 */
   pluginVersion?: string
 }
@@ -2659,6 +2663,12 @@ function BillingDashboard({
                         : `${stats.bySession.length}`}
                     </span>
                   </div>
+                  {/* 置信度提示：部分会话数据出自旧版算法的账本行（原日志已删，无法重算）。 */}
+                  {(stats.staleLedgerSessions ?? 0) > 0 && (
+                    <div className={css.staleNotice} data-testid="billing-sessions-stale">
+                      {t('billing.staleLedgerNotice').replace('{count}', String(stats.staleLedgerSessions))}
+                    </div>
+                  )}
                   <div className={css.ubTablewrap} data-testid="billing-sessions-table">
                     <table className={css.ubTable}>
                       <thead>
@@ -2680,6 +2690,11 @@ function BillingDashboard({
                           <tr key={row.id}>
                             <td>
                               <span className={css.modelName}>{row.title ?? row.id.slice(0, 8)}</span>
+                              {row.stale === true && (
+                                <span className={clsx(css.ubTag, css.ubTagNeutral)} data-testid="billing-session-stale">
+                                  {t('billing.sessionStaleBadge')}
+                                </span>
+                              )}
                             </td>
                             <td>
                               <span className={css.modelProvider}>{projectName(row.cwd) ?? '—'}</span>

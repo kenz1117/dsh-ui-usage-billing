@@ -112,6 +112,8 @@ export type UsageBillingKey =
   | 'billing.floatPrev'
   | 'billing.floatNext'
   | 'billing.subscriptionsStale'
+  | 'billing.staleLedgerNotice'
+  | 'billing.sessionStaleBadge'
   | 'billing.heatmapLess'
   | 'billing.heatmapMore'
   | 'billing.currency'
@@ -373,6 +375,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.floatPrev': '上一张订阅',
   'billing.floatNext': '下一张订阅',
   'billing.subscriptionsStale': '订阅额度刷新失败，以下为缓存数据',
+  'billing.staleLedgerNotice': '{count} 个会话的统计出自旧版算法的存档（原始日志已删除，无法重算），模型归属可能有误差',
+  'billing.sessionStaleBadge': '旧版统计',
   'billing.heatmapLess': '少',
   'billing.heatmapMore': '多',
   'billing.currency': '币种',
@@ -634,6 +638,8 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.floatPrev': 'Previous subscription',
   'billing.floatNext': 'Next subscription',
   'billing.subscriptionsStale': 'Subscription refresh failed — showing cached data',
+  'billing.staleLedgerNotice': '{count} sessions come from legacy-algorithm archives (original logs deleted, cannot be re-folded); per-model attribution may be off',
+  'billing.sessionStaleBadge': 'legacy',
   'billing.heatmapLess': 'Less',
   'billing.heatmapMore': 'More',
   'billing.currency': 'Currency',
