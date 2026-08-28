@@ -15,7 +15,8 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import {
   aggregateUsage, createUsageAggregator, dayStamp, foldSession, foldUsage, emptyUsage, workspaceNameOf, hostTimeZone,
-  siteBucketKey, siteOriginOf, siteRefOf, runLedgerMigrations, type LedgerMigration, type UsageLedgerDocument,
+  siteBucketKey, siteOriginOf, siteRefOf, runLedgerMigrations, FOLD_VERSION, LEDGER_MIGRATIONS,
+  type LedgerMigration, type UsageLedgerDocument, type UsageLedgerSession,
   AGGREGATE_TTL_MS, SESSION_ROW_LIMIT, type UsagePersistence,
 } from '../src/aggregate.ts'
 
@@ -47,6 +48,35 @@ function fakePersistence(logs: Record<string, SessionEvent[]>): UsagePersistence
       events: (logs[id] ?? []).filter(event => event.seq >= fromSeq),
     }),
   } as unknown as UsagePersistence
+}
+
+/** 账本行的最小 JSON-safe fold：total.calls > 0 保证进 bySession，其余桶留空。 */
+function legacyFold(): UsageLedgerSession['fold'] {
+  const total = emptyUsage()
+  total.calls = 2
+  total.output = 100
+  return {
+    total,
+    byModel: {}, byDay: {}, byDayModels: {}, bySite: {},
+    unpricedModels: [], planCalls: {},
+    turns: [], perf: [],
+    roles: { userChars: 0, toolChars: 0, inputCost: 0, outputCost: 0 },
+    lastActive: 1_000,
+  }
+}
+
+/** 内存版 UsageLedgerStore：load 返回预置文档，save 记录每次落盘。 */
+function fakeLedgerStore(sessions: UsageLedgerSession[]) {
+  const saved: UsageLedgerDocument[] = []
+  let document: UsageLedgerDocument = { version: 1, updatedAt: 1, sessions, appliedMigrations: [] }
+  return {
+    store: {
+      load: async () => document,
+      save: async (next: UsageLedgerDocument) => { saved.push(next); document = next },
+    },
+    saved,
+    current: (): UsageLedgerDocument => document,
+  }
 }
 
 describe('foldUsage', () => {
@@ -843,6 +873,67 @@ describe('runLedgerMigrations', () => {
     const changed = runLedgerMigrations(document, [])
     expect(changed).toBe(false)
     expect(document.appliedMigrations).toEqual(['v1-legacy'])
+  })
+})
+
+describe('LEDGER_MIGRATIONS (fold-version-backfill)', () => {
+  /** 已含 `appliedMigrations: []` 的最简账本文档。 */
+  const doc = (sessions: UsageLedgerSession[]): UsageLedgerDocument => ({
+    version: 1, updatedAt: 1, sessions, appliedMigrations: [],
+  })
+
+  it('backfills foldVersion = 1 on legacy rows without touching current rows', () => {
+    // foldVersion 缺失 = 1.0.6 及更早的 header 归账行；FOLD_VERSION 行是当前算法，不动。
+    const document = doc([
+      { id: 'legacy-row', fold: legacyFold() },
+      { id: 'current-row', foldVersion: FOLD_VERSION, fold: legacyFold() },
+    ])
+    const changed = runLedgerMigrations(document)
+    expect(changed).toBe(true)
+    expect(document.sessions[0]?.foldVersion).toBe(1)
+    expect(document.sessions[1]?.foldVersion).toBe(FOLD_VERSION)
+    expect(document.appliedMigrations).toContain('fold-version-backfill')
+  })
+
+  it('skips backfill once the migration id is recorded (幂等)', () => {
+    const row: UsageLedgerSession = { id: 'already-1', foldVersion: 1, fold: legacyFold() }
+    const document = doc([row])
+    document.appliedMigrations = ['fold-version-backfill']
+    const changed = runLedgerMigrations(document)
+    expect(changed).toBe(false)
+    expect(document.sessions[0]?.foldVersion).toBe(1)
+  })
+})
+
+describe('ledger foldVersion / stale confidence', () => {
+  it('marks ledger-only legacy rows as stale and counts them for the UI notice', async () => {
+    // 兜底场景：会话列表为空（日志已删），只剩账本里一条 foldVersion 缺失的旧行。
+    const { store, saved, current } = fakeLedgerStore([{ id: 'old-session', fold: legacyFold() }])
+    const stats = await aggregateUsage(fakePersistence({}), { ledger: store })
+
+    expect(stats.total.calls).toBe(2)
+    expect(stats.staleLedgerSessions).toBe(1)
+    const row = stats.bySession.find(entry => entry.id === 'old-session')
+    expect(row?.stale).toBe(true)
+
+    // 加载边界执行了回填迁移，且修改触发了重新落盘。
+    expect(saved.length).toBeGreaterThan(0)
+    expect(current().appliedMigrations).toContain('fold-version-backfill')
+    expect(current().sessions[0]?.foldVersion).toBe(1)
+  })
+
+  it('treats current-version rows as trusted (no stale marker, no notice count)', async () => {
+    const { store, saved, current } = fakeLedgerStore([{ id: 'fresh-session', foldVersion: FOLD_VERSION, fold: legacyFold() }])
+    const stats = await aggregateUsage(fakePersistence({}), { ledger: store })
+
+    expect(stats.total.calls).toBe(2)
+    expect(stats.bySession[0]?.stale).toBeUndefined()
+    // exactOptionalPropertyTypes：无旧行时不带 key，UI 判空逻辑不必区分 0 与缺省。
+    expect(Object.hasOwn(stats, 'staleLedgerSessions')).toBe(false)
+    // 无可回填行也会因首次记录迁移 id 落盘一次（此后幂等跳过）。
+    expect(saved).toHaveLength(1)
+    expect(current().appliedMigrations).toContain('fold-version-backfill')
+    expect(current().sessions[0]?.foldVersion).toBe(FOLD_VERSION)
   })
 })
 

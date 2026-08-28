@@ -227,6 +227,8 @@ export interface SessionUsageRow {
     cost: number;
     /** 最后一个事件的时间戳（毫秒）。 */
     lastActive: number;
+    /** 数据来自旧算法折叠的持久账本行（日志已删/不可读，无法重算）；UI 据此标注置信度。 */
+    stale?: boolean;
 }
 /** 每轮费用明细行：仪表盘「每轮费用」图的数据源。 */
 export interface TurnUsageRow {
@@ -333,6 +335,11 @@ export interface UsageLedgerSession {
     cwd?: string;
     /** Stable log stamp (mtime + size) when the persistence backend exposes it. */
     stamp?: string;
+    /**
+     * 折叠该行时的算法版本（{@link FOLD_VERSION}）。缺失 = 1.0.6 及更早写入的
+     * 旧算法行（加载边界由迁移统一回填为 1）。
+     */
+    foldVersion?: number;
     fold: SerializedSessionFold;
 }
 /** On-disk durable usage ledger. Versioned independently from the dashboard document. */
@@ -344,9 +351,17 @@ export interface UsageLedgerDocument {
     appliedMigrations?: string[];
 }
 /**
+ * 折叠算法版本：归账语义变化时递增。v1 = 按 request/header 归账（稀疏 header 把
+ * 两次 header 之间的用量串到上一个模型，订阅模型首当其冲，issue #14）；v2 =
+ * `assistant/message` 自带 source 归账（1.0.7 起）。持久账本行据此区分新旧算法：
+ * 日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
+ */
+export declare const FOLD_VERSION = 2;
+/**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
  * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并
  * bump {@link UsageLedgerDocument.version}；引擎保证幂等，重启不会重复执行。
+ * 可选字段的向后兼容回填（如 foldVersion）不 bump version：旧版本插件仍能读新文件。
  */
 export interface LedgerMigration {
     id: string;
@@ -354,8 +369,8 @@ export interface LedgerMigration {
     apply(document: UsageLedgerDocument): boolean;
 }
 /**
- * 账本迁移注册表。当前账本 schema（version 1）尚无字段变更需求，故为空表；
- * 机制已就绪，schema 变更时在此登记幂等迁移，见 {@link LedgerMigration}。
+ * 账本迁移注册表。首条迁移给 1.0.6 及更早的行回填 foldVersion = 1（它们全部出自
+ * header 归因算法）；此后新写入的行总带当前 {@link FOLD_VERSION}。
  */
 export declare const LEDGER_MIGRATIONS: readonly LedgerMigration[];
 /**

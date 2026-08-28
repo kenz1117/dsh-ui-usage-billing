@@ -114,6 +114,8 @@ interface SessionBillingRow {
     id: string;
     title?: string;
     cwd?: string;
+    /** 数据来自旧算法折叠的持久账本行（原始日志已删，无法重算）。 */
+    stale?: boolean;
     calls: number;
     cost: number;
     lastActive: number;
@@ -218,6 +220,8 @@ export interface UsageStats {
     };
     /** 性能指标（TTFT/生成速度/总延迟）按模型与按小时；旧快照可能缺失。 */
     perf?: ClientPerf;
+    /** 旧版算法账本行兜底的会话数（模型归属可能失真）；0 或缺省 = 全部数据可信。 */
+    staleLedgerSessions?: number;
     /** 插件版本号（服务端读自包 package.json；旧快照缺失）。 */
     pluginVersion?: string;
 }
