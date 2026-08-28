@@ -59,6 +59,12 @@ export interface UsageBillingConfig {
     /** `usage_stats` 工具注入的组合 base（默认 false：不注入）；与设置命名空间同字段，
      *  作为用户设置（设置 Tab 开关）的组合兜底。该工具占用每次请求的上下文，coding 场景多在仪表盘查看。 */
     enableUsageStatsTool?: boolean;
+    /**
+     * 联网搜索请求（`web/deepseek-search-llm-request`，日志只有请求、无用量事件）
+     * 的单次费用估算（人民币元）。这类调用直连官方 api.deepseek.com，开放平台照常
+     * 计费但本地日志无 usage，按次估值计入今日/本月费用；默认 0.02 元/次，设 0 关闭。
+     */
+    searchCallEstimateCny?: number;
 }
 /**
  * Create the atomic file-backed durable-ledger store. The previous complete file

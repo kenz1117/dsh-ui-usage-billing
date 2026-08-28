@@ -146,6 +146,8 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 
 统计中的 `input` 为总输入（cacheHit + cacheMiss），估算按命中 / 未命中分拆计价，避免重复计费。支持双档计费的模型按 `DEFAULT_PEAK_SHARE`（默认 0.5）混合高峰与低谷档；周末（北京时间周六 / 周日）全天按低谷价计费。
 
+**联网搜索请求按次估算**（issue #15）：DSH 的联网搜索绕过对话通道直连官方 `api.deepseek.com`，会话日志只记请求、无用量事件，而开放平台照常计费。插件对这类 `web/deepseek-search-llm-request` 事件按次估值计入费用（默认 0.02 元/次，配置 `searchCallEstimateCny` 可调整；设 0 关闭），并单独累计 `searchCalls` 供面板提示估算口径。
+
 ### 支持模型（2026-08 主流阵容，OpenAI 兼容系列，共 73 款）
 
 完整目录见费率 Tab 及源码 `src/client/pricing.ts` 的 `MODEL_CATALOG`，此处每厂商仅列代表型号。
@@ -199,6 +201,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | `subscriptionPlans`     | 自动识别                                 | 订阅额度适配器白名单（`{ provider, baseUrl?, region? }`）；缺省时自动从 `llm-pi-ai` 设置识别所有订阅类 provider（有额度 API 的查额度，无 API 的仅标识） |
 | `declaredEndpoints`     | 未设置                                  | 声明端点（`{ displayName, origin, path, fields?, windows?, raw? }`）：为内置表没有的供应商自声明余额/额度接口，只写「数字在哪里」的点路径、无表达式；请求由匹配到同源 provider 的 origin 构造，安全边界（单斜杠绝对路径、仅 GET、拒绝跨源重定向、响应体/超时上限、凭据只取匹配 provider 自有的 apiKeyEnv）由 `src/declarative.ts` 强制执行 |
 | `reconcilePath`         | `~/.dsh/.dsh-usage-reconcile.json`     | 余额差对账基准的绝对路径；用官方（仅 DeepSeek 官方方向）余额当日变动与本地账本当日的官方渠道费用做交叉校验，偏差超阈值（0.3 元且 >15%）时提示核对；充值/授信/币种变化重置基准而非告警 |
+| `searchCallEstimateCny` | `0.02`                               | 联网搜索请求（`web/deepseek-search-llm-request`，日志无用量事件）的单次费用估算（人民币元）；设 0 关闭估算（调用仍计数、不计费）                            |
 
 ## 🛠 开发
 

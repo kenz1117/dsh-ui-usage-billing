@@ -120,6 +120,9 @@ export interface AggregateOptions {
   /** 独立的持久用量账本。启用后，已经成功折叠过的会话即使随后从
    *  sessionPersistence 中永久删除，也会继续计入累计用量。 */
   ledger?: UsageLedgerStore
+  /** 联网搜索请求（`web/deepseek-search-llm-request`，无用量事件）的单次费用
+   *  估算（人民币元）；默认 {@link DEFAULT_SEARCH_CALL_ESTIMATE_CNY}，设 0 关闭。 */
+  searchCallEstimateCny?: number
 }
 
 /** 每会话折叠缓存默认上限：超过则按 LRU 淘汰（P1-6 峰值内存治理）。 */
@@ -146,6 +149,12 @@ export interface ModelUsage {
   officialCalls: number
   /** 走官方渠道的费用（CNY）；三方费用 = cost - officialCost。 */
   officialCost: number
+  /**
+   * 联网搜索辅助请求的估算调用数（`web/deepseek-search-llm-request`，日志只有
+   * 请求无用量事件）；已按每次 `searchCallEstimateCny` 估算计入 `cost`，不计
+   * token。旧快照缺失。
+   */
+  searchCalls?: number
 }
 
 /** Zeroed usage accumulator. */
@@ -189,6 +198,31 @@ export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subsc
     }, timeMs)
     acc.cost += thisCost
     if (official) acc.officialCost += thisCost
+  }
+}
+
+/**
+ * 联网搜索辅助请求的单次费用估算默认值（人民币元）。DeepSeek 官方对搜索请求
+ * （web_search 服务端工具注入上下文）照常计费，实测每次约 0.01~0.03 元，取中值；
+ * 部署可在插件配置 `searchCallEstimateCny` 覆盖（设 0 关闭估算）。
+ */
+export const DEFAULT_SEARCH_CALL_ESTIMATE_CNY = 0.02
+
+/**
+ * Fold one auxiliary web-search LLM request (issue #15) into an accumulator.
+ * 这类调用绕过对话通道直连官方端点，日志只记请求（无响应/用量事件），token
+ * 不可知：按「每次估值」计入费用并单独累计 `searchCalls`，不产生 token 维度。
+ * @param acc - the accumulator to mutate.
+ * @param estimateCny - per-call cost estimate in CNY; 0 disables the estimate.
+ */
+export function foldSearchCall(acc: ModelUsage, estimateCny: number): void {
+  acc.calls += 1
+  acc.searchCalls = (acc.searchCalls ?? 0) + 1
+  // 搜索请求固定走 api.deepseek.com 官方端点（web-search-deepseek provider 私有 fetch）。
+  acc.officialCalls += 1
+  if (estimateCny > 0) {
+    acc.cost += estimateCny
+    acc.officialCost += estimateCny
   }
 }
 
@@ -283,6 +317,8 @@ export interface UsageStatsDocument {
   byRole?: RoleCost
   /** 不可计价的模型 id（未收录 / 无价，费用按 0 计）；供面板提示用户自查与反馈。 */
   unpricedModels?: readonly string[]
+  /** 联网搜索请求的单次费用估算（人民币元，配置回显）；0 或缺省 = 未启用估算。 */
+  searchCallEstimateCny?: number
   /**
    * 性能指标（TTFT / 生成速度 / 总延迟）按模型与按小时聚合；旧快照可能缺失。
    * 口径：TTFT = request/header → 首个内容 chunk；生成速度 = 输出 token ÷ 生成时长；
@@ -513,10 +549,11 @@ export interface UsageLedgerDocument {
 /**
  * 折叠算法版本：归账语义变化时递增。v1 = 按 request/header 归账（稀疏 header 把
  * 两次 header 之间的用量串到上一个模型，订阅模型首当其冲，issue #14）；v2 =
- * `assistant/message` 自带 source 归账（1.0.7 起）。持久账本行据此区分新旧算法：
- * 日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
+ * `assistant/message` 自带 source 归账（1.0.7 起）；v3 = 联网搜索请求按次估算
+ * 计费（issue #15，1.0.9 起）——旧行缺 `searchCalls` 维度与搜索估算费用。
+ * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export const FOLD_VERSION = 2
+export const FOLD_VERSION = 3
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
@@ -713,6 +750,8 @@ function turnState(turns: Map<number, TurnState>, turn: number): TurnState {
  * @param subscriptionProviders - provider ids billed through subscription plans.
  * @param officialProviderIds - provider ids treated as the official DeepSeek channel
  *   (default: any `deepseek`-prefixed id). Others count as third-party.
+ * @param routes - 当前 provider 路由视图（中转站归组）。
+ * @param searchCallEstimateCny - 联网搜索请求的单次费用估算（人民币元；0 关闭估算）。
  * @returns the per-session fold (cached by the incremental aggregator).
  */
 export function foldSession(
@@ -720,6 +759,7 @@ export function foldSession(
   subscriptionProviders: ReadonlySet<string>,
   officialProviderIds?: ReadonlySet<string>,
   routes: Readonly<Record<string, ProviderRouteView>> = {},
+  searchCallEstimateCny: number = DEFAULT_SEARCH_CALL_ESTIMATE_CNY,
 ): SessionFold {
   // Fork 种子过滤：从父会话 fork 出来的子会话，会把父会话的事件流整段拷贝进
   // 本会话日志作为构造种子，并在种子末尾追加一个 `session/end-seed` 边界事件，
@@ -832,6 +872,23 @@ export function foldSession(
         const stepState = steps.get(lastOpenStepKey)
         if (stepState !== undefined && stepState.requestTime === undefined) stepState.requestTime = event.time
       }
+      continue
+    }
+    if (event.type === 'web/deepseek-search-llm-request') {
+      // 联网搜索辅助请求（issue #15）：DSH 的搜索绕过对话通道直连官方
+      // api.deepseek.com，日志只记请求、没有响应/用量事件，开放平台却照常
+      // 计费。按「每次估值」计入费用（可配，设 0 关闭），token 维度不动；
+      // 模型取请求 body 的 model（归一化到计费目录键），站点桶固定
+      // direct:deepseek（不走 llm-pi-ai 路由，天然是官方直连）。
+      const model = (event.data as { body?: { model?: unknown } }).body?.model
+      const modelKey = typeof model === 'string' && model !== '' ? resolveCatalogKey(model) : 'other'
+      const day = dayStamp(event.time)
+      foldSearchCall(fold.total, searchCallEstimateCny)
+      foldSearchCall(usageCell(fold.byModel, modelKey), searchCallEstimateCny)
+      foldSearchCall(usageCell(fold.byDay, day), searchCallEstimateCny)
+      foldSearchCall(modelDayCell(fold.byDayModels, day, modelKey), searchCallEstimateCny)
+      foldSearchCall(usageCell(fold.bySite, siteBucketKey({ kind: 'direct', provider: 'deepseek' })), searchCallEstimateCny)
+      foldSearchCall(usageCell(fold.byTier, tierAt(event.time)), searchCallEstimateCny)
       continue
     }
     if (event.type === 'assistant/chunk') {
@@ -980,6 +1037,8 @@ function mergeUsageInto(acc: ModelUsage, cell: ModelUsage): void {
   acc.cost += cell.cost
   acc.officialCalls += cell.officialCalls
   acc.officialCost += cell.officialCost
+  // 旧快照无 searchCalls 维度：只在来源确实携带时才落字段（保持缺省语义）。
+  if (cell.searchCalls !== undefined) acc.searchCalls = (acc.searchCalls ?? 0) + cell.searchCalls
 }
 
 /** 均值（数组非空时调用；空数组按 0 兜底）。 */
@@ -1050,6 +1109,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
   let lastAt = 0
   /** 每次聚合取最新的 provider 路由视图（中转站零配置发现）；缺省按空处理（全部未知路由）。 */
   const routesOf = (): Readonly<Record<string, ProviderRouteView>> => options.resolveRoutes?.() ?? {}
+  // 联网搜索请求的单次费用估算（issue #15）；0 = 关闭估算（调用仍计数，不计费）。
+  const searchEstimate = options.searchCallEstimateCny ?? DEFAULT_SEARCH_CALL_ESTIMATE_CNY
 
   const ensureLedgerLoaded = async (): Promise<void> => {
     if (ledgerLoaded || options.ledger === undefined) return
@@ -1128,7 +1189,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           const after = await stampOf(meta)
           if (stamp !== null && after !== stamp) continue
           // durable 边界：日志事件是外部 JSON，foldSession 内做运行时收窄。
-          const fold = foldSession(events as { type: string; time: number; data: never; seq: number }[], subscriptionProviders, officialProviderIds, routesOf())
+          const fold = foldSession(events as { type: string; time: number; data: never; seq: number }[], subscriptionProviders, officialProviderIds, routesOf(), searchEstimate)
           cache.set(id, { stamp, fold })
           folds.push({ id, ...(meta.cwd === undefined ? {} : { cwd: meta.cwd }), fold })
           included.add(id)
@@ -1342,6 +1403,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         ...(byTool.size === 0 ? {} : { byTool: Object.fromEntries([...byTool].sort((a, b) => b[1] - a[1])) }),
         ...(bySite.size === 0 ? {} : { bySite: toRecord(bySite) }),
         ...(unpricedModels.size === 0 ? {} : { unpricedModels: [...unpricedModels].sort() }),
+        ...(searchEstimate > 0 ? { searchCallEstimateCny: searchEstimate } : {}),
         ...(perf === undefined ? {} : { perf }),
         ...(staleLedgerSessions > 0 ? { staleLedgerSessions } : {}),
         // 角色归因：输出成本为实测；输入成本按 user/tool 消息字符占比摊分

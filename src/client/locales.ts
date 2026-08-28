@@ -257,6 +257,9 @@ export type UsageBillingKey =
   | 'billing.alertBalanceLow'
   | 'billing.alertQuotaLow'
   | 'billing.unpricedHint'
+  | 'billing.searchEstimateHint'
+  | 'billing.siteListDisplay'
+  | 'billing.siteListDisplayHint'
   | 'billing.exportCsvSite'
   | 'billing.panelRelay'
   | 'billing.relaySite'
@@ -530,6 +533,9 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.alertBalanceLow': '{name} 余额不足',
   'billing.alertQuotaLow': '{name} 配额将尽',
   'billing.unpricedHint': '{count} 个模型未收录计价，费用已按 0 计',
+  'billing.searchEstimateHint': '含 {count} 次联网搜索请求的估算费用（每次约 {each}；日志无用量事件，按次估算，可在配置 searchCallEstimateCny 调整或关闭）',
+  'billing.siteListDisplay': '中转站列表',
+  'billing.siteListDisplayHint': '隐藏「未知路由 / 未识别」占位条目，净化中转站分布与额度列表',
   'billing.exportCsvSite': '按站点 CSV',
   'billing.panelRelay': '中转站分布',
   'billing.relaySite': '中转站',
@@ -802,6 +808,9 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.alertBalanceLow': '{name} balance low',
   'billing.alertQuotaLow': '{name} quota low',
   'billing.unpricedHint': '{count} models not priced; their cost counts as 0',
+  'billing.searchEstimateHint': 'Includes estimated cost of {count} web-search requests (~{each} each; no usage events logged, per-call estimate; tune via searchCallEstimateCny)',
+  'billing.siteListDisplay': 'Relay lists',
+  'billing.siteListDisplayHint': 'Hide "unknown route / unidentified" placeholder rows in relay distribution and quota lists',
   'billing.exportCsvSite': 'By site CSV',
   'billing.panelRelay': 'Relay sites',
   'billing.relaySite': 'Relay',
