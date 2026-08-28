@@ -2,8 +2,9 @@
  * Real-usage aggregation: folds every persisted session log into the
  * usage-stats document the dashboard renders.
  *
- * Each LLM call is attributed to the model of the `request/header` event that
- * precedes its `assistant/message` usage event. Costs are estimated with the
+ * Each LLM call is attributed to the `message.source` carried by its own
+ * `assistant/message` event (copied from the request at write time); the
+ * sparse `request/header` is only a fallback. Costs are estimated with the
  * shared billing catalog (`pricing.ts`, in CNY), so only models the catalog
  * prices incur a cost — subscription-plan routes and unknown models price
  * zero while their tokens still count. Pure functions only: the persistence
@@ -376,7 +377,9 @@ export interface UsageLedgerStore {
 export declare function messageTextLength(message: unknown): number;
 /**
  * Fold one session's events into a {@link SessionFold}. 每个 LLM 调用归属到
- * 其前置 request/header 记录的模型；同时提取最新会话标题、最后活跃时间，
+ * 其 `assistant/message` 自带 `message.source` 记录的模型（agent-loop 落盘时从
+ * 当次请求复制，每个调用一条，不依赖稀疏的 request/header）；source 缺失时
+ * 兜底到最近一次 request/header 的状态。同时提取最新会话标题、最后活跃时间，
  * 并按轮次折叠每轮费用明细（turn/start → turn/end；调用按 (turn) 归组）。
  * @param events - the session's persisted events in log order.
  * @param subscriptionProviders - provider ids billed through subscription plans.

@@ -2,8 +2,9 @@
  * Real-usage aggregation: folds every persisted session log into the
  * usage-stats document the dashboard renders.
  *
- * Each LLM call is attributed to the model of the `request/header` event that
- * precedes its `assistant/message` usage event. Costs are estimated with the
+ * Each LLM call is attributed to the `message.source` carried by its own
+ * `assistant/message` event (copied from the request at write time); the
+ * sparse `request/header` is only a fallback. Costs are estimated with the
  * shared billing catalog (`pricing.ts`, in CNY), so only models the catalog
  * prices incur a cost — subscription-plan routes and unknown models price
  * zero while their tokens still count. Pure functions only: the persistence
@@ -641,7 +642,9 @@ function turnState(turns: Map<number, TurnState>, turn: number): TurnState {
 
 /**
  * Fold one session's events into a {@link SessionFold}. 每个 LLM 调用归属到
- * 其前置 request/header 记录的模型；同时提取最新会话标题、最后活跃时间，
+ * 其 `assistant/message` 自带 `message.source` 记录的模型（agent-loop 落盘时从
+ * 当次请求复制，每个调用一条，不依赖稀疏的 request/header）；source 缺失时
+ * 兜底到最近一次 request/header 的状态。同时提取最新会话标题、最后活跃时间，
  * 并按轮次折叠每轮费用明细（turn/start → turn/end；调用按 (turn) 归组）。
  * @param events - the session's persisted events in log order.
  * @param subscriptionProviders - provider ids billed through subscription plans.
@@ -693,7 +696,8 @@ export function foldSession(
   let key = 'other'
   let subscription = false
   let official = false
-  // 当前调用的站点桶 key：在 request/header 时随模型/订阅/官方状态一起更新。
+  // 站点桶/模型/订阅/官方的 header 兜底状态：assistant/message 自带 source 时
+  // 以 source 为准；极旧格式日志缺 source 才落到这里维护的值。
   let siteBucket = 'unknown'
   const turns = new Map<number, TurnState>()
   // 性能时间状态机：按 (turn, step) 归属 request/header 与内容 chunk 的时刻。
@@ -781,7 +785,18 @@ export function foldSession(
     if (event.type !== 'assistant/message') continue
     const usage = (event.data as { usage?: TokenUsage }).usage
     if (usage === undefined) continue
-    // 归属到最近的 request/header 记录的模型，token 按缓存分桶累加。
+    // 权威归属：`message.source` 是 agent-loop 从当次请求复制的 { provider, model }，
+    // 每个调用一条；`request/header` 是稀疏事件（可能数十个调用才有一条），按它归属
+    // 会把两次 header 之间的用量全部串到上一个模型（订阅模型首当其冲，issue #14）。
+    // source 缺失（极旧格式日志）才兜底到 header 维护的状态。
+    const source = (event.data as { message?: { source?: { kind?: unknown; provider?: unknown; model?: unknown } } }).message?.source
+    if (source?.kind === 'model' && typeof source.provider === 'string' && typeof source.model === 'string') {
+      key = resolveCatalogKey(source.model)
+      subscription = subscriptionProviders.has(source.provider)
+      official = officialProviderIds === undefined ? isOfficialProvider(source.provider) : officialProviderIds.has(source.provider)
+      siteBucket = siteBucketKey(siteRefOf(source.provider, routes))
+    }
+    // 归属到本条 message 的权威模型，token 按缓存分桶累加。
     // 时段按本次调用的实际时刻（event.time）精确判定，不再按固定比例混合。
     const modelKey = key
     const day = dayStamp(event.time)
