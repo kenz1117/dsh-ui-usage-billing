@@ -66,6 +66,7 @@ export type UsageBillingKey =
   | 'billing.pricingNotes'
   | 'billing.ubPeak'
   | 'billing.ubOff'
+  | 'billing.ubStd'
   | 'billing.peakBand'
   | 'billing.pricingSource'
   | 'billing.noteCache'
@@ -113,6 +114,12 @@ export type UsageBillingKey =
   | 'billing.floatNext'
   | 'billing.subscriptionsStale'
   | 'billing.staleLedgerNotice'
+  | 'billing.tokenCacheWrite'
+  | 'billing.toolRank'
+  | 'billing.toolName'
+  | 'billing.userPrices'
+  | 'billing.userPricesHint'
+  | 'billing.userPriceSave'
   | 'billing.sessionStaleBadge'
   | 'billing.heatmapLess'
   | 'billing.heatmapMore'
@@ -151,7 +158,9 @@ export type UsageBillingKey =
   | 'billing.exportCsvSession'
   | 'billing.exportJson'
   | 'billing.peakShare'
-  | 'billing.peakShareHint'
+  | 'billing.peakSharePerCall'
+  | 'billing.offPeakSavings'
+  | 'billing.perfMax'
   | 'billing.weekCost'
   | 'billing.roleCost'
   | 'billing.roleUser'
@@ -330,6 +339,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.pricingNotes': '计价说明',
   'billing.ubPeak': '峰',
   'billing.ubOff': '谷',
+  'billing.ubStd': '标准',
   'billing.peakBand': '峰谷分带',
   'billing.pricingSource': '数据来源',
   'billing.noteCache': '命中部分按缓存价计费，显著降低成本。',
@@ -375,7 +385,13 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.floatPrev': '上一张订阅',
   'billing.floatNext': '下一张订阅',
   'billing.subscriptionsStale': '订阅额度刷新失败，以下为缓存数据',
-  'billing.staleLedgerNotice': '{count} 个会话的统计出自旧版算法的存档（原始日志已删除，无法重算），模型归属可能有误差',
+  'billing.staleLedgerNotice': '{count} 个会话出自旧版算法存档（日志已删，无法重算），模型归属可能有误差',
+  'billing.tokenCacheWrite': '写入',
+  'billing.toolRank': '工具排行',
+  'billing.toolName': '工具',
+  'billing.userPrices': '自定义单价',
+  'billing.userPricesHint': '为未收录或变价模型填入实付单价，总览与日趋势按此重估；部分明细仍按内置目录',
+  'billing.userPriceSave': '保存',
   'billing.sessionStaleBadge': '旧版统计',
   'billing.heatmapLess': '少',
   'billing.heatmapMore': '多',
@@ -414,7 +430,9 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.exportCsvSession': '按会话 CSV',
   'billing.exportJson': '全量 JSON',
   'billing.peakShare': '峰谷时段占比',
-  'billing.peakShareHint': '近 {count} 轮',
+  'billing.peakSharePerCall': '按调用时刻精确判档',
+  'billing.offPeakSavings': '挪谷可省约 {amount}',
+  'billing.perfMax': '最大 TTFT',
   'billing.weekCost': '本周',
   'billing.roleCost': '费用构成',
   'billing.roleUser': '用户输入',
@@ -593,6 +611,7 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.pricingNotes': 'Pricing notes',
   'billing.ubPeak': 'Peak',
   'billing.ubOff': 'Off',
+  'billing.ubStd': 'Std',
   'billing.peakBand': 'Peak/off-peak band',
   'billing.pricingSource': 'Data source',
   'billing.noteCache': 'Cache hits are billed at the cache rate, cutting cost.',
@@ -638,7 +657,13 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.floatPrev': 'Previous subscription',
   'billing.floatNext': 'Next subscription',
   'billing.subscriptionsStale': 'Subscription refresh failed — showing cached data',
-  'billing.staleLedgerNotice': '{count} sessions come from legacy-algorithm archives (original logs deleted, cannot be re-folded); per-model attribution may be off',
+  'billing.staleLedgerNotice': '{count} sessions use legacy-algorithm archives (logs deleted); attribution may be off',
+  'billing.tokenCacheWrite': 'written',
+  'billing.toolRank': 'Tool calls',
+  'billing.toolName': 'Tool',
+  'billing.userPrices': 'Custom prices',
+  'billing.userPricesHint': 'Enter actual per-1M-token prices; main views are re-costed, some detail rows keep catalog pricing.',
+  'billing.userPriceSave': 'Save',
   'billing.sessionStaleBadge': 'legacy',
   'billing.heatmapLess': 'Less',
   'billing.heatmapMore': 'More',
@@ -677,7 +702,9 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.exportCsvSession': 'Sessions CSV',
   'billing.exportJson': 'Full JSON',
   'billing.peakShare': 'Peak vs off-peak',
-  'billing.peakShareHint': 'last {count} turns',
+  'billing.peakSharePerCall': 'per-call attribution, full history',
+  'billing.offPeakSavings': 'Shift peak to off-peak: save ~{amount}',
+  'billing.perfMax': 'Max TTFT',
   'billing.weekCost': 'This week',
   'billing.roleCost': 'Cost breakdown',
   'billing.roleUser': 'User input',

@@ -56,4 +56,23 @@ export declare const BILLING_CARD_STORAGE_KEY = "dsh.ui-usage-billing.card";
 export declare function loadBillingCardPrefs(): BillingCardPrefs;
 /** 写入计费卡偏好。失败静默（展示偏好非关键）。 */
 export declare function saveBillingCardPrefs(prefs: BillingCardPrefs): void;
+/** 用户自定义单价（与 client/pricing.ts 的 `UserPrice` 同形；此处不 import 以保持 node 半区无 client 依赖）。 */
+export interface StoredUserPrice {
+    /** 未命中输入单价（元或美元 / 每百万 token）。 */
+    input: number;
+    /** 缓存命中输入单价。 */
+    cacheHit: number;
+    /** 输出单价。 */
+    output: number;
+    /** 计价币种；缺省 CNY。 */
+    currency?: 'CNY' | 'USD';
+}
+/** 自定义价表：计费目录键 → 单价。 */
+export type UserPriceMap = Record<string, StoredUserPrice>;
+/** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
+export declare const USER_PRICES_STORAGE_KEY = "dsh.ui-usage-billing.prices";
+/** 读取用户自定义价（写入侧已校验，这里只挡住手工改坏的非数字行）。仅在浏览器半区调用。 */
+export declare function loadUserPrices(): UserPriceMap;
+/** 写入用户自定义价。失败静默（展示偏好非关键）。 */
+export declare function saveUserPrices(prices: UserPriceMap): void;
 //# sourceMappingURL=usage-billing-settings.d.ts.map

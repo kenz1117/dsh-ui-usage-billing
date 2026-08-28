@@ -1,31 +1,58 @@
 /**
- * Share-derivation unit tests: peak/off-peak cost split by turn start time
- * (Beijing peak 9-12 / 14-18) and the last-7-days series feeding the trigger
- * hover card's mini bars.
+ * Share/recost-derivation unit tests: the byTier peak/off-peak split feeding
+ * the trend panel (per-call attribution now lives in the server document) and
+ * the user-price display re-costing over the day×model grid.
  */
 
 import { describe, expect, it } from 'vitest'
-import { lastSevenDays, peakOffpeakCost } from '../src/client/UsageBilling.tsx'
+import { recostWithUserPrices, lastSevenDays, type UsageStats } from '../src/client/UsageBilling.tsx'
+import { applyUserPrices, getUserPrices } from '../src/client/pricing.ts'
 
-/** 北京时间某小时的当日时间戳（tierAt 口径：UTC 小时 + 8；固定周五工作日）。 */
-function atBeijingHour(hour: number): number {
-  return Date.UTC(2026, 7, 21, (hour + 24 - 8) % 24)
+/** 最小可用统计文档：day×model 一格 + 同日聚合。 */
+function statsFixture(): UsageStats {
+  return {
+    total: { calls: 2, input: 200, output: 100, cacheHit: 100, cacheMiss: 100, cost: 0.001, reasoning: 0 },
+    byModel: {
+      flash: { calls: 1, input: 100, output: 50, cacheHit: 50, cacheMiss: 50, cost: 0.0006, reasoning: 0 },
+      mystery: { calls: 1, input: 100, output: 50, cacheHit: 50, cacheMiss: 50, cost: 0, reasoning: 0 },
+    },
+    byDay: {
+      '2026-08-21': { calls: 2, input: 200, output: 100, cacheHit: 100, cacheMiss: 100, cost: 0.001, reasoning: 0 },
+    },
+    byDayModels: {
+      '2026-08-21': {
+        flash: { calls: 1, input: 100, output: 50, cacheHit: 50, cacheMiss: 50, cost: 0.0006 },
+        mystery: { calls: 1, input: 100, output: 50, cacheHit: 50, cacheMiss: 50, cost: 0 },
+      },
+    },
+  }
 }
 
-describe('peakOffpeakCost', () => {
-  it('splits turn costs by Beijing peak hours', () => {
-    const share = peakOffpeakCost([
-      { startedAt: atBeijingHour(10), cost: 1 }, // 高峰
-      { startedAt: atBeijingHour(15), cost: 2 }, // 高峰
-      { startedAt: atBeijingHour(13), cost: 4 }, // 空闲
-      { startedAt: atBeijingHour(23), cost: 8 }, // 空闲
-    ])
-    expect(share.peak).toBe(3)
-    expect(share.offPeak).toBe(12)
+describe('recostWithUserPrices', () => {
+  it('re-costs user-priced models over the day×model grid and derives byDay/byModel/total', () => {
+    applyUserPrices({ mystery: { input: 2, cacheHit: 0.2, output: 6 } })
+    try {
+      // mystery：miss 50×¥2 + hit 50×¥0.2 + out 50×¥6 = 100+10+300 = ¥410 / 1M。
+      const recosted = recostWithUserPrices(statsFixture())
+      const cell = recosted.byDayModels?.['2026-08-21']?.mystery
+      expect(cell?.cost).toBeCloseTo(410 / 1_000_000, 12)
+      // flash 未配价：保留宿主计价。
+      expect(recosted.byDayModels?.['2026-08-21']?.flash.cost).toBe(0.0006)
+      // byDay / byModel / total 从重算后的网格派生。
+      expect(recosted.byDay['2026-08-21']?.cost).toBeCloseTo(0.0006 + 410 / 1_000_000, 12)
+      expect(recosted.byModel.mystery.cost).toBeCloseTo(410 / 1_000_000, 12)
+      expect(recosted.byModel.flash.cost).toBe(0.0006)
+      expect(recosted.total.cost).toBeCloseTo(0.0006 + 410 / 1_000_000, 12)
+    } finally {
+      applyUserPrices({})
+    }
   })
 
-  it('returns zeros for an empty list', () => {
-    expect(peakOffpeakCost([])).toEqual({ peak: 0, offPeak: 0 })
+  it('returns the document untouched when no user prices are set', () => {
+    applyUserPrices({})
+    expect(getUserPrices()).toBeUndefined()
+    const stats = statsFixture()
+    expect(recostWithUserPrices(stats)).toBe(stats)
   })
 })
 

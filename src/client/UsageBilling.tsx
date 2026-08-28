@@ -21,8 +21,11 @@ import {
   loadBillingCardPrefs,
   type FloatWindowPrefs,
   loadFloatWindowPrefs,
+  loadUserPrices,
   saveBillingCardPrefs,
   saveFloatWindowPrefs,
+  saveUserPrices,
+  type UserPriceMap,
 } from './usage-billing-settings.ts'
 import { TrendChart, type TrendMetric, type TrendPoint } from './TrendChart.tsx'
 import { PerfPanel, type ClientPerf } from './PerfPanel.tsx'
@@ -34,9 +37,9 @@ import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
 import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv, siteRowsCsv } from './export.ts'
 import type { createBillingBudgetStore } from './budget-store.ts'
 import {
-  applyLiveCatalogModels, applyLivePricing, catalogEntries, cnyToUsd, computeCost, convertUnitPrice,
-  formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, isPromoActive,
-  modelOf, resolveToken, tierAt, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
+  applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, cnyToUsd, computeCost, convertUnitPrice,
+  formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, getUserPrices, isPromoActive,
+  modelOf, resolveToken, tierAt, userPriceOf, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
@@ -279,19 +282,54 @@ export function projectMonthCost(byDay: Record<string, { cost: number }>, monthP
 }
 
 /**
- * 峰谷时段费用分摊：按每轮的起始时刻（北京时间高峰 9-12 / 14-18）把费用
- * 归入高峰 / 空闲两档。导出供测试：纯函数。
- * @param turns - 每轮费用行（需带 startedAt 与 cost）。
- * @returns 两档费用合计（人民币元）。
+ * 用户自定义单价显示重估：聚合发生在宿主进程（按内置目录计价），用户价只在
+ * 客户端显示层生效。对 byDayModels（day×model 完整二维）中命中用户价的模型
+ * 逐格平价重算 cost，并派生 byDay / byModel / total 的 cost。其余视图
+ * （bySite / byTier / bySession / byTurn）保持宿主原值——逐格时刻或行级归属
+ * 在客户端不可得，口径差异在设置面板注明。导出供测试：纯函数。
+ * @param stats - 服务端聚合文档。
+ * @returns 重估后的文档；无用户价或缺 byDayModels 时原样返回。
  */
-export function peakOffpeakCost(turns: readonly { startedAt: number; cost: number }[]): { peak: number; offPeak: number } {
-  let peak = 0
-  let offPeak = 0
-  for (const turn of turns) {
-    if (tierAt(turn.startedAt) === 'peak') peak += turn.cost
-    else offPeak += turn.cost
+export function recostWithUserPrices(stats: UsageStats): UsageStats {
+  if (getUserPrices() === undefined || stats.byDayModels === undefined) return stats
+  // 逐 day×model 重算：用户价 = 平价三桶（时段/促销折扣不叠加，用户价即实付价）。
+  const rate = getRateInfo().rate
+  const byDay: UsageStats['byDay'] = {}
+  const byDayModels: UsageStats['byDayModels'] = {}
+  const modelCost = new Map<string, number>()
+  let totalCost = 0
+  for (const [date, models] of Object.entries(stats.byDayModels)) {
+    let dayCost = 0
+    const dayModels: Record<string, { calls: number; input: number; output: number; cacheHit: number; cacheMiss: number; cost: number }> = {}
+    for (const [key, cell] of Object.entries(models)) {
+      let cost = cell.cost
+      const price = userPriceOf(key)
+      if (price !== undefined) {
+        const miss = cell.cacheMiss
+        const hit = Math.min(cell.cacheHit, cell.cacheMiss + cell.cacheHit)
+        const raw = (miss * price.input + hit * price.cacheHit + cell.output * price.output) / 1_000_000
+        cost = price.currency === 'USD' ? raw * rate : raw
+      }
+      dayCost += cost
+      dayModels[key] = { ...cell, cost }
+      modelCost.set(key, (modelCost.get(key) ?? 0) + cost)
+    }
+    // byDayModels 与 byDay 同源同键：缺日时按无前置数据跳过（渲染已有缺日兜底）。
+    const prevDay = stats.byDay[date]
+    if (prevDay !== undefined) byDay[date] = { ...prevDay, cost: dayCost }
+    byDayModels[date] = dayModels
+    totalCost += dayCost
   }
-  return { peak, offPeak }
+  return {
+    ...stats,
+    total: { ...stats.total, cost: totalCost },
+    byDay,
+    byDayModels,
+    byModel: Object.fromEntries(Object.entries(stats.byModel).map(([key, cell]) => {
+      const cost = modelCost.get(key)
+      return [key, cost === undefined ? cell : { ...cell, cost }]
+    })),
+  }
 }
 
 /** 近 7 天费用序列（含今天，缺日补 0）：触发卡 hover 速览的迷你柱数据源。
@@ -433,6 +471,8 @@ export interface UsageStats {
     output: number
     cacheHit: number
     cacheMiss: number
+    /** 显式缓存写入（cacheMiss 子集，部分厂商单独报告）；1.0.8 起新增，旧快照缺失。 */
+    cacheWrite?: number
     cost: number
     /** 输出中的 reasoning（思考）token；已含在 output 内。 */
     reasoning: number
@@ -470,6 +510,13 @@ export interface UsageStats {
     cacheMiss: number
     cost: number
   }>>
+  /**
+   * 峰谷分桶（全量逐调用真实判档）：1.0.8 起服务端按调用时刻精确归桶，
+   * 峰谷占比条优先用它（覆盖全部历史调用）；旧快照缺失时回退逐轮估算。
+   */
+  byTier?: { peak: { cost: number; calls: number }; offPeak: { cost: number; calls: number } }
+  /** 工具调用次数排行（键 = 工具名，按次数倒序）；旧快照缺失。 */
+  byTool?: Record<string, number>
   /** 每轮费用明细（服务端聚合路径恒带）；旧快照可能缺失。 */
   byTurn?: readonly {
     sessionId: string
@@ -579,6 +626,7 @@ async function loadUsageStats(): Promise<UsageStats | null> {
     // 缺字段快照兜底：聚合升级前的旧文件可能缺 byDay/byModel，按空统计渲染，
     // 避免渲染路径读 undefined 抛错导致整个插件 surface 被卸载。
     const candidate = parsed as Partial<UsageStats>
+    const isObj = (v: unknown): boolean => v !== null && typeof v === 'object'
     return {
       total: candidate.total ?? EMPTY_STATS.total,
       byModel: candidate.byModel ?? {},
@@ -590,6 +638,13 @@ async function loadUsageStats(): Promise<UsageStats | null> {
       ...(Array.isArray(candidate.bySession) ? { bySession: candidate.bySession } : {}),
       ...(Array.isArray(candidate.byTurn) ? { byTurn: candidate.byTurn } : {}),
       ...(Array.isArray(candidate.byWorkspace) ? { byWorkspace: candidate.byWorkspace } : {}),
+      // 可选聚合维度：旧快照缺失。此前白名单漏掉 bySite / unpricedModels /
+      // staleLedgerSessions，导致中转站面板与旧账本提示从未收到数据，一并补上。
+      ...(isObj(candidate.bySite) ? { bySite: candidate.bySite } : {}),
+      ...(isObj(candidate.byTier) ? { byTier: candidate.byTier } : {}),
+      ...(isObj(candidate.byTool) ? { byTool: candidate.byTool } : {}),
+      ...(Array.isArray(candidate.unpricedModels) ? { unpricedModels: candidate.unpricedModels } : {}),
+      ...(typeof candidate.staleLedgerSessions === 'number' ? { staleLedgerSessions: candidate.staleLedgerSessions } : {}),
       // 角色归因：旧快照缺失；仅接受对象形状（durable 边界，字段值由渲染处数值化兜底）。
       ...(candidate.byRole !== null && typeof candidate.byRole === 'object'
         ? { byRole: candidate.byRole as { user: number; assistant: number; tool: number } }
@@ -1080,6 +1135,10 @@ interface BillingDashboardProps {
   // 双参签名：局部需要插值文案（如促销截止日期）时传 params。
   t: (key: UsageBillingKey, params?: Record<string, unknown>) => string
   onClose: () => void
+  /** 用户自定义单价表（localStorage 持久化；设置面板读写）。 */
+  userPrices: UserPriceMap
+  /** 用户自定义单价更新（父组件写回 localStorage 并重估显示）。 */
+  onUserPrices: (next: UserPriceMap) => void
   health: ModelHealth
   balances: readonly ProviderBalance[]
   /** 官方余额差对账提示（drift 时非空，展示在余额区块）。 */
@@ -1165,8 +1224,67 @@ function BalanceDetailRow({ label, value }: { label: string; value: string }): R
   )
 }
 
+/**
+ * 设置 Tab 的自定义单价卡：JSON 编辑器形式（紧凑优先）。保存时逐行校验
+ * （三价非负有限数；currency 仅认 USD），写回 localStorage 并触发显示重估；
+ * 覆盖优先级高于内置目录 / models.dev / dsh-spend。
+ */
+function UserPriceCard({ userPrices, onUserPrices, t }: {
+  userPrices: UserPriceMap
+  onUserPrices: (next: UserPriceMap) => void
+  t: (key: UsageBillingKey, params?: Record<string, unknown>) => string
+}): React.ReactNode {
+  const [state, setState] = useState<{ draft: string; invalid: boolean }>(() => ({ draft: JSON.stringify(userPrices), invalid: false }))
+  const save = (): void => {
+    try {
+      const parsed = JSON.parse(state.draft) as unknown
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('shape')
+      const next: UserPriceMap = {}
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        if (value === null || typeof value !== 'object') continue
+        const row = value as Record<string, unknown>
+        const input = Number(row.input)
+        const cacheHit = Number(row.cacheHit)
+        const output = Number(row.output)
+        if (![input, cacheHit, output].every(v => Number.isFinite(v) && v >= 0)) continue
+        next[key] = { input, cacheHit, output, ...(row.currency === 'USD' ? { currency: 'USD' as const } : {}) }
+      }
+      setState({ draft: state.draft, invalid: false })
+      onUserPrices(next)
+    } catch {
+      setState({ draft: state.draft, invalid: true })
+    }
+  }
+  return (
+    <section className={css.setCard} data-testid="billing-user-prices">
+      <div className={css.setCardHead}>
+        <div className={css.setCardMeta}>
+          <h3 className={css.setCardTitle}>{t('billing.userPrices')}</h3>
+          <p className={css.setCardDesc}>{t('billing.userPricesHint')}</p>
+        </div>
+      </div>
+      <div className={css.ctlCol}>
+        <textarea
+          className={css.budgetInput}
+          data-testid="billing-user-price-editor"
+          rows={8}
+          style={state.invalid ? { borderColor: 'red' } : undefined}
+          value={state.draft}
+          aria-label={t('billing.userPrices')}
+          onChange={(e) => { setState({ draft: e.target.value, invalid: false }) }}
+        />
+        <div className={css.ctlRow}>
+          <button type="button" className={css.exportButton} data-testid="billing-user-price-save" onClick={save}>
+            {t('billing.userPriceSave')}
+          </button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function BillingDashboard({
-  stats, t, onClose, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, turns,
+  stats, t, onClose, userPrices, onUserPrices, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, turns,
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
   peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, quotasStale,
 }: BillingDashboardProps): React.ReactNode {
@@ -1248,8 +1366,12 @@ function BillingDashboard({
     [turns],
   )
 
-  // 峰谷时段费用分摊：按每轮起始时刻精确判定（北京时间高峰 9-12 / 14-18）。
-  const peakShare = useMemo(() => peakOffpeakCost(turns), [turns])
+  // 峰谷费用分摊：服务端全量逐调用判档的 byTier（1.0.8 起）；旧快照缺失时不渲染峰谷条。
+  const peakShare = { peak: stats.byTier?.peak.cost ?? 0, offPeak: stats.byTier?.offPeak.cost ?? 0 }
+
+  // 挪谷省钱额：峰时费用若全部按低谷单价（高峰的一半）计，可省下的金额。
+  // 仅峰谷分档模型受影响；保守按峰时费用的一半计（与官方 2x 刊例一致）。
+  const offPeakSavings = peakShare.peak / 2
 
   // 费用构成（估算）：角色归因三段（用户输入 / 助手输出 / 工具结果）。
   const roleRows = useMemo(() => {
@@ -2121,7 +2243,10 @@ function BillingDashboard({
                 </div>
               </section>
 
-              {/* 6. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
+              {/* 6. 自定义单价：set-card——已存价列表 + 新增行；显示层重估，口径差异见说明。 */}
+              <UserPriceCard userPrices={userPrices} onUserPrices={onUserPrices} t={t} />
+
+              {/* 7. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
               <PluginInfoCard t={t} version={stats.pluginVersion} />
             </div>
           )}
@@ -2200,8 +2325,8 @@ function BillingDashboard({
                 </section>
               )}
 
-              {/* 3. 峰谷时段占比：ub-card —— 头部 + 分摊条 + 图例。 */}
-              {turns.length > 0 && (() => {
+              {/* 3. 峰谷时段占比：ub-card —— 头部 + 分摊条 + 图例（+ 挪谷省钱提示）。 */}
+              {stats.byTier !== undefined && (() => {
                 const shareTotal = peakShare.peak + peakShare.offPeak
                 if (shareTotal <= 0) return null
                 const peakPct = (peakShare.peak / shareTotal) * 100
@@ -2212,7 +2337,7 @@ function BillingDashboard({
                         {t('billing.peakShare')}
                       </h3>
                       <span className={css.ubCardSub}>
-                        {t('billing.peakShareHint').replace('{count}', String(turns.length))}
+                        {t('billing.peakSharePerCall')}
                       </span>
                     </div>
                     <div className={css.shareTrack} data-testid="billing-share-track">
@@ -2235,6 +2360,12 @@ function BillingDashboard({
                         </span>
                       </span>
                     </div>
+                    {/* 挪谷省钱提示：峰时费用若发生在低谷档可省的金额（官方峰价为谷价 2 倍）。 */}
+                    {offPeakSavings > 0 && (
+                      <div className={css.staleNotice} data-testid="billing-share-savings">
+                        {t('billing.offPeakSavings').replace('{amount}', money(offPeakSavings))}
+                      </div>
+                    )}
                   </section>
                 )
               })()}
@@ -2815,13 +2946,14 @@ function BillingDashboard({
                                 ? (
                                   <span className={css.ubPricepair}>
                                     <span className={css.ubChipPeak}>
-                                      <span className={css.ubChipLabel}>{t('billing.ubPeak')}</span>
+                                      {/* 延迟档语义（Gemini Standard/Flex）与时段语义（峰谷）标签不同。 */}
+                                      <span className={css.ubChipLabel}>{entry.tierSemantics === 'latency' ? t('billing.ubStd') : t('billing.ubPeak')}</span>
                                       <span className={css.num}>
                                         {unitMoney(entry.price.input, entry.price.currency)} / {unitMoney(entry.price.output, entry.price.currency)}
                                       </span>
                                     </span>
                                     <span className={css.ubChipOff}>
-                                      <span className={css.ubChipLabel}>{t('billing.ubOff')}</span>
+                                      <span className={css.ubChipLabel}>{entry.tierSemantics === 'latency' ? 'Flex' : t('billing.ubOff')}</span>
                                       <span className={css.num}>
                                         {unitMoney(entry.price.offPeak.input, entry.price.currency)} / {unitMoney(entry.price.offPeak.output, entry.price.currency)}
                                       </span>
@@ -2940,6 +3072,19 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     setCardPrefs(next)
     saveBillingCardPrefs(next)
   }, [])
+  // 用户自定义单价：localStorage 读取一次性注入计价层（修改通过设置面板 applyUserPrices）。
+  const [userPrices, setUserPrices] = useState<UserPriceMap>(() => {
+    const stored = loadUserPrices()
+    applyUserPrices(stored)
+    return stored
+  })
+  const updateUserPrices = useCallback((next: UserPriceMap): void => {
+    setUserPrices(next)
+    applyUserPrices(next)
+    saveUserPrices(next)
+  }, [])
+  // 显示重估后的统计：用户价变化或新快照到达时重新计算（无用户价时原样返回）。
+  const displayStats = useMemo(() => recostWithUserPrices(stats), [stats, userPrices])
   // 严格联动（仅本插件，不影响宿主全局语言）：币种=USD 时面板文案切英文，CNY 时切中文。
   // 用本包自带 zh/en 字典构建本地 t；key 未覆盖时回退宿主 t。
   const lang = currency === 'usd' ? 'en' : 'zh'
@@ -2958,7 +3103,8 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   // 重新拉取统计与余额：初次挂载、打开弹窗、弹窗期间轮询共用同一入口。
   const reloadStats = useCallback(() => {
     void loadUsageStats().then((data) => {
-      if (data !== null) setStats(data)
+      // 用户自定义价显示重估：宿主按内置目录计价，客户端按用户价覆盖显示成本。
+      if (data !== null) setStats(recostWithUserPrices(data))
     })
     void fetchBalanceDoc().then(({ balances, reconcile }) => {
       // 余额服务端恒返回内置行（空=失败），失败时保留旧快照。
@@ -3267,9 +3413,11 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       />
       {open && (
         <BillingDashboard
-          stats={stats}
+          stats={displayStats}
           t={t}
           onClose={close}
+          userPrices={userPrices}
+          onUserPrices={updateUserPrices}
           health={health}
           balances={balances}
           {...(reconcile === undefined ? {} : { reconcile })}

@@ -44,6 +44,13 @@ function dateTime(time: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+/** 轮时长短格式：`45s` / `3m12s`；用于 tooltip 展示轮耗时。 */
+function duration(ms: number): string {
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s}s`
+  return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s`
+}
+
 /**
  * Render the per-turn cost bars.
  * @param props.rounds - turns, most recent last (ascending startedAt); oldest beyond the limit are dropped.
@@ -80,7 +87,7 @@ export function RoundCostChart({ rounds, flags, currency, t }: {
                   className={flagged ? css.roundsBarFlagged : css.roundsBar}
                   style={{ height: `${height}%` }}
                   data-testid="round-bar"
-                  title={`${t('billing.model')} ${round.model} · ${money(round.cost)} · ${dateTime(round.startedAt)}${round.endedAt !== undefined ? ` → ${clock(round.endedAt)}` : ''}`}
+                  title={`${t('billing.model')} ${round.model} · ${money(round.cost)} · ${dateTime(round.startedAt)}${round.endedAt !== undefined ? ` → ${clock(round.endedAt)} (${duration(round.endedAt - round.startedAt)})` : ''}`}
                 >
                   {flagged && <span className={css.roundsFlagMark} aria-hidden="true" />}
                 </div>

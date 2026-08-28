@@ -37,6 +37,49 @@ let liveExtraModels: readonly ExtraModelPrice[] | undefined
 let liveCatalogModels: readonly CatalogModel[] | undefined
 
 /**
+ * 用户自定义单价（设置面板录入，localStorage 持久化）：覆盖内置/models.dev/
+ * dsh-spend 的全部价格来源，用于新模型上线目录未跟、或厂商未公布按量价的场景。
+ * 仅在客户端显示层生效——聚合发生在宿主进程，折叠时的成本仍按内置目录计算，
+ * 客户端检测到用户价后对受影响视图做显示重估（见 UsageBilling 的 recost）。
+ */
+export interface UserPrice {
+  /** 未命中输入单价（元或美元 / 每百万 token）。 */
+  input: number
+  /** 缓存命中输入单价。 */
+  cacheHit: number
+  /** 输出单价。 */
+  output: number
+  /** 计价币种；缺省 CNY。 */
+  currency?: 'CNY' | 'USD'
+}
+
+let userPrices: Readonly<Record<string, UserPrice>> | undefined
+
+/**
+ * 注入用户自定义单价。键 = 计费目录键；查询侧用归一化两跳宽松命中。
+ * 空对象 = 清除全部自定义价，回退内置目录。
+ * @param prices - 目录键 → 自定义单价。
+ */
+export function applyUserPrices(prices: Readonly<Record<string, UserPrice>>): void {
+  userPrices = Object.keys(prices).length > 0 ? prices : undefined
+}
+
+/** 当前生效的用户自定义单价（设置面板回显用）；未设置时 undefined。 */
+export function getUserPrices(): Readonly<Record<string, UserPrice>> | undefined {
+  return userPrices
+}
+
+/** 查一个计费键的用户自定义价（精确键 → 归一化键两跳）。 */
+export function userPriceOf(key: string): UserPrice | undefined {
+  if (userPrices === undefined) return undefined
+  const resolved = resolveCatalogKey(key)
+  const direct = userPrices[resolved]
+  if (direct !== undefined) return direct
+  const canon = canonModelId(resolved)
+  return canon === '' ? undefined : userPrices[canon]
+}
+
+/**
  * Apply the node half's live pricing snapshot. Absent fields keep the
  * built-in catalog and rate; callers never fabricate values.
  * @param pricing - the `/api/billing/pricing` response.
@@ -250,6 +293,14 @@ export interface PriceRow {
   note?: string
 }
 
+/**
+ * 分档计价语义：厂商把「主档 / 低价档」的划分依据不同，界面需区分标注。
+ * - `timeOfDay`（缺省）：按调用时刻分档（DeepSeek 峰谷时段），档位是客观的；
+ * - `latency`：按用户选择的延迟档分档（Gemini Standard/Flex，Flex 半价换 1-15
+ *   分钟延迟），与时刻无关；逐调用无法从日志判定实际档位，成本按比例估算。
+ */
+export type TierSemantics = 'timeOfDay' | 'latency'
+
 /** One catalog entry: identity, brand color token, and price. */
 export interface ModelEntry {
   /** Model key used by `.dsh-usage-stats.json` `byModel`. */
@@ -264,6 +315,8 @@ export interface ModelEntry {
   price: ModelPrice
   /** Peak-hour window label for time-of-day priced models. */
   peakHours?: string
+  /** 分档语义；缺省 = 按时段（timeOfDay）。 */
+  tierSemantics?: TierSemantics
   /**
    * 限时促销：生效期内 price 各档位按 factor 打折，过期自动恢复。
    * price 表本身永远保存刊例价，促销只在计价/显示出口处折算，不回写目录。
@@ -278,6 +331,8 @@ export interface ModelEntry {
   estimated?: boolean
   /** 探活命中但无内置/models.dev 价：费率表标「未收录」，不参与计价。 */
   uncatalogued?: boolean
+  /** 该条目当前按用户自定义单价计价（设置面板可维护）；费率表标注「自定义」。 */
+  userPriced?: boolean
 }
 
 /**
@@ -708,6 +763,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
       offPeak: { input: 1, cacheHit: 0.1, output: 6 },
     },
     peakHours: 'Standard / Flex',
+    tierSemantics: 'latency',
   },
   {
     key: 'gemini-flash',
@@ -722,6 +778,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
       offPeak: { input: 0.75, cacheHit: 0.075, output: 3.75 },
     },
     peakHours: 'Standard / Flex',
+    tierSemantics: 'latency',
   },
   // xAI — current Grok family (docs.x.ai 2026-08).
   {
@@ -1149,6 +1206,20 @@ export function modelOf(key: string): ModelEntry {
     if (fallback !== undefined) return fallback
     throw new Error('MODEL_CATALOG must not be empty')
   })())
+  // 用户自定义价优先级最高：整表替换为平档（无时段分档）。
+  const user = userPriceOf(resolved)
+  if (user !== undefined) {
+    return {
+      ...base,
+      userPriced: true,
+      price: {
+        currency: user.currency ?? 'CNY',
+        input: user.input,
+        cacheHit: user.cacheHit,
+        output: user.output,
+      },
+    }
+  }
   const live = livePriceOf(resolved)
   if (live === undefined) return base
   // 实时价是路由器的美元单价（平档、无时段区分）：整表替换并走汇率换算。
@@ -1278,7 +1349,21 @@ export function catalogEntries(nowMs: number = Date.now()): readonly ModelEntry[
     if (idCanon !== '') knownCanon.add(idCanon)
     entries.push(entry)
   }
-  return entries
+  // 用户自定义价统一覆盖（含探活补充条目）：用户填的就是实付价，优先于促销与目录价。
+  return entries.map(entry => {
+    const user = userPriceOf(entry.key)
+    if (user === undefined) return entry
+    return {
+      ...entry,
+      userPriced: true,
+      price: {
+        currency: user.currency ?? 'CNY',
+        input: user.input,
+        cacheHit: user.cacheHit,
+        output: user.output,
+      },
+    }
+  })
 }
 
 /** Resolve a price-table row by its CSS variable name (theme token or fallback color). */
