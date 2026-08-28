@@ -7,6 +7,9 @@
  * 避免该工具默认占用模型每次请求的上下文（coding 场景通常在仪表盘看用量）。
  */
 
+// type-only import：`UserPriceEntry` 是结构契约，运行时无依赖、不引入 node 侧耦合。
+import type { UserPriceEntry } from './pricing.ts'
+
 /** 设置命名空间 id（小写 kebab-case）。 */
 export const BILLING_SETTINGS_NAMESPACE = 'ui-usage-billing'
 
@@ -144,47 +147,59 @@ export function saveSiteListPrefs(prefs: SiteListPrefs): void {
   }
 }
 
-/** 用户自定义单价（与 client/pricing.ts 的 `UserPrice` 同形；此处不 import 以保持 node 半区无 client 依赖）。 */
-export interface StoredUserPrice {
-  /** 未命中输入单价（元或美元 / 每百万 token）。 */
-  input: number
-  /** 缓存命中输入单价。 */
-  cacheHit: number
-  /** 输出单价。 */
-  output: number
-  /** 计价币种；缺省 CNY。 */
-  currency?: 'CNY' | 'USD'
-}
+/** 用户自定义单价（与 client/pricing.ts 的 `UserPriceEntry` 同形；type import，无运行时依赖）。 */
+export type StoredUserPrice = UserPriceEntry
 
-/** 自定义价表：计费目录键 → 单价。 */
-export type UserPriceMap = Record<string, StoredUserPrice>
+/** 自定义价表：模型（+可选来源）→ 单价，条目列表（支持同名模型绑定不同中转站 origin）。 */
+export type UserPriceMap = UserPriceEntry[]
 
 /** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
 export const USER_PRICES_STORAGE_KEY = 'dsh.ui-usage-billing.prices'
 
-/** 读取用户自定义价（写入侧已校验，这里只挡住手工改坏的非数字行）。仅在浏览器半区调用。 */
+/**
+ * 读取用户自定义价（写入侧已校验，这里挡住手工改坏的非数字行 与 旧版单行对象格式）。
+ * 旧版（1.0.9 及更早）存的是 `Record<目录键, {input,cacheHit,output,currency?}>`，
+ * 迁移为「条目列表」（origin 缺省 = 该模型默认价）。仅在浏览器半区调用。
+ */
 export function loadUserPrices(): UserPriceMap {
   try {
     const raw = localStorage.getItem(USER_PRICES_STORAGE_KEY)
-    if (raw === null) return {}
+    if (raw === null) return []
     const parsed = JSON.parse(raw) as unknown
-    if (parsed === null || typeof parsed !== 'object') return {}
-    const out: UserPriceMap = {}
-    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-      if (value === null || typeof value !== 'object') continue
-      const row = value as Partial<StoredUserPrice>
-      if ([row.input, row.cacheHit, row.output].every(v => typeof v === 'number' && v >= 0)) {
-        out[key] = {
-          input: row.input as number,
-          cacheHit: row.cacheHit as number,
-          output: row.output as number,
-          ...(row.currency === 'USD' ? { currency: 'USD' as const } : {}),
-        }
+    if (parsed === null) return []
+    const out: UserPriceMap = []
+    const push = (key: string, value: unknown): void => {
+      if (value === null || typeof value !== 'object') return
+      const row = value as Record<string, unknown>
+      const input = Number(row.input)
+      const cacheHit = Number(row.cacheHit)
+      const output = Number(row.output)
+      if (![input, cacheHit, output].every(v => Number.isFinite(v) && v >= 0)) return
+      out.push({
+        key,
+        ...(typeof row.origin === 'string' && row.origin !== '' ? { origin: row.origin } : {}),
+        input,
+        cacheHit,
+        output,
+        ...(row.currency === 'USD' ? { currency: 'USD' as const } : {}),
+      })
+    }
+    if (Array.isArray(parsed)) {
+      for (const entry of parsed) {
+        if (entry === null || typeof entry !== 'object') continue
+        const row = entry as Record<string, unknown>
+        if (typeof row.key !== 'string' || row.key === '') continue
+        push(row.key, entry)
+      }
+    } else if (typeof parsed === 'object') {
+      // 旧版单行对象：`{ [目录键]: 价 }` → 转条目列表（origin 缺省）。
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        push(key, value)
       }
     }
     return out
   } catch {
-    return {}
+    return []
   }
 }
 

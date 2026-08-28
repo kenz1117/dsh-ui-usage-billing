@@ -42,16 +42,29 @@ export interface UserPrice {
     /** 计价币种；缺省 CNY。 */
     currency?: 'CNY' | 'USD';
 }
+/** 一条用户自定义价：绑定「模型（计费目录键）+ 可选来源（中转站 origin）」。
+ *  origin 缺省 = 该模型的默认价；带 origin = 仅该中转站的同名模型用此价。 */
+export interface UserPriceEntry extends UserPrice {
+    /** 计费目录键（如 `flash`、`minimax-m2.7`）。 */
+    key: string;
+    /** 绑定来源（中转站 origin，如 `https://api.my-relay.com`）；缺省 = 默认价。 */
+    origin?: string;
+}
 /**
- * 注入用户自定义单价。键 = 计费目录键；查询侧用归一化两跳宽松命中。
- * 空对象 = 清除全部自定义价，回退内置目录。
- * @param prices - 目录键 → 自定义单价。
+ * 注入用户自定义单价列表。每条含模型目录键 + 可选来源（origin）。空数组 = 清除全部
+ * 自定义价，回退内置目录。
+ * @param entries - 用户自定义价条目（列表）。
  */
-export declare function applyUserPrices(prices: Readonly<Record<string, UserPrice>>): void;
-/** 当前生效的用户自定义单价（设置面板回显用）；未设置时 undefined。 */
-export declare function getUserPrices(): Readonly<Record<string, UserPrice>> | undefined;
-/** 查一个计费键的用户自定义价（精确键 → 归一化键两跳）。 */
-export declare function userPriceOf(key: string): UserPrice | undefined;
+export declare function applyUserPrices(entries: Readonly<UserPriceEntry[]>): void;
+/** 当前生效的用户自定义价条目（设置面板回显用）；未设置时 undefined。 */
+export declare function getUserPrices(): Readonly<UserPriceEntry[]> | undefined;
+/**
+ * 查一个模型（可选来源）的用户自定义价：优先「模型×来源」精确命中；无来源匹配时
+ * 回落该模型的无来源默认价；再无则 undefined（走内置目录）。
+ * @param key - 计费目录键。
+ * @param origin - 调用来源（中转站 origin）；缺省仅查默认价。
+ */
+export declare function userPriceOf(key: string, origin?: string): UserPrice | undefined;
 /**
  * Apply the node half's live pricing snapshot. Absent fields keep the
  * built-in catalog and rate; callers never fabricate values.

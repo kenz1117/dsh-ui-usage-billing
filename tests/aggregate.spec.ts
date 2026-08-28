@@ -130,6 +130,18 @@ describe('web search estimate (#15)', () => {
   })
 })
 
+describe('byDayModelsSite (issue #16)', () => {
+  it('folds per-day × model × site cells for a normal call', () => {
+    const events: SessionEvent[] = [header(1, 'deepseek-v4-flash', 'deepseek-official'), message(2, 2_000, USAGE)]
+    const fold = foldSession(events, new Set())
+    const day = dayStamp(2_000)
+    // 无 routes 配置时 provider 归为 unknown；flash 为目录键。
+    const siteCell = fold.byDayModelsSite.get(day)?.get('flash')?.get('unknown')
+    expect(siteCell?.calls).toBe(1)
+    expect(siteCell?.cacheMiss).toBe(120)
+  })
+})
+
 describe('foldUsage', () => {
   it('accumulates calls and splits tokens into cache buckets', () => {
     const acc = emptyUsage()

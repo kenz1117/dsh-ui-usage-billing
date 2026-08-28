@@ -291,6 +291,12 @@ export interface UsageStatsDocument {
   /** 模型 × 日期 二维统计：趋势图按模型堆叠的输入（[date][modelKey]）。 */
   byDayModels: Record<string, Record<string, ModelUsage>>
   /**
+   * 模型 × 日期 × 站点 三维统计（[date][modelKey][siteKey]）：供「按 origin 绑定
+   * 自定义价」的显示层重估（issue #16）——只有这个维度能知道「某模型从某中转站
+   * 消耗了多少 token」。旧算法快照缺失。
+   */
+  byDayModelsSite?: Record<string, Record<string, Record<string, ModelUsage>>>
+  /**
    * 峰谷分桶（真实判档）：折叠时逐调用按 `tierAt(event.time)` 归入高峰/低谷桶，
    * 峰谷占比与「挪谷省钱」据此展示，不再按比例估算。旧快照可能缺失。
    */
@@ -473,6 +479,8 @@ export interface SessionFold {
   byModel: Map<string, ModelUsage>
   byDay: Map<string, ModelUsage>
   byDayModels: Map<string, Map<string, ModelUsage>>
+  /** 模型×日期×站点三维（issue #16）：供按 origin 绑定自定义价的显示层重估。 */
+  byDayModelsSite: Map<string, Map<string, Map<string, ModelUsage>>>
   /** 峰谷分桶：折叠时按调用时刻精确判档（tierAt），键 = 'peak' / 'offPeak'。 */
   byTier: Map<string, ModelUsage>
   /** 工具调用次数（键 = 工具名；tool-call-delta 首见计数）。 */
@@ -511,6 +519,8 @@ export interface SerializedSessionFold {
   byModel: Record<string, ModelUsage>
   byDay: Record<string, ModelUsage>
   byDayModels: Record<string, Record<string, ModelUsage>>
+  /** 1.0.10（issue #16）新增；模型×日期×站点三维，旧账本行缺失（合并按空处理）。 */
+  byDayModelsSite?: Record<string, Record<string, Record<string, ModelUsage>>>
   /** 1.0.8 起新增；旧账本行缺失（合并时按空处理，不触发重折算）。 */
   byTier?: Record<string, ModelUsage>
   byTool?: Record<string, number>
@@ -550,10 +560,11 @@ export interface UsageLedgerDocument {
  * 折叠算法版本：归账语义变化时递增。v1 = 按 request/header 归账（稀疏 header 把
  * 两次 header 之间的用量串到上一个模型，订阅模型首当其冲，issue #14）；v2 =
  * `assistant/message` 自带 source 归账（1.0.7 起）；v3 = 联网搜索请求按次估算
- * 计费（issue #15，1.0.9 起）——旧行缺 `searchCalls` 维度与搜索估算费用。
+ * 计费（issue #15，1.0.9 起）；v4 = 模型×日期×站点三维桶（issue #16，按 origin
+ * 绑定自定义价的显示层重估）——旧行缺该维度，按无 origin 价处理。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export const FOLD_VERSION = 3
+export const FOLD_VERSION = 4
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
@@ -626,6 +637,8 @@ function serializeFold(fold: SessionFold): SerializedSessionFold {
     byModel: Object.fromEntries(fold.byModel),
     byDay: Object.fromEntries(fold.byDay),
     byDayModels: Object.fromEntries([...fold.byDayModels].map(([day, models]) => [day, Object.fromEntries(models)])),
+    byDayModelsSite: Object.fromEntries([...fold.byDayModelsSite].map(([day, models]) =>
+      [day, Object.fromEntries([...models].map(([model, sites]) => [model, Object.fromEntries(sites)]))])),
     byTier: Object.fromEntries(fold.byTier),
     byTool: Object.fromEntries(fold.byTool),
     bySite: Object.fromEntries(fold.bySite),
@@ -645,6 +658,9 @@ function deserializeFold(fold: SerializedSessionFold): SessionFold {
     byModel: new Map(Object.entries(fold.byModel)),
     byDay: new Map(Object.entries(fold.byDay)),
     byDayModels: new Map(Object.entries(fold.byDayModels).map(([day, models]) => [day, new Map(Object.entries(models))])),
+    // 1.0.10 前的账本行没有三维桶：按空处理（「按 origin 绑定自定义价」对这些会话不可用）。
+    byDayModelsSite: new Map(Object.entries(fold.byDayModelsSite ?? {}).map(([day, models]) =>
+      [day, new Map(Object.entries(models).map(([model, sites]) => [model, new Map(Object.entries(sites))]))])),
     // 1.0.8 前的账本行没有这两个桶：按空处理，峰谷占比等新维度对这些会话缺省。
     byTier: new Map(Object.entries(fold.byTier ?? {})),
     byTool: new Map(Object.entries(fold.byTool ?? {})),
@@ -718,6 +734,26 @@ function modelDayCell(map: Map<string, Map<string, ModelUsage>>, day: string, mo
   return usageCell(models, modelKey)
 }
 
+/** Get-or-create one day×model×site cell inside the three-dimensional map. */
+function modelDaySiteCell(
+  map: Map<string, Map<string, Map<string, ModelUsage>>>,
+  day: string,
+  modelKey: string,
+  siteKey: string,
+): ModelUsage {
+  let models = map.get(day)
+  if (models === undefined) {
+    models = new Map()
+    map.set(day, models)
+  }
+  let sites = models.get(modelKey)
+  if (sites === undefined) {
+    sites = new Map()
+    models.set(modelKey, sites)
+  }
+  return usageCell(sites, siteKey)
+}
+
 /** 每轮折叠的中间状态：turn/start 设起点，turn/end 设终点，调用累加桶与成本。 */
 interface TurnState {
   turn: number
@@ -788,6 +824,7 @@ export function foldSession(
     byModel: new Map(),
     byDay: new Map(),
     byDayModels: new Map(),
+    byDayModelsSite: new Map(),
     byTier: new Map(),
     byTool: new Map(),
     bySite: new Map(),
@@ -883,11 +920,13 @@ export function foldSession(
       const model = (event.data as { body?: { model?: unknown } }).body?.model
       const modelKey = typeof model === 'string' && model !== '' ? resolveCatalogKey(model) : 'other'
       const day = dayStamp(event.time)
+      const siteKey = siteBucketKey({ kind: 'direct', provider: 'deepseek' })
       foldSearchCall(fold.total, searchCallEstimateCny)
       foldSearchCall(usageCell(fold.byModel, modelKey), searchCallEstimateCny)
       foldSearchCall(usageCell(fold.byDay, day), searchCallEstimateCny)
       foldSearchCall(modelDayCell(fold.byDayModels, day, modelKey), searchCallEstimateCny)
-      foldSearchCall(usageCell(fold.bySite, siteBucketKey({ kind: 'direct', provider: 'deepseek' })), searchCallEstimateCny)
+      foldSearchCall(modelDaySiteCell(fold.byDayModelsSite, day, modelKey, siteKey), searchCallEstimateCny)
+      foldSearchCall(usageCell(fold.bySite, siteKey), searchCallEstimateCny)
       foldSearchCall(usageCell(fold.byTier, tierAt(event.time)), searchCallEstimateCny)
       continue
     }
@@ -943,6 +982,8 @@ export function foldSession(
     foldUsage(usageCell(fold.byModel, modelKey), usage, modelKey, subscription, event.time, official)
     foldUsage(usageCell(fold.byDay, day), usage, modelKey, subscription, event.time, official)
     foldUsage(modelDayCell(fold.byDayModels, day, modelKey), usage, modelKey, subscription, event.time, official)
+    // 模型×日期×站点三维（issue #16）：供「按 origin 绑定自定义价」的显示层重估。
+    foldUsage(modelDaySiteCell(fold.byDayModelsSite, day, modelKey, siteBucket), usage, modelKey, subscription, event.time, official)
     foldUsage(usageCell(fold.bySite, siteBucket), usage, modelKey, subscription, event.time, official)
     // 峰谷分桶：与计费同口径逐调用判档（tierAt），峰谷占比因此是真实数据。
     foldUsage(usageCell(fold.byTier, tierAt(event.time)), usage, modelKey, subscription, event.time, official)
@@ -1274,6 +1315,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const byModel = new Map<string, ModelUsage>()
       const byDay = new Map<string, ModelUsage>()
       const byDayModels = new Map<string, Map<string, ModelUsage>>()
+      const byDayModelsSite = new Map<string, Map<string, Map<string, ModelUsage>>>()
       const byTier = new Map<string, ModelUsage>()
       const byTool = new Map<string, number>()
       const bySite = new Map<string, ModelUsage>()
@@ -1297,6 +1339,11 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         for (const [day, cell] of fold.byDay) mergeUsageInto(usageCell(byDay, day), cell)
         for (const [day, models] of fold.byDayModels) {
           for (const [modelKey, cell] of models) mergeUsageInto(modelDayCell(byDayModels, day, modelKey), cell)
+        }
+        for (const [day, models] of fold.byDayModelsSite) {
+          for (const [modelKey, sites] of models) {
+            for (const [siteKey, cell] of sites) mergeUsageInto(modelDaySiteCell(byDayModelsSite, day, modelKey, siteKey), cell)
+          }
         }
         for (const [siteKey, cell] of fold.bySite) mergeUsageInto(usageCell(bySite, siteKey), cell)
         for (const [tierKey, cell] of fold.byTier) mergeUsageInto(usageCell(byTier, tierKey), cell)
@@ -1365,6 +1412,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       }
       const toModelDayRecord = (map: Map<string, Map<string, ModelUsage>>): Record<string, Record<string, ModelUsage>> =>
         Object.fromEntries([...map].map(([day, models]) => [day, Object.fromEntries(models)]))
+      const toModelDaySiteRecord = (map: Map<string, Map<string, Map<string, ModelUsage>>>): Record<string, Record<string, Record<string, ModelUsage>>> =>
+        Object.fromEntries([...map].map(([day, models]) =>
+          [day, Object.fromEntries([...models].map(([model, sites]) => [model, Object.fromEntries(sites)]))]))
 
       // 性能指标：按模型（含 P90）、按小时聚合；无任何可测样本时整个 perf 字段缺失。
       const perf: PerfStats | undefined = perfModel.size === 0
@@ -1396,6 +1446,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         byModel: toRecord(byModel),
         byDay: toRecord(byDay),
         byDayModels: toModelDayRecord(byDayModels),
+        ...(byDayModelsSite.size === 0 ? {} : { byDayModelsSite: toModelDaySiteRecord(byDayModelsSite) }),
         bySession: sessionRows.slice(0, SESSION_ROW_LIMIT),
         byTurn: turnRows.slice(0, TURN_ROW_LIMIT),
         byWorkspace: workspaces.slice(0, SESSION_ROW_LIMIT),
