@@ -179,6 +179,16 @@ export interface UsageStats {
         cacheMiss: number;
         cost: number;
     }>>;
+    /** 模型 × 日期 × 站点 三维统计（[date][modelKey][siteKey]）：按 origin 绑定自定义价的
+     *  显示层重估数据源；旧快照可能缺失。 */
+    byDayModelsSite?: Record<string, Record<string, Record<string, {
+        calls: number;
+        input: number;
+        output: number;
+        cacheHit: number;
+        cacheMiss: number;
+        cost: number;
+    }>>>;
     /**
      * 峰谷分桶（全量逐调用真实判档）：1.0.8 起服务端按调用时刻精确归桶，
      * 峰谷占比条优先用它（覆盖全部历史调用）；旧快照缺失时回退逐轮估算。

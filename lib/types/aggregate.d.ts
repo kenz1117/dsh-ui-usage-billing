@@ -176,6 +176,12 @@ export interface UsageStatsDocument {
     /** 模型 × 日期 二维统计：趋势图按模型堆叠的输入（[date][modelKey]）。 */
     byDayModels: Record<string, Record<string, ModelUsage>>;
     /**
+     * 模型 × 日期 × 站点 三维统计（[date][modelKey][siteKey]）：供「按 origin 绑定
+     * 自定义价」的显示层重估（issue #16）——只有这个维度能知道「某模型从某中转站
+     * 消耗了多少 token」。旧算法快照缺失。
+     */
+    byDayModelsSite?: Record<string, Record<string, Record<string, ModelUsage>>>;
+    /**
      * 峰谷分桶（真实判档）：折叠时逐调用按 `tierAt(event.time)` 归入高峰/低谷桶，
      * 峰谷占比与「挪谷省钱」据此展示，不再按比例估算。旧快照可能缺失。
      */
@@ -335,6 +341,8 @@ export interface SessionFold {
     byModel: Map<string, ModelUsage>;
     byDay: Map<string, ModelUsage>;
     byDayModels: Map<string, Map<string, ModelUsage>>;
+    /** 模型×日期×站点三维（issue #16）：供按 origin 绑定自定义价的显示层重估。 */
+    byDayModelsSite: Map<string, Map<string, Map<string, ModelUsage>>>;
     /** 峰谷分桶：折叠时按调用时刻精确判档（tierAt），键 = 'peak' / 'offPeak'。 */
     byTier: Map<string, ModelUsage>;
     /** 工具调用次数（键 = 工具名；tool-call-delta 首见计数）。 */
@@ -371,6 +379,8 @@ export interface SerializedSessionFold {
     byModel: Record<string, ModelUsage>;
     byDay: Record<string, ModelUsage>;
     byDayModels: Record<string, Record<string, ModelUsage>>;
+    /** 1.0.10（issue #16）新增；模型×日期×站点三维，旧账本行缺失（合并按空处理）。 */
+    byDayModelsSite?: Record<string, Record<string, Record<string, ModelUsage>>>;
     /** 1.0.8 起新增；旧账本行缺失（合并时按空处理，不触发重折算）。 */
     byTier?: Record<string, ModelUsage>;
     byTool?: Record<string, number>;
@@ -407,10 +417,11 @@ export interface UsageLedgerDocument {
  * 折叠算法版本：归账语义变化时递增。v1 = 按 request/header 归账（稀疏 header 把
  * 两次 header 之间的用量串到上一个模型，订阅模型首当其冲，issue #14）；v2 =
  * `assistant/message` 自带 source 归账（1.0.7 起）；v3 = 联网搜索请求按次估算
- * 计费（issue #15，1.0.9 起）——旧行缺 `searchCalls` 维度与搜索估算费用。
+ * 计费（issue #15，1.0.9 起）；v4 = 模型×日期×站点三维桶（issue #16，按 origin
+ * 绑定自定义价的显示层重估）——旧行缺该维度，按无 origin 价处理。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export declare const FOLD_VERSION = 3;
+export declare const FOLD_VERSION = 4;
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
  * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并

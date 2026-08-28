@@ -3238,6 +3238,62 @@
   flex-wrap: wrap;
 }
 
+/* 自定义单价条目表（issue #16）：模型/来源 + 三桶 + 币种，一行内排布。 */
+.userPriceRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.userPriceField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.userPriceField .ctlLabel {
+  flex: none;
+  font-size: 11px;
+}
+
+.userPriceInput,
+.userPriceInputNum {
+  min-width: 96px;
+  max-width: 160px;
+  padding: 4px 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.userPriceInputNum {
+  min-width: 72px;
+  max-width: 88px;
+}
+
+.userPriceRemove {
+  align-self: center;
+  padding: 4px 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-static-red-400);
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.userPriceRemove:hover {
+  border-color: var(--dsw-static-red-400);
+}
+
 /* 单选项（位置 / 提醒模式）：圆点 + 文案，一行内排布。 */
 .rdo {
   display: inline-flex;

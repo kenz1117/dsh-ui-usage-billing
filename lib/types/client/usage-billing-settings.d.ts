@@ -6,6 +6,7 @@
  * client 半区在「设置」Tab 渲染开关并写入同一命名空间。缺省的默认行为是关闭——
  * 避免该工具默认占用模型每次请求的上下文（coding 场景通常在仪表盘看用量）。
  */
+import type { UserPriceEntry } from './pricing.ts';
 /** 设置命名空间 id（小写 kebab-case）。 */
 export declare const BILLING_SETTINGS_NAMESPACE = "ui-usage-billing";
 /** 该命名空间下用户可编辑的字段名。 */
@@ -72,22 +73,17 @@ export declare const SITE_LIST_STORAGE_KEY = "dsh.ui-usage-billing.sites";
 export declare function loadSiteListPrefs(): SiteListPrefs;
 /** 写入站点列表偏好。失败静默（展示偏好非关键）。 */
 export declare function saveSiteListPrefs(prefs: SiteListPrefs): void;
-/** 用户自定义单价（与 client/pricing.ts 的 `UserPrice` 同形；此处不 import 以保持 node 半区无 client 依赖）。 */
-export interface StoredUserPrice {
-    /** 未命中输入单价（元或美元 / 每百万 token）。 */
-    input: number;
-    /** 缓存命中输入单价。 */
-    cacheHit: number;
-    /** 输出单价。 */
-    output: number;
-    /** 计价币种；缺省 CNY。 */
-    currency?: 'CNY' | 'USD';
-}
-/** 自定义价表：计费目录键 → 单价。 */
-export type UserPriceMap = Record<string, StoredUserPrice>;
+/** 用户自定义单价（与 client/pricing.ts 的 `UserPriceEntry` 同形；type import，无运行时依赖）。 */
+export type StoredUserPrice = UserPriceEntry;
+/** 自定义价表：模型（+可选来源）→ 单价，条目列表（支持同名模型绑定不同中转站 origin）。 */
+export type UserPriceMap = UserPriceEntry[];
 /** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
 export declare const USER_PRICES_STORAGE_KEY = "dsh.ui-usage-billing.prices";
-/** 读取用户自定义价（写入侧已校验，这里只挡住手工改坏的非数字行）。仅在浏览器半区调用。 */
+/**
+ * 读取用户自定义价（写入侧已校验，这里挡住手工改坏的非数字行 与 旧版单行对象格式）。
+ * 旧版（1.0.9 及更早）存的是 `Record<目录键, {input,cacheHit,output,currency?}>`，
+ * 迁移为「条目列表」（origin 缺省 = 该模型默认价）。仅在浏览器半区调用。
+ */
 export declare function loadUserPrices(): UserPriceMap;
 /** 写入用户自定义价。失败静默（展示偏好非关键）。 */
 export declare function saveUserPrices(prices: UserPriceMap): void;

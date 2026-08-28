@@ -120,6 +120,12 @@ export type UsageBillingKey =
   | 'billing.userPrices'
   | 'billing.userPricesHint'
   | 'billing.userPriceSave'
+  | 'billing.userPriceModel'
+  | 'billing.userPriceSource'
+  | 'billing.userPriceSourceHint'
+  | 'billing.userPriceCurrency'
+  | 'billing.userPriceAdd'
+  | 'billing.userPriceRemove'
   | 'billing.sessionStaleBadge'
   | 'billing.heatmapLess'
   | 'billing.heatmapMore'
@@ -393,8 +399,14 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.toolRank': '工具排行',
   'billing.toolName': '工具',
   'billing.userPrices': '自定义单价',
-  'billing.userPricesHint': '为未收录或变价模型填入实付单价，总览与日趋势按此重估；部分明细仍按内置目录',
+  'billing.userPricesHint': '为未收录或变价模型填入实付单价，总览与日趋势按此重估；来源留空=该模型默认价，填入中转站域名=仅该来源的同名模型用此价',
   'billing.userPriceSave': '保存',
+  'billing.userPriceModel': '模型',
+  'billing.userPriceSource': '来源（中转站域名）',
+  'billing.userPriceSourceHint': '留空=默认价，或 https://api.中转站.com',
+  'billing.userPriceCurrency': '币种',
+  'billing.userPriceAdd': '新增',
+  'billing.userPriceRemove': '删除',
   'billing.sessionStaleBadge': '旧版统计',
   'billing.heatmapLess': '少',
   'billing.heatmapMore': '多',
@@ -668,8 +680,14 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.toolRank': 'Tool calls',
   'billing.toolName': 'Tool',
   'billing.userPrices': 'Custom prices',
-  'billing.userPricesHint': 'Enter actual per-1M-token prices; main views are re-costed, some detail rows keep catalog pricing.',
+  'billing.userPricesHint': 'Enter actual per-1M-token prices; main views are re-costed. Leave source empty for the model default, or enter a relay origin to price only that source.',
   'billing.userPriceSave': 'Save',
+  'billing.userPriceModel': 'Model',
+  'billing.userPriceSource': 'Source (relay origin)',
+  'billing.userPriceSourceHint': 'Empty = default; e.g. https://api.relay.com',
+  'billing.userPriceCurrency': 'Currency',
+  'billing.userPriceAdd': 'Add',
+  'billing.userPriceRemove': 'Remove',
   'billing.sessionStaleBadge': 'legacy',
   'billing.heatmapLess': 'Less',
   'billing.heatmapMore': 'More',

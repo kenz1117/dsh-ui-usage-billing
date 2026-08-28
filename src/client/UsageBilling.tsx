@@ -40,7 +40,7 @@ import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
 import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv, siteRowsCsv } from './export.ts'
 import type { createBillingBudgetStore } from './budget-store.ts'
 import {
-  applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, cnyToUsd, computeCost, convertUnitPrice,
+  applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, canonModelId, cnyToUsd, computeCost, convertUnitPrice,
   formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, getUserPrices, isPromoActive,
   modelOf, resolveToken, tierAt, userPriceOf, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
@@ -294,24 +294,45 @@ export function projectMonthCost(byDay: Record<string, { cost: number }>, monthP
  * @returns 重估后的文档；无用户价或缺 byDayModels 时原样返回。
  */
 export function recostWithUserPrices(stats: UsageStats): UsageStats {
-  if (getUserPrices() === undefined || stats.byDayModels === undefined) return stats
+  const entries = getUserPrices()
+  if (entries === undefined || stats.byDayModels === undefined) return stats
   // 逐 day×model 重算：用户价 = 平价三桶（时段/促销折扣不叠加，用户价即实付价）。
   const rate = getRateInfo().rate
+  // 是否启用「按来源（origin）」精确重估：需存在带 origin 的用户价 + 服务端三维数据。
+  const hasOriginData = stats.byDayModelsSite !== undefined
   const byDay: UsageStats['byDay'] = {}
   const byDayModels: UsageStats['byDayModels'] = {}
   const modelCost = new Map<string, number>()
   let totalCost = 0
+  // 判断某模型是否命中「带来源」的用户价条目（用于决定是否走 origin 拆分重算）。
+  const hasOriginEntry = (key: string): boolean =>
+    entries.some(e => e.origin !== undefined && e.origin !== ''
+      && (e.key === key || canonModelId(e.key) === canonModelId(key)))
+  const costFromPrice = (price: { currency?: 'CNY' | 'USD'; input: number; cacheHit: number; output: number } | undefined,
+    cell: { cacheHit: number; cacheMiss: number; output: number }, fallback: number): number => {
+    if (price === undefined) return fallback
+    const hit = Math.min(cell.cacheHit, cell.cacheMiss + cell.cacheHit)
+    const raw = (cell.cacheMiss * price.input + hit * price.cacheHit + cell.output * price.output) / 1_000_000
+    return price.currency === 'USD' ? raw * rate : raw
+  }
   for (const [date, models] of Object.entries(stats.byDayModels)) {
     let dayCost = 0
     const dayModels: Record<string, { calls: number; input: number; output: number; cacheHit: number; cacheMiss: number; cost: number }> = {}
     for (const [key, cell] of Object.entries(models)) {
-      let cost = cell.cost
-      const price = userPriceOf(key)
-      if (price !== undefined) {
-        const miss = cell.cacheMiss
-        const hit = Math.min(cell.cacheHit, cell.cacheMiss + cell.cacheHit)
-        const raw = (miss * price.input + hit * price.cacheHit + cell.output * price.output) / 1_000_000
-        cost = price.currency === 'USD' ? raw * rate : raw
+      const priceDefault = userPriceOf(key)
+      const originEntry = hasOriginData && hasOriginEntry(key)
+      let cost: number
+      if ((priceDefault !== undefined || originEntry) && originEntry && stats.byDayModelsSite?.[date]?.[key] !== undefined) {
+        // 按「模型×站点」分布逐来源重算：带 origin 价精确命中，其余回落默认价或内置。
+        let siteCost = 0
+        for (const [siteKey, siteCell] of Object.entries(stats.byDayModelsSite[date][key])) {
+          const origin = siteKey.startsWith('site:') ? siteKey.slice('site:'.length) : undefined
+          const sitePrice = origin !== undefined ? userPriceOf(key, origin) : undefined
+          siteCost += costFromPrice(sitePrice ?? priceDefault, siteCell, siteCell.cost)
+        }
+        cost = siteCost
+      } else {
+        cost = costFromPrice(priceDefault, cell, cell.cost)
       }
       dayCost += cost
       dayModels[key] = { ...cell, cost }
@@ -515,6 +536,16 @@ export interface UsageStats {
     cacheMiss: number
     cost: number
   }>>
+  /** 模型 × 日期 × 站点 三维统计（[date][modelKey][siteKey]）：按 origin 绑定自定义价的
+   *  显示层重估数据源；旧快照可能缺失。 */
+  byDayModelsSite?: Record<string, Record<string, Record<string, {
+    calls: number
+    input: number
+    output: number
+    cacheHit: number
+    cacheMiss: number
+    cost: number
+  }>>>
   /**
    * 峰谷分桶（全量逐调用真实判档）：1.0.8 起服务端按调用时刻精确归桶，
    * 峰谷占比条优先用它（覆盖全部历史调用）；旧快照缺失时回退逐轮估算。
@@ -639,6 +670,8 @@ async function loadUsageStats(): Promise<UsageStats | null> {
       byModel: candidate.byModel ?? {},
       byDay: candidate.byDay ?? {},
       ...(candidate.byDayModels !== undefined ? { byDayModels: candidate.byDayModels } : {}),
+      // 模型×日期×站点三维（issue #16）：旧快照缺失；透传供按 origin 重估。
+      ...(isObj(candidate.byDayModelsSite) ? { byDayModelsSite: candidate.byDayModelsSite } : {}),
       ...(candidate.updatedAt !== undefined ? { updatedAt: candidate.updatedAt } : {}),
       ...(typeof candidate.budget === 'number' ? { budget: candidate.budget } : {}),
       ...(typeof candidate.lowBalanceThreshold === 'number' ? { lowBalanceThreshold: candidate.lowBalanceThreshold } : {}),
@@ -1247,26 +1280,24 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
   onUserPrices: (next: UserPriceMap) => void
   t: (key: UsageBillingKey, params?: Record<string, unknown>) => string
 }): React.ReactNode {
-  const [state, setState] = useState<{ draft: string; invalid: boolean }>(() => ({ draft: JSON.stringify(userPrices), invalid: false }))
-  const save = (): void => {
-    try {
-      const parsed = JSON.parse(state.draft) as unknown
-      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('shape')
-      const next: UserPriceMap = {}
-      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-        if (value === null || typeof value !== 'object') continue
-        const row = value as Record<string, unknown>
-        const input = Number(row.input)
-        const cacheHit = Number(row.cacheHit)
-        const output = Number(row.output)
-        if (![input, cacheHit, output].every(v => Number.isFinite(v) && v >= 0)) continue
-        next[key] = { input, cacheHit, output, ...(row.currency === 'USD' ? { currency: 'USD' as const } : {}) }
-      }
-      setState({ draft: state.draft, invalid: false })
-      onUserPrices(next)
-    } catch {
-      setState({ draft: state.draft, invalid: true })
-    }
+  // 本地编辑副本：增删改都在列表内完成，点「保存」才提交；行内价格输入框不会改坏结构。
+  const [drafts, setDrafts] = useState<UserPriceMap>(() => [...userPrices])
+  const update = (i: number, patch: Partial<UserPriceMap[number]>): void =>
+    setDrafts(list => list.map((row, idx) => (idx === i ? { ...row, ...patch } : row)))
+  const remove = (i: number): void => setDrafts(list => list.filter((_, idx) => idx !== i))
+  const add = (): void => setDrafts(list => [...list, { key: '', input: 0, cacheHit: 0, output: 0 as number }])
+  const save = (): void => onUserPrices(drafts.filter(row => row.key.trim() !== ''))
+  // 币种切换：CNY = 移除 currency 字段（缺省即 CNY），USD = 显式标记（exactOptionalPropertyTypes）。
+  const setCurrency = (i: number, cur: 'CNY' | 'USD'): void =>
+    setDrafts(list => list.map((row, idx) => {
+      if (idx !== i) return row
+      const { currency, ...rest } = row
+      return cur === 'USD' ? { ...rest, currency: 'USD' } : rest
+    }))
+  const num = (v: number): string => (Number.isFinite(v) && v !== 0 ? String(v) : '')
+  const setNum = (i: number, field: 'input' | 'cacheHit' | 'output', raw: string): void => {
+    const value = Number(raw)
+    update(i, { [field]: Number.isFinite(value) && value >= 0 ? value : 0 })
   }
   return (
     <section className={css.setCard} data-testid="billing-user-prices">
@@ -1277,16 +1308,73 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
         </div>
       </div>
       <div className={css.ctlCol}>
-        <textarea
-          className={css.budgetInput}
-          data-testid="billing-user-price-editor"
-          rows={8}
-          style={state.invalid ? { borderColor: 'red' } : undefined}
-          value={state.draft}
-          aria-label={t('billing.userPrices')}
-          onChange={(e) => { setState({ draft: e.target.value, invalid: false }) }}
-        />
+        {drafts.map((row, i) => (
+          <div key={i} className={css.userPriceRow} data-testid="billing-user-price-row">
+            <div className={css.userPriceField}>
+              <span className={css.ctlLabel}>{t('billing.userPriceModel')}</span>
+              <input
+                className={css.userPriceInput}
+                data-testid="billing-user-price-model"
+                type="text"
+                value={row.key}
+                placeholder="flash"
+                aria-label={t('billing.userPriceModel')}
+                onChange={e => update(i, { key: e.target.value })}
+              />
+            </div>
+            <div className={css.userPriceField}>
+              <span className={css.ctlLabel}>{t('billing.userPriceSource')}</span>
+              <input
+                className={css.userPriceInput}
+                data-testid="billing-user-price-origin"
+                type="text"
+                value={row.origin ?? ''}
+                placeholder={t('billing.userPriceSourceHint')}
+                aria-label={t('billing.userPriceSource')}
+                onChange={e => update(i, { origin: e.target.value.trim() })}
+              />
+            </div>
+            {(['input', 'cacheHit', 'output'] as const).map(kind => (
+              <div key={kind} className={css.userPriceField}>
+                <span className={css.ctlLabel}>{kind === 'input' ? t('billing.tokenMiss') : kind === 'cacheHit' ? t('billing.tokenHit') : t('billing.tokenOutput')}</span>
+                <input
+                  className={css.userPriceInputNum}
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={num(row[kind])}
+                  onChange={e => setNum(i, kind, e.target.value)}
+                />
+              </div>
+            ))}
+            <div className={css.userPriceField}>
+              <span className={css.ctlLabel}>{t('billing.userPriceCurrency')}</span>
+              <div className={css.ctlGroup}>
+                <button
+                  type="button"
+                  className={clsx(css.floatModeBtn, row.currency !== 'USD' && css.floatModeBtnOn)}
+                  onClick={() => setCurrency(i, 'CNY')}
+                >
+                  CNY
+                </button>
+                <button
+                  type="button"
+                  className={clsx(css.floatModeBtn, row.currency === 'USD' && css.floatModeBtnOn)}
+                  onClick={() => setCurrency(i, 'USD')}
+                >
+                  USD
+                </button>
+              </div>
+            </div>
+            <button type="button" className={css.userPriceRemove} aria-label={t('billing.userPriceRemove')} onClick={() => remove(i)}>
+              {t('billing.userPriceRemove')}
+            </button>
+          </div>
+        ))}
         <div className={css.ctlRow}>
+          <button type="button" className={css.exportButton} data-testid="billing-user-price-add" onClick={add}>
+            {t('billing.userPriceAdd')}
+          </button>
           <button type="button" className={css.exportButton} data-testid="billing-user-price-save" onClick={save}>
             {t('billing.userPriceSave')}
           </button>
