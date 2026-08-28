@@ -1,6 +1,7 @@
 /**
- * Aggregation unit tests: log folding attributes each call to the model of the
- * preceding `request/header`, splits tokens into cache buckets, prices only
+ * Aggregation unit tests: log folding attributes each call to the
+ * `message.source` of its own `assistant/message` (sparse `request/header` is
+ * only a fallback), splits tokens into cache buckets, prices only
  * catalog models, and rolls totals up by model, by day, and by model × day
  * (the stacked trend chart's input).
  */
@@ -145,6 +146,67 @@ describe('per-turn folding (P1-1)', () => {
     expect(fold.byModel.has('minimax')).toBe(true)
     expect(fold.byModel.has('MiniMax-M3')).toBe(false)
     expect(fold.byModel.has('flash-vision-exp')).toBe(true)
+  })
+})
+
+describe('message.source attribution (issue #14)', () => {
+  /** Fold-session event row helper (durable-shape cast like the aggregator). */
+  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
+    ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
+
+  /** `assistant/message` with the authoritative `message.source` agent-loop writes per call. */
+  const sourced = (seq: number, time: number, model: string, provider: string, usage: TokenUsage = USAGE): { type: string; time: number; data: never } =>
+    ev('assistant/message', seq, time, {
+      turn: 1, step: 1, usage,
+      message: { role: 'assistant', content: [], source: { kind: 'model', provider, model } },
+    })
+
+  it('attributes each usage to its own message.source when headers are sparse', () => {
+    // 复现 issue #14：订阅 glm 与按量 flash 混用，header 稀疏（真实会话 380 请求仅 22 条）。
+    // 修复前：两条 message 都记到最近一次 header 的模型头上，串账。
+    const fold = foldSession([
+      ev('request/header', 1, 1_000, { header: { config: { provider: 'zai-coding-cn', model: 'glm-5.3-flash' } } }),
+      sourced(2, 1_001, 'glm-5.3-flash', 'zai-coding-cn'),
+      sourced(3, 1_002, 'deepseek-v4-flash', 'deepseek-official'), // 中途切模型，无新 header。
+      sourced(4, 1_003, 'glm-5.3-flash', 'zai-coding-cn'),
+    ], new Set(['zai-coding-cn']), undefined, { 'zai-coding-cn': {}, 'deepseek-official': {} })
+    const glm = fold.byModel.get('glm-5.3-flash')
+    const flash = fold.byModel.get('flash')
+    expect(glm?.calls).toBe(2)
+    expect(flash?.calls).toBe(1)
+    // glm 走订阅：免费且计入 planCalls；flash 按量：有费用且不标。
+    expect(glm?.cost).toBe(0)
+    expect(fold.planCalls.get('glm-5.3-flash')).toBe(2)
+    expect(fold.planCalls.has('flash')).toBe(false)
+    expect(flash?.cost ?? 0).toBeGreaterThan(0)
+    // site 桶也跟随各自的 source：订阅直连 vs 官方直连。
+    expect([...fold.bySite.keys()]).toEqual(['direct:zai-coding-cn', 'direct:deepseek-official'])
+  })
+
+  it('keeps totals stable across re-folds (no regression between reads)', () => {
+    // 修复前：每多出现一条同模型 header，归账窗口前移，累计值回退（3237 → 2668）。
+    // 修复后：归属只取决于 message 自身，重复折叠结果一致。
+    const events = [
+      ev('request/header', 1, 1_000, { header: { config: { provider: 'zai-coding-cn', model: 'glm-5.3-flash' } } }),
+      sourced(2, 1_001, 'glm-5.3-flash', 'zai-coding-cn'),
+      sourced(3, 1_002, 'glm-5.3-flash', 'zai-coding-cn'),
+      ev('request/header', 4, 1_003, { header: { config: { provider: 'zai-coding-cn', model: 'glm-5.3-flash' } } }),
+      sourced(5, 1_004, 'glm-5.3-flash', 'zai-coding-cn'),
+    ]
+    const first = foldSession(events, new Set(['zai-coding-cn']))
+    const again = foldSession(events, new Set(['zai-coding-cn']))
+    expect(first.byModel.get('glm-5.3-flash')?.output).toBe(150)
+    expect(again.byModel.get('glm-5.3-flash')?.output).toBe(first.byModel.get('glm-5.3-flash')?.output)
+    expect(first.total.output).toBe(150)
+  })
+
+  it('falls back to the request/header state when message.source is absent (legacy logs)', () => {
+    const fold = foldSession([
+      ev('request/header', 1, 1_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE, message: { role: 'assistant', content: [] } }),
+    ], new Set())
+    expect(fold.byModel.get('flash')?.calls).toBe(1)
+    expect(fold.byModel.get('flash')?.cost ?? 0).toBeGreaterThan(0)
   })
 })
 
