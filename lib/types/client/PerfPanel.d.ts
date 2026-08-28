@@ -16,6 +16,10 @@ export interface PerfModelData {
     ttftAvg: number;
     ttftP50: number;
     ttftP90: number;
+    /** 首字延时最大值（毫秒）；1.0.8 起新增，旧快照缺失。 */
+    ttftMax?: number;
+    /** 首字延时尖峰样本数（> 10s）；1.0.8 起新增，旧快照缺失。 */
+    ttftSpikes?: number;
     tpsAvg?: number;
     latencyAvg: number;
     estimatedSamples: number;

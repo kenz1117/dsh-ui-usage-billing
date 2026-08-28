@@ -75,18 +75,15 @@ export declare function projectMonthCost(byDay: Record<string, {
     cost: number;
 }>, monthPrefix: string, today: string): number;
 /**
- * 峰谷时段费用分摊：按每轮的起始时刻（北京时间高峰 9-12 / 14-18）把费用
- * 归入高峰 / 空闲两档。导出供测试：纯函数。
- * @param turns - 每轮费用行（需带 startedAt 与 cost）。
- * @returns 两档费用合计（人民币元）。
+ * 用户自定义单价显示重估：聚合发生在宿主进程（按内置目录计价），用户价只在
+ * 客户端显示层生效。对 byDayModels（day×model 完整二维）中命中用户价的模型
+ * 逐格平价重算 cost，并派生 byDay / byModel / total 的 cost。其余视图
+ * （bySite / byTier / bySession / byTurn）保持宿主原值——逐格时刻或行级归属
+ * 在客户端不可得，口径差异在设置面板注明。导出供测试：纯函数。
+ * @param stats - 服务端聚合文档。
+ * @returns 重估后的文档；无用户价或缺 byDayModels 时原样返回。
  */
-export declare function peakOffpeakCost(turns: readonly {
-    startedAt: number;
-    cost: number;
-}[]): {
-    peak: number;
-    offPeak: number;
-};
+export declare function recostWithUserPrices(stats: UsageStats): UsageStats;
 /** 近 7 天费用序列（含今天，缺日补 0）：触发卡 hover 速览的迷你柱数据源。
  * 导出供测试：纯函数（日期取本地时区）。 */
 export declare function activeDaysOf(byDay: Record<string, {
@@ -141,6 +138,8 @@ export interface UsageStats {
         output: number;
         cacheHit: number;
         cacheMiss: number;
+        /** 显式缓存写入（cacheMiss 子集，部分厂商单独报告）；1.0.8 起新增，旧快照缺失。 */
+        cacheWrite?: number;
         cost: number;
         /** 输出中的 reasoning（思考）token；已含在 output 内。 */
         reasoning: number;
@@ -178,6 +177,22 @@ export interface UsageStats {
         cacheMiss: number;
         cost: number;
     }>>;
+    /**
+     * 峰谷分桶（全量逐调用真实判档）：1.0.8 起服务端按调用时刻精确归桶，
+     * 峰谷占比条优先用它（覆盖全部历史调用）；旧快照缺失时回退逐轮估算。
+     */
+    byTier?: {
+        peak: {
+            cost: number;
+            calls: number;
+        };
+        offPeak: {
+            cost: number;
+            calls: number;
+        };
+    };
+    /** 工具调用次数排行（键 = 工具名，按次数倒序）；旧快照缺失。 */
+    byTool?: Record<string, number>;
     /** 每轮费用明细（服务端聚合路径恒带）；旧快照可能缺失。 */
     byTurn?: readonly {
         sessionId: string;

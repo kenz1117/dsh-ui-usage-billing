@@ -240,6 +240,60 @@ describe('message.source attribution (issue #14)', () => {
   })
 })
 
+describe('1.0.8 dimensions (byTier / byTool / cacheWrite)', () => {
+  /** Fold-session event row helper (durable-shape cast like the aggregator). */
+  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
+    ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
+  // 周三 2026-08-19：北京时间 10:00（工作日高峰）与 20:00（低谷）。
+  const peakTime = Date.UTC(2026, 7, 19, 2, 0, 0)
+  const offTime = Date.UTC(2026, 7, 19, 12, 0, 0)
+
+  it('folds each call into the peak/off-peak bucket by its own time', () => {
+    const fold = foldSession([
+      ev('request/header', 1, peakTime, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/message', 2, peakTime, { turn: 1, step: 1, usage: USAGE }),
+      ev('assistant/message', 3, offTime, { turn: 1, step: 1, usage: USAGE }),
+    ], new Set())
+    expect(fold.byTier.get('peak')?.calls).toBe(1)
+    expect(fold.byTier.get('offPeak')?.calls).toBe(1)
+    // 同模型同量 token：官方刊例峰价为谷价 2 倍，两桶费用应有明显档差。
+    const peakCost = fold.byTier.get('peak')?.cost ?? 0
+    const offCost = fold.byTier.get('offPeak')?.cost ?? 0
+    expect(peakCost).toBeGreaterThan(offCost * 1.9)
+  })
+
+  it('counts a tool call once per (turn, step, index) despite repeated delta names', () => {
+    // tool-call-delta 每个增量都重复携带工具名：只按 (turn, step, index) 首见计一次。
+    const fold = foldSession([
+      ev('assistant/chunk', 1, 1_000, { turn: 1, step: 1, chunk: { type: 'tool-call-delta', index: 0, name: 'read_file', argumentsDelta: '' } }),
+      ev('assistant/chunk', 2, 1_001, { turn: 1, step: 1, chunk: { type: 'tool-call-delta', index: 0, name: 'read_file', argumentsDelta: '{"p"' } }),
+      ev('assistant/chunk', 3, 1_002, { turn: 1, step: 1, chunk: { type: 'tool-call-delta', index: 1, name: 'edit_file', argumentsDelta: '' } }),
+    ], new Set())
+    expect(fold.byTool.get('read_file')).toBe(1)
+    expect(fold.byTool.get('edit_file')).toBe(1)
+  })
+
+  it('emits byTier / byTool in the aggregated document', async () => {
+    const stats = await aggregateUsage(fakePersistence({
+      'session-a': [
+        ev('request/header', 1, peakTime, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+        ev('assistant/chunk', 2, peakTime + 1, { turn: 1, step: 1, chunk: { type: 'tool-call-delta', index: 0, name: 'read_file' } }),
+        ev('assistant/message', 3, peakTime + 2, { turn: 1, step: 1, usage: USAGE }),
+      ],
+    }))
+    expect(stats.byTier?.peak.calls).toBe(1)
+    expect(stats.byTool?.read_file).toBe(1)
+  })
+
+  it('records explicit cache-write tokens as a cacheMiss subset', () => {
+    const acc = emptyUsage()
+    foldUsage(acc, { inputTokens: 10, outputTokens: 5, cacheReadTokens: 100, cacheWriteTokens: 30 }, 'flash', false, offTime)
+    expect(acc.cacheWrite).toBe(30)
+    // cacheMiss 语义不变：未命中输入 + 显式写入。
+    expect(acc.cacheMiss).toBe(40)
+  })
+})
+
 describe('fork seed filtering (session/end-seed)', () => {
   /** Fold-session event row helper (durable-shape cast like the aggregator). */
   const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
@@ -791,6 +845,26 @@ describe('performance aggregation (TTFT / tps / latency)', () => {
     // usage chunk（650）不算内容；TTFT 以首个 text-delta（700）为准。
     expect(fold.perf[0]).toMatchObject({ ttftMs: 100 })
     expect(fold.perf[0]?.tps).toBeUndefined()
+  })
+
+  it('reports ttftMax and spike count in the per-model perf stats', async () => {
+    // 两次调用：TTFT 100ms 与 11s（一次尖峰 > 10s 阈值）。
+    const stats = await aggregateUsage(fakePersistence({
+      'session-a': [
+        ev('step/start', 1, 500, { turn: 1, step: 1 }),
+        ev('request/header', 2, 600, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+        ev('assistant/chunk', 3, 11_600, { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'h' } }),
+        ev('assistant/message', 4, 11_700, { turn: 1, step: 1, usage: { inputTokens: 10, outputTokens: 1 } }),
+        ev('step/start', 5, 11_800, { turn: 1, step: 2 }),
+        ev('request/header', 6, 11_850, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+        ev('assistant/chunk', 7, 11_950, { turn: 1, step: 2, chunk: { type: 'text-delta', index: 0, text: 'h' } }),
+        ev('assistant/message', 8, 12_000, { turn: 1, step: 2, usage: { inputTokens: 10, outputTokens: 1 } }),
+      ],
+    }))
+    const flash = stats.perf?.byModel.flash
+    expect(flash?.samples).toBe(2)
+    expect(flash?.ttftMax).toBe(11_000)
+    expect(flash?.ttftSpikes).toBe(1)
   })
 
   it('omits the perf field when no step produced a measurable sample', async () => {

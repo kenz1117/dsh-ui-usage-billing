@@ -20,6 +20,10 @@ export interface PerfModelData {
   ttftAvg: number
   ttftP50: number
   ttftP90: number
+  /** 首字延时最大值（毫秒）；1.0.8 起新增，旧快照缺失。 */
+  ttftMax?: number
+  /** 首字延时尖峰样本数（> 10s）；1.0.8 起新增，旧快照缺失。 */
+  ttftSpikes?: number
   tpsAvg?: number
   latencyAvg: number
   estimatedSamples: number
@@ -47,6 +51,8 @@ interface PerfModelRow {
   ttftAvg: number
   ttftP50: number
   ttftP90: number
+  ttftMax?: number
+  ttftSpikes?: number
   tpsAvg?: number
   latencyAvg: number
   estimatedSamples: number
@@ -114,6 +120,8 @@ export function PerfPanel({
         ttftAvg: data.ttftAvg,
         ttftP50: data.ttftP50,
         ttftP90: data.ttftP90,
+        ...(data.ttftMax !== undefined ? { ttftMax: data.ttftMax } : {}),
+        ...(data.ttftSpikes !== undefined ? { ttftSpikes: data.ttftSpikes } : {}),
         ...(data.tpsAvg === undefined ? {} : { tpsAvg: data.tpsAvg }),
         latencyAvg: data.latencyAvg,
         estimatedSamples: data.estimatedSamples,
@@ -161,6 +169,7 @@ export function PerfPanel({
               <th className={css.numCol}>{t('billing.perfTtft')}</th>
               <th className={css.numCol}>{t('billing.perfP50')}</th>
               <th className={css.numCol}>{t('billing.perfP90')}</th>
+              <th className={css.numCol}>{t('billing.perfMax')}</th>
               <th className={css.numCol}>{t('billing.perfTps')}</th>
               <th className={css.numCol}>{t('billing.perfLatency')}</th>
               <th className={css.numCol}>{t('billing.perfEstimated')}</th>
@@ -179,6 +188,12 @@ export function PerfPanel({
                 <td className={css.numCol}>{row.ttftAvg.toFixed(0)} ms</td>
                 <td className={css.numCol}>{row.ttftP50.toFixed(0)} ms</td>
                 <td className={css.numCol}>{row.ttftP90.toFixed(0)} ms</td>
+                <td className={css.numCol}>
+                  {/* 最大 TTFT；有尖峰时在数值后附计数提示服务端抖动。 */}
+                  {row.ttftMax === undefined
+                    ? <span className={css.na}>—</span>
+                    : <span>{row.ttftMax.toFixed(0)} ms{row.ttftSpikes !== undefined && row.ttftSpikes > 0 ? ` (${row.ttftSpikes}↑)` : ''}</span>}
+                </td>
                 <td className={css.numCol}>{row.tpsAvg === undefined ? <span className={css.na}>—</span> : `${row.tpsAvg.toFixed(1)}`}</td>
                 <td className={css.numCol}>{row.latencyAvg.toFixed(0)} ms</td>
                 <td className={css.numCol}>{row.estimatedSamples > 0 ? row.estimatedSamples : <span className={css.na}>—</span>}</td>

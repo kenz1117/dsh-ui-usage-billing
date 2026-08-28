@@ -84,6 +84,11 @@ export interface ModelUsage {
     output: number;
     cacheHit: number;
     cacheMiss: number;
+    /**
+     * 显式缓存写入 token（部分厂商单独计价的 cache creation）——已包含在
+     * `cacheMiss` 内，单列供结构展示；旧快照缺失。
+     */
+    cacheWrite?: number;
     cost: number;
     /** 输出中的 reasoning（思考）token；已包含在 `output` 内，单列用于结构展示。 */
     reasoning: number;
@@ -147,6 +152,16 @@ export interface UsageStatsDocument {
     byDay: Record<string, ModelUsage>;
     /** 模型 × 日期 二维统计：趋势图按模型堆叠的输入（[date][modelKey]）。 */
     byDayModels: Record<string, Record<string, ModelUsage>>;
+    /**
+     * 峰谷分桶（真实判档）：折叠时逐调用按 `tierAt(event.time)` 归入高峰/低谷桶，
+     * 峰谷占比与「挪谷省钱」据此展示，不再按比例估算。旧快照可能缺失。
+     */
+    byTier?: {
+        peak: ModelUsage;
+        offPeak: ModelUsage;
+    };
+    /** 工具调用次数排行（键 = 工具名，按调用数倒序）；token 无法按工具归因，仅计次。旧快照可能缺失。 */
+    byTool?: Record<string, number>;
     /** 会话明细：按费用倒序，封顶 {@link SESSION_ROW_LIMIT} 行；旧快照可能缺失。 */
     bySession: SessionUsageRow[];
     /** 每轮费用明细：按起始时间倒序，封顶 {@link TURN_ROW_LIMIT} 行；旧快照可能缺失。 */
@@ -201,6 +216,10 @@ export interface ModelPerf {
     ttftP50: number;
     /** 首字延时 P90（毫秒）。 */
     ttftP90: number;
+    /** 首字延时最大值（毫秒）；定位偶发慢响应。 */
+    ttftMax: number;
+    /** 首字延时尖峰样本数（> 10s）；定位服务端抖动。 */
+    ttftSpikes: number;
     /** 平均生成速度（tokens/s）；生成了有效输出且时长可测时存在。 */
     tpsAvg?: number;
     /** 平均总延迟（首次请求 → 响应完成，毫秒）。 */
@@ -268,6 +287,8 @@ export declare const SESSION_ROW_LIMIT = 100;
 export declare const TURN_ROW_LIMIT = 200;
 /** 聚合文档的短 TTL（毫秒）：合并密集轮询，TTL 内直接复用上次的合并结果。 */
 export declare const AGGREGATE_TTL_MS = 5000;
+/** TTFT 尖峰阈值（毫秒）：超过计为一次尖峰样本，用于定位服务端抖动。 */
+export declare const PERF_SPIKE_MS = 10000;
 /** 单步性能样本（foldSession 的折叠产物；跨会话合并时按模型/小时再聚合）。 */
 export interface PerfSample {
     /** 计费目录键（模型；未收录模型原样保留）。 */
@@ -289,6 +310,10 @@ export interface SessionFold {
     byModel: Map<string, ModelUsage>;
     byDay: Map<string, ModelUsage>;
     byDayModels: Map<string, Map<string, ModelUsage>>;
+    /** 峰谷分桶：折叠时按调用时刻精确判档（tierAt），键 = 'peak' / 'offPeak'。 */
+    byTier: Map<string, ModelUsage>;
+    /** 工具调用次数（键 = 工具名；tool-call-delta 首见计数）。 */
+    byTool: Map<string, number>;
     /** 中转站归组：按 provider 路由归类到站点/直连/未知路由（key = {@link siteBucketKey}）。 */
     bySite: Map<string, ModelUsage>;
     /** 不可计价模型 id（未收录/无价，且非订阅）集合；跨会话合并后输出给面板提示。 */
@@ -321,6 +346,9 @@ export interface SerializedSessionFold {
     byModel: Record<string, ModelUsage>;
     byDay: Record<string, ModelUsage>;
     byDayModels: Record<string, Record<string, ModelUsage>>;
+    /** 1.0.8 起新增；旧账本行缺失（合并时按空处理，不触发重折算）。 */
+    byTier?: Record<string, ModelUsage>;
+    byTool?: Record<string, number>;
     bySite: Record<string, ModelUsage>;
     unpricedModels: string[];
     planCalls: Record<string, number>;

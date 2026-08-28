@@ -15,7 +15,7 @@ import { stat } from 'node:fs/promises'
 import type { SessionHeader } from '@deepseek-ai/dsh-session/types'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
-import { isPriced, MODEL_KEY_ALIASES, resolveCatalogKey, computeCostAt, modelOf } from './client/pricing.ts'
+import { isPriced, MODEL_KEY_ALIASES, resolveCatalogKey, computeCostAt, modelOf, tierAt } from './client/pricing.ts'
 
 // 模型别名（真实 provider id → 计费目录键）统一定义在 client/pricing.ts，
 // 聚合层折叠与客户端渲染共用同一张表，避免两侧不一致导致「未收录」。
@@ -132,6 +132,11 @@ export interface ModelUsage {
   output: number
   cacheHit: number
   cacheMiss: number
+  /**
+   * 显式缓存写入 token（部分厂商单独计价的 cache creation）——已包含在
+   * `cacheMiss` 内，单列供结构展示；旧快照缺失。
+   */
+  cacheWrite?: number
   cost: number
   /** 输出中的 reasoning（思考）token；已包含在 `output` 内，单列用于结构展示。 */
   reasoning: number
@@ -168,6 +173,8 @@ export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subsc
   acc.reasoning += usage.reasoningTokens ?? 0
   acc.cacheHit += cacheHit
   acc.cacheMiss += cacheMiss
+  // 显式缓存写入是 cacheMiss 的子集，仅部分厂商单独报告；无该维度的调用不写字段。
+  if ((usage.cacheWriteTokens ?? 0) > 0) acc.cacheWrite = (acc.cacheWrite ?? 0) + (usage.cacheWriteTokens ?? 0)
   // 官方/三方分桶：官方直连调用数与其费用分别累加；三方=总量-官方。
   if (official) acc.officialCalls += 1
   // 订阅套餐不计费；未定价的模型（目录与 models.dev 补充条目都没有）记 0。
@@ -249,6 +256,13 @@ export interface UsageStatsDocument {
   byDay: Record<string, ModelUsage>
   /** 模型 × 日期 二维统计：趋势图按模型堆叠的输入（[date][modelKey]）。 */
   byDayModels: Record<string, Record<string, ModelUsage>>
+  /**
+   * 峰谷分桶（真实判档）：折叠时逐调用按 `tierAt(event.time)` 归入高峰/低谷桶，
+   * 峰谷占比与「挪谷省钱」据此展示，不再按比例估算。旧快照可能缺失。
+   */
+  byTier?: { peak: ModelUsage; offPeak: ModelUsage }
+  /** 工具调用次数排行（键 = 工具名，按调用数倒序）；token 无法按工具归因，仅计次。旧快照可能缺失。 */
+  byTool?: Record<string, number>
   /** 会话明细：按费用倒序，封顶 {@link SESSION_ROW_LIMIT} 行；旧快照可能缺失。 */
   bySession: SessionUsageRow[]
   /** 每轮费用明细：按起始时间倒序，封顶 {@link TURN_ROW_LIMIT} 行；旧快照可能缺失。 */
@@ -306,6 +320,10 @@ export interface ModelPerf {
   ttftP50: number
   /** 首字延时 P90（毫秒）。 */
   ttftP90: number
+  /** 首字延时最大值（毫秒）；定位偶发慢响应。 */
+  ttftMax: number
+  /** 首字延时尖峰样本数（> 10s）；定位服务端抖动。 */
+  ttftSpikes: number
   /** 平均生成速度（tokens/s）；生成了有效输出且时长可测时存在。 */
   tpsAvg?: number
   /** 平均总延迟（首次请求 → 响应完成，毫秒）。 */
@@ -382,6 +400,9 @@ export const TURN_ROW_LIMIT = 200
 /** 聚合文档的短 TTL（毫秒）：合并密集轮询，TTL 内直接复用上次的合并结果。 */
 export const AGGREGATE_TTL_MS = 5000
 
+/** TTFT 尖峰阈值（毫秒）：超过计为一次尖峰样本，用于定位服务端抖动。 */
+export const PERF_SPIKE_MS = 10_000
+
 /** 单步性能样本（foldSession 的折叠产物；跨会话合并时按模型/小时再聚合）。 */
 export interface PerfSample {
   /** 计费目录键（模型；未收录模型原样保留）。 */
@@ -416,6 +437,10 @@ export interface SessionFold {
   byModel: Map<string, ModelUsage>
   byDay: Map<string, ModelUsage>
   byDayModels: Map<string, Map<string, ModelUsage>>
+  /** 峰谷分桶：折叠时按调用时刻精确判档（tierAt），键 = 'peak' / 'offPeak'。 */
+  byTier: Map<string, ModelUsage>
+  /** 工具调用次数（键 = 工具名；tool-call-delta 首见计数）。 */
+  byTool: Map<string, number>
   /** 中转站归组：按 provider 路由归类到站点/直连/未知路由（key = {@link siteBucketKey}）。 */
   bySite: Map<string, ModelUsage>
   /** 不可计价模型 id（未收录/无价，且非订阅）集合；跨会话合并后输出给面板提示。 */
@@ -450,6 +475,9 @@ export interface SerializedSessionFold {
   byModel: Record<string, ModelUsage>
   byDay: Record<string, ModelUsage>
   byDayModels: Record<string, Record<string, ModelUsage>>
+  /** 1.0.8 起新增；旧账本行缺失（合并时按空处理，不触发重折算）。 */
+  byTier?: Record<string, ModelUsage>
+  byTool?: Record<string, number>
   bySite: Record<string, ModelUsage>
   unpricedModels: string[]
   planCalls: Record<string, number>
@@ -561,6 +589,8 @@ function serializeFold(fold: SessionFold): SerializedSessionFold {
     byModel: Object.fromEntries(fold.byModel),
     byDay: Object.fromEntries(fold.byDay),
     byDayModels: Object.fromEntries([...fold.byDayModels].map(([day, models]) => [day, Object.fromEntries(models)])),
+    byTier: Object.fromEntries(fold.byTier),
+    byTool: Object.fromEntries(fold.byTool),
     bySite: Object.fromEntries(fold.bySite),
     unpricedModels: [...fold.unpricedModels],
     planCalls: Object.fromEntries(fold.planCalls),
@@ -578,6 +608,9 @@ function deserializeFold(fold: SerializedSessionFold): SessionFold {
     byModel: new Map(Object.entries(fold.byModel)),
     byDay: new Map(Object.entries(fold.byDay)),
     byDayModels: new Map(Object.entries(fold.byDayModels).map(([day, models]) => [day, new Map(Object.entries(models))])),
+    // 1.0.8 前的账本行没有这两个桶：按空处理，峰谷占比等新维度对这些会话缺省。
+    byTier: new Map(Object.entries(fold.byTier ?? {})),
+    byTool: new Map(Object.entries(fold.byTool ?? {})),
     bySite: new Map(Object.entries(fold.bySite)),
     unpricedModels: new Set(fold.unpricedModels),
     planCalls: new Map(Object.entries(fold.planCalls)),
@@ -715,6 +748,8 @@ export function foldSession(
     byModel: new Map(),
     byDay: new Map(),
     byDayModels: new Map(),
+    byTier: new Map(),
+    byTool: new Map(),
     bySite: new Map(),
     unpricedModels: new Set(),
     planCalls: new Map(),
@@ -734,6 +769,9 @@ export function foldSession(
   const steps = new Map<string, StepPerf>()
   // 最近一次 step/start 打开的 step；request/header 不带 turn/step，需借此归属。
   let lastOpenStepKey: string | undefined
+  // 已计数的工具调用（key = `${turn}:${step}:${index}`）：tool-call-delta 的每个
+  // 增量都重复携带工具名，只在首见时计一次调用。
+  const toolSeen = new Set<string>()
   for (const event of events) {
     // Fork 种子跳过：`seq < 边界` 的事件是父会话拷贝来的种子，已计过一次费，
     // 不再折叠（多重 fork 链取最后一个 end-seed，见上方边界扫描）。
@@ -810,6 +848,18 @@ export function foldSession(
           state.lastContentTime = event.time
         }
       }
+      // 工具调用计数：tool-call-delta 携带工具名（每个增量重复携带），按
+      // (turn, step, index) 首见计一次；名字缺失记 unknown。
+      if (chunk?.type === 'tool-call-delta' && typeof turn === 'number' && typeof step === 'number') {
+        const index = (chunk as { index?: unknown }).index
+        const name = (chunk as { name?: unknown }).name
+        const seenKey = `${turn}:${step}:${typeof index === 'number' ? index : '-'}`
+        if (!toolSeen.has(seenKey)) {
+          toolSeen.add(seenKey)
+          const toolName = typeof name === 'string' && name !== '' ? name : 'unknown'
+          fold.byTool.set(toolName, (fold.byTool.get(toolName) ?? 0) + 1)
+        }
+      }
       continue
     }
     if (event.type !== 'assistant/message') continue
@@ -837,6 +887,8 @@ export function foldSession(
     foldUsage(usageCell(fold.byDay, day), usage, modelKey, subscription, event.time, official)
     foldUsage(modelDayCell(fold.byDayModels, day, modelKey), usage, modelKey, subscription, event.time, official)
     foldUsage(usageCell(fold.bySite, siteBucket), usage, modelKey, subscription, event.time, official)
+    // 峰谷分桶：与计费同口径逐调用判档（tierAt），峰谷占比因此是真实数据。
+    foldUsage(usageCell(fold.byTier, tierAt(event.time)), usage, modelKey, subscription, event.time, official)
     if (subscription) fold.planCalls.set(modelKey, (fold.planCalls.get(modelKey) ?? 0) + 1)
     // 每轮明细：同一轮内的调用累加进该轮状态（模型取最近一次的归属）。
     const turn = (event.data as { turn?: number }).turn ?? -1
@@ -923,6 +975,8 @@ function mergeUsageInto(acc: ModelUsage, cell: ModelUsage): void {
   acc.reasoning += cell.reasoning
   acc.cacheHit += cell.cacheHit
   acc.cacheMiss += cell.cacheMiss
+  // 旧快照无 cacheWrite 维度：只在来源确实携带时才落字段（保持缺省语义）。
+  if (cell.cacheWrite !== undefined) acc.cacheWrite = (acc.cacheWrite ?? 0) + cell.cacheWrite
   acc.cost += cell.cost
   acc.officialCalls += cell.officialCalls
   acc.officialCost += cell.officialCost
@@ -1159,6 +1213,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const byModel = new Map<string, ModelUsage>()
       const byDay = new Map<string, ModelUsage>()
       const byDayModels = new Map<string, Map<string, ModelUsage>>()
+      const byTier = new Map<string, ModelUsage>()
+      const byTool = new Map<string, number>()
       const bySite = new Map<string, ModelUsage>()
       const unpricedModels = new Set<string>()
       const planCalls = new Map<string, number>()
@@ -1182,6 +1238,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           for (const [modelKey, cell] of models) mergeUsageInto(modelDayCell(byDayModels, day, modelKey), cell)
         }
         for (const [siteKey, cell] of fold.bySite) mergeUsageInto(usageCell(bySite, siteKey), cell)
+        for (const [tierKey, cell] of fold.byTier) mergeUsageInto(usageCell(byTier, tierKey), cell)
+        for (const [toolName, count] of fold.byTool) byTool.set(toolName, (byTool.get(toolName) ?? 0) + count)
         for (const id of fold.unpricedModels) unpricedModels.add(id)
         for (const [modelKey, count] of fold.planCalls) {
           planCalls.set(modelKey, (planCalls.get(modelKey) ?? 0) + count)
@@ -1256,6 +1314,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
             ttftAvg: mean(acc.ttfts),
             ttftP50: percentile(acc.ttfts, 0.5),
             ttftP90: percentile(acc.ttfts, 0.9),
+            ttftMax: Math.max(...acc.ttfts),
+            ttftSpikes: acc.ttfts.filter(ttft => ttft > PERF_SPIKE_MS).length,
             ...(acc.tps.length === 0 ? {} : { tpsAvg: mean(acc.tps) }),
             latencyAvg: acc.latencies.length === 0 ? 0 : mean(acc.latencies),
             estimatedSamples: acc.estimated,
@@ -1278,6 +1338,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         bySession: sessionRows.slice(0, SESSION_ROW_LIMIT),
         byTurn: turnRows.slice(0, TURN_ROW_LIMIT),
         byWorkspace: workspaces.slice(0, SESSION_ROW_LIMIT),
+        ...(byTier.size === 0 ? {} : { byTier: { peak: byTier.get('peak') ?? emptyUsage(), offPeak: byTier.get('offPeak') ?? emptyUsage() } }),
+        ...(byTool.size === 0 ? {} : { byTool: Object.fromEntries([...byTool].sort((a, b) => b[1] - a[1])) }),
         ...(bySite.size === 0 ? {} : { bySite: toRecord(bySite) }),
         ...(unpricedModels.size === 0 ? {} : { unpricedModels: [...unpricedModels].sort() }),
         ...(perf === undefined ? {} : { perf }),

@@ -1,9 +1,10 @@
 /**
  * TokenPanel: 「Token」分区——把 token 从费用里独立出来洞察。
- * 三个板块 + 导出，全部由 `UsageStats` 的 byDay/byModel/total 派生，服务端零改动：
+ * 四个板块 + 导出，全部由 `UsageStats` 派生，服务端零改动：
  *  1. 每日 Token 堆叠趋势（未命中输入 / 缓存命中 / 输出[含 reasoning]），7/30 天切换；
  *  2. 模型 Token 总量排行 + 占比；
- *  3. Token 结构 KPI（缓存命中率 / reasoning 占比 / 输入:输出比 / 峰值日）。
+ *  3. Token 结构 KPI（缓存命中率 / reasoning 占比 / 输入:输出比 / 峰值日）+ 显式缓存写入；
+ *  4. 工具调用排行（byTool 计次；token 无法按工具归因）。
  */
 
 import { useMemo } from 'react'
@@ -149,6 +150,15 @@ export function TokenPanel(props: {
     return { cacheHitRate, reasoningPct, io, peak, hit, miss, input, output, reasoning }
   }, [total, days])
 
+  // 工具调用排行：取前 8 名，其余合并为「其他」。
+  const toolRows = useMemo(() => {
+    const entries = Object.entries(stats.byTool ?? {})
+    const top = entries.slice(0, 8)
+    const rest = entries.slice(8).reduce((sum, [, count]) => sum + count, 0)
+    const totalCalls = entries.reduce((sum, [, count]) => sum + count, 0)
+    return { top, rest: rest > 0 ? [['…', rest] as const] : [], totalCalls }
+  }, [stats.byTool])
+
   // 每日堆叠图布局。
   const chart = useMemo(() => {
     const n = days.length
@@ -203,7 +213,11 @@ export function TokenPanel(props: {
         <div className={css.kpiTile}>
           <span className={css.kpiLabel}>{t('billing.tokenCacheHitRate')}</span>
           <span className={css.kpiValue}>{kpis.cacheHitRate.toFixed(1)}%</span>
-          <span className={css.kpiDetail}>{formatTokens(kpis.hit)} / {formatTokens(kpis.hit + kpis.miss)}</span>
+          {/* 显式缓存写入（cacheMiss 子集）在命中卡副行附带展示；无该维度时不显示。 */}
+          <span className={css.kpiDetail}>
+            {formatTokens(kpis.hit)} / {formatTokens(kpis.hit + kpis.miss)}
+            {(total.cacheWrite ?? 0) > 0 ? ` · ${t('billing.tokenCacheWrite')} ${formatTokens(total.cacheWrite ?? 0)}` : ''}
+          </span>
         </div>
         <div className={css.kpiTile}>
           <span className={css.kpiLabel}>{t('billing.tokenReasoningShare')}</span>
@@ -329,6 +343,35 @@ export function TokenPanel(props: {
           </div>
         )}
       </section>
+
+      {/* 工具调用排行：byTool 计次（token 无法按工具归因），展示 agent 循环的工具使用结构。 */}
+      {toolRows.totalCalls > 0 && (
+        <section className={css.panel} data-testid="billing-token-tools">
+          <div className={css.panelHead}>
+            <h3 className={css.panelTitle}>{t('billing.toolRank')}</h3>
+          </div>
+          <div className={css.tableScroll}>
+            <table className={css.modelTable} data-testid="billing-tool-table">
+              <thead>
+                <tr>
+                  <th>{t('billing.toolName')}</th>
+                  <th className={css.numCol}>{t('billing.calls')}</th>
+                  <th className={css.numCol}>{t('billing.tokenShare')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...toolRows.top, ...toolRows.rest].map(([name, count]) => (
+                  <tr key={name} data-testid="billing-tool-row">
+                    <td><span className={css.modelName}>{name}</span></td>
+                    <td className={css.numCol}>{count.toLocaleString()}</td>
+                    <td className={css.numCol}>{((count / toolRows.totalCalls) * 100).toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   )
 }

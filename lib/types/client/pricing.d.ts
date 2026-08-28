@@ -27,6 +27,32 @@ import type { LivePricing } from '../pricing-shared.ts';
  */
 export declare const USD_TO_CNY = 6.79;
 /**
+ * 用户自定义单价（设置面板录入，localStorage 持久化）：覆盖内置/models.dev/
+ * dsh-spend 的全部价格来源，用于新模型上线目录未跟、或厂商未公布按量价的场景。
+ * 仅在客户端显示层生效——聚合发生在宿主进程，折叠时的成本仍按内置目录计算，
+ * 客户端检测到用户价后对受影响视图做显示重估（见 UsageBilling 的 recost）。
+ */
+export interface UserPrice {
+    /** 未命中输入单价（元或美元 / 每百万 token）。 */
+    input: number;
+    /** 缓存命中输入单价。 */
+    cacheHit: number;
+    /** 输出单价。 */
+    output: number;
+    /** 计价币种；缺省 CNY。 */
+    currency?: 'CNY' | 'USD';
+}
+/**
+ * 注入用户自定义单价。键 = 计费目录键；查询侧用归一化两跳宽松命中。
+ * 空对象 = 清除全部自定义价，回退内置目录。
+ * @param prices - 目录键 → 自定义单价。
+ */
+export declare function applyUserPrices(prices: Readonly<Record<string, UserPrice>>): void;
+/** 当前生效的用户自定义单价（设置面板回显用）；未设置时 undefined。 */
+export declare function getUserPrices(): Readonly<Record<string, UserPrice>> | undefined;
+/** 查一个计费键的用户自定义价（精确键 → 归一化键两跳）。 */
+export declare function userPriceOf(key: string): UserPrice | undefined;
+/**
  * Apply the node half's live pricing snapshot. Absent fields keep the
  * built-in catalog and rate; callers never fabricate values.
  * @param pricing - the `/api/billing/pricing` response.
@@ -158,6 +184,13 @@ export interface PriceRow {
     /** 补充说明（如与标准价的关系）。 */
     note?: string;
 }
+/**
+ * 分档计价语义：厂商把「主档 / 低价档」的划分依据不同，界面需区分标注。
+ * - `timeOfDay`（缺省）：按调用时刻分档（DeepSeek 峰谷时段），档位是客观的；
+ * - `latency`：按用户选择的延迟档分档（Gemini Standard/Flex，Flex 半价换 1-15
+ *   分钟延迟），与时刻无关；逐调用无法从日志判定实际档位，成本按比例估算。
+ */
+export type TierSemantics = 'timeOfDay' | 'latency';
 /** One catalog entry: identity, brand color token, and price. */
 export interface ModelEntry {
     /** Model key used by `.dsh-usage-stats.json` `byModel`. */
@@ -172,6 +205,8 @@ export interface ModelEntry {
     price: ModelPrice;
     /** Peak-hour window label for time-of-day priced models. */
     peakHours?: string;
+    /** 分档语义；缺省 = 按时段（timeOfDay）。 */
+    tierSemantics?: TierSemantics;
     /**
      * 限时促销：生效期内 price 各档位按 factor 打折，过期自动恢复。
      * price 表本身永远保存刊例价，促销只在计价/显示出口处折算，不回写目录。
@@ -186,6 +221,8 @@ export interface ModelEntry {
     estimated?: boolean;
     /** 探活命中但无内置/models.dev 价：费率表标「未收录」，不参与计价。 */
     uncatalogued?: boolean;
+    /** 该条目当前按用户自定义单价计价（设置面板可维护）；费率表标注「自定义」。 */
+    userPriced?: boolean;
 }
 /**
  * Built-in catalog of current mainstream models as of 2026-08-16, priced from
