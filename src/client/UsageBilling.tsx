@@ -41,8 +41,8 @@ import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv, siteRowsCsv }
 import type { createBillingBudgetStore } from './budget-store.ts'
 import {
   applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, canonModelId, cnyToUsd, computeCost, convertUnitPrice,
-  formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, getUserPrices, isPromoActive,
-  modelOf, resolveToken, tierAt, userPriceOf, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
+  DEFAULT_PEAK_SHARE, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, getUserPrices, isPromoActive,
+  modelOf, normalizeOriginInput, resolveToken, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
@@ -296,7 +296,8 @@ export function projectMonthCost(byDay: Record<string, { cost: number }>, monthP
 export function recostWithUserPrices(stats: UsageStats): UsageStats {
   const entries = getUserPrices()
   if (entries === undefined || stats.byDayModels === undefined) return stats
-  // 逐 day×model 重算：用户价 = 平价三桶（时段/促销折扣不叠加，用户价即实付价）。
+  // 逐 day×model 重算：用户价 = 用户填的实付单价（促销不叠加）；带低谷档时按
+  // DEFAULT_PEAK_SHARE 比例混合（格内无调用时刻，无法逐笔分档）。
   const rate = getRateInfo().rate
   // 是否启用「按来源（origin）」精确重估：需存在带 origin 的用户价 + 服务端三维数据。
   const hasOriginData = stats.byDayModelsSite !== undefined
@@ -308,31 +309,39 @@ export function recostWithUserPrices(stats: UsageStats): UsageStats {
   const hasOriginEntry = (key: string): boolean =>
     entries.some(e => e.origin !== undefined && e.origin !== ''
       && (e.key === key || canonModelId(e.key) === canonModelId(key)))
-  const costFromPrice = (price: { currency?: 'CNY' | 'USD'; input: number; cacheHit: number; output: number } | undefined,
+  const costFromPrice = (price: { currency?: 'CNY' | 'USD'; input: number; cacheHit: number; output: number; offPeak?: { input: number; cacheHit: number; output: number } } | undefined,
     cell: { cacheHit: number; cacheMiss: number; output: number }, fallback: number): number => {
     if (price === undefined) return fallback
     const hit = Math.min(cell.cacheHit, cell.cacheMiss + cell.cacheHit)
-    const raw = (cell.cacheMiss * price.input + hit * price.cacheHit + cell.output * price.output) / 1_000_000
-    return price.currency === 'USD' ? raw * rate : raw
+    const flat = (band: { input: number; cacheHit: number; output: number }): number => {
+      const raw = (cell.cacheMiss * band.input + hit * band.cacheHit + cell.output * band.output) / 1_000_000
+      return price.currency === 'USD' ? raw * rate : raw
+    }
+    // 用户价带低谷档：峰/谷两档按固定比例混合（格内无时刻，与宿主逐笔分档口径近似）。
+    if (price.offPeak === undefined) return flat(price)
+    return flat(price) * DEFAULT_PEAK_SHARE + flat(price.offPeak) * (1 - DEFAULT_PEAK_SHARE)
   }
   for (const [date, models] of Object.entries(stats.byDayModels)) {
     let dayCost = 0
     const dayModels: Record<string, { calls: number; input: number; output: number; cacheHit: number; cacheMiss: number; cost: number }> = {}
     for (const [key, cell] of Object.entries(models)) {
       const priceDefault = userPriceOf(key)
+      // 带来源价的兜底：三维站点数据缺失或无匹配站点桶时，用该条来源价重估整格，
+      // 而不是静默回退宿主原价（issue #18：用户填了来源价却「没有效果」）。
+      const originFallback = priceDefault ?? userOriginPriceEntryOf(key)
       const originEntry = hasOriginData && hasOriginEntry(key)
       let cost: number
-      if ((priceDefault !== undefined || originEntry) && originEntry && stats.byDayModelsSite?.[date]?.[key] !== undefined) {
-        // 按「模型×站点」分布逐来源重算：带 origin 价精确命中，其余回落默认价或内置。
+      if ((originFallback !== undefined || originEntry) && originEntry && stats.byDayModelsSite?.[date]?.[key] !== undefined) {
+        // 按「模型×站点」分布逐来源重算：带 origin 价宽松命中，其余回落默认价或内置。
         let siteCost = 0
         for (const [siteKey, siteCell] of Object.entries(stats.byDayModelsSite[date][key])) {
           const origin = siteKey.startsWith('site:') ? siteKey.slice('site:'.length) : undefined
           const sitePrice = origin !== undefined ? userPriceOf(key, origin) : undefined
-          siteCost += costFromPrice(sitePrice ?? priceDefault, siteCell, siteCell.cost)
+          siteCost += costFromPrice(sitePrice ?? originFallback, siteCell, siteCell.cost)
         }
         cost = siteCost
       } else {
-        cost = costFromPrice(priceDefault, cell, cell.cost)
+        cost = costFromPrice(originFallback, cell, cell.cost)
       }
       dayCost += cost
       dayModels[key] = { ...cell, cost }
@@ -1286,7 +1295,40 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
     setDrafts(list => list.map((row, idx) => (idx === i ? { ...row, ...patch } : row)))
   const remove = (i: number): void => setDrafts(list => list.filter((_, idx) => idx !== i))
   const add = (): void => setDrafts(list => [...list, { key: '', input: 0, cacheHit: 0, output: 0 as number }])
-  const save = (): void => onUserPrices(drafts.filter(row => row.key.trim() !== ''))
+  // 低谷档草稿态（字符串，留空 = 平档）：与主档独立编辑，三值有效才成档。
+  const offPeakOf = (i: number): { input: string; cacheHit: string; output: string } => {
+    const off = drafts[i]?.offPeak
+    return {
+      input: off === undefined ? '' : String(off.input),
+      cacheHit: off === undefined ? '' : String(off.cacheHit),
+      output: off === undefined ? '' : String(off.output),
+    }
+  }
+  const setOffPeak = (i: number, field: 'input' | 'cacheHit' | 'output', raw: string): void =>
+    setDrafts(list => list.map((row, idx) => {
+      if (idx !== i) return row
+      const next = { ...offPeakOf(i), [field]: raw }
+      const touched = [next.input, next.cacheHit, next.output].some(v => v.trim() !== '')
+      const values = [next.input, next.cacheHit, next.output].map(v => Number(v))
+      const valid = touched && values.every(v => Number.isFinite(v) && v >= 0) && values.some(v => v > 0)
+      const { offPeak, ...rest } = row
+      void offPeak
+      return valid
+        ? { ...rest, offPeak: { input: values[0] ?? 0, cacheHit: values[1] ?? 0, output: values[2] ?? 0 } }
+        : rest
+    }))
+  // 保存：丢弃空模型行；来源规范化（补协议/取 origin——手填差异是自定义价失效主因之一）。
+  const save = (): void => onUserPrices(drafts
+    .filter(row => row.key.trim() !== '')
+    .map(row => ({
+      ...row,
+      key: row.key.trim(),
+      ...(row.origin === undefined || row.origin.trim() === ''
+        ? {}
+        : { origin: normalizeOriginInput(row.origin.trim()) }),
+    })))
+  // 模型输入指引：目录键 + 探活命中的模型 id（datalist——key 填错是「无效果」的另一主因）。
+  const modelKeys = catalogEntries().map(entry => entry.key)
   // 币种切换：CNY = 移除 currency 字段（缺省即 CNY），USD = 显式标记（exactOptionalPropertyTypes）。
   const setCurrency = (i: number, cur: 'CNY' | 'USD'): void =>
     setDrafts(list => list.map((row, idx) => {
@@ -1308,6 +1350,9 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
         </div>
       </div>
       <div className={css.ctlCol}>
+        <datalist id="billing-price-model-keys">
+          {modelKeys.map(key => <option key={key} value={key} />)}
+        </datalist>
         {drafts.map((row, i) => (
           <div key={i} className={css.userPriceRow} data-testid="billing-user-price-row">
             <div className={css.userPriceField}>
@@ -1316,6 +1361,7 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
                 className={css.userPriceInput}
                 data-testid="billing-user-price-model"
                 type="text"
+                list="billing-price-model-keys"
                 value={row.key}
                 placeholder="flash"
                 aria-label={t('billing.userPriceModel')}
@@ -1369,6 +1415,28 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
             <button type="button" className={css.userPriceRemove} aria-label={t('billing.userPriceRemove')} onClick={() => remove(i)}>
               {t('billing.userPriceRemove')}
             </button>
+            {(() => {
+              // 低谷价子行：三桶留空 = 平档；三值有效即按峰/谷混合估算（issue #18）。
+              const off = offPeakOf(i)
+              return (
+                <div className={css.userPriceOffPeak} data-testid="billing-user-price-offpeak">
+                  <span className={css.ctlLabel}>{t('billing.userPriceOffPeak')}</span>
+                  {(['input', 'cacheHit', 'output'] as const).map(kind => (
+                    <input
+                      key={kind}
+                      className={css.userPriceInputNum}
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      placeholder={kind === 'input' ? t('billing.tokenMiss') : kind === 'cacheHit' ? t('billing.tokenHit') : t('billing.tokenOutput')}
+                      aria-label={`${t('billing.userPriceOffPeak')} ${kind === 'input' ? t('billing.tokenMiss') : kind === 'cacheHit' ? t('billing.tokenHit') : t('billing.tokenOutput')}`}
+                      value={off[kind]}
+                      onChange={e => setOffPeak(i, kind, e.target.value)}
+                    />
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         ))}
         <div className={css.ctlRow}>

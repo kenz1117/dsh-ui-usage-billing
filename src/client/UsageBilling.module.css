@@ -3248,6 +3248,16 @@
   border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
 
+/* 低谷价子行：主行下方全宽，label + 三桶输入横排。 */
+.userPriceOffPeak {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  flex-wrap: wrap;
+  padding: 2px 0 6px;
+}
+
 .userPriceField {
   display: flex;
   flex-direction: column;

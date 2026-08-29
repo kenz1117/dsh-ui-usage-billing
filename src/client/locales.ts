@@ -123,6 +123,7 @@ export type UsageBillingKey =
   | 'billing.userPriceModel'
   | 'billing.userPriceSource'
   | 'billing.userPriceSourceHint'
+  | 'billing.userPriceOffPeak'
   | 'billing.userPriceCurrency'
   | 'billing.userPriceAdd'
   | 'billing.userPriceRemove'
@@ -399,11 +400,12 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.toolRank': '工具排行',
   'billing.toolName': '工具',
   'billing.userPrices': '自定义单价',
-  'billing.userPricesHint': '为未收录或变价模型填入实付单价，总览与日趋势按此重估；来源留空=该模型默认价，填入中转站域名=仅该来源的同名模型用此价',
+  'billing.userPricesHint': '为未收录或变价模型填入实付单价，总览与日趋势按此重估；模型可用下拉候选（目录键或模型 id）；来源留空=该模型默认价，填入中转站域名=仅该来源的同名模型用此价（协议可省）；低谷价三栏填后按峰/谷混合估算，留空=平档',
   'billing.userPriceSave': '保存',
   'billing.userPriceModel': '模型',
   'billing.userPriceSource': '来源（中转站域名）',
   'billing.userPriceSourceHint': '留空=默认价，或 https://api.中转站.com',
+  'billing.userPriceOffPeak': '低谷价',
   'billing.userPriceCurrency': '币种',
   'billing.userPriceAdd': '新增',
   'billing.userPriceRemove': '删除',
@@ -680,11 +682,12 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.toolRank': 'Tool calls',
   'billing.toolName': 'Tool',
   'billing.userPrices': 'Custom prices',
-  'billing.userPricesHint': 'Enter actual per-1M-token prices; main views are re-costed. Leave source empty for the model default, or enter a relay origin to price only that source.',
+  'billing.userPricesHint': 'Enter actual per-1M-token prices; main views are re-costed. Pick a model key from the dropdown candidates. Leave source empty for the model default, or enter a relay origin (protocol optional) to price only that source. Fill all three off-peak fields for peak/off-peak estimation; leave them empty for flat pricing.',
   'billing.userPriceSave': 'Save',
   'billing.userPriceModel': 'Model',
   'billing.userPriceSource': 'Source (relay origin)',
   'billing.userPriceSourceHint': 'Empty = default; e.g. https://api.relay.com',
+  'billing.userPriceOffPeak': 'Off-peak price',
   'billing.userPriceCurrency': 'Currency',
   'billing.userPriceAdd': 'Add',
   'billing.userPriceRemove': 'Remove',

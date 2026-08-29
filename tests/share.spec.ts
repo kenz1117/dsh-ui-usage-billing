@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { recostWithUserPrices, lastSevenDays, type UsageStats } from '../src/client/UsageBilling.tsx'
-import { applyUserPrices, getUserPrices } from '../src/client/pricing.ts'
+import { applyUserPrices, getUserPrices, normalizeOriginInput, originsMatch } from '../src/client/pricing.ts'
 
 /** 最小可用统计文档：day×model 一格 + 同日聚合。 */
 function statsFixture(): UsageStats {
@@ -77,6 +77,67 @@ describe('recostWithUserPrices', () => {
     } finally {
       applyUserPrices([])
     }
+  })
+})
+
+describe('recostWithUserPrices with origin-bound prices (issue #18)', () => {
+  /** 带 day×model×site 三维的 fixture（宽松匹配与站点循环的测试底座）。 */
+  function statsFixtureWithSite(): UsageStats {
+    return {
+      ...statsFixture(),
+      byDayModelsSite: {
+        '2026-08-21': {
+          flash: { 'site:https://api.relay.com': { calls: 1, input: 100, output: 50, cacheHit: 50, cacheMiss: 50, cost: 0.0006 } },
+        },
+      },
+    }
+  }
+
+  it('matches a relay origin loosely: protocol-less or path-suffixed input still hits', () => {
+    applyUserPrices([{ key: 'flash', origin: 'api.relay.com/v1', input: 1, cacheHit: 0.1, output: 3 }])
+    try {
+      const recosted = recostWithUserPrices(statsFixtureWithSite())
+      const cost = recosted.byDayModels?.['2026-08-21']?.flash?.cost
+      // origin 规范化后与站点桶 https://api.relay.com 一致：¥205 / 1M 生效。
+      expect(cost).toBeCloseTo(205 / 1_000_000, 12)
+    } finally {
+      applyUserPrices([])
+    }
+  })
+
+  it('falls back to the origin-bound price when the site grid is absent instead of keeping host cost', () => {
+    // 老账本回退文档没有 byDayModelsSite：带来源价仍要生效（此前静默失效）。
+    // statsFixture 本身无 byDayModelsSite，即该形状。
+    applyUserPrices([{ key: 'flash', origin: 'https://api.relay.com', input: 1, cacheHit: 0.1, output: 3 }])
+    try {
+      const recosted = recostWithUserPrices(statsFixture())
+      expect(recosted.byDayModels?.['2026-08-21']?.flash?.cost).toBeCloseTo(205 / 1_000_000, 12)
+    } finally {
+      applyUserPrices([])
+    }
+  })
+
+  it('blends peak and off-peak user bands at the default peak share', () => {
+    // 峰档 410/1M（miss 2 / hit 0.2 / out 6），谷档 205/1M（半价）：50/50 混合。
+    applyUserPrices([{ key: 'mystery', input: 2, cacheHit: 0.2, output: 6, offPeak: { input: 1, cacheHit: 0.1, output: 3 } }])
+    try {
+      const recosted = recostWithUserPrices(statsFixture())
+      const expected = (410 / 1_000_000) * 0.5 + (205 / 1_000_000) * 0.5
+      expect(recosted.byDayModels?.['2026-08-21']?.mystery?.cost).toBeCloseTo(expected, 12)
+    } finally {
+      applyUserPrices([])
+    }
+  })
+})
+
+describe('originsMatch / normalizeOriginInput', () => {
+  it('normalizes protocol, path, case and trailing slash before comparing', () => {
+    expect(originsMatch('api.relay.com', 'https://api.relay.com')).toBe(true)
+    expect(originsMatch('https://API.Relay.com/v1/', 'https://api.relay.com')).toBe(true)
+    expect(originsMatch('https://api.relay.com', 'https://api.other.com')).toBe(false)
+    expect(originsMatch('https://api.relay.com', 'http://api.relay.com')).toBe(false)
+    // 规范化输出：补协议、取 origin、去路径。
+    expect(normalizeOriginInput('api.relay.com/v1/')).toBe('https://api.relay.com')
   })
 })
 

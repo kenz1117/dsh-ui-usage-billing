@@ -175,12 +175,25 @@ export function loadUserPrices(): UserPriceMap {
       const cacheHit = Number(row.cacheHit)
       const output = Number(row.output)
       if (![input, cacheHit, output].every(v => Number.isFinite(v) && v >= 0)) return
+      // 低谷档三桶（可选）：全部有效才保留，任一缺失/非法回落平档。
+      const off = row.offPeak
+      let offPeak: { input: number; cacheHit: number; output: number } | undefined
+      if (off !== null && typeof off === 'object') {
+        const offRow = off as Record<string, unknown>
+        const offInput = Number(offRow.input)
+        const offCacheHit = Number(offRow.cacheHit)
+        const offOutput = Number(offRow.output)
+        if ([offInput, offCacheHit, offOutput].every(v => Number.isFinite(v) && v >= 0)) {
+          offPeak = { input: offInput, cacheHit: offCacheHit, output: offOutput }
+        }
+      }
       out.push({
         key,
         ...(typeof row.origin === 'string' && row.origin !== '' ? { origin: row.origin } : {}),
         input,
         cacheHit,
         output,
+        ...(offPeak !== undefined ? { offPeak } : {}),
         ...(row.currency === 'USD' ? { currency: 'USD' as const } : {}),
       })
     }
