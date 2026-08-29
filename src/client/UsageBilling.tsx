@@ -444,25 +444,6 @@ function subscriptionWindowLabel(kind: SubscriptionQuota['windows'][number]['kin
   }
 }
 
-/** 站点桶的归属类别（bySite 的 key 前缀）。 */
-type SiteBucketKind = 'site' | 'direct' | 'unknown'
-
-/** 由 bySite 的 key 解析站点行显示名与类别。 */
-function siteBucketLabel(key: string, t: (key: UsageBillingKey) => string): { name: string; kind: SiteBucketKind } {
-  if (key.startsWith('site:')) return { name: key.slice(5), kind: 'site' }
-  if (key.startsWith('direct:')) return { name: key.slice(7), kind: 'direct' }
-  return { name: t('billing.relayUnknown'), kind: 'unknown' }
-}
-
-/** 站点类别的文案（中转站 / 直连 / 未知路由）。 */
-function siteKindText(kind: SiteBucketKind, t: (key: UsageBillingKey) => string): string {
-  switch (kind) {
-    case 'site': return t('billing.relaySite')
-    case 'direct': return t('billing.relayDirect')
-    default: return t('billing.relayUnknown')
-  }
-}
-
 /** 中转站程序类型的徽标文案（New API / Sub2API / 未识别）。 */
 function relayKindText(kind: RelayQuota['kind'], t: (key: UsageBillingKey) => string): string {
   switch (kind) {
@@ -470,13 +451,6 @@ function relayKindText(kind: RelayQuota['kind'], t: (key: UsageBillingKey) => st
     case 'sub2api': return t('billing.relayKindSub2Api')
     default: return t('billing.relayKindUnknown')
   }
-}
-
-/** 站点类别对应的样式类（bySite 桶与中转站额度徽标共用配色）。 */
-const SITE_KIND_CLASS: Record<SiteBucketKind, string | undefined> = {
-  site: css.siteKindSite,
-  direct: css.siteKindDirect,
-  unknown: css.siteKindUnknown,
 }
 
 /** 中转站程序类型对应的样式类（复用站点类别配色）。 */
@@ -1768,13 +1742,7 @@ function BillingDashboard({
 
   // 按厂商聚合：模型用量与订阅额度都归并到同一厂商组，余额只在厂商头部显示一次。
   // 厂商组同时容纳非订阅按量模型（无订阅额度也成组）与订阅套餐（无用量也成组）。
-  // 中转站列表的可见行（issue #17）：默认隐藏「未知路由」桶与「未识别」类型占位条目。
-  const visibleSiteEntries = useMemo(
-    () => Object.entries(stats.bySite ?? {})
-      .filter(([siteKey]) => !(sitePrefs.hideUnidentified && siteKey === 'unknown'))
-      .sort((a, b) => (b[1].cost ?? 0) - (a[1].cost ?? 0)),
-    [stats.bySite, sitePrefs.hideUnidentified],
-  )
+  // 中转站额度的可见行（issue #17）：默认隐藏「未识别」类型的占位条目。
   const visibleRelayRows = useMemo(
     () => (sitePrefs.hideUnidentified ? relayQuotas.filter(row => row.kind !== 'unknown') : relayQuotas),
     [relayQuotas, sitePrefs.hideUnidentified],
@@ -2584,35 +2552,6 @@ function BillingDashboard({
 
           {tab === 'providers' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-providers">
-              {/* 中转站分布：按 provider 路由的 baseURL 归组（站点/直连/未知路由），
-                  与「厂商计费」互补——先看钱从哪个站走，再看厂商明细。未知路由桶
-                  可在设置里隐藏（issue #17，默认隐藏）。 */}
-              {visibleSiteEntries.length > 0 && (
-                <section className={css.panel} data-testid="billing-panel-relay-sites">
-                  <div className={css.panelHead}>
-                    <h3 className={css.panelTitle}>{t('billing.panelRelay')}</h3>
-                  </div>
-                  <div className={css.providerGroupList} data-testid="billing-relay-sites">
-                    {visibleSiteEntries
-                      .map(([siteKey, usage]) => {
-                        const site = siteBucketLabel(siteKey, t)
-                        return (
-                          <div key={siteKey} className={css.siteRow} data-testid="billing-relay-site">
-                            <span className={css.siteRowName}>
-                              <span className={clsx(css.siteKindTag, SITE_KIND_CLASS[site.kind])}>{siteKindText(site.kind, t)}</span>
-                              <span className={css.siteRowTitle}>{site.name}</span>
-                            </span>
-                            <span className={css.siteRowMeta}>
-                              <span className={css.siteRowCost}>{money(usage.cost)}</span>
-                              <span className={css.siteRowCalls}>{usage.calls} {t('billing.relayCalls')}</span>
-                            </span>
-                          </div>
-                        )
-                      })}
-                  </div>
-                </section>
-              )}
-
               {/* 中转站额度：识别出的 New API / Sub2API 的余额与滚动窗口；未识别
                   程序类型的占位行可隐藏（issue #17，默认隐藏）。 */}
               {visibleRelayRows.length > 0 && (
