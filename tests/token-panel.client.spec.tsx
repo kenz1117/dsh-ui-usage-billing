@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { TokenPanel } from '../src/client/TokenPanel.tsx'
 import { zh } from '../src/client/locales.ts'
 
@@ -44,5 +44,29 @@ describe('TokenPanel', () => {
     const empty = { ...STATS, byModel: {} }
     render(<TokenPanel stats={empty} trendDays={7} onTrendDays={() => {}} t={t} />)
     expect(screen.getByText(zh['billing.noData'])).toBeTruthy()
+  })
+
+  it('shows an exact per-day token breakdown tooltip on hover', () => {
+    // 今天是 7 天窗口的最后一天；jsdom 里 getBoundingClientRect 全 0，
+    // mouseMove 的 x → Infinity → 索引收敛到最后一天，正好命中今天的柱。
+    const p = (n: number): string => String(n).padStart(2, '0')
+    const now = new Date()
+    const today = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`
+    const day = { calls: 3, input: 12618118, output: 595174, cacheHit: 5355392, cacheMiss: 7262726, cost: 1, reasoning: 100 }
+    const stats = { ...STATS, byDay: { ...STATS.byDay, [today]: day } }
+    const { container } = render(<TokenPanel stats={stats} trendDays={7} onTrendDays={() => {}} t={t} />)
+    const svg = container.querySelector('[data-testid="billing-token-daily"] svg')
+    expect(svg).not.toBeNull()
+    fireEvent.mouseMove(svg!, { clientX: 300, clientY: 60 })
+    const tooltip = screen.getByTestId('billing-token-tooltip')
+    expect(tooltip.textContent).toContain(today)
+    // 精确数字（千分位、不缩写）：总量与三个分项一一核对。
+    expect(tooltip.textContent).toContain((day.cacheHit + day.cacheMiss + day.output).toLocaleString())
+    expect(tooltip.textContent).toContain(day.cacheHit.toLocaleString())
+    expect(tooltip.textContent).toContain(day.cacheMiss.toLocaleString())
+    expect(tooltip.textContent).toContain(day.output.toLocaleString())
+    // 离开后关闭。
+    fireEvent.mouseLeave(svg!)
+    expect(screen.queryByTestId('billing-token-tooltip')).toBeNull()
   })
 })
