@@ -1,13 +1,13 @@
 /**
  * TokenPanel: 「Token」分区——把 token 从费用里独立出来洞察。
  * 四个板块 + 导出，全部由 `UsageStats` 派生，服务端零改动：
- *  1. 每日 Token 堆叠趋势（未命中输入 / 缓存命中 / 输出[含 reasoning]），7/30 天切换；
+ *  1. 每日 Token 堆叠趋势（未命中输入 / 缓存命中 / 输出[含 reasoning]），7/30 天切换，悬停显示当日精确明细；
  *  2. 模型 Token 总量排行 + 占比；
  *  3. Token 结构 KPI（缓存命中率 / reasoning 占比 / 输入:输出比 / 峰值日）+ 显式缓存写入；
  *  4. 工具调用排行（byTool 计次；token 无法按工具归因）。
  */
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import clsx from 'clsx'
 import css from './UsageBilling.module.css'
 import type { UsageBillingKey } from './locales.ts'
@@ -84,6 +84,9 @@ export function TokenPanel(props: {
 }): React.ReactNode {
   const { stats, trendDays, onTrendDays, t } = props
   const { byDay, byModel, total } = stats
+
+  // 悬停的日期索引（null = 未悬停）：与 TrendChart 一致的十字线 + 明细 tooltip。
+  const [hover, setHover] = useState<number | null>(null)
 
   // 每日 token 窗口（缺日补 0）。
   const days: DailyBucket[] = useMemo(() => {
@@ -195,6 +198,9 @@ export function TokenPanel(props: {
     setTimeout(() => URL.revokeObjectURL(a.href), 0)
   }
 
+  // 悬停日的明细（tooltip 数据源）；未悬停或索引越界时不显示。
+  const active = hover === null ? undefined : days[hover]
+
   return (
     <div className={css.tokenPanel} data-testid="billing-token-panel">
       {/* 导出工具条。 */}
@@ -252,7 +258,20 @@ export function TokenPanel(props: {
           <div className={css.chartEmpty}>{t('billing.trendEmpty')}</div>
         ) : (
           <div className={css.chartWrap}>
-            <svg viewBox={`0 0 ${W} ${H}`} className={css.chartSvg} role="img" aria-label={t('billing.tokenDaily')}>
+            <svg
+              viewBox={`0 0 ${W} ${H}`}
+              className={css.chartSvg}
+              role="img"
+              aria-label={t('billing.tokenDaily')}
+              onMouseLeave={() => { setHover(null) }}
+              onMouseMove={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                const x = ((e.clientX - rect.left) / rect.width) * W
+                const ratio = (x - PAD.left) / chart.plotW
+                const index = Math.round(ratio * (chart.n - 1))
+                setHover(Math.min(Math.max(index, 0), chart.n - 1))
+              }}
+            >
               {[0, 0.5, 1].map((f) => {
                 const v = chart.max * f
                 const yy = chart.y(v)
@@ -282,7 +301,48 @@ export function TokenPanel(props: {
                 if (d === undefined) return null
                 return <text key={d.date} x={chart.inner(i)} y={H - 6} textAnchor="middle" className={css.chartAxisLabel}>{d.date.slice(5)}</text>
               })}
+              {/* 悬停十字线：定位当前日期列。 */}
+              {hover !== null && (
+                <line x1={chart.inner(hover)} x2={chart.inner(hover)} y1={PAD.top} y2={PAD.top + chart.plotH} className={css.chartCrosshair} />
+              )}
             </svg>
+            {/* 悬停 tooltip：当日精确 token 明细（总量 + 缓存命中 / 未命中输入 / 输出），数字不缩写。 */}
+            {hover !== null && active !== undefined && (
+              <div
+                className={css.chartTooltip}
+                data-testid="billing-token-tooltip"
+                style={{
+                  left: `${(chart.inner(hover) / W) * 100}%`,
+                  top: `${(chart.y(active.miss + active.hit + active.output) / H) * 100}%`,
+                }}
+              >
+                <div className={css.chartTooltipHead}>
+                  <span className={css.chartTooltipDate}>{active.date}</span>
+                  <strong>{(active.miss + active.hit + active.output).toLocaleString()}</strong>
+                </div>
+                <div className={clsx(css.chartTooltipRow, css.chartTooltipSplit)}>
+                  <span className={css.chartTooltipLabel}>
+                    <span className={css.chartTooltipSwatch} style={{ background: HIT_COLOR }} />
+                    {t('billing.tokenHit')}
+                  </span>
+                  <strong>{active.hit.toLocaleString()}</strong>
+                </div>
+                <div className={clsx(css.chartTooltipRow, css.chartTooltipSplit)}>
+                  <span className={css.chartTooltipLabel}>
+                    <span className={css.chartTooltipSwatch} style={{ background: MISS_COLOR }} />
+                    {t('billing.tokenMiss')}
+                  </span>
+                  <strong>{active.miss.toLocaleString()}</strong>
+                </div>
+                <div className={clsx(css.chartTooltipRow, css.chartTooltipSplit)}>
+                  <span className={css.chartTooltipLabel}>
+                    <span className={css.chartTooltipSwatch} style={{ background: OUTPUT_COLOR }} />
+                    {t('billing.tokenOutput')}
+                  </span>
+                  <strong>{active.output.toLocaleString()}</strong>
+                </div>
+              </div>
+            )}
             <div className={css.chartLegend}>
               <span><span className={css.chartTooltipSwatch} style={{ background: MISS_COLOR }} />{t('billing.tokenMiss')}</span>
               <span><span className={css.chartTooltipSwatch} style={{ background: HIT_COLOR }} />{t('billing.tokenHit')}</span>

@@ -1234,6 +1234,38 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Token 每日图 tooltip 头部：左「日期」右「当日总量」两栏。 */
+.chartTooltipHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 3px;
+}
+
+.chartTooltipHead .chartTooltipDate {
+  margin-bottom: 0;
+}
+
+.chartTooltipHead strong {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Token tooltip 明细行：标签左、精确数值右，数值右对齐成列。 */
+.chartTooltipSplit {
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.chartTooltipLabel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .chartBarPlaceholder {
   fill: color-mix(in srgb, var(--dsw-alias-label-secondary) 30%, transparent);
 }
