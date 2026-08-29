@@ -233,6 +233,7 @@ None. This plugin is a pure UI surface: it registers no tools, injects no system
 
 - [@ciphoo](https://github.com/ciphoo) — MiniMax CN Token Plan quota support (PR #5)
 - [@fabulousyuann-tech](https://github.com/fabulousyuann-tech) — durable ledger that retains usage after session deletion (PR #8)
+- [@hi-fangj](https://github.com/hi-fangj) — hover tooltip with the exact per-day token breakdown on the token daily chart (PR #21)
 
 ## 📄 License
 
