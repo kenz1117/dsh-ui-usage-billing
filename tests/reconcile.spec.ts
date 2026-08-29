@@ -57,7 +57,7 @@ describe('reconcileBalanceDelta', () => {
   })
 
   it('returns null event when no total balance is available', () => {
-    const result = reconcileBalanceDelta(null, { totalBalance: undefined, currency: 'CNY' }, 5, DAY, 2_000)
+    const result = reconcileBalanceDelta(null, { currency: 'CNY' }, 5, DAY, 2_000)
     expect(result.event).toBeNull()
   })
 })

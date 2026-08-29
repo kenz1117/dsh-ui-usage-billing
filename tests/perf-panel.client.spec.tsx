@@ -10,9 +10,9 @@ import type { ReactElement } from 'react'
 import { cleanup, render, screen } from '@testing-library/react'
 import { PerfPanel, type ClientPerf } from '../src/client/PerfPanel.tsx'
 import type { TrendSeriesModel } from '../src/client/TrendChart.tsx'
-import { zh } from '../src/client/locales.ts'
+import { zh, type UsageBillingKey } from '../src/client/locales.ts'
 
-const t = (key: Parameters<typeof zh>[0]): string => (zh as Record<string, string>)[key] ?? key
+const t = (key: UsageBillingKey): string => (zh as Record<string, string>)[key] ?? key
 
 const MODELS: readonly TrendSeriesModel[] = [
   { key: 'flash', name: 'DeepSeek V4 Flash', color: '#3b82f6' },

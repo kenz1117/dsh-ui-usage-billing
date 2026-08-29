@@ -6,7 +6,7 @@
  * 宿主 Config 的 monthlyBudget 仅作为金额未设置时的默认值，用户输入优先。
  */
 
-import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
+import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 
 /** 预算偏好状态。 */
 export interface BudgetPrefsState {

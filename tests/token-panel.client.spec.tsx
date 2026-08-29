@@ -25,7 +25,7 @@ const STATS = {
 
 describe('TokenPanel', () => {
   it('renders token KPIs, the daily chart and the per-model ranking', () => {
-    render(<TokenPanel stats={STATS} currency="cny" trendDays={7} onTrendDays={() => {}} t={t} />)
+    render(<TokenPanel stats={STATS} trendDays={7} onTrendDays={() => {}} t={t} />)
     expect(screen.getByTestId('billing-token-panel')).toBeTruthy()
     expect(screen.getByTestId('billing-token-kpis')).toBeTruthy()
     // 缓存命中率 400/(400+300)=57.1%（结构 KPI 与模型行各有此值）；思考占比 200/500=40%；输入/输出 700/500=1.40。
@@ -42,7 +42,7 @@ describe('TokenPanel', () => {
 
   it('renders an empty state for the model ranking when there are no calls', () => {
     const empty = { ...STATS, byModel: {} }
-    render(<TokenPanel stats={empty} currency="cny" trendDays={7} onTrendDays={() => {}} t={t} />)
+    render(<TokenPanel stats={empty} trendDays={7} onTrendDays={() => {}} t={t} />)
     expect(screen.getByText(zh['billing.noData'])).toBeTruthy()
   })
 })

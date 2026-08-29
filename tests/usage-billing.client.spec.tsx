@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ComponentProps } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { UsageBilling, providerFromModelKey } from '../src/client/UsageBilling.tsx'
 import { createBillingBudgetStore } from '../src/client/budget-store.ts'
 import { zh } from '../src/client/locales.ts'
@@ -71,7 +71,7 @@ describe('UsageBilling surface', () => {
   })
 
   it('switches the trigger card main metric between cost and token usage from the settings tab', async () => {
-    const { container } = render(<UsageBilling {...makeProps()} />)
+    render(<UsageBilling {...makeProps()} />)
     const card = screen.getByTestId('billing-trigger')
     // 默认 money 视角：副行带 ¥ 币符，tokens 主数字不渲染。
     expect(card.textContent).toContain('¥')

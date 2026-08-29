@@ -15,7 +15,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import {
   aggregateUsage, createUsageAggregator, dayStamp, foldSession, foldUsage, emptyUsage, workspaceNameOf, hostTimeZone,
-  siteBucketKey, siteOriginOf, siteRefOf, runLedgerMigrations, FOLD_VERSION, LEDGER_MIGRATIONS, foldSearchCall,
+  siteBucketKey, siteOriginOf, siteRefOf, runLedgerMigrations, FOLD_VERSION, foldSearchCall,
   type LedgerMigration, type UsageLedgerDocument, type UsageLedgerSession,
   AGGREGATE_TTL_MS, SESSION_ROW_LIMIT, type UsagePersistence,
 } from '../src/aggregate.ts'
@@ -200,8 +200,8 @@ describe('workspaceNameOf (P2-2)', () => {
 
 describe('per-turn folding (P1-1)', () => {
   /** Fold-session event row helper (durable-shape cast like the aggregator). */
-  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
-    ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
+  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): SessionEvent =>
+    ({ type, seq, time, data }) as unknown as SessionEvent
 
   it('folds usage into per-turn rows with model, start, and end', () => {
     const fold = foldSession([
@@ -244,11 +244,11 @@ describe('per-turn folding (P1-1)', () => {
 
 describe('message.source attribution (issue #14)', () => {
   /** Fold-session event row helper (durable-shape cast like the aggregator). */
-  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
-    ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
+  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): SessionEvent =>
+    ({ type, seq, time, data }) as unknown as SessionEvent
 
   /** `assistant/message` with the authoritative `message.source` agent-loop writes per call. */
-  const sourced = (seq: number, time: number, model: string, provider: string, usage: TokenUsage = USAGE): { type: string; time: number; data: never } =>
+  const sourced = (seq: number, time: number, model: string, provider: string, usage: TokenUsage = USAGE): SessionEvent =>
     ev('assistant/message', seq, time, {
       turn: 1, step: 1, usage,
       message: { role: 'assistant', content: [], source: { kind: 'model', provider, model } },
@@ -305,8 +305,8 @@ describe('message.source attribution (issue #14)', () => {
 
 describe('1.0.8 dimensions (byTier / byTool / cacheWrite)', () => {
   /** Fold-session event row helper (durable-shape cast like the aggregator). */
-  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
-    ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
+  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): SessionEvent =>
+    ({ type, seq, time, data }) as unknown as SessionEvent
   // 周三 2026-08-19：北京时间 10:00（工作日高峰）与 20:00（低谷）。
   const peakTime = Date.UTC(2026, 7, 19, 2, 0, 0)
   const offTime = Date.UTC(2026, 7, 19, 12, 0, 0)
@@ -359,8 +359,8 @@ describe('1.0.8 dimensions (byTier / byTool / cacheWrite)', () => {
 
 describe('fork seed filtering (session/end-seed)', () => {
   /** Fold-session event row helper (durable-shape cast like the aggregator). */
-  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
-    ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
+  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): SessionEvent =>
+    ({ type, seq, time, data }) as unknown as SessionEvent
 
   it('skips seed events sequenced before the end-seed boundary', () => {
     const fold = foldSession([
@@ -413,8 +413,8 @@ describe('fork seed filtering (session/end-seed)', () => {
 
 describe('byRole attribution (estimated)', () => {
   /** Fold-session event row helper (durable-shape cast like the aggregator). */
-  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
-    ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
+  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): SessionEvent =>
+    ({ type, seq, time, data }) as unknown as SessionEvent
 
   it('splits input cost between user and tool by message text share; output goes to assistant', async () => {
     // user 消息 8 字符、tool 结果 24 字符：输入成本按 25% / 75% 摊分。
@@ -469,14 +469,14 @@ describe('dayStamp', () => {
 describe('relay site attribution (P0-2)', () => {
   it('collects unpriced models into unpricedModels', () => {
     const fold = foldSession([
-      header(1, 'unknown-model-x', 'unknown-route') as unknown as { type: string; time: number; data: never },
-      message(2, 1_001, USAGE) as unknown as { type: string; time: number; data: never },
+      header(1, 'unknown-model-x', 'unknown-route') as unknown as SessionEvent,
+      message(2, 1_001, USAGE) as unknown as SessionEvent,
     ], new Set())
     expect(fold.unpricedModels.has('unknown-model-x')).toBe(true)
     // 已收录模型不进 unpriced 集合。
     const foldPriced = foldSession([
-      header(1, 'deepseek-v4-flash') as unknown as { type: string; time: number; data: never },
-      message(2, 1_001, USAGE) as unknown as { type: string; time: number; data: never },
+      header(1, 'deepseek-v4-flash') as unknown as SessionEvent,
+      message(2, 1_001, USAGE) as unknown as SessionEvent,
     ], new Set())
     expect(foldPriced.unpricedModels.size).toBe(0)
   })
@@ -507,8 +507,8 @@ describe('relay site attribution (P0-2)', () => {
   })
 
   it('folds each call into its site bucket keyed by origin', () => {
-    const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
-      ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
+    const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): SessionEvent =>
+      ({ type, seq, time, data }) as unknown as SessionEvent
     const fold = foldSession([
       ev('request/header', 1, 1_000, { header: { config: { provider: 'relay-a', model: 'deepseek-v4-flash' } } }),
       ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE }),
@@ -865,8 +865,8 @@ describe('createUsageAggregator (incremental cache)', () => {
 
 describe('performance aggregation (TTFT / tps / latency)', () => {
   /** Fold-session event row helper (durable-shape cast like the aggregator). */
-  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): { type: string; time: number; data: never } =>
-    ({ type, seq, time, data }) as unknown as { type: string; time: number; data: never }
+  const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): SessionEvent =>
+    ({ type, seq, time, data }) as unknown as SessionEvent
 
   it('folds a measured step into a perf sample from request/header → content', () => {
     const fold = foldSession([
