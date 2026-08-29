@@ -7,7 +7,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
   installCompletionNotifier, loadNotifyConfig, saveNotifyConfig, COMPLETION_NOTIFY_KEY,
   type CompletionNotifyConfig,
@@ -24,17 +25,26 @@ function makeList(initial: SessionListState) {
   }
 }
 
-const running = (id: string, title: string): SessionSummary => ({ id: id, title, running: true })
-const done = (id: string, title: string): SessionSummary => ({ id: id, title, running: false, completed: true })
+/** 测试字面量 id 打 SessionId 品牌（生产值由宿主会话控制器产生）。 */
+const sid = (id: string): SessionId => id as SessionId
 
-const emptyList = (): SessionListState => ({ ids: [], byId: {}, current: undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {} })
+const running = (id: string, title: string): SessionSummary => ({
+  id: sid(id), title, displayTitle: title, running: true, blank: false, updatedAt: 0,
+})
+const done = (id: string, title: string): SessionSummary => ({
+  id: sid(id), title, displayTitle: title, running: false, completed: true, blank: false, updatedAt: 1,
+})
+
+const emptyList = (): SessionListState => ({ ids: [], byId: {}, current: undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined })
 
 describe('installCompletionNotifier', () => {
   beforeEach(() => {
     localStorage.clear()
     // 全局 Notification mock：静态 permission 为 granted。
-    const Mock = vi.fn().mockImplementation(() => ({ close: () => {} }))
-    Mock.permission = 'granted'
+    const Mock = Object.assign(
+      vi.fn().mockImplementation(() => ({ close: () => {} })),
+      { permission: 'granted' },
+    )
     vi.stubGlobal('Notification', Mock)
   })
 
@@ -45,17 +55,24 @@ describe('installCompletionNotifier', () => {
   const config: CompletionNotifyConfig = { enabled: true, timeout: 0 }
 
   it('fires one notification on a running→completed migration, not on the initial baseline', () => {
-    const list = makeList({ ...emptyList(), ids: ['s1'], byId: { s1: done('s1', '第一个会话') } })
+    const list = makeList({ ...emptyList(), ids: [sid('s1')], byId: { [sid('s1')]: done('s1', '第一个会话') } })
     const dispose = installCompletionNotifier(list, () => config)
     const notifications = vi.mocked(globalThis.Notification)
     expect(notifications).not.toHaveBeenCalled()
 
     // 新会话进入「运行中」。
-    list.set({ ...list.getSnapshot(), ids: ['s1', 's2'], byId: { s1: done('s1', '第一个会话'), s2: running('s2', '正在干活') } })
+    list.set({
+      ...list.getSnapshot(),
+      ids: [sid('s1'), sid('s2')],
+      byId: { [sid('s1')]: done('s1', '第一个会话'), [sid('s2')]: running('s2', '正在干活') },
+    })
     expect(notifications).not.toHaveBeenCalled()
 
     // s2 运行→完成：应弹一次。
-    list.set({ ...list.getSnapshot(), byId: { s1: done('s1', '第一个会话'), s2: done('s2', '正在干活') } })
+    list.set({
+      ...list.getSnapshot(),
+      byId: { [sid('s1')]: done('s1', '第一个会话'), [sid('s2')]: done('s2', '正在干活') },
+    })
     expect(notifications).toHaveBeenCalledTimes(1)
     dispose()
   })
@@ -63,8 +80,16 @@ describe('installCompletionNotifier', () => {
   it('bunches simultaneous completions into a single notification', () => {
     const list = makeList(emptyList())
     const dispose = installCompletionNotifier(list, () => config)
-    list.set({ ids: ['a', 'b'], byId: { a: running('a', 'A'), b: running('b', 'B') }, current: undefined })
-    list.set({ ids: ['a', 'b'], byId: { a: done('a', 'A'), b: done('b', 'B') }, current: undefined })
+    list.set({
+      ...emptyList(),
+      ids: [sid('a'), sid('b')],
+      byId: { [sid('a')]: running('a', 'A'), [sid('b')]: running('b', 'B') },
+    })
+    list.set({
+      ...emptyList(),
+      ids: [sid('a'), sid('b')],
+      byId: { [sid('a')]: done('a', 'A'), [sid('b')]: done('b', 'B') },
+    })
     expect(vi.mocked(globalThis.Notification)).toHaveBeenCalledTimes(1)
     dispose()
   })
@@ -72,8 +97,8 @@ describe('installCompletionNotifier', () => {
   it('does nothing when the feature is disabled', () => {
     const list = makeList(emptyList())
     const dispose = installCompletionNotifier(list, () => ({ enabled: false, timeout: 0 }))
-    list.set({ ids: ['s1'], byId: { s1: running('s1', 'X') }, current: undefined })
-    list.set({ ids: ['s1'], byId: { s1: done('s1', 'X') }, current: undefined })
+    list.set({ ...emptyList(), ids: [sid('s1')], byId: { [sid('s1')]: running('s1', 'X') } })
+    list.set({ ...emptyList(), ids: [sid('s1')], byId: { [sid('s1')]: done('s1', 'X') } })
     expect(vi.mocked(globalThis.Notification)).not.toHaveBeenCalled()
     dispose()
   })

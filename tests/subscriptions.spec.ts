@@ -182,7 +182,7 @@ describe('collectSubscriptions MiniMax baseUrl routing', () => {
       displayName: 'MiniMax Token Plan（国内）',
     })
     expect(fetchSpy).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('https://api.minimaxi.com/v1/token_plan/remains')
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer cn-key')
   })
@@ -207,7 +207,7 @@ describe('collectSubscriptions MiniMax baseUrl routing', () => {
       status: 'ok',
       displayName: 'MiniMax Token Plan（国内）',
     })
-    const [url] = fetchSpy.mock.calls[0] as [string]
+    const [url] = fetchSpy.mock.calls[0] as unknown as [string]
     expect(url).toBe('https://api.minimaxi.com/v1/token_plan/remains')
   })
 
@@ -227,7 +227,7 @@ describe('collectSubscriptions MiniMax baseUrl routing', () => {
       status: 'ok',
       displayName: 'MiniMax Token Plan',
     })
-    const [url] = fetchSpy.mock.calls[0] as [string]
+    const [url] = fetchSpy.mock.calls[0] as unknown as [string]
     expect(url).toBe('https://www.minimaxi.com/v1/token_plan/remains')
   })
 
@@ -242,7 +242,7 @@ describe('collectSubscriptions MiniMax baseUrl routing', () => {
       { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: 'any-key' },
       [{ provider: 'minimax-token-plan-cn', baseUrl: 'https://staging.example.com/minimax-cn' }],
     )
-    const [url] = fetchSpy.mock.calls[0] as [string]
+    const [url] = fetchSpy.mock.calls[0] as unknown as [string]
     expect(url).toBe('https://staging.example.com/minimax-cn/v1/token_plan/remains')
   })
 })

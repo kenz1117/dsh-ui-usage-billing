@@ -11,13 +11,15 @@
  * 插件主动注入装饰视觉、消费费用数据——billing 不反向依赖任何主题包。
  */
 
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context } from '@deepseek-ai/cordis'
 // Type-only: pulls the ui-sidebar SlotMap merge (the sidebar.footer.action entry).
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-// Type-only: the connection service handle for the model-health probe（经 ctx.get 获取）。
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+// Type-only: pulls the renderer's Context merge (ctx.slots).
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+// Type-only: pulls the assembled Remote namespaces (ctx.remote.llm).
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls the ui-conversation SlotMap merge (the composer.dock entry the live cost bar rides).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { UsageBilling, type ModelHealth, type UsageBillingInjected } from './UsageBilling.tsx'
@@ -62,22 +64,19 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Required services for the usage billing surface. */
-export const inject = ['slots', 'locale', 'connection', 'sessions']
+export const inject = ['slots', 'locale', 'remote', 'remote.llm', 'sessions']
 
 /**
  * Client plugin body: the UsageBilling entry in the sidebar footer.
  * @param ctx - client root context.
  */
-export function apply(ctx: ClientContext): void {
+export function apply(ctx: Context): void {
   // 计费指标服务：billing 写入（组件经 inject 回调），主题插件经 ctx.get 读取。
   const metrics = createBillingMetrics()
   ctx.provide('billingMetrics', metrics)
 
   // 预算偏好 store：apply 期构造，身份绑定本 fiber；引擎持久化到 localStorage。
   const budgetStore = createBillingBudgetStore()
-
-  // 模型健康探活走 connection 服务（cordis 标准取法：ctx.get；类型来自 ConnectionHandle）。
-  const connection = ctx.get('connection') as ConnectionHandle
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-usage-billing: dictionaries')
 
@@ -93,30 +92,52 @@ export function apply(ctx: ClientContext): void {
     store: budgetStore,
     inject: (): UsageBillingInjected => ({
       checkModels: async (): Promise<ModelHealth> => {
-        // llm.models is host-scoped: it needs no sessionId, so the probe works
-        // even before any session exists. A provider that loaded its model
-        // catalog has live credentials; failed providers are the unhealthy
-        // ones. Display names feed the per-model dots in the dashboard table.
+        // 0.1.2 的 Remote 面不再有聚合 llm.models：先取活跃路由，再按可配置
+        // 目录逐项 discoverModels。已知 provider 走适配器本地目录，不额外打网络。
         try {
-          const { result } = await connection.api.llm.models({})
-          if (!result.ok) return { checked: true, available: false, models: 0, failures: 0, okProviders: [], badProviders: [] }
-          // 探活 groups[].models[] 投影为 CatalogModel（含 id/name/厂商名，无价格）：
-          // 费率表据此对标「系统设置里实际配置/预制的模型」。
+          const [registered, configurable] = await Promise.all([
+            ctx.remote.llm.listProviders(),
+            ctx.remote.llm.listConfigurableProviders(),
+          ])
+          if (!registered.ok || !configurable.ok) {
+            return { checked: true, available: false, models: 0, failures: 0, okProviders: [], badProviders: [] }
+          }
+          const declarations = new Map(configurable.value.map(entry => [entry.provider, entry]))
+          const probes = await Promise.all(registered.value.map(async provider => {
+            const declaration = declarations.get(provider.id)
+            // 活跃但未声明配置入口的路由仍可判定在线；新 Remote 面没有其模型目录地址。
+            if (declaration === undefined) return { provider, models: [] }
+            const discovered = await ctx.remote.llm.discoverModels(declaration.settingsNs, { provider: provider.id })
+            return discovered.ok
+              ? { provider, models: discovered.value }
+              : { provider, failed: true as const }
+          }))
           const catalog: CatalogModel[] = []
-          for (const group of result.value.groups) {
-            for (const model of group.models) {
-              catalog.push({ id: model.id, ...(typeof model.name === 'string' && model.name !== '' ? { name: model.name } : {}), provider: group.name })
+          const okProviders: string[] = []
+          const badProviders: string[] = []
+          let models = 0
+          for (const probe of probes) {
+            if ('failed' in probe) {
+              badProviders.push(probe.provider.name)
+              continue
+            }
+            okProviders.push(probe.provider.name)
+            models += probe.models.length
+            for (const model of probe.models) {
+              catalog.push({
+                id: model.id,
+                ...(typeof model.name === 'string' && model.name !== '' ? { name: model.name } : {}),
+                provider: probe.provider.name,
+              })
             }
           }
           return {
             checked: true,
-            available: result.value.groups.length > 0,
-            // 右上角"模型可用"按模型统计：累加每个厂商成功 advertise 的模型数，
-            // 而不是厂商分组数（groups.length 是厂商数，一个厂商可含多个模型）。
-            models: result.value.groups.reduce((sum, group) => sum + group.models.length, 0),
-            failures: result.value.failures.length,
-            okProviders: result.value.groups.map(group => group.name),
-            badProviders: result.value.failures.map(failure => failure.name),
+            available: okProviders.length > 0,
+            models,
+            failures: badProviders.length,
+            okProviders,
+            badProviders,
             catalog,
           }
         } catch {
@@ -130,7 +151,7 @@ export function apply(ctx: ClientContext): void {
 
   // 即时代费用条：挂在会话 composer 的 dock（stats-line 家族座位），随输入框
   // 常驻显示当前会话累计费用与最新一轮费用，无需打开完整仪表盘。
-  // 组件经框架标准 kit 注入 useSession（取当前 sessionId），与 StatsLine 同姿态。
+  // 组件经框架标准 kit 注入 sessionId，与 StatsLine 同姿态。
   // 用 inject 往宿主（ui-conversation）已声明的 composer.dock 注入条目，而非 register 声明。
   ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
     name: 'conversation.composer.dock',

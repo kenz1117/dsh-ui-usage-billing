@@ -6,9 +6,9 @@
  * composer card, same posture as ui-conversation's own StatsLine), so it stays
  * visible while working without opening the full dashboard. Data comes from the
  * same `/api/billing/usage-stats` endpoint the dashboard polls; the bar reads
- * the current session id off the framework snapshot (`useSession` parent of
- * `sessionId`) and matches `bySession` (session total) and `byTurn` (latest
- * turn cost). Rendering is a pure function of the snapshot, never a side effect.
+ * the current session id from the session-scope standard kit and matches
+ * `bySession` (session total) and `byTurn` (latest turn cost). Rendering is a
+ * pure function of props and polled data, never a side effect.
  *
  * The bar also carries two ambient signals: the current peak/off-peak pricing
  * tier with a switch countdown (DeepSeek time-of-day pricing), and quota chips
@@ -17,8 +17,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { formatMoney, formatSwitchCountdown, tierCountdown } from './pricing.ts'
 import type { UsageBillingKey } from './locales.ts'
 import css from './UsageBilling.module.css'
@@ -143,19 +142,19 @@ function windowLabelKey(kind: string): UsageBillingKey {
   }
 }
 
-/** Props: the session-scope snapshot selector the framework injects. */
+/** Props: the framework's session identity plus the owning dock's locale seat. */
 export interface LiveCostBarProps {
-  useSession: SnapshotSelectorHook<ConversationSnapshot>
+  /** Current Session identity supplied by the session-scope standard kit. */
+  sessionId: SessionId
   /** The owning dock's locale seat (bound to the billing NS). */
   t: (key: UsageBillingKey) => string
 }
 
 /**
  * Render the live cost ticker for the current session.
- * @param props - framework session snapshot hook and locale.
+ * @param props - framework session identity and locale.
  */
-export function LiveCostBar({ useSession, t }: LiveCostBarProps): React.ReactNode {
-  const sessionId = useSession(s => s.sessionId)
+export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode {
   // 拉取即时代费数据：挂载时一次 + 周期刷新（与仪表盘同频）。
   const [stats, setStats] = useState<LiveStats | null>(null)
   const [quotas, setQuotas] = useState<readonly QuotaSlice[]>([])
@@ -189,7 +188,6 @@ export function LiveCostBar({ useSession, t }: LiveCostBarProps): React.ReactNod
 
   const money = (cny: number): string => formatMoney(cny, 'cny')
 
-  if (sessionId === undefined) return null
   const hasCost = sessionCost > 0 || turnCost > 0
   const isPeak = tier.tier === 'peak'
   // 设计 fee-bar：档位 chip → 倒计时 → 档位说明 → 本轮/会话 → 额度预警 chips。

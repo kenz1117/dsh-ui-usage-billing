@@ -6,8 +6,8 @@
  * 避免多窗口同时弹同一条。配置持久化在 localStorage（默认关闭，用户在面板设置开启）。
  */
 
-import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 
 /** 配置持久化 key：开启/关闭 + 提醒持续模式（0=常驻，其余=秒后自动关）。 */
 export const COMPLETION_NOTIFY_KEY = 'dsh-billing-completion-notify-v1'

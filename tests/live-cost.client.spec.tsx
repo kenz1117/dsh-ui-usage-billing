@@ -10,13 +10,13 @@ import { lowQuotaChips, sessionCostOf, turnCostOf, type LiveStats, type QuotaSli
 
 const BASE: LiveStats = {
   bySession: [
-    { id: 'sess-1', title: 'fix bug', cwd: '/a', calls: 3, cost: 2.4, lastActive: 5 },
-    { id: 'sess-2', title: 'api', cwd: '/b', calls: 1, cost: 0.5, lastActive: 5 },
+    { id: 'sess-1', cost: 2.4 },
+    { id: 'sess-2', cost: 0.5 },
   ],
   byTurn: [
-    { sessionId: 'sess-1', turn: 2, model: 'flash', input: 1, output: 1, cacheHit: 0, cacheMiss: 1, cost: 1.2, startedAt: 5 },
-    { sessionId: 'sess-1', turn: 1, model: 'flash', input: 1, output: 1, cacheHit: 0, cacheMiss: 1, cost: 1.2, startedAt: 4 },
-    { sessionId: 'sess-2', turn: 1, model: 'flash', input: 1, output: 1, cacheHit: 0, cacheMiss: 1, cost: 0.5, startedAt: 5 },
+    { sessionId: 'sess-1', turn: 2, cost: 1.2 },
+    { sessionId: 'sess-1', turn: 1, cost: 1.2 },
+    { sessionId: 'sess-2', turn: 1, cost: 0.5 },
   ],
 }
 
@@ -40,7 +40,7 @@ describe('turnCostOf', () => {
 
   it('returns 0 for an absent session, no turns, or no stats', () => {
     expect(turnCostOf(BASE, 'sess-3')).toBe(0)
-    expect(turnCostOf({ bySession: BASE.bySession, byTurn: [] }, 'sess-1')).toBe(0)
+    expect(turnCostOf({ bySession: BASE.bySession ?? [], byTurn: [] }, 'sess-1')).toBe(0)
     expect(turnCostOf(null, 'sess-1')).toBe(0)
     expect(turnCostOf(BASE, undefined)).toBe(0)
   })

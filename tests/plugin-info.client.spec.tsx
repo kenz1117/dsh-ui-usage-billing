@@ -7,9 +7,9 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { PluginInfoCard } from '../src/client/PluginInfoCard.tsx'
-import { zh } from '../src/client/locales.ts'
+import { zh, type UsageBillingKey } from '../src/client/locales.ts'
 
-const t = (key: Parameters<typeof zh>[0]): string => (zh as Record<string, string>)[key] ?? key
+const t = (key: UsageBillingKey): string => (zh as Record<string, string>)[key] ?? key
 
 describe('PluginInfoCard', () => {
   it('renders name, description, version, author, repository, npm and license', () => {

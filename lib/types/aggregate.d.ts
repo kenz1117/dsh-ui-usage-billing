@@ -220,6 +220,8 @@ export interface UsageStatsDocument {
      * 以 step/start 为起点估算并计 estimated。
      */
     perf?: PerfStats;
+    /** 只存在于账本、且缺 foldVersion 的旧会话数；无旧行时省略。 */
+    staleLedgerSessions?: number;
 }
 /** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
 export interface RoleCost {
@@ -472,7 +474,7 @@ export declare function messageTextLength(message: unknown): number;
 export declare function foldSession(events: readonly {
     type: string;
     time: number;
-    data: never;
+    data: unknown;
     seq?: number;
 }[], subscriptionProviders: ReadonlySet<string>, officialProviderIds?: ReadonlySet<string>, routes?: Readonly<Record<string, ProviderRouteView>>, searchCallEstimateCny?: number): SessionFold;
 /**

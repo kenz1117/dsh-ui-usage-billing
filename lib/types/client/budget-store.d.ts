@@ -5,7 +5,7 @@
  * store 引擎持久化到 localStorage（persist key 即存储身份），重启后保留。
  * 宿主 Config 的 monthlyBudget 仅作为金额未设置时的默认值，用户输入优先。
  */
-import { type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client';
+import { type EngineStoreHandle } from '@deepseek-ai/dsh-client-store';
 /** 预算偏好状态。 */
 export interface BudgetPrefsState {
     /** 预算条开关：关 = 只显示标题行与开关，不显示进度。 */
