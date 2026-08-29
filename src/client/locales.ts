@@ -268,10 +268,6 @@ export type UsageBillingKey =
   | 'billing.siteListDisplay'
   | 'billing.siteListDisplayHint'
   | 'billing.exportCsvSite'
-  | 'billing.panelRelay'
-  | 'billing.relaySite'
-  | 'billing.relayDirect'
-  | 'billing.relayUnknown'
   | 'billing.panelRelayQuota'
   | 'billing.relayBalance'
   | 'billing.relayNoQuota'
@@ -279,7 +275,6 @@ export type UsageBillingKey =
   | 'billing.relayKindNewApi'
   | 'billing.relayKindSub2Api'
   | 'billing.relayKindUnknown'
-  | 'billing.relayCalls'
 
 export const NS = 'usageBilling'
 
@@ -549,12 +544,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.unpricedHint': '{count} 个模型未收录计价，费用已按 0 计',
   'billing.searchEstimateHint': '含 {count} 次联网搜索请求的估算费用（每次约 {each}；日志无用量事件，按次估算，可在配置 searchCallEstimateCny 调整或关闭）',
   'billing.siteListDisplay': '中转站列表',
-  'billing.siteListDisplayHint': '隐藏「未知路由 / 未识别」占位条目，净化中转站分布与额度列表',
+  'billing.siteListDisplayHint': '隐藏「未识别」占位条目，净化中转站额度列表',
   'billing.exportCsvSite': '按站点 CSV',
-  'billing.panelRelay': '中转站分布',
-  'billing.relaySite': '中转站',
-  'billing.relayDirect': '直连',
-  'billing.relayUnknown': '未知路由',
   'billing.panelRelayQuota': '中转站额度',
   'billing.relayBalance': '余额',
   'billing.relayNoQuota': '未读出额度',
@@ -562,7 +553,6 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.relayKindNewApi': 'New API',
   'billing.relayKindSub2Api': 'Sub2API',
   'billing.relayKindUnknown': '未识别',
-  'billing.relayCalls': '调用',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -831,18 +821,13 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.unpricedHint': '{count} models not priced; their cost counts as 0',
   'billing.searchEstimateHint': 'Includes estimated cost of {count} web-search requests (~{each} each; no usage events logged, per-call estimate; tune via searchCallEstimateCny)',
   'billing.siteListDisplay': 'Relay lists',
-  'billing.siteListDisplayHint': 'Hide "unknown route / unidentified" placeholder rows in relay distribution and quota lists',
+  'billing.siteListDisplayHint': 'Hide "unidentified" placeholder rows in the relay quota list',
   'billing.exportCsvSite': 'By site CSV',
-  'billing.panelRelay': 'Relay sites',
-  'billing.relaySite': 'Relay',
-  'billing.relayDirect': 'Direct',
-  'billing.relayUnknown': 'Unknown route',
-  'billing.panelRelayQuota': 'Relay quota',
+  'billing.panelRelayQuota': 'Relay quotas',
   'billing.relayBalance': 'Balance',
   'billing.relayNoQuota': 'No quota',
   'billing.relayWindowUsed': 'used',
   'billing.relayKindNewApi': 'New API',
   'billing.relayKindSub2Api': 'Sub2API',
   'billing.relayKindUnknown': 'Unknown',
-  'billing.relayCalls': 'calls',
 }
