@@ -81,7 +81,7 @@
 
 - **Session detail + cost spikes + heatmap**: sessions sorted by cost (title / project / calls / cost / last active); per-turn cost bars (peak/off-peak background bands, >2× spike flagged with attribution); month / year calendar heatmap (5-color scale, hover detail; the year view is ~52 weeks, GitHub-style), with active-day and streak counts on top.
 - **Performance metrics**: per-model first-token latency (TTFT) mean / P50 / P90, generation speed (tokens/s), total-latency mean, plus per-hour TTFT and speed curves aggregating by Beijing hour; rendered in the Stats tab as a per-model performance table and per-hour TTFT/speed dual line charts.
-- **Token insights**: a dedicated "Tokens" tab — daily token stacks colored by "input (cache miss) / input (cache hit) / output" (including reasoning), per-model totals and share, structural KPIs (cache-hit rate / reasoning share / input-output ratio / peak day); per-day token CSV and JSON export.
+- **Token insights**: a dedicated "Tokens" tab — daily token stacks colored by "input (cache miss) / input (cache hit) / output" (including reasoning), with a hover tooltip showing the day's exact breakdown (total plus per-bucket token counts, thousand-separated); per-model totals and share, structural KPIs (cache-hit rate / reasoning share / input-output ratio / peak day); per-day token CSV and JSON export.
 
   ![Trends: daily cost trend, per-turn costs and peak/off-peak share](screenshots/2.png)
 - **Export + offline self-contained**: the Stats tab exports daily / per-session / per-site CSV and full JSON; cost breakdown / workspaces / session-detail sections are drillable (click a project row to expand its sessions); no chart library, no external CDN, pure design tokens.
