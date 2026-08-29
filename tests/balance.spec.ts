@@ -40,7 +40,7 @@ describe('queryBalances provider routing', () => {
       deepseek: {},
       moonshot: { apiKeyEnv: 'STUB_KEY' },
     })
-    expect(rows).toHaveLength(6)
+    expect(rows).toHaveLength(7)
     const moonshot = rows.find(row => row.provider === '月之暗面')
     expect(moonshot).toMatchObject({ displayName: '月之暗面', currency: 'CNY', totalBalance: 49.59, grantedBalance: 46.59, toppedUpBalance: 3 })
     const deepseek = rows.find(row => row.provider === 'deepseek')
@@ -64,6 +64,64 @@ describe('queryBalances provider routing', () => {
     const rows = await queryBalances(ctx, { moonshot: { apiKeyEnv: 'STUB_KEY' } })
     expect(rows.find(row => row.provider === '月之暗面')).toMatchObject({ provider: '月之暗面', error: 'unconfigured' })
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('keeps one unconfigured Tencent TokenHub row across its route aliases', async () => {
+    const ctx = fakeContext(undefined)
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const rows = await queryBalances(ctx, {
+      'tencent-tokenhub': {},
+      tokenhub: {},
+      tencent: {},
+    })
+    const tencent = rows.filter(row => row.provider === '腾讯云 TokenHub')
+    expect(tencent).toHaveLength(1)
+    expect(tencent[0]).toMatchObject({ provider: '腾讯云 TokenHub', error: 'unconfigured' })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('Tencent TokenHub (TC3-signed token-plan balance)', () => {
+  it('rejects a credential value without the `<SecretId>:<SecretKey>` pair as unauthorized', async () => {
+    const ctx = fakeContext('sk-tp-bare-inference-key')
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const rows = await queryBalances(ctx, { 'tencent-tokenhub': { apiKeyEnv: 'STUB_KEY' } })
+    expect(rows.find(row => row.provider === '腾讯云 TokenHub')).toMatchObject({ error: 'unauthorized' })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('resolves the plan team then reads its remaining quota via two signed calls', async () => {
+    const ctx = fakeContext('AKIDexample:secretKeyExample')
+    const calls: { action: string | undefined; auth: string | undefined }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (_url: unknown, init: { headers: Record<string, string>; body: string }) => {
+      const body = JSON.parse(String(init.body)) as { Action?: string }
+      calls.push({ action: body.Action, auth: init.headers.authorization })
+      if (body.Action === 'DescribeTokenPlanList') {
+        return { ok: true, status: 200, json: async () => ({ Response: { TeamSet: [{ TeamId: 'tp-1', Status: 'enable' }], RequestId: 'r1' } }) }
+      }
+      return { ok: true, status: 200, json: async () => ({ Response: { Name: '个人套餐', PackageInfo: { TotalQuota: 1_000_000, UsedQuota: 400_000 }, StopReason: 'NORMAL' } }) }
+    }))
+    const rows = await queryBalances(ctx, { 'tencent-tokenhub': { apiKeyEnv: 'STUB_KEY' } })
+    const row = rows.find(row => row.provider === '腾讯云 TokenHub')
+    // 余量从 total-used 推导；plan 名随套餐详情透出。
+    expect(row).toMatchObject({ provider: '腾讯云 TokenHub', currency: 'CNY', totalBalance: 600_000, plan: '个人套餐' })
+    expect(calls.map(call => call.action)).toEqual(['DescribeTokenPlanList', 'DescribeTokenPlan'])
+    // 两次调用都带 TC3 签名头与 X-TC-Action。
+    expect(calls[0]?.auth).toMatch(/^TC3-HMAC-SHA256 Credential=AKIDexample\//)
+    expect(calls[1]?.auth).toMatch(/Signature=[0-9a-f]{64}$/)
+  })
+
+  it('maps a cloud-API business auth failure to unauthorized', async () => {
+    const ctx = fakeContext('AKIDexample:secretKeyExample')
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ Response: { Error: { Code: 'AuthFailure.SignatureFailure', Message: 'bad sig' }, RequestId: 'r' } }),
+    })))
+    const rows = await queryBalances(ctx, { tokenhub: { apiKeyEnv: 'STUB_KEY' } })
+    expect(rows.find(row => row.provider === '腾讯云 TokenHub')).toMatchObject({ error: 'unauthorized' })
   })
 })
 

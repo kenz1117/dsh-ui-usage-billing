@@ -51,6 +51,8 @@ export interface UserPrice {
   output: number
   /** 计价币种；缺省 CNY。 */
   currency?: 'CNY' | 'USD'
+  /** 低谷档三桶（元或美元 / 每百万 token）；缺省 = 平档（峰谷同价）。 */
+  offPeak?: { input: number; cacheHit: number; output: number }
 }
 
 /** 一条用户自定义价：绑定「模型（计费目录键）+ 可选来源（中转站 origin）」。
@@ -63,6 +65,33 @@ export interface UserPriceEntry extends UserPrice {
 }
 
 let userPrices: Readonly<UserPriceEntry[]> | undefined
+
+/**
+ * 中转站 origin 宽松匹配：双方规范化到 `protocol://host[:port]` 后比较。
+ * 宿主侧站点桶的 origin 来自 `new URL(baseURL).origin`，用户手填的来源常缺
+ * 协议、带路径或尾斜杠——精确全等会让自定义价静默失效（issue #18）。
+ * 规范化失败（无法解析成 URL）时回退小写去尾斜杠的字面比较。
+ * @param a - 用户录入的来源（可缺协议/带路径）。
+ * @param b - 宿主站点桶的 origin（`new URL().origin` 形态）。
+ */
+/**
+ * 把用户手填的中转站来源规范化为 `protocol://host[:port]` 形态：缺协议补
+ * `https://`、带路径取 origin。无法解析时回退小写去尾斜杠的字面值。
+ * 与 {@link originsMatch} 的比较口径一致——保存前规范化一次，匹配时双向兜底。
+ * @param raw - 用户录入的来源（可缺协议/带路径）。
+ */
+export function normalizeOriginInput(raw: string): string {
+  const withProto = /:\/\//.test(raw) ? raw : `https://${raw}`
+  try {
+    return new URL(withProto).origin
+  } catch {
+    return raw.trim().toLowerCase().replace(/\/+$/, '')
+  }
+}
+
+export function originsMatch(a: string, b: string): boolean {
+  return normalizeOriginInput(a) === normalizeOriginInput(b)
+}
 
 /**
  * 注入用户自定义单价列表。每条含模型目录键 + 可选来源（origin）。空数组 = 清除全部
@@ -90,26 +119,57 @@ function resolvePriceKey(key: string): string {
  * @param origin - 调用来源（中转站 origin）；缺省仅查默认价。
  */
 export function userPriceOf(key: string, origin?: string): UserPrice | undefined {
+  const entry = userPriceEntryOf(key, origin)
+  if (entry === undefined) return undefined
+  return {
+    input: entry.input,
+    cacheHit: entry.cacheHit,
+    output: entry.output,
+    ...(entry.currency === undefined ? {} : { currency: entry.currency }),
+    ...(entry.offPeak === undefined ? {} : { offPeak: entry.offPeak }),
+  }
+}
+
+/**
+ * 查一个模型（可选来源）的完整用户价条目（含 origin 绑定信息）。
+ * 匹配优先级：origin 宽松精确命中（模型×来源）→ 无来源默认价。
+ * @param key - 计费目录键。
+ * @param origin - 调用来源（中转站 origin）；缺省仅查默认价。
+ */
+export function userPriceEntryOf(key: string, origin?: string): UserPriceEntry | undefined {
   if (userPrices === undefined) return undefined
   const resolved = resolvePriceKey(key)
   const canon = canonModelId(resolved)
-  // 带来源的精确命中：entry.key 归一化后匹配，且来源一致。
+  const modelHit = (entry: UserPriceEntry): boolean =>
+    resolvePriceKey(entry.key) === resolved || canonModelId(entry.key) === canon
+  // 带来源的精确命中：entry.key 归一化后匹配，且来源宽松一致（issue #18）。
   if (origin !== undefined) {
     for (const entry of userPrices) {
       if (entry.origin === undefined || entry.origin === '') continue
-      if ((resolvePriceKey(entry.key) === resolved || canonModelId(entry.key) === canon) && entry.origin === origin) {
-        return { input: entry.input, cacheHit: entry.cacheHit, output: entry.output, ...(entry.currency === undefined ? {} : { currency: entry.currency }) }
-      }
+      if (modelHit(entry) && originsMatch(entry.origin, origin)) return entry
     }
   }
   // 无来源默认价：匹配模型名的无 origin 条目。
   for (const entry of userPrices) {
     if (entry.origin !== undefined && entry.origin !== '') continue
-    if (resolvePriceKey(entry.key) === resolved || canonModelId(entry.key) === canon) {
-      return { input: entry.input, cacheHit: entry.cacheHit, output: entry.output, ...(entry.currency === undefined ? {} : { currency: entry.currency }) }
-    }
+    if (modelHit(entry)) return entry
   }
   return undefined
+}
+
+/**
+ * 查一个模型的「带来源」用户价条目（无视来源值，取第一条命中模型名的
+ * 带 origin 条目）。供 recost 在三维站点数据缺失时兜底：用户填了来源价
+ * 就按它重估，而不是静默回退宿主原价（issue #18）。
+ * @param key - 计费目录键。
+ */
+export function userOriginPriceEntryOf(key: string): UserPriceEntry | undefined {
+  if (userPrices === undefined) return undefined
+  const resolved = resolvePriceKey(key)
+  const canon = canonModelId(resolved)
+  return userPrices.find(entry =>
+    entry.origin !== undefined && entry.origin !== ''
+    && (resolvePriceKey(entry.key) === resolved || canonModelId(entry.key) === canon))
 }
 
 /**
@@ -1239,7 +1299,7 @@ export function modelOf(key: string): ModelEntry {
     if (fallback !== undefined) return fallback
     throw new Error('MODEL_CATALOG must not be empty')
   })())
-  // 用户自定义价优先级最高：整表替换为平档（无时段分档）。
+  // 用户自定义价优先级最高：整表替换；带 offPeak 时保留峰谷分档，否则平档。
   const user = userPriceOf(resolved)
   if (user !== undefined) {
     return {
@@ -1250,6 +1310,7 @@ export function modelOf(key: string): ModelEntry {
         input: user.input,
         cacheHit: user.cacheHit,
         output: user.output,
+        ...(user.offPeak !== undefined ? { offPeak: user.offPeak } : {}),
       },
     }
   }

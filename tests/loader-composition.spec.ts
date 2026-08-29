@@ -220,13 +220,15 @@ describe('usage-billing real Loader composition', () => {
     const balance = await getJson(port, '/api/billing/balance')
     expect(balance.status).toBe(200)
     const balances = (balance.json as { balances: { provider: string; error?: string }[] }).balances
-    expect(balances).toHaveLength(6)
+    expect(balances).toHaveLength(7)
     expect(balances.find(row => row.provider === 'deepseek')).toMatchObject({ error: 'unconfigured' })
     expect(balances.find(row => row.provider === '月之暗面')).toMatchObject({ error: 'unconfigured' })
     expect(balances.find(row => row.provider === '阶跃星辰')).toMatchObject({ error: 'unconfigured' })
     expect(balances.find(row => row.provider === '硅基流动')).toMatchObject({ error: 'unconfigured' })
     expect(balances.find(row => row.provider === 'xAI')).toMatchObject({ error: 'unconfigured' })
     expect(balances.filter(row => row.provider === '智谱 AI')).toHaveLength(1)
+    // 腾讯云 TokenHub 四条 route 别名按名去重，未配置时保留一条 unconfigured 行。
+    expect(balances.filter(row => row.provider === '腾讯云 TokenHub')).toHaveLength(1)
 
     // HMR 安全：卸载 billing 行后三条路由释放（webserver 仍在，答 404）。
     const billingEntry = [...loaded.loader.entries()]

@@ -41,6 +41,12 @@ export interface UserPrice {
     output: number;
     /** 计价币种；缺省 CNY。 */
     currency?: 'CNY' | 'USD';
+    /** 低谷档三桶（元或美元 / 每百万 token）；缺省 = 平档（峰谷同价）。 */
+    offPeak?: {
+        input: number;
+        cacheHit: number;
+        output: number;
+    };
 }
 /** 一条用户自定义价：绑定「模型（计费目录键）+ 可选来源（中转站 origin）」。
  *  origin 缺省 = 该模型的默认价；带 origin = 仅该中转站的同名模型用此价。 */
@@ -50,6 +56,22 @@ export interface UserPriceEntry extends UserPrice {
     /** 绑定来源（中转站 origin，如 `https://api.my-relay.com`）；缺省 = 默认价。 */
     origin?: string;
 }
+/**
+ * 中转站 origin 宽松匹配：双方规范化到 `protocol://host[:port]` 后比较。
+ * 宿主侧站点桶的 origin 来自 `new URL(baseURL).origin`，用户手填的来源常缺
+ * 协议、带路径或尾斜杠——精确全等会让自定义价静默失效（issue #18）。
+ * 规范化失败（无法解析成 URL）时回退小写去尾斜杠的字面比较。
+ * @param a - 用户录入的来源（可缺协议/带路径）。
+ * @param b - 宿主站点桶的 origin（`new URL().origin` 形态）。
+ */
+/**
+ * 把用户手填的中转站来源规范化为 `protocol://host[:port]` 形态：缺协议补
+ * `https://`、带路径取 origin。无法解析时回退小写去尾斜杠的字面值。
+ * 与 {@link originsMatch} 的比较口径一致——保存前规范化一次，匹配时双向兜底。
+ * @param raw - 用户录入的来源（可缺协议/带路径）。
+ */
+export declare function normalizeOriginInput(raw: string): string;
+export declare function originsMatch(a: string, b: string): boolean;
 /**
  * 注入用户自定义单价列表。每条含模型目录键 + 可选来源（origin）。空数组 = 清除全部
  * 自定义价，回退内置目录。
@@ -65,6 +87,20 @@ export declare function getUserPrices(): Readonly<UserPriceEntry[]> | undefined;
  * @param origin - 调用来源（中转站 origin）；缺省仅查默认价。
  */
 export declare function userPriceOf(key: string, origin?: string): UserPrice | undefined;
+/**
+ * 查一个模型（可选来源）的完整用户价条目（含 origin 绑定信息）。
+ * 匹配优先级：origin 宽松精确命中（模型×来源）→ 无来源默认价。
+ * @param key - 计费目录键。
+ * @param origin - 调用来源（中转站 origin）；缺省仅查默认价。
+ */
+export declare function userPriceEntryOf(key: string, origin?: string): UserPriceEntry | undefined;
+/**
+ * 查一个模型的「带来源」用户价条目（无视来源值，取第一条命中模型名的
+ * 带 origin 条目）。供 recost 在三维站点数据缺失时兜底：用户填了来源价
+ * 就按它重估，而不是静默回退宿主原价（issue #18）。
+ * @param key - 计费目录键。
+ */
+export declare function userOriginPriceEntryOf(key: string): UserPriceEntry | undefined;
 /**
  * Apply the node half's live pricing snapshot. Absent fields keep the
  * built-in catalog and rate; callers never fabricate values.

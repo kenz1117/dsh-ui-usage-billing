@@ -13,6 +13,7 @@
  * provider's key once and every surface reuses it.
  */
 
+import { createHash, createHmac } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CustomBalanceConfig, CustomBalanceExtract, ProviderBalance } from './pricing-shared.ts'
@@ -300,6 +301,12 @@ const QUERIERS: readonly BalanceQuerier[] = [
   // 共用同一把 key，故两条 route 都注册，任一条配了 key 即可读出钱包。
   { route: 'zhipu', displayName: '智谱 AI', querier: queryZhipu },
   { route: 'zai-coding-cn', displayName: '智谱 AI', querier: queryZhipu },
+  // 腾讯云 TokenHub Token Plan 余量：管控面 API 需要 TC3 签名（云 API SecretId/SecretKey），
+  // 推理 route 名由用户自定义，注册常见命名候选，按 displayName 去重后命中任一即查。
+  { route: 'tencent-tokenhub', displayName: '腾讯云 TokenHub', querier: queryTencentTokenPlan },
+  { route: 'tokenhub', displayName: '腾讯云 TokenHub', querier: queryTencentTokenPlan },
+  { route: 'tencent', displayName: '腾讯云 TokenHub', querier: queryTencentTokenPlan },
+  { route: 'tencentcloud', displayName: '腾讯云 TokenHub', querier: queryTencentTokenPlan },
 ]
 
 /**
@@ -333,6 +340,213 @@ export async function queryBalances(
     }
     return querier(ctx, env)
   }))
+}
+
+// ── 腾讯云 TokenHub（Token Plan 余量，云 API 3.0 TC3-HMAC-SHA256 签名）────
+
+/** TokenHub 管控面 API 端点（cloud.tencent.cn/document/api/1823/132270）。 */
+const TOKENHUB_HOST = 'tokenhub.tencentcloudapi.com'
+
+/** 云 API 3.0 产品名与版本（签名的 service 段与请求头都必须一致）。 */
+const TOKENHUB_SERVICE = 'tokenhub'
+const TOKENHUB_VERSION = '2026-03-22'
+
+/** 请求地域：管控面对地域不敏感，取默认国内地域（文档地域列表含 ap-guangzhou）。 */
+const TOKENHUB_REGION = 'ap-guangzhou'
+
+/** 腾讯云凭据引用值格式：`<SecretId>:<SecretKey>`（分隔符取首个冒号）。 */
+function parseTencentCredential(value: string): { secretId: string; secretKey: string } | undefined {
+  const sep = value.indexOf(':')
+  if (sep === -1) return undefined
+  const secretId = value.slice(0, sep).trim()
+  const secretKey = value.slice(sep + 1).trim()
+  if (secretId === '' || secretKey === '') return undefined
+  return { secretId, secretKey }
+}
+
+/**
+ * 构造云 API 3.0 TC3-HMAC-SHA256 签名（官方签名方法 v3）。导出供测试：纯函数，
+ * 输入确定则签名确定。Action 不参与签名——它走 `X-TC-Action` 请求头。
+ * @param secretId - 云 API SecretId。
+ * @param secretKey - 云 API SecretKey。
+ * @param payload - 已序列化的请求体（含 Action/Version/Region 公共参数）。
+ * @param timestamp - 签名时间戳（秒）。
+ * @returns Authorization 头的值。
+ */
+export function tc3Authorization(
+  secretId: string,
+  secretKey: string,
+  payload: string,
+  timestamp: number,
+): string {
+  const date = new Date(timestamp * 1000).toISOString().slice(0, 10)
+  const canonicalHeaders = `content-type:application/json; charset=utf-8\nhost:${TOKENHUB_HOST}\n`
+  const hashedPayload = createHash('sha256').update(payload).digest('hex')
+  const canonicalRequest = `POST\n/\n\n${canonicalHeaders}\ncontent-type;host\n${hashedPayload}`
+  const hashedCanonical = createHash('sha256').update(canonicalRequest).digest('hex')
+  const stringToSign = `TC3-HMAC-SHA256\n${String(timestamp)}\n${date}/${TOKENHUB_SERVICE}/tc3_request\n${hashedCanonical}`
+  // 派生密钥链：HMAC(date, SecretKey) → HMAC(service) → HMAC("tc3_request")。
+  const kDate = createHmac('sha256', date).update(secretKey).digest()
+  const kService = createHmac('sha256', kDate).update(TOKENHUB_SERVICE).digest()
+  const kSigning = createHmac('sha256', kService).update('tc3_request').digest()
+  const signature = createHmac('sha256', kSigning).update(stringToSign).digest('hex')
+  return `TC3-HMAC-SHA256 Credential=${secretId}/${date}/${TOKENHUB_SERVICE}/tc3_request, SignedHeaders=content-type;host, Signature=${signature}`
+}
+
+/** 调用一次 TokenHub 管控面接口：TC3 签名 + 超时保护，返回响应 JSON 的 `Response`。 */
+async function callTokenHub(
+  secretId: string,
+  secretKey: string,
+  action: string,
+  params: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const payload = JSON.stringify({ Action: action, Version: TOKENHUB_VERSION, Region: TOKENHUB_REGION, ...params })
+  const timestamp = Math.floor(Date.now() / 1000)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  try {
+    const response = await fetch(`https://${TOKENHUB_HOST}/`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        host: TOKENHUB_HOST,
+        'x-tc-action': action.toLowerCase(),
+        'x-tc-version': TOKENHUB_VERSION,
+        'x-tc-region': TOKENHUB_REGION,
+        'x-tc-timestamp': String(timestamp),
+        authorization: tc3Authorization(secretId, secretKey, payload, timestamp),
+      },
+      body: payload,
+      signal: controller.signal,
+    })
+    if (response.status === 401 || response.status === 403) {
+      throw Object.assign(new Error('unauthorized'), { code: 'unauthorized' as const })
+    }
+    if (!response.ok) {
+      // httpStatus 供 isRetryableError 识别 5xx/429 走重试。
+      throw Object.assign(new Error(`HTTP ${String(response.status)}`), { httpStatus: response.status, code: 'unreachable' as const })
+    }
+    const doc = await response.json() as { Response?: Record<string, unknown> }
+    const inner = doc.Response
+    if (inner === undefined) throw Object.assign(new Error('no Response envelope'), { code: 'invalid' as const })
+    // 云 API 业务错误：Response.Error 存在即失败（HTTP 仍是 200）。
+    if (inner.Error !== undefined && inner.Error !== null) {
+      const err = inner.Error as { Code?: unknown; Message?: unknown }
+      const code = err.Code === 'AuthFailure.SignatureFailure' || err.Code === 'AuthFailure.SecretIdNotFound'
+        ? 'unauthorized' as const
+        : 'unreachable' as const
+      throw Object.assign(new Error(String(err.Code ?? 'api-error')), { code })
+    }
+    return inner
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * 在套餐余量对象里防御性提取「剩余额度」：官方 SubPackageBalance/PackageInfo
+ * 的字段名未稳定公开（issue #18 调研期），按语义键名扫描——命中 remaining /
+ * balance / left 语义键直接用；命中 total 与 used 则相减推导。数字一律经
+ * {@link toNumber} 归一化（上游可能给字符串）。
+ * 导出供测试：纯函数。
+ * @param source - 套餐详情里的余量对象（PackageInfo / SubPackageBalance 等）。
+ * @returns 剩余额度（上游单位，通常为 token 数或元）；提取不到返回 undefined。
+ */
+export function pickRemainingQuota(source: unknown): number | undefined {
+  if (source === null || typeof source !== 'object') return undefined
+  const rows = Object.entries(source as Record<string, unknown>)
+  const numeric = rows.filter(([, v]) => v !== null && toNumber(v) !== undefined)
+  const byKey = (needles: readonly string[]): number | undefined => {
+    for (const [key, value] of numeric) {
+      const lower = key.toLowerCase()
+      if (needles.some(n => lower.includes(n))) {
+        const num = toNumber(value)
+        if (num !== undefined && num >= 0) return num
+      }
+    }
+    return undefined
+  }
+  const remaining = byKey(['remain', 'balance', 'left', 'available'])
+  if (remaining !== undefined) return remaining
+  const total = byKey(['total'])
+  const used = byKey(['used', 'consume'])
+  if (total !== undefined && used !== undefined) return Math.max(0, total - used)
+  return undefined
+}
+
+/** 套餐列表里提取第一个启用套餐的 TeamId：集合字段名做候选兼容。 */
+function firstEnabledTeamId(inner: Record<string, unknown>): string | undefined {
+  const candidates = inner.TeamSet ?? inner.TokenPlanSet ?? inner.PlanSet
+  if (!Array.isArray(candidates)) return undefined
+  for (const item of candidates) {
+    if (item === null || typeof item !== 'object') continue
+    const row = item as Record<string, unknown>
+    if (row.TeamId === undefined && row.PlanId === undefined) continue
+    if (row.Status !== undefined && row.Status !== 'enable') continue
+    const id = row.TeamId ?? row.PlanId
+    if (typeof id === 'string' && id !== '') return id
+  }
+  return undefined
+}
+
+/**
+ * 查询腾讯云 TokenHub Token Plan 套餐余量。凭据值格式 `<SecretId>:<SecretKey>`
+ * （云 API 密钥，非 TokenHub 推理 key）。链路：套餐列表取 TeamId → 套餐详情读
+ * 主额度包余量。管控面字段名未完全稳定，解析按语义键防御提取。
+ * @param ctx - host context carrying the credentials seam.
+ * @param apiKeyEnv - credential reference resolving the `<SecretId>:<SecretKey>` pair.
+ */
+async function queryTencentTokenPlan(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
+  const provider = '腾讯云 TokenHub'
+  const hit = await ctx.credentials.resolve(credentialRef(apiKeyEnv))
+  if (hit === undefined) {
+    return { provider, displayName: provider, error: 'unconfigured' }
+  }
+  if (!balanceGate.check(provider)) {
+    return { provider, displayName: provider, error: 'unreachable' }
+  }
+  const credential = parseTencentCredential(hit.value)
+  if (credential === undefined) {
+    return { provider, displayName: provider, error: 'unauthorized' }
+  }
+  const doRequest = async (): Promise<ProviderBalance> => {
+    const list = await callTokenHub(credential.secretId, credential.secretKey, 'DescribeTokenPlanList', {})
+    const teamId = firstEnabledTeamId(list)
+    if (teamId === undefined) {
+      // 上游正常应答但无启用套餐（未订阅 / 个人版形状不识别）：稳定 invalid 态。
+      return { provider, displayName: provider, error: 'invalid' }
+    }
+    const detail = await callTokenHub(credential.secretId, credential.secretKey, 'DescribeTokenPlan', { TeamId: teamId })
+    // 余量优先读 PackageInfo（主额度包），缺失时在 Response 顶层兜底扫描。
+    const remaining = pickRemainingQuota(detail.PackageInfo) ?? pickRemainingQuota(detail)
+    if (remaining === undefined) {
+      console.warn(`[usage-billing] balance response drifted for ${provider}: no remaining-quota field parsed`)
+      return { provider, displayName: provider, error: 'invalid' }
+    }
+    const plan = typeof detail.Name === 'string' ? detail.Name : undefined
+    const exhausted = detail.StopReason === 'EXHAUSTED'
+    return {
+      provider,
+      displayName: provider,
+      currency: 'CNY',
+      totalBalance: remaining,
+      ...(plan !== undefined ? { plan } : {}),
+      ...(exhausted ? { isAvailable: false } : {}),
+    }
+  }
+  try {
+    const row = await withRetry(doRequest, { retries: 1, baseDelayMs: 250, maxDelayMs: 2000 })
+    balanceGate.success(provider)
+    return row
+  } catch (error) {
+    balanceGate.fail(provider)
+    const code = (error as { code?: unknown }).code
+    return {
+      provider,
+      displayName: provider,
+      error: code === 'unauthorized' ? 'unauthorized' : 'unreachable',
+    }
+  }
 }
 
 // ── 自定义 Provider 余额（任意 HTTP 端点 + extract 规则）──────────────────
