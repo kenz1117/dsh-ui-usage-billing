@@ -19,6 +19,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { formatMoney, formatSwitchCountdown, tierCountdown } from './pricing.ts'
+import { LIVE_COST_BAR_PREF_EVENT, loadLiveCostBarPrefs } from './usage-billing-settings.ts'
 import type { UsageBillingKey } from './locales.ts'
 import css from './UsageBilling.module.css'
 
@@ -155,6 +156,19 @@ export interface LiveCostBarProps {
  * @param props - framework session identity and locale.
  */
 export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode {
+  // 显示偏好（设置 Tab「平价消耗胶囊」开关）：挂载读一次；设置 Tab 与本组件分属
+  // 两个 React 树，切换后经 LIVE_COST_BAR_PREF_EVENT（同文档）与 storage 事件
+  // （跨标签页）通知这里重读 localStorage，胶囊条即时显隐。
+  const [visible, setVisible] = useState(() => loadLiveCostBarPrefs().show)
+  useEffect(() => {
+    const reread = (): void => { setVisible(loadLiveCostBarPrefs().show) }
+    window.addEventListener(LIVE_COST_BAR_PREF_EVENT, reread)
+    window.addEventListener('storage', reread)
+    return () => {
+      window.removeEventListener(LIVE_COST_BAR_PREF_EVENT, reread)
+      window.removeEventListener('storage', reread)
+    }
+  }, [])
   // 拉取即时代费数据：挂载时一次 + 周期刷新（与仪表盘同频）。
   const [stats, setStats] = useState<LiveStats | null>(null)
   const [quotas, setQuotas] = useState<readonly QuotaSlice[]>([])
@@ -190,6 +204,9 @@ export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode
 
   const hasCost = sessionCost > 0 || turnCost > 0
   const isPeak = tier.tier === 'peak'
+  // 设置 Tab 里关闭「平价消耗胶囊」后整条不渲染（dock 槽位对 null 子元素安全，
+  // 纯显隐门控：数据轮询与统计口径不受影响）。返回 null 放在全部 hook 之后。
+  if (!visible) return null
   // 设计 fee-bar：档位 chip → 倒计时 → 档位说明 → 本轮/会话 → 额度预警 chips。
   return (
     <span className={css.feeBar} data-testid="billing-live-cost-bar">
