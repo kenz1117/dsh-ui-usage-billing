@@ -853,6 +853,9 @@
   font-size: 11px;
   line-height: 15px;
   color: var(--dsw-alias-label-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 10px;
 }
 
 .kpiValue {
@@ -3526,3 +3529,11 @@
 }
 
 /* ── 设置 Tab：分区标题 + 分组说明 ─────────────────────────────────── */
+
+/* 明细/费率表：首列模型名，其余数值列右对齐等宽（设计 §明细）。 */
+.modelTable tbody td:not(:first-child) {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
