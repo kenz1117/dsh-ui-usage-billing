@@ -267,6 +267,8 @@ export type UsageBillingKey =
   | 'billing.searchEstimateHint'
   | 'billing.siteListDisplay'
   | 'billing.siteListDisplayHint'
+  | 'billing.liveCostBar'
+  | 'billing.liveCostBarHint'
   | 'billing.exportCsvSite'
   | 'billing.panelRelayQuota'
   | 'billing.relayBalance'
@@ -545,6 +547,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.searchEstimateHint': '含 {count} 次联网搜索请求的估算费用（每次约 {each}；日志无用量事件，按次估算，可在配置 searchCallEstimateCny 调整或关闭）',
   'billing.siteListDisplay': '中转站列表',
   'billing.siteListDisplayHint': '隐藏「未识别」占位条目，净化中转站额度列表',
+  'billing.liveCostBar': '平价消耗胶囊',
+  'billing.liveCostBarHint': '输入框下方的即时代费条（峰谷档位、本轮/会话费用与额度预警）；关闭后整条隐藏，统计与提醒不受影响',
   'billing.exportCsvSite': '按站点 CSV',
   'billing.panelRelayQuota': '中转站额度',
   'billing.relayBalance': '余额',
@@ -822,6 +826,8 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.searchEstimateHint': 'Includes estimated cost of {count} web-search requests (~{each} each; no usage events logged, per-call estimate; tune via searchCallEstimateCny)',
   'billing.siteListDisplay': 'Relay lists',
   'billing.siteListDisplayHint': 'Hide "unidentified" placeholder rows in the relay quota list',
+  'billing.liveCostBar': 'Live cost capsule',
+  'billing.liveCostBarHint': 'The live cost bar under the composer (pricing tier, per-turn/session spend, quota alerts); hiding it never affects stats or alerts',
   'billing.exportCsvSite': 'By site CSV',
   'billing.panelRelayQuota': 'Relay quotas',
   'billing.relayBalance': 'Balance',

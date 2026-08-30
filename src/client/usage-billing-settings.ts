@@ -147,6 +147,48 @@ export function saveSiteListPrefs(prefs: SiteListPrefs): void {
   }
 }
 
+/**
+ * 即时代费条（平价消耗胶囊，composer dock 的 LiveCostBar）的显示偏好。
+ * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）；
+ * 设置 Tab 与 LiveCostBar 分属两个 React 树，跨树同步走 localStorage +
+ * `LIVE_COST_BAR_PREF_EVENT` CustomEvent（同文档即时生效，跨标签页靠 storage 事件）。
+ */
+export interface LiveCostBarPrefs {
+  /** 是否显示输入框下方的即时代费条胶囊（默认 true：保持历史行为）。 */
+  show: boolean
+}
+
+/** 默认即时代费条偏好：显示（升级用户零感知）。 */
+export const DEFAULT_LIVE_COST_BAR_PREFS: LiveCostBarPrefs = { show: true }
+
+/** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
+export const LIVE_COST_BAR_STORAGE_KEY = 'dsh.ui-usage-billing.livecost'
+
+/** 设置 Tab 切换后派发的 CustomEvent 名（LiveCostBar 监听它即时显隐）。 */
+export const LIVE_COST_BAR_PREF_EVENT = 'dsh.ui-usage-billing.livecost-pref'
+
+/** 读取即时代费条偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
+export function loadLiveCostBarPrefs(): LiveCostBarPrefs {
+  try {
+    const raw = localStorage.getItem(LIVE_COST_BAR_STORAGE_KEY)
+    if (raw === null) return { ...DEFAULT_LIVE_COST_BAR_PREFS }
+    const parsed = JSON.parse(raw) as Partial<LiveCostBarPrefs>
+    // 只有显式 false 才隐藏，其余（缺字段/非法值）一律按显示兜底。
+    return { show: parsed.show !== false }
+  } catch {
+    return { ...DEFAULT_LIVE_COST_BAR_PREFS }
+  }
+}
+
+/** 写入即时代费条偏好。失败静默（展示偏好非关键）。 */
+export function saveLiveCostBarPrefs(prefs: LiveCostBarPrefs): void {
+  try {
+    localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, JSON.stringify(prefs))
+  } catch {
+    // ignore: storage full / unavailable — display preference is non-critical.
+  }
+}
+
 /** 用户自定义单价（与 client/pricing.ts 的 `UserPriceEntry` 同形；type import，无运行时依赖）。 */
 export type StoredUserPrice = UserPriceEntry
 
