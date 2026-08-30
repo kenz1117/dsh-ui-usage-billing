@@ -10,7 +10,7 @@
  *（billing.dashboard.decor）并注册计费指标服务（ctx.billingMetrics），主题
  * 插件主动注入装饰视觉、消费费用数据——billing 不反向依赖任何主题包。
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
+import type { Context } from '@deepseek-ai/cordis';
 import { type UsageBillingKey } from './locales.ts';
 import { type BillingMetricsService } from './billing-service.ts';
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -45,11 +45,18 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
         usageBilling: UsageBillingKey;
     }
 }
-/** Required services for the usage billing surface. */
+/** Required services for the usage billing surface.
+ *
+ * `remote.llm` is deliberately NOT injected: the LLM remote namespace only
+ * exists on 0.1.2-alpha.1 hosts, and a pending injection blocks the whole
+ * web boot on older hosts. `checkModels` probes `ctx.remote.llm` defensively
+ * instead — on hosts without it the model health check degrades to the
+ * static catalog result (the surrounding try/catch already swallows the
+ * undefined access). */
 export declare const inject: string[];
 /**
  * Client plugin body: the UsageBilling entry in the sidebar footer.
  * @param ctx - client root context.
  */
-export declare function apply(ctx: ClientContext): void;
+export declare function apply(ctx: Context): void;
 //# sourceMappingURL=apply.d.ts.map
