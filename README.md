@@ -245,9 +245,9 @@ npm publish --access public
 
 ## ❤️ Contributors
 
-- [@ciphoo](https://github.com/ciphoo) — MiniMax 国内域 Token Plan 订阅额度支持（PR #5）
+- [@ciphoo](https://github.com/ciphoo) — MiniMax 国内域 Token Plan 订阅额度支持（PR #5）、`minimax-cn` 订阅凭据接线（PR #12）、Windows 下账本并发写入 `MoveFileExW EPERM` 修复（PR #11）
 - [@fabulousyuann-tech](https://github.com/fabulousyuann-tech) — 会话删除后用量保留的持久 ledger 功能（PR #8）
-- [@hi-fangj](https://github.com/hi-fangj) — 每日 Token 柱状图悬停精确明细 tooltip（PR #21）
+- [@hi-fangj](https://github.com/hi-fangj) — Token 每日图悬停精确明细（PR #21）、平价消耗胶囊开关（PR #22）、Token 每日图按模型视角与图例聚焦（PR #23）、性能面板按模型对比曲线（PR #24）
 
 ## 📄 许可证
 
