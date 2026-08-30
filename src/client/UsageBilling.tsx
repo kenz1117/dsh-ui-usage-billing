@@ -3028,8 +3028,8 @@ function BillingDashboard({
 
           {tab === 'token' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-token">
-              {/* Token 洞察：独立于费用的 token 统计（每日堆叠 / 模型占比 / 结构 KPI / 导出）。 */}
-              <TokenPanel stats={stats} trendDays={trendDays} onTrendDays={setTrendDays} t={t} />
+              {/* Token 洞察：独立于费用的 token 统计（每日堆叠[结构/模型双视角] / 模型占比 / 结构 KPI / 导出）。 */}
+              <TokenPanel stats={stats} trendDays={trendDays} onTrendDays={setTrendDays} models={chartModels} t={t} />
               {/* 性能：按模型 TTFT/P50/P90/生成速度/总延迟 + 按小时曲线（并入「用量」分区）。 */}
               {stats.perf !== undefined && (
                 <section className={css.panel} data-testid="billing-panel-perf">
