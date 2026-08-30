@@ -21,16 +21,6 @@
 
 ---
 
-> **Custom-price reliability + off-peak bands + Tencent TokenHub (v1.0.13, 2026-08-29)**: fixed the silent no-op of origin-bound (relay) custom prices — origins now compare after normalization (protocol optional, path stripped, case-insensitive), and a missing site grid falls back to the origin-bound price instead of keeping host cost; the model input gains a datalist of catalog keys and probed model ids. Custom prices accept optional off-peak bands (peak/off-peak blended 50/50). The balance table adds Tencent Cloud TokenHub token-plan quota (management API, TC3-signed; credential value `<SecretId>:<SecretKey>`).
-
-> **Compatibility floor raised to DSH `0.1.2-alpha.1` (v1.0.12, 2026-08-29)**: the host removed `dsh-client-runtime` and other client-half dependencies in that release; the plugin fully migrated (`dsh-client-store` / `dsh-api-session-controller` / the new LLM remote surface). On older hosts (`0.1.0-rc.8` ~ `0.1.1-rc.2`) stay on v1.0.11.
-
-> **Rate-table display update (2026-08-27)**: the models.dev supplement is **no longer rendered in full** — the rate table previously listed all ~5900 models from 158 gateway providers, drowning out the ones actually in use. The table now contains only the built-in catalog plus probed (configured and reachable) models. Billing is unaffected: models outside the catalog but priced on models.dev are still estimated at their official USD prices when hit; they just no longer appear in the table.
-
-> **Qwen family pricing update (2026-08-27)**: aligned with the latest Alibaba Cloud Model Studio list prices — **Qwen3.7-Max** corrected to official list price (input ¥12 / explicit-cache hit ¥1.2 / output ¥36, previously recorded at the discounted promo rate). The current official 50%-off promotion has **no announced end date**: the rate table shows the discounted price with a red promo badge (hover for details), and resumes list-price display once an end date is filled in after the announcement. The Qwen family also gains **supplementary pricing reference rows** (Batch File standing half-price tier, Batch Chat, explicit-cache create/hit — display-only, excluded from estimation); Qwen3-Coder Plus officially does not support batch inference, so only the explicit-cache rows are listed.
-
-> **Peak/off-peak pricing update (from 2026-08-23 (Sun) 00:00 Beijing)**: DeepSeek models follow the new official rule — **weekdays (Mon–Fri)** keep the original peak/off-peak split (peak 09:00–12:00 / 14:00–18:00, ×2); **weekends (Sat/Sun)** are no longer split and are billed at the **off-peak price** all day. The plugin's billing engine, rate table and per-turn peak/off-peak bands all reflect this.
-
 <div align="center">
   <img src="screenshots/demo.png" alt="dsh-ui-usage-billing — billing dashboard overview" width="80%">
 </div>
@@ -44,7 +34,7 @@
 - **Real usage, no fabricated samples** — the server aggregates from persisted session logs and estimates against live multi-provider official prices; it shows an empty snapshot until real data arrives.
 - **Everything on one screen** — a sidebar trigger card plus a full dashboard (Overview / Trends / Providers / Stats / Rates / Settings) across six tabs: month / today / projection / heatmap / trend.
 - **Subscriptions · balance · quota · reconcile** — plan quota, multi-provider balance, relay-station quota, declared endpoints and balance-delta reconciliation form a cross-verifiable billing loop.
-- **Peak/off-peak pricing + switch alerts** — weekday peak split and weekend all-day off-peak, with a popover / system notification before a tier switch, configurable lead time.
+- **Peak/off-peak pricing + switch alerts** — weekday peak split and weekend all-day off-peak, **priced per official change boundary** (base price before 08-17, weekend peak hours 08-17~08-23, weekend all-day off-peak from 08-23), with a popover / system notification before a tier switch, configurable lead time.
 - **Offline & self-contained** — no chart library, no external CDN, pure design tokens; lightweight and ready to use.
 - **Multi-language + dual currency** — Chinese / English, ¥/$ toggle that only affects this plugin.
 
@@ -80,7 +70,7 @@
 ## 📈 Usage visualizations
 
 - **Session detail + cost spikes + heatmap**: sessions sorted by cost (title / project / calls / cost / last active); per-turn cost bars (peak/off-peak background bands, >2× spike flagged with attribution); month / year calendar heatmap (5-color scale, hover detail; the year view is ~52 weeks, GitHub-style), with active-day and streak counts on top.
-- **Performance metrics**: per-model first-token latency (TTFT) mean / P50 / P90, generation speed (tokens/s), total-latency mean, plus per-hour TTFT and speed curves aggregating by Beijing hour; rendered in the Stats tab as a per-model performance table and per-hour TTFT/speed dual line charts.
+- **Performance metrics**: per-model first-token latency (TTFT) mean / P50 / P90, generation speed (tokens/s), total-latency mean; per-hour × per-model comparison curve — metric tabs (TTFT / tok/s), clickable model chips (top-5 by samples lit by default, one-click select-all), hover snapping to the nearest hour with a crosshair and per-model tooltip, broken lines for missing-sample hours (never fabricated); view preferences persist locally.
 - **Token insights**: a dedicated "Tokens" tab — the daily token chart switches between two views: "Structure" stacks "input (cache miss) / input (cache hit) / output" (including reasoning), while "By model" stacks each day by model (same per-model colors as the trends tab; the toggle hides itself when the snapshot carries no per-day-per-model detail); the hover tooltip shows the day's exact breakdown (per-bucket in structure view, per-model "hit / miss / output" in model view, thousand-separated); clicking a legend swatch or a model-table row focuses that model (other segments dim, y-axis unchanged, click again to release); per-model totals and share, structural KPIs (cache-hit rate / reasoning share / input-output ratio / peak day); per-day token CSV and JSON export (JSON includes the per-day-per-model detail).
 
   ![Trends: daily cost trend, per-turn costs and peak/off-peak share](screenshots/2.png)
@@ -154,7 +144,7 @@ cost (CNY) = (missInput × p_input + cacheHit × p_cacheHit + output × p_output
 
 | Provider  | Models                                                                                       |
 | -------- | ------------------------------------------------------------------------------------------- |
-| DeepSeek | V4 Flash, V4 Flash Vision (Exp), V4 Pro (peak/off-peak billing: weekdays peak 09:00-12:00 / 14:00-18:00 Beijing = 2× off-peak; weekends off-peak all day) |
+| DeepSeek | V4 Flash, V4 Flash Vision (Exp), V4 Pro (priced per official change boundary: base tier → peak/off-peak v1 → weekend off-peak) |
 | Zhipu AI  | GLM-5.3, GLM-5.2, GLM-5.1, GLM-5-Turbo, GLM-4.7, GLM-4.6, GLM-4.5-Air, GLM-5V-Turbo                                       |
 | Aliyun    | Qwen3.8 Max, Qwen3.7-Max, Qwen3.5-Plus, Qwen3.5-Flash                                        |
 | Doubao    | Seed-2.0 Pro, Seed-2.0 Mini, Seed-1.6                                                         |
