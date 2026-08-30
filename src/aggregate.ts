@@ -350,8 +350,8 @@ export interface RoleCost {
 export interface PerfStats {
   /** 按模型聚合（键 = 计费目录键；未收录模型原样保留）。 */
   byModel: Record<string, ModelPerf>
-  /** 按小时聚合（键 = {@link hourStamp}，北京时间）。 */
-  byHour: Record<string, HourPerf>
+  /** 按小时×模型聚合（外键 = {@link hourStamp}，内键 = 模型目录键；北京时间）。 */
+  byHourModel: Record<string, Record<string, HourModelPerf>>
 }
 
 /** 一个模型的性能统计：首字延时均值 / P50 / P90、生成速度均值、总延迟均值。 */
@@ -376,11 +376,11 @@ export interface ModelPerf {
   estimatedSamples: number
 }
 
-/** 一个小时的性能统计（键 = {@link hourStamp}）。 */
-export interface HourPerf {
+/** 一个小时单模型的性能统计（外键 = {@link hourStamp}，内键 = 模型目录键）。 */
+export interface HourModelPerf {
   samples: number
   ttftAvg: number
-  /** 平均生成速度（tokens/s）；该小时无可测生成窗口时缺失。 */
+  /** 平均生成速度（tokens/s）；该小时该模型无可测生成窗口时缺失。 */
   tpsAvg?: number
 }
 
@@ -1114,7 +1114,7 @@ interface PerfModelAccum {
   estimated: number
 }
 
-/** 按小时聚合的性能累加器。 */
+/** 按小时×模型聚合的性能累加器（小时 → 模型 → 样本集）。 */
 interface PerfHourAccum {
   ttfts: number[]
   tps: number[]
@@ -1332,7 +1332,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const roles: RoleFold = { userChars: 0, toolChars: 0, inputCost: 0, outputCost: 0 }
       // 性能样本跨会话累加（按模型 / 小时分桶，聚合时才算均值/分位）。
       const perfModel = new Map<string, PerfModelAccum>()
-      const perfHour = new Map<string, PerfHourAccum>()
+      const perfHourModel = new Map<string, Map<string, PerfHourAccum>>()
       for (const { id: sessionId, cwd, fold, staleLedger } of folds) {
         mergeUsageInto(total, fold.total)
         roles.userChars += fold.roles.userChars
@@ -1356,7 +1356,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         for (const [modelKey, count] of fold.planCalls) {
           planCalls.set(modelKey, (planCalls.get(modelKey) ?? 0) + count)
         }
-        // 性能样本入桶：按模型、按小时各聚合一份，供「性能」面板分别渲染。
+        // 性能样本入桶：按模型、按小时×模型各聚合一份；小时×模型供性能曲线按模型对比。
         for (const sample of fold.perf) {
           let modelAccum = perfModel.get(sample.model)
           if (modelAccum === undefined) {
@@ -1367,10 +1367,15 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           if (sample.tps !== undefined) modelAccum.tps.push(sample.tps)
           if (sample.latencyMs !== undefined) modelAccum.latencies.push(sample.latencyMs)
           if (sample.estimated) modelAccum.estimated += 1
-          let hourAccum = perfHour.get(sample.hour)
+          let hourModels = perfHourModel.get(sample.hour)
+          if (hourModels === undefined) {
+            hourModels = new Map()
+            perfHourModel.set(sample.hour, hourModels)
+          }
+          let hourAccum = hourModels.get(sample.model)
           if (hourAccum === undefined) {
             hourAccum = { ttfts: [], tps: [] }
-            perfHour.set(sample.hour, hourAccum)
+            hourModels.set(sample.model, hourAccum)
           }
           hourAccum.ttfts.push(sample.ttftMs)
           if (sample.tps !== undefined) hourAccum.tps.push(sample.tps)
@@ -1420,7 +1425,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         Object.fromEntries([...map].map(([day, models]) =>
           [day, Object.fromEntries([...models].map(([model, sites]) => [model, Object.fromEntries(sites)]))]))
 
-      // 性能指标：按模型（含 P90）、按小时聚合；无任何可测样本时整个 perf 字段缺失。
+      // 性能指标：按模型（含 P90）、按小时×模型聚合；无任何可测样本时整个 perf 字段缺失。
       const perf: PerfStats | undefined = perfModel.size === 0
         ? undefined
         : {
@@ -1435,14 +1440,14 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
             latencyAvg: acc.latencies.length === 0 ? 0 : mean(acc.latencies),
             estimatedSamples: acc.estimated,
           }])),
-          byHour: Object.fromEntries([...perfHour].map(([hour, acc]) => [hour, {
+          byHourModel: Object.fromEntries([...perfHourModel].map(([hour, models]) => [hour, Object.fromEntries([...models].map(([model, acc]) => [model, {
             samples: acc.ttfts.length,
             ttftAvg: mean(acc.ttfts),
             ...(acc.tps.length === 0 ? {} : { tpsAvg: mean(acc.tps) }),
-          }])),
+          }]))])),
         }
       lastDoc = {
-        version: 3,
+        version: 4,
         updatedAt: now,
         source: 'session-logs',
         timezone: hostTimeZone(),

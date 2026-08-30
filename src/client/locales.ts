@@ -215,6 +215,8 @@ export type UsageBillingKey =
   | 'billing.perfTpsUnit'
   | 'billing.perfTitle'
   | 'billing.perfHint'
+  | 'billing.perfAll'
+  | 'billing.perfChartEmpty'
   | 'billing.heatmapYear'
   | 'billing.heatmapMonth'
   | 'billing.activeDays'
@@ -499,6 +501,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.perfTpsUnit': 'tok/s',
   'billing.perfTitle': '性能',
   'billing.perfHint': '按模型与按小时聚合；估算样本为工具续写步骤',
+  'billing.perfAll': '全选',
+  'billing.perfChartEmpty': '未选择模型或该指标暂无数据',
   'billing.heatmapYear': '年',
   'billing.heatmapMonth': '月',
   'billing.activeDays': '活跃天数',
@@ -782,6 +786,8 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.perfTpsUnit': 'tok/s',
   'billing.perfTitle': 'Performance',
   'billing.perfHint': 'Per model & per hour; estimated samples are tool-continuation steps',
+  'billing.perfAll': 'All',
+  'billing.perfChartEmpty': 'No model selected or no data for this metric',
   'billing.heatmapYear': 'Year',
   'billing.heatmapMonth': 'Month',
   'billing.activeDays': 'Active days',
