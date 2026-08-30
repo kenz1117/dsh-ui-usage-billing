@@ -12,8 +12,8 @@ import { activeDaysOf, streakDaysOf } from '../src/client/UsageBilling.tsx'
 
 afterEach(() => { cleanup() })
 
-const t = (key: 'billing.costAbbr' | 'billing.noData' | 'billing.heatmapLess' | 'billing.heatmapMore'): string =>
-  key === 'billing.noData' ? '多' : key === 'billing.heatmapLess' ? '少' : key === 'billing.heatmapMore' ? '多' : '费用'
+const t = (key: 'costAbbr' | 'noData' | 'heatmapLess' | 'heatmapMore'): string =>
+  key === 'noData' ? '多' : key === 'heatmapLess' ? '少' : key === 'heatmapMore' ? '多' : '费用'
 
 /** 固定锚点：2026-08-21，使格子数量、首行排布等断言确定化。 */
 const NOW = new Date(2026, 7, 21)

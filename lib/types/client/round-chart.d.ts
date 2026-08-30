@@ -32,6 +32,6 @@ export declare function RoundCostChart({ rounds, flags, currency, t }: {
     rounds: readonly RoundChartRow[];
     flags: readonly AnomalyFlag[];
     currency: CostCurrency;
-    t: (key: 'billing.model' | 'billing.costAbbr') => string;
+    t: (key: 'model' | 'costAbbr') => string;
 }): React.ReactNode;
 //# sourceMappingURL=round-chart.d.ts.map

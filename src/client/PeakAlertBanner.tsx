@@ -37,8 +37,8 @@ export function PeakAlertBanner({ hit, config, t, onDismiss }: PeakAlertBannerPr
   if (nowMs >= hit.atMs) return null
   const minutes = Math.max(1, Math.round((hit.atMs - nowMs) / 60_000))
   const entering = hit.entering
-  const tag = entering === 'peak' ? t('billing.tierPeak') : t('billing.tierOff')
-  const desc = entering === 'peak' ? t('billing.peakAlertDescPeak') : t('billing.peakAlertDescOff')
+  const tag = entering === 'peak' ? t('tierPeak') : t('tierOff')
+  const desc = entering === 'peak' ? t('peakAlertDescPeak') : t('peakAlertDescOff')
   const isPeak = entering === 'peak'
 
   return (
@@ -56,7 +56,7 @@ export function PeakAlertBanner({ hit, config, t, onDismiss }: PeakAlertBannerPr
           <span className={clsx(css.peakDot, isPeak ? css.peakDotPrimary : css.peakDotSuccess)} aria-hidden="true" />
           {tag}
         </span>
-        <button type="button" className={css.peakClose} onClick={onDismiss} aria-label={t('billing.close')}>
+        <button type="button" className={css.peakClose} onClick={onDismiss} aria-label={t('close')}>
           ×
         </button>
       </div>

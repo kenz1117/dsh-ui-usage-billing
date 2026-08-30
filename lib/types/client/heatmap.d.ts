@@ -32,6 +32,6 @@ export declare function UsageHeatmap({ days, currency, now, t, range }: {
     currency: CostCurrency;
     now?: Date;
     range?: 'month' | 'year';
-    t: (key: 'billing.costAbbr' | 'billing.noData' | 'billing.heatmapLess' | 'billing.heatmapMore') => string;
+    t: (key: 'costAbbr' | 'noData' | 'heatmapLess' | 'heatmapMore') => string;
 }): React.ReactNode;
 //# sourceMappingURL=heatmap.d.ts.map

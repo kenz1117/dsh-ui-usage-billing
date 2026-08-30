@@ -88,12 +88,12 @@ export type DashboardTab = 'overview' | 'token' | 'trends' | 'providers' | 'pric
  * 导出供测试断言 tab 与文案 key 对齐、decor 锚点落在正确分区。
  */
 export const DASHBOARD_TABS: readonly { id: DashboardTab; labelKey: UsageBillingKey }[] = [
-  { id: 'overview', labelKey: 'billing.tabOverview' },
-  { id: 'providers', labelKey: 'billing.tabProviders' },
-  { id: 'token', labelKey: 'billing.tabToken' },
-  { id: 'trends', labelKey: 'billing.tabTrends' },
-  { id: 'pricing', labelKey: 'billing.tabPricing' },
-  { id: 'settings', labelKey: 'billing.tabSettings' },
+  { id: 'overview', labelKey: 'tabOverview' },
+  { id: 'providers', labelKey: 'tabProviders' },
+  { id: 'token', labelKey: 'tabToken' },
+  { id: 'trends', labelKey: 'tabTrends' },
+  { id: 'pricing', labelKey: 'tabPricing' },
+  { id: 'settings', labelKey: 'tabSettings' },
 ]
 
 /** 项目名取 cwd 的末级目录；无 cwd 时由调用方回退为 em dash。 */
@@ -430,30 +430,30 @@ interface SessionBillingRow {
 function subscriptionStatusText(status: SubscriptionQuota['status'], t: (key: UsageBillingKey) => string): string {
   switch (status) {
     case 'ok': return ''
-    case 'not-configured': return t('billing.subscriptionNotConfigured')
-    case 'unauthorized': return t('billing.subscriptionUnauthorized')
-    case 'rate-limited': return t('billing.subscriptionRateLimited')
-    case 'invalid-response': return t('billing.subscriptionInvalid')
-    default: return t('billing.subscriptionUnavailable')
+    case 'not-configured': return t('subscriptionNotConfigured')
+    case 'unauthorized': return t('subscriptionUnauthorized')
+    case 'rate-limited': return t('subscriptionRateLimited')
+    case 'invalid-response': return t('subscriptionInvalid')
+    default: return t('subscriptionUnavailable')
   }
 }
 
 /** 订阅额度窗口的类型标签（本次 / 本周 / 本月 / 计费周期）。 */
 function subscriptionWindowLabel(kind: SubscriptionQuota['windows'][number]['kind'], t: (key: UsageBillingKey) => string): string {
   switch (kind) {
-    case 'session': return t('billing.subscriptionSession')
-    case 'weekly': return t('billing.subscriptionWeekly')
-    case 'monthly': return t('billing.subscriptionMonthly')
-    case 'billing': return t('billing.subscriptionBilling')
+    case 'session': return t('subscriptionSession')
+    case 'weekly': return t('subscriptionWeekly')
+    case 'monthly': return t('subscriptionMonthly')
+    case 'billing': return t('subscriptionBilling')
   }
 }
 
 /** 中转站程序类型的徽标文案（New API / Sub2API / 未识别）。 */
 function relayKindText(kind: RelayQuota['kind'], t: (key: UsageBillingKey) => string): string {
   switch (kind) {
-    case 'new-api': return t('billing.relayKindNewApi')
-    case 'sub2api': return t('billing.relayKindSub2Api')
-    default: return t('billing.relayKindUnknown')
+    case 'new-api': return t('relayKindNewApi')
+    case 'sub2api': return t('relayKindSub2Api')
+    default: return t('relayKindUnknown')
   }
 }
 
@@ -970,7 +970,7 @@ function UsageBillingTrigger(
         className={css.railButton}
         data-testid="billing-rail-button"
         onClick={onOpen}
-        title={`${t('billing.title')} · ${formatMoney(monthCost)}`}
+        title={`${t('title')} · ${formatMoney(monthCost)}`}
       >
         {cardIcon}
       </button>
@@ -990,7 +990,7 @@ function UsageBillingTrigger(
         className={css.trigger}
         data-testid="billing-trigger"
         onClick={onOpen}
-        title={`${t('billing.title')} · ${formatMoney(monthCost)}`}
+        title={`${t('title')} · ${formatMoney(monthCost)}`}
       >
         <span className={css.triggerIcon} data-testid="billing-trigger-icon">{cardIcon}</span>
         {/* 设计 trigger-card：当月 = 标签 + ¥ + 数字(分离)，下方一行 今日/本周 副行。
@@ -998,7 +998,7 @@ function UsageBillingTrigger(
         <span className={css.triggerMain}>
           <span className={css.triggerPrimary}>
             <span className={css.triggerLabel}>
-              {tokenView ? t('billing.triggerMonthTokens') : t('billing.triggerMonth')}
+              {tokenView ? t('triggerMonthTokens') : t('triggerMonth')}
             </span>
             {tokenView ? (
               <span className={css.triggerMetric} data-testid="billing-trigger-month-tokens">{formatTokens(monthTokens)}</span>
@@ -1011,8 +1011,8 @@ function UsageBillingTrigger(
           </span>
           <span className={css.triggerSub} data-testid="billing-trigger-today">
             {tokenView
-              ? `${t('billing.triggerToday')} ${formatTokens(todayTokens)} · ${t('billing.weekCost')} ${formatTokens(weekTokens)}`
-              : `${t('billing.triggerToday')} ${formatMoney(todayCost)} · ${t('billing.weekCost')} ${formatMoney(weekCost)}`}
+              ? `${t('triggerToday')} ${formatTokens(todayTokens)} · ${t('weekCost')} ${formatTokens(weekTokens)}`
+              : `${t('triggerToday')} ${formatMoney(todayCost)} · ${t('weekCost')} ${formatMoney(weekCost)}`}
           </span>
         </span>
         <span className={css.triggerSpark} data-testid="billing-trigger-spark" aria-hidden="true">
@@ -1031,7 +1031,7 @@ function UsageBillingTrigger(
         {floatPrefs.mode === 'subscription' ? (
           <>
             {targetSubs.length === 0 ? (
-              <span className={css.triggerPopEmpty}>{t('billing.floatNoTargets')}</span>
+              <span className={css.triggerPopEmpty}>{t('floatNoTargets')}</span>
             ) : (
               <>
                 {currentSub !== undefined && (
@@ -1060,12 +1060,12 @@ function UsageBillingTrigger(
                           <span className={css.subscriptionMeta}>
                             <span className={clsx(css.subscriptionPct, exhausted && css.subscriptionExhausted)}>
                               {exhausted
-                                ? t('billing.subscriptionExhausted')
-                                : t('billing.subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
+                                ? t('subscriptionExhausted')
+                                : t('subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
                             </span>
                             {window.resetsAt !== undefined && (
                               <span className={css.subscriptionReset}>
-                                {t('billing.subscriptionReset').replace('{date}', `${localDayStamp(new Date(window.resetsAt).getTime())} ${formatClock(new Date(window.resetsAt).getTime())}`)}
+                                {t('subscriptionReset').replace('{date}', `${localDayStamp(new Date(window.resetsAt).getTime())} ${formatClock(new Date(window.resetsAt).getTime())}`)}
                               </span>
                             )}
                           </span>
@@ -1086,43 +1086,43 @@ function UsageBillingTrigger(
           <>
             {/* 设计 pop-card：顶部金流光条 ::before + 标题行 + 3 列指标网格 + 主力消耗模型行 */}
             <span className={css.popHead}>
-              <span className={css.popTitle}>{t('billing.popTitle')}</span>
+              <span className={css.popTitle}>{t('popTitle')}</span>
             </span>
             <span className={css.metricGrid}>
               <span className={css.metricCell}>
-                <span className={css.metricLabel}>{t('billing.monthCost')}</span>
+                <span className={css.metricLabel}>{t('monthCost')}</span>
                 <span className={clsx(css.metricValue, css.metricValuePrimary)}>{formatMoney(monthCost)}</span>
               </span>
               <span className={css.metricCell}>
-                <span className={css.metricLabel}>{t('billing.tokenTotal')}</span>
+                <span className={css.metricLabel}>{t('tokenTotal')}</span>
                 <span className={css.metricValue}>{formatTokens(dash.totalToken)}</span>
               </span>
               <span className={css.metricCell}>
-                <span className={css.metricLabel}>{t('billing.input')}</span>
+                <span className={css.metricLabel}>{t('input')}</span>
                 <span className={css.metricValue}>{formatTokens(dash.input)}</span>
               </span>
               <span className={css.metricCell}>
-                <span className={css.metricLabel}>{t('billing.output')}</span>
+                <span className={css.metricLabel}>{t('output')}</span>
                 <span className={css.metricValue}>{formatTokens(dash.output)}</span>
               </span>
               <span className={css.metricCell}>
-                <span className={css.metricLabel}>{t('billing.cacheHit')}</span>
+                <span className={css.metricLabel}>{t('cacheHit')}</span>
                 <span className={clsx(css.metricValue, css.metricValueSuccess)}>{formatTokens(dash.cacheRead)}</span>
               </span>
               <span className={css.metricCell}>
-                <span className={css.metricLabel}>{t('billing.calls')}</span>
+                <span className={css.metricLabel}>{t('calls')}</span>
                 <span className={css.metricValue}>{dash.calls.toLocaleString()}</span>
               </span>
             </span>
             <span className={css.popModel}>
-              <span className={css.popModelLabel}>{t('billing.popTodayModel')}</span>
+              <span className={css.popModelLabel}>{t('popTodayModel')}</span>
               {(vendorStatus.direct !== undefined || vendorStatus.sub !== undefined)
                 ? (
                   <>
                     {vendorStatus.direct !== undefined && (
                       <span className={css.popModelRow}>
                         <span className={clsx(css.popDot, css.popDotDirect)} aria-hidden="true" />
-                        <span className={css.popTagPrimary}>{t('billing.popDirectLead')}</span>
+                        <span className={css.popTagPrimary}>{t('popDirectLead')}</span>
                         <span className={css.popModelName}>{vendorStatus.direct.name}</span>
                         <span className={clsx(css.popModelStatus, vendorStatus.direct.low && css.popModelStatusLow)}>
                           {vendorStatus.direct.text}
@@ -1132,7 +1132,7 @@ function UsageBillingTrigger(
                     {vendorStatus.sub !== undefined && (
                       <span className={css.popModelRow}>
                         <span className={clsx(css.popDot, css.popDotSub)} aria-hidden="true" />
-                        <span className={css.popTagSub}>{t('billing.popSubLead')}</span>
+                        <span className={css.popTagSub}>{t('popSubLead')}</span>
                         <span className={css.popModelName}>{vendorStatus.sub.name}</span>
                         <span className={clsx(css.popModelStatus, vendorStatus.sub.low && css.popModelStatusLow)}>
                           {vendorStatus.sub.text}
@@ -1144,7 +1144,7 @@ function UsageBillingTrigger(
                 : (
                   <span className={css.popModelRow}>
                     <span className={clsx(css.popDot, css.popDotNeutral)} aria-hidden="true" />
-                    <span className={css.popModelStatus}>{t('billing.popNoConsumption')}</span>
+                    <span className={css.popModelStatus}>{t('popNoConsumption')}</span>
                   </span>
                 )}
             </span>
@@ -1238,14 +1238,14 @@ function BalanceDetailPopover({
     <span className={css.balanceDetailPop} data-testid="billing-balance-detail-pop">
       <span className={css.balanceDetailHead}>
         <span className={css.balanceDetailTitle}>{balance.displayName}</span>
-        <button type="button" className={css.balanceDetailClose} aria-label={t('billing.close')} onClick={onClose}>×</button>
+        <button type="button" className={css.balanceDetailClose} aria-label={t('close')} onClick={onClose}>×</button>
       </span>
       <span className={css.balanceDetailGrid}>
-        {total !== undefined && <BalanceDetailRow label={t('billing.balance')} value={total} />}
-        {granted !== undefined && <BalanceDetailRow label={t('billing.balanceGranted')} value={granted} />}
-        {topped !== undefined && <BalanceDetailRow label={t('billing.balanceTopped')} value={topped} />}
-        <BalanceDetailRow label={t('billing.balanceDaily')} value={money(dailyBurn)} />
-        <BalanceDetailRow label={t('billing.balanceDaysLong')} value={`${days} ${t('billing.balanceDaysUnit')}`} />
+        {total !== undefined && <BalanceDetailRow label={t('balance')} value={total} />}
+        {granted !== undefined && <BalanceDetailRow label={t('balanceGranted')} value={granted} />}
+        {topped !== undefined && <BalanceDetailRow label={t('balanceTopped')} value={topped} />}
+        <BalanceDetailRow label={t('balanceDaily')} value={money(dailyBurn)} />
+        <BalanceDetailRow label={t('balanceDaysLong')} value={`${days} ${t('balanceDaysUnit')}`} />
       </span>
     </span>
   )
@@ -1327,8 +1327,8 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
     <section className={css.setCard} data-testid="billing-user-prices">
       <div className={css.setCardHead}>
         <div className={css.setCardMeta}>
-          <h3 className={css.setCardTitle}>{t('billing.userPrices')}</h3>
-          <p className={css.setCardDesc}>{t('billing.userPricesHint')}</p>
+          <h3 className={css.setCardTitle}>{t('userPrices')}</h3>
+          <p className={css.setCardDesc}>{t('userPricesHint')}</p>
         </div>
       </div>
       <div className={css.ctlCol}>
@@ -1338,7 +1338,7 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
         {drafts.map((row, i) => (
           <div key={i} className={css.userPriceRow} data-testid="billing-user-price-row">
             <div className={css.userPriceField}>
-              <span className={css.ctlLabel}>{t('billing.userPriceModel')}</span>
+              <span className={css.ctlLabel}>{t('userPriceModel')}</span>
               <input
                 className={css.userPriceInput}
                 data-testid="billing-user-price-model"
@@ -1346,25 +1346,25 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
                 list="billing-price-model-keys"
                 value={row.key}
                 placeholder="flash"
-                aria-label={t('billing.userPriceModel')}
+                aria-label={t('userPriceModel')}
                 onChange={e => update(i, { key: e.target.value })}
               />
             </div>
             <div className={css.userPriceField}>
-              <span className={css.ctlLabel}>{t('billing.userPriceSource')}</span>
+              <span className={css.ctlLabel}>{t('userPriceSource')}</span>
               <input
                 className={css.userPriceInput}
                 data-testid="billing-user-price-origin"
                 type="text"
                 value={row.origin ?? ''}
-                placeholder={t('billing.userPriceSourceHint')}
-                aria-label={t('billing.userPriceSource')}
+                placeholder={t('userPriceSourceHint')}
+                aria-label={t('userPriceSource')}
                 onChange={e => update(i, { origin: e.target.value.trim() })}
               />
             </div>
             {(['input', 'cacheHit', 'output'] as const).map(kind => (
               <div key={kind} className={css.userPriceField}>
-                <span className={css.ctlLabel}>{kind === 'input' ? t('billing.tokenMiss') : kind === 'cacheHit' ? t('billing.tokenHit') : t('billing.tokenOutput')}</span>
+                <span className={css.ctlLabel}>{kind === 'input' ? t('tokenMiss') : kind === 'cacheHit' ? t('tokenHit') : t('tokenOutput')}</span>
                 <input
                   className={css.userPriceInputNum}
                   type="number"
@@ -1376,7 +1376,7 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
               </div>
             ))}
             <div className={css.userPriceField}>
-              <span className={css.ctlLabel}>{t('billing.userPriceCurrency')}</span>
+              <span className={css.ctlLabel}>{t('userPriceCurrency')}</span>
               <div className={css.ctlGroup}>
                 <button
                   type="button"
@@ -1394,15 +1394,15 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
                 </button>
               </div>
             </div>
-            <button type="button" className={css.userPriceRemove} aria-label={t('billing.userPriceRemove')} onClick={() => remove(i)}>
-              {t('billing.userPriceRemove')}
+            <button type="button" className={css.userPriceRemove} aria-label={t('userPriceRemove')} onClick={() => remove(i)}>
+              {t('userPriceRemove')}
             </button>
             {(() => {
               // 低谷价子行：三桶留空 = 平档；三值有效即按峰/谷混合估算（issue #18）。
               const off = offPeakOf(i)
               return (
                 <div className={css.userPriceOffPeak} data-testid="billing-user-price-offpeak">
-                  <span className={css.ctlLabel}>{t('billing.userPriceOffPeak')}</span>
+                  <span className={css.ctlLabel}>{t('userPriceOffPeak')}</span>
                   {(['input', 'cacheHit', 'output'] as const).map(kind => (
                     <input
                       key={kind}
@@ -1410,8 +1410,8 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
                       type="number"
                       min={0}
                       step={0.01}
-                      placeholder={kind === 'input' ? t('billing.tokenMiss') : kind === 'cacheHit' ? t('billing.tokenHit') : t('billing.tokenOutput')}
-                      aria-label={`${t('billing.userPriceOffPeak')} ${kind === 'input' ? t('billing.tokenMiss') : kind === 'cacheHit' ? t('billing.tokenHit') : t('billing.tokenOutput')}`}
+                      placeholder={kind === 'input' ? t('tokenMiss') : kind === 'cacheHit' ? t('tokenHit') : t('tokenOutput')}
+                      aria-label={`${t('userPriceOffPeak')} ${kind === 'input' ? t('tokenMiss') : kind === 'cacheHit' ? t('tokenHit') : t('tokenOutput')}`}
                       value={off[kind]}
                       onChange={e => setOffPeak(i, kind, e.target.value)}
                     />
@@ -1423,10 +1423,10 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
         ))}
         <div className={css.ctlRow}>
           <button type="button" className={css.exportButton} data-testid="billing-user-price-add" onClick={add}>
-            {t('billing.userPriceAdd')}
+            {t('userPriceAdd')}
           </button>
           <button type="button" className={css.exportButton} data-testid="billing-user-price-save" onClick={save}>
-            {t('billing.userPriceSave')}
+            {t('userPriceSave')}
           </button>
         </div>
       </div>
@@ -1510,7 +1510,7 @@ function BillingDashboard({
   // 费率表单价：按用户所选币种换算后再格式化（原生币种 × 汇率）；0 价显示"免费"。
   // 切 USD 时把 ¥ 计价模型换算成 $，费率表不再固定显示人民币。
   const unitMoney = (price: number, native: 'CNY' | 'USD'): string =>
-    price === 0 ? t('billing.free') : formatUnitPrice(convertUnitPrice(price, native, currency, rateInfo.rate), currency === 'usd' ? 'USD' : 'CNY')
+    price === 0 ? t('free') : formatUnitPrice(convertUnitPrice(price, native, currency, rateInfo.rate), currency === 'usd' ? 'USD' : 'CNY')
 
   // 每轮成本异常标记：按起始时间升序传给 flagAnomalies（最近的在末尾）。
   const roundFlags: AnomalyFlag[] = useMemo(
@@ -1532,9 +1532,9 @@ function BillingDashboard({
     const total = role.user + role.assistant + role.tool
     if (total <= 0) return []
     return [
-      { label: t('billing.roleUser'), value: role.user, seg: css.shareSegUser },
-      { label: t('billing.roleAssistant'), value: role.assistant, seg: css.shareSegAssistant },
-      { label: t('billing.roleTool'), value: role.tool, seg: css.shareSegTool },
+      { label: t('roleUser'), value: role.user, seg: css.shareSegUser },
+      { label: t('roleAssistant'), value: role.assistant, seg: css.shareSegAssistant },
+      { label: t('roleTool'), value: role.tool, seg: css.shareSegTool },
     ].map(row => ({ ...row, pct: (row.value / total) * 100 }))
   }, [stats.byRole, t])
 
@@ -1556,9 +1556,9 @@ function BillingDashboard({
   // 附「约可撑 N 天」圆形徽标（A1），点击弹出余额详情；剩余不足 3 天时红色强调。
   const renderBalance = (balance: ProviderBalance | undefined): React.ReactNode => {
     if (balance === undefined) return <span className={css.na}>—</span>
-    if (balance.error === 'unconfigured') return t('billing.balanceUnconfigured')
-    if (balance.error === 'unauthorized') return t('billing.balanceUnauthorized')
-    if (balance.error === 'unreachable') return t('billing.balanceUnreachable')
+    if (balance.error === 'unconfigured') return t('balanceUnconfigured')
+    if (balance.error === 'unauthorized') return t('balanceUnauthorized')
+    if (balance.error === 'unreachable') return t('balanceUnreachable')
     if (balance.totalBalance === undefined) return <span className={css.na}>—</span>
     const amount = balance.currency === 'USD'
       ? `$${balance.totalBalance.toFixed(2)}`
@@ -1574,8 +1574,8 @@ function BillingDashboard({
             type="button"
             className={clsx(css.balanceDaysBadge, days <= 3 && css.balanceDaysBadgeLow)}
             data-testid="billing-balance-days-badge"
-            title={t('billing.balanceDays').replace('{days}', String(days))}
-            aria-label={`${balance.displayName} ${t('billing.balanceDays').replace('{days}', String(days))}`}
+            title={t('balanceDays').replace('{days}', String(days))}
+            aria-label={`${balance.displayName} ${t('balanceDays').replace('{days}', String(days))}`}
             onClick={() => { setBalanceDetailFor(balanceDetailFor === balance.provider ? undefined : balance.provider) }}
           >
             ?
@@ -1633,7 +1633,7 @@ function BillingDashboard({
       // 超支（>=100% 或用预算口径）时环形转红。
       over: Number.isFinite(budgetPct) && budgetPct >= 100,
       // 有预算时中心标签显示「预算」，否则显示「本月」（注释与实现一致）。
-      label: Number.isFinite(budgetPct) ? t('billing.budget') : t('billing.monthCost'),
+      label: Number.isFinite(budgetPct) ? t('budget') : t('monthCost'),
     }
   }, [budgetEnabled, budgetAmount, monthCost, yearCost, t])
 
@@ -1839,7 +1839,7 @@ function BillingDashboard({
   const deltaPct = prevDayCost > 0 ? ((todayCost - prevDayCost) / prevDayCost) * 100 : 0
 
   return (
-    <Modal open onClose={onClose} title={t('billing.title')} headless className={clsx(css.dashboardModal, 'dsh-billing-modal')}>
+    <Modal open onClose={onClose} title={t('title')} headless className={clsx(css.dashboardModal, 'dsh-billing-modal')}>
       <div className={css.dashboard} data-testid="billing-dashboard">
         {/* Header */}
         <div className={css.dashboardHead} data-testid="billing-dashboard-head">
@@ -1848,18 +1848,18 @@ function BillingDashboard({
             {renderSlot('billing.dashboard.decor', { position: 'head' })}
             <div className={css.headTitleRow}>
               <h2 className={css.dashboardTitle}>
-                {t('billing.title')}
+                {t('title')}
               </h2>
               {/* ZINE: 装饰孔位（headTitle 锚点：标题胶带） */}
               {renderSlot('billing.dashboard.decor', { position: 'headTitle' })}
             </div>
             <p className={css.dashboardSubtitle}>
-              {t('billing.lastUpdated')} {latestDate}
+              {t('lastUpdated')} {latestDate}
               {stats.timezone === undefined ? null : ` · ${stats.timezone.name} (${stats.timezone.offset})`}
             </p>
           </div>
           <div className={css.dashboardRight}>
-            <span className={css.currencyToggle} role="group" aria-label={t('billing.currency')}>
+            <span className={css.currencyToggle} role="group" aria-label={t('currency')}>
               {(['cny', 'usd'] as const).map(unit => (
                 <button
                   key={unit}
@@ -1867,7 +1867,7 @@ function BillingDashboard({
                   className={clsx(css.currencyButton, currency === unit && css.currencyButtonActive)}
                   aria-pressed={currency === unit}
                   data-testid={`billing-currency-${unit}`}
-                  title={unit === 'cny' ? t('billing.currencyCny') : t('billing.currencyUsd')}
+                  title={unit === 'cny' ? t('currencyCny') : t('currencyUsd')}
                   onClick={() => { onCurrency(unit) }}
                 >
                   {unit === 'cny' ? '¥ CNY' : '$ USD'}
@@ -1885,7 +1885,7 @@ function BillingDashboard({
             <button
               type="button"
               className={css.closeButton}
-              aria-label={t('billing.close')}
+              aria-label={t('close')}
               data-testid="billing-close"
               onClick={onClose}
             >
@@ -1898,7 +1898,7 @@ function BillingDashboard({
         </div>
 
         {/* Tab 导航：概览 / 趋势 / 厂商 / 明细（分区后各区块默认展开）。 */}
-        <nav className={css.tabNav} data-testid="billing-tab-nav" role="tablist" aria-label={t('billing.title')}>
+        <nav className={css.tabNav} data-testid="billing-tab-nav" role="tablist" aria-label={t('title')}>
           {DASHBOARD_TABS.map(item => (
             <button
               key={item.id}
@@ -1931,7 +1931,7 @@ function BillingDashboard({
                     </svg>
                   </span>
                   <span className={css.reconcileText}>
-                    {t('billing.reconcileDrift')
+                    {t('reconcileDrift')
                       .replace('{provider}', reconcile.provider ?? '')
                       .replace('{spent}', money(reconcile.spent))
                       .replace('{today}', money(reconcile.todayOfficialCost ?? 0))}
@@ -1942,7 +1942,7 @@ function BillingDashboard({
                     data-testid="billing-reconcile-dismiss"
                     onClick={dismissReconcile}
                   >
-                    {t('billing.reconcileDismiss')}
+                    {t('reconcileDismiss')}
                   </button>
                 </div>
               )}
@@ -1956,7 +1956,7 @@ function BillingDashboard({
                 <div className={css.heroTop}>
                   <div className={css.heroMain}>
                     <span className={css.heroLabel}>
-                      {t('billing.monthCost')}
+                      {t('monthCost')}
                     </span>
                     <div className={css.heroReadout}>
                       <span className={css.heroCurrency} aria-hidden="true">{currency === 'usd' ? '$' : '¥'}</span>
@@ -1966,7 +1966,7 @@ function BillingDashboard({
                     </div>
                     {/* 调用副行：呼应设计 Hero 的「758 调用」读法。 */}
                     <span className={css.heroMeta}>
-                      {total.calls.toLocaleString()} {t('billing.calls')}
+                      {total.calls.toLocaleString()} {t('calls')}
                     </span>
                   </div>
                   {/* 环形仪表盘：SVG stroke-dasharray 画弧，中心显示百分比与标签，
@@ -1998,14 +1998,14 @@ function BillingDashboard({
                     与环形仪表盘同口径，仅在启用预算且金额 >0 时展示；环形仪表盘本身始终可见。 */}
                 {budgetEnabled && budgetAmount > 0 && (
                   <div className={css.heroBudget} data-testid="billing-hero-budget">
-                    <span className={css.heroBudgetLabel}>{t('billing.budget')}</span>
+                    <span className={css.heroBudgetLabel}>{t('budget')}</span>
                     <div
                       className={css.heroBudgetTrack}
                       role="progressbar"
                       aria-valuenow={Math.min(heroBudgetPct, 100)}
                       aria-valuemin={0}
                       aria-valuemax={100}
-                      aria-label={t('billing.budget')}
+                      aria-label={t('budget')}
                     >
                       <div
                         className={clsx(css.heroBudgetFill, heroBudgetPct >= 100 && css.heroBudgetFillOver)}
@@ -2020,7 +2020,7 @@ function BillingDashboard({
                 <div className={css.heroSide}>
                   <div className={css.heroSideItem}>
                     <span className={css.heroSideLabel}>
-                      {t('billing.yearCost')}
+                      {t('yearCost')}
                     </span>
                     <span className={css.heroSideValue}>
                       {money(yearCost)}
@@ -2028,7 +2028,7 @@ function BillingDashboard({
                   </div>
                   <div className={css.heroSideItem}>
                     <span className={css.heroSideLabel}>
-                      {t('billing.todayCost')}
+                      {t('todayCost')}
                     </span>
                     <span className={css.heroSideValue}>
                       {money(todayCost)}
@@ -2040,7 +2040,7 @@ function BillingDashboard({
                   {monthCostProjected > 0 && (
                     <div className={css.heroSideItem}>
                       <span className={css.heroSideLabel}>
-                        {t('billing.monthProjected')}
+                        {t('monthProjected')}
                       </span>
                       <span className={css.heroSideValue}>
                         {money(monthCostProjected)}
@@ -2055,14 +2055,14 @@ function BillingDashboard({
               {/* 未计价模型提示：目录外/无价模型费用按 0 计，提醒用户自查并反馈。 */}
               {(stats.unpricedModels?.length ?? 0) > 0 && (
                 <div className={css.unpricedHint} data-testid="billing-unpriced-hint">
-                  {t('billing.unpricedHint').replace('{count}', String(stats.unpricedModels?.length ?? 0))}
+                  {t('unpricedHint').replace('{count}', String(stats.unpricedModels?.length ?? 0))}
                 </div>
               )}
 
               {/* 联网搜索估算提示：搜索请求无用量事件，费用按次估值计入，口径透明。 */}
               {(stats.total.searchCalls ?? 0) > 0 && (
                 <div className={css.unpricedHint} data-testid="billing-search-estimate-hint">
-                  {t('billing.searchEstimateHint')
+                  {t('searchEstimateHint')
                     .replace('{count}', String(stats.total.searchCalls ?? 0))
                     .replace('{each}', money(stats.searchCallEstimateCny ?? 0))}
                 </div>
@@ -2071,28 +2071,28 @@ function BillingDashboard({
               {/* KPI grid */}
               <section className={css.kpiGrid} data-testid="billing-kpi-grid">
                 <div className={css.kpiTile} data-testid="billing-kpi-tile">
-                  <span className={css.kpiLabel}>{t('billing.cacheHitRate')}</span>
+                  <span className={css.kpiLabel}>{t('cacheHitRate')}</span>
                   <span className={clsx(css.kpiValue, css.kpiGreen)}>{formatPercent(cacheHitRate)}</span>
                   <span className={css.kpiDetail}>
                     {formatTokens(total.cacheHit)} / {formatTokens(total.cacheHit + total.cacheMiss)}
                   </span>
                 </div>
                 <div className={css.kpiTile}>
-                  <span className={css.kpiLabel}>{t('billing.tokens')}</span>
+                  <span className={css.kpiLabel}>{t('tokens')}</span>
                   <span className={css.kpiValue}>{formatTokens(total.input + total.output)}</span>
                   <span className={css.kpiDetail}>
-                    {t('billing.inputTokens')} {formatTokens(total.input)} · {t('billing.outputTokens')} {formatTokens(total.output)}
+                    {t('inputTokens')} {formatTokens(total.input)} · {t('outputTokens')} {formatTokens(total.output)}
                   </span>
                 </div>
                 <div className={css.kpiTile}>
-                  <span className={css.kpiLabel}>{t('billing.avgCost')}</span>
+                  <span className={css.kpiLabel}>{t('avgCost')}</span>
                   <span className={css.kpiValue}>{money(avgPerCall)}</span>
-                  <span className={css.kpiDetail}>{t('billing.calls')} {total.calls.toLocaleString()}</span>
+                  <span className={css.kpiDetail}>{t('calls')} {total.calls.toLocaleString()}</span>
                 </div>
                 <div className={css.kpiTile}>
-                  <span className={css.kpiLabel}>{t('billing.calls')}</span>
+                  <span className={css.kpiLabel}>{t('calls')}</span>
                   <span className={css.kpiValue}>{total.calls.toLocaleString()}</span>
-                  <span className={css.kpiDetail}>{modelRows.length} {t('billing.models')}</span>
+                  <span className={css.kpiDetail}>{modelRows.length} {t('models')}</span>
                 </div>
               </section>
 
@@ -2101,9 +2101,9 @@ function BillingDashboard({
               <section className={css.panel} data-testid="billing-panel-heatmap">
                 <div className={css.panelHead}>
                   <h3 className={css.panelTitle}>
-                    {t('billing.heatmap')}
+                    {t('heatmap')}
                   </h3>
-                  <div className={css.heatmapRangeSwitch} data-testid="billing-heatmap-range" role="group" aria-label={t('billing.heatmap')}>
+                  <div className={css.heatmapRangeSwitch} data-testid="billing-heatmap-range" role="group" aria-label={t('heatmap')}>
                     {(['month', 'year'] as const).map(r => (
                       <button
                         key={r}
@@ -2113,12 +2113,12 @@ function BillingDashboard({
                         aria-pressed={heatmapRange === r}
                         onClick={() => { setHeatmapRange(r) }}
                       >
-                        {r === 'month' ? t('billing.heatmapMonth') : t('billing.heatmapYear')}
+                        {r === 'month' ? t('heatmapMonth') : t('heatmapYear')}
                       </button>
                     ))}
                   </div>
                   <span className={css.panelHint} data-testid="billing-heatmap-summary">
-                    {t('billing.activeDays')} {activeDays} · {t('billing.streakDays')} {streakDays}
+                    {t('activeDays')} {activeDays} · {t('streakDays')} {streakDays}
                   </span>
                 </div>
                 <UsageHeatmap days={heatmapDays} currency={currency} t={t} range={heatmapRange} />
@@ -2132,14 +2132,14 @@ function BillingDashboard({
               <section className={css.setCard} data-testid="billing-budget">
                 <div className={css.setCardHead}>
                   <div className={css.setCardMeta}>
-                    <h3 className={css.setCardTitle}>{t('billing.budget')}</h3>
-                    <p className={css.setCardDesc}>{t('billing.budgetHint')}</p>
+                    <h3 className={css.setCardTitle}>{t('budget')}</h3>
+                    <p className={css.setCardDesc}>{t('budgetHint')}</p>
                   </div>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={budgetEnabled}
-                    aria-label={t('billing.budget')}
+                    aria-label={t('budget')}
                     data-testid="billing-budget-toggle"
                     className={clsx(css.switch, budgetEnabled && css.switchOn)}
                     onClick={onToggleBudget}
@@ -2150,7 +2150,7 @@ function BillingDashboard({
                 {budgetEnabled && (
                   <div className={css.ctlCol}>
                     <div className={css.ctlRow}>
-                      <span className={css.ctlLabel}>{t('billing.budgetAmount')}</span>
+                      <span className={css.ctlLabel}>{t('budgetAmount')}</span>
                       <span className={css.inp} data-testid="billing-budget-input-wrap">
                         {/* 单位符号：预算以人民币元计，避免误填分/美元。 */}
                         <span className={css.affix} aria-hidden="true">¥</span>
@@ -2162,8 +2162,8 @@ function BillingDashboard({
                           step={1}
                           value={budgetAmount === 0 ? '' : budgetAmount}
                           placeholder={stats.budget !== undefined ? String(stats.budget) : '0'}
-                          aria-label={`${t('billing.budget')}（${currency === 'usd' ? 'USD' : 'CNY'}）`}
-                          title={`${t('billing.budget')}（${currency === 'usd' ? 'USD' : 'CNY'}）`}
+                          aria-label={`${t('budget')}（${currency === 'usd' ? 'USD' : 'CNY'}）`}
+                          title={`${t('budget')}（${currency === 'usd' ? 'USD' : 'CNY'}）`}
                           onChange={(e) => { onBudgetAmount(e.target.valueAsNumber) }}
                         />
                       </span>
@@ -2178,7 +2178,7 @@ function BillingDashboard({
                             aria-valuenow={Math.min(pct, 100)}
                             aria-valuemin={0}
                             aria-valuemax={100}
-                            aria-label={t('billing.budget')}
+                            aria-label={t('budget')}
                             data-testid="billing-budget-track"
                           >
                             {/* 分档变色：≥80% 琥珀警示，≥100% 红色脉冲。 */}
@@ -2192,7 +2192,7 @@ function BillingDashboard({
                     })()}
                     {budgetAmount > 0 && (
                       <p className={css.setCardDesc} data-testid="billing-budget-value">
-                        {t('billing.budgetSummary').replace('{used}', money(monthCost)).replace('{total}', money(budgetAmount))}
+                        {t('budgetSummary').replace('{used}', money(monthCost)).replace('{total}', money(budgetAmount))}
                       </p>
                     )}
                   </div>
@@ -2203,14 +2203,14 @@ function BillingDashboard({
               <section className={css.setCard} data-testid="billing-peak-alert-settings">
                 <div className={css.setCardHead}>
                   <div className={css.setCardMeta}>
-                    <h3 className={css.setCardTitle}>{t('billing.peakAlert')}</h3>
-                    <p className={css.setCardDesc}>{t('billing.peakAlertHint')}</p>
+                    <h3 className={css.setCardTitle}>{t('peakAlert')}</h3>
+                    <p className={css.setCardDesc}>{t('peakAlertHint')}</p>
                   </div>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={peakConfig.enabled}
-                    aria-label={t('billing.peakAlert')}
+                    aria-label={t('peakAlert')}
                     data-testid="billing-peak-alert-toggle"
                     className={clsx(css.switch, peakConfig.enabled && css.switchOn)}
                     onClick={() => { onPeakConfig({ ...peakConfig, enabled: !peakConfig.enabled }) }}
@@ -2221,7 +2221,7 @@ function BillingDashboard({
                 {peakConfig.enabled && (
                   <div className={css.ctlCol}>
                     <label className={css.ctlRow}>
-                      <span className={css.ctlLabel}>{t('billing.peakAlertLeadMin')}</span>
+                      <span className={css.ctlLabel}>{t('peakAlertLeadMin')}</span>
                       <span className={css.inp}>
                         <input
                           type="number"
@@ -2230,7 +2230,7 @@ function BillingDashboard({
                           step={1}
                           value={peakConfig.leadMin}
                           className={css.budgetInput}
-                          aria-label={t('billing.peakAlertLeadMin')}
+                          aria-label={t('peakAlertLeadMin')}
                           onChange={(e) => {
                             const v = Number(e.target.valueAsNumber)
                             onPeakConfig({
@@ -2242,8 +2242,8 @@ function BillingDashboard({
                       </span>
                     </label>
                     <div className={css.ctlRow}>
-                      <span className={css.ctlLabel}>{t('billing.peakAlertPos')}</span>
-                      <div className={css.ctlGroup} role="radiogroup" aria-label={t('billing.peakAlertPos')}>
+                      <span className={css.ctlLabel}>{t('peakAlertPos')}</span>
+                      <div className={css.ctlGroup} role="radiogroup" aria-label={t('peakAlertPos')}>
                         {(['bottom-right', 'center'] as const).map(pos => (
                           <label key={pos} className={css.rdo}>
                             <input
@@ -2253,14 +2253,14 @@ function BillingDashboard({
                               onChange={() => onPeakConfig({ ...peakConfig, position: pos })}
                             />
                             <span className={css.rdoDot} aria-hidden="true" />
-                            {pos === 'bottom-right' ? t('billing.peakAlertPosCorner') : t('billing.peakAlertPosCenter')}
+                            {pos === 'bottom-right' ? t('peakAlertPosCorner') : t('peakAlertPosCenter')}
                           </label>
                         ))}
                       </div>
                     </div>
                     <div className={css.ctlRow}>
-                      <span className={css.ctlLabel}>{t('billing.peakAlertMode')}</span>
-                      <div className={css.ctlGroup} role="radiogroup" aria-label={t('billing.peakAlertMode')}>
+                      <span className={css.ctlLabel}>{t('peakAlertMode')}</span>
+                      <div className={css.ctlGroup} role="radiogroup" aria-label={t('peakAlertMode')}>
                         {(['both', 'peak', 'offPeak'] as const).map(m => (
                           <label key={m} className={css.rdo}>
                             <input
@@ -2270,23 +2270,23 @@ function BillingDashboard({
                               onChange={() => onPeakConfig({ ...peakConfig, mode: m })}
                             />
                             <span className={css.rdoDot} aria-hidden="true" />
-                            {m === 'both' ? t('billing.peakAlertModeBoth') : m === 'peak' ? t('billing.peakAlertModePeak') : t('billing.peakAlertModeOff')}
+                            {m === 'both' ? t('peakAlertModeBoth') : m === 'peak' ? t('peakAlertModePeak') : t('peakAlertModeOff')}
                           </label>
                         ))}
                       </div>
                     </div>
                     <label className={css.ctlRow}>
-                      <span className={css.ctlLabel}>{t('billing.peakAlertWebNotify')}</span>
+                      <span className={css.ctlLabel}>{t('peakAlertWebNotify')}</span>
                       <input
                         type="checkbox"
                         checked={peakConfig.webNotify}
-                        aria-label={t('billing.peakAlertWebNotify')}
+                        aria-label={t('peakAlertWebNotify')}
                         onChange={(e) => { onPeakConfig({ ...peakConfig, webNotify: e.target.checked }) }}
                       />
                     </label>
                     <div className={css.ctlRow}>
                       <button type="button" className={css.btn} onClick={onPreviewPeak}>
-                        {t('billing.peakAlertPreview')}
+                        {t('peakAlertPreview')}
                       </button>
                     </div>
                   </div>
@@ -2300,14 +2300,14 @@ function BillingDashboard({
                   <div className={css.setCell} data-testid="billing-usage-stats-tool-setting">
                     <div className={css.setCardHead}>
                       <div className={css.setCardMeta}>
-                        <h3 className={css.setCardTitle}>{t('billing.usageStatsTool')}</h3>
-                        <p className={css.setCardDesc}>{t('billing.usageStatsToolHint')}</p>
+                        <h3 className={css.setCardTitle}>{t('usageStatsTool')}</h3>
+                        <p className={css.setCardDesc}>{t('usageStatsToolHint')}</p>
                       </div>
                       <button
                         type="button"
                         role="switch"
                         aria-checked={usageStatsEnabled}
-                        aria-label={t('billing.usageStatsTool')}
+                        aria-label={t('usageStatsTool')}
                         data-testid="billing-usage-stats-tool-toggle"
                         className={clsx(css.switch, usageStatsEnabled && css.switchOn)}
                         onClick={toggleUsageStats}
@@ -2319,14 +2319,14 @@ function BillingDashboard({
                   <div className={css.setCell} data-testid="billing-livecost-setting">
                     <div className={css.setCardHead}>
                       <div className={css.setCardMeta}>
-                        <h3 className={css.setCardTitle}>{t('billing.liveCostBar')}</h3>
-                        <p className={css.setCardDesc}>{t('billing.liveCostBarHint')}</p>
+                        <h3 className={css.setCardTitle}>{t('liveCostBar')}</h3>
+                        <p className={css.setCardDesc}>{t('liveCostBarHint')}</p>
                       </div>
                       <button
                         type="button"
                         role="switch"
                         aria-checked={liveCostPrefs.show}
-                        aria-label={t('billing.liveCostBar')}
+                        aria-label={t('liveCostBar')}
                         data-testid="billing-livecost-toggle"
                         className={clsx(css.switch, liveCostPrefs.show && css.switchOn)}
                         onClick={() => onLiveCostPrefs({ show: !liveCostPrefs.show })}
@@ -2338,14 +2338,14 @@ function BillingDashboard({
                   <div className={css.setCell} data-testid="billing-site-list-setting">
                     <div className={css.setCardHead}>
                       <div className={css.setCardMeta}>
-                        <h3 className={css.setCardTitle}>{t('billing.siteListDisplay')}</h3>
-                        <p className={css.setCardDesc}>{t('billing.siteListDisplayHint')}</p>
+                        <h3 className={css.setCardTitle}>{t('siteListDisplay')}</h3>
+                        <p className={css.setCardDesc}>{t('siteListDisplayHint')}</p>
                       </div>
                       <button
                         type="button"
                         role="switch"
                         aria-checked={sitePrefs.hideUnidentified}
-                        aria-label={t('billing.siteListDisplay')}
+                        aria-label={t('siteListDisplay')}
                         data-testid="billing-site-hide-unidentified"
                         className={clsx(css.switch, sitePrefs.hideUnidentified && css.switchOn)}
                         onClick={() => onSitePrefs({ hideUnidentified: !sitePrefs.hideUnidentified })}
@@ -2364,13 +2364,13 @@ function BillingDashboard({
                   <div className={css.setCell} data-testid="billing-float-setting">
                     <div className={css.setCardHead}>
                       <div className={css.setCardMeta}>
-                        <h3 className={css.setCardTitle}>{t('billing.floatWindow')}</h3>
-                        <p className={css.setCardDesc}>{t('billing.floatWindowHint')}</p>
+                        <h3 className={css.setCardTitle}>{t('floatWindow')}</h3>
+                        <p className={css.setCardDesc}>{t('floatWindowHint')}</p>
                       </div>
                     </div>
                     <div className={css.ctlCol}>
                       <div className={css.ctlRow}>
-                        <span className={css.ctlLabel}>{t('billing.floatMode')}</span>
+                        <span className={css.ctlLabel}>{t('floatMode')}</span>
                         <div className={css.ctlGroup} data-testid="billing-float-mode">
                           <button
                             type="button"
@@ -2378,7 +2378,7 @@ function BillingDashboard({
                             data-testid="billing-float-mode-combined"
                             onClick={() => onFloatPrefs({ mode: 'combined', targets: floatPrefs.targets })}
                           >
-                            {t('billing.floatModeCombined')}
+                            {t('floatModeCombined')}
                           </button>
                           <button
                             type="button"
@@ -2386,13 +2386,13 @@ function BillingDashboard({
                             data-testid="billing-float-mode-subscription"
                             onClick={() => onFloatPrefs({ mode: 'subscription', targets: floatPrefs.targets })}
                           >
-                            {t('billing.floatModeSubscription')}
+                            {t('floatModeSubscription')}
                           </button>
                         </div>
                       </div>
                       {floatPrefs.mode === 'subscription' && (
                         <div className={css.ctlRow}>
-                          <span className={css.ctlLabel}>{t('billing.floatTargets')}</span>
+                          <span className={css.ctlLabel}>{t('floatTargets')}</span>
                           <span className={css.ctlGroup} data-testid="billing-float-targets">
                             {subscriptionOptions.map((option) => {
                               const on = floatPrefs.targets.includes(option.id)
@@ -2414,7 +2414,7 @@ function BillingDashboard({
                               )
                             })}
                             {subscriptionOptions.length === 0 && (
-                              <span className={css.setCardDesc}>{t('billing.floatNoTargetsHint')}</span>
+                              <span className={css.setCardDesc}>{t('floatNoTargetsHint')}</span>
                             )}
                           </span>
                         </div>
@@ -2424,13 +2424,13 @@ function BillingDashboard({
                   <div className={css.setCell} data-testid="billing-card-setting">
                     <div className={css.setCardHead}>
                       <div className={css.setCardMeta}>
-                        <h3 className={css.setCardTitle}>{t('billing.cardDisplay')}</h3>
-                        <p className={css.setCardDesc}>{t('billing.cardDisplayHint')}</p>
+                        <h3 className={css.setCardTitle}>{t('cardDisplay')}</h3>
+                        <p className={css.setCardDesc}>{t('cardDisplayHint')}</p>
                       </div>
                     </div>
                     <div className={css.ctlCol}>
                       <div className={css.ctlRow}>
-                        <span className={css.ctlLabel}>{t('billing.cardMetric')}</span>
+                        <span className={css.ctlLabel}>{t('cardMetric')}</span>
                         <div className={css.ctlGroup} data-testid="billing-card-metric">
                           <button
                             type="button"
@@ -2438,7 +2438,7 @@ function BillingDashboard({
                             data-testid="billing-card-money"
                             onClick={() => onCardPrefs({ metric: 'money' })}
                           >
-                            {t('billing.cardMetricMoney')}
+                            {t('cardMetricMoney')}
                           </button>
                           <button
                             type="button"
@@ -2446,7 +2446,7 @@ function BillingDashboard({
                             data-testid="billing-card-tokens"
                             onClick={() => onCardPrefs({ metric: 'tokens' })}
                           >
-                            {t('billing.cardMetricTokens')}
+                            {t('cardMetricTokens')}
                           </button>
                         </div>
                       </div>
@@ -2472,11 +2472,11 @@ function BillingDashboard({
               >
                 <div className={css.ubCardHead}>
                   <h3 className={css.ubCardTitle}>
-                    {t('billing.trend')}
+                    {t('trend')}
                   </h3>
                   {renderSlot('billing.dashboard.decor', { position: 'trend' })}
                   <span className={css.ubCardControlGroup}>
-                    <span className={css.rangeToggle} role="group" aria-label={t('billing.trend')}>
+                    <span className={css.rangeToggle} role="group" aria-label={t('trend')}>
                       {([7, 30] as const).map(days => (
                         <button
                           key={days}
@@ -2486,11 +2486,11 @@ function BillingDashboard({
                           data-testid={`billing-trend-${days}d`}
                           onClick={() => { setTrendDays(days) }}
                         >
-                          {days === 7 ? t('billing.trend7d') : t('billing.trend30d')}
+                          {days === 7 ? t('trend7d') : t('trend30d')}
                         </button>
                       ))}
                     </span>
-                    <span className={css.rangeToggle} role="group" aria-label={t('billing.trendMetric')}>
+                    <span className={css.rangeToggle} role="group" aria-label={t('trendMetric')}>
                       {(['cost', 'tokens'] as const).map(m => (
                         <button
                           key={m}
@@ -2500,7 +2500,7 @@ function BillingDashboard({
                           data-testid={`billing-trend-metric-${m}`}
                           onClick={() => { setTrendMetric(m) }}
                         >
-                          {m === 'cost' ? t('billing.trendMetricCost') : t('billing.trendMetricTokens')}
+                          {m === 'cost' ? t('trendMetricCost') : t('trendMetricTokens')}
                         </button>
                       ))}
                     </span>
@@ -2517,16 +2517,16 @@ function BillingDashboard({
                 <section className={css.ubCard} data-testid="billing-panel-rounds">
                   <div className={css.ubCardHead}>
                     <h3 className={css.ubCardTitle}>
-                      {t('billing.rounds')}
+                      {t('rounds')}
                     </h3>
                     {roundFlags.length > 0 && (
                       <span className={css.ubTagError} data-testid="billing-rounds-flag-count">
-                        {roundFlags.length} {t('billing.anomaly')}
+                        {roundFlags.length} {t('anomaly')}
                       </span>
                     )}
                   </div>
                   <p className={css.ubCardSub}>
-                    {t('billing.roundsHint').replace('{count}', String(turns.length))}
+                    {t('roundsHint').replace('{count}', String(turns.length))}
                   </p>
                   <RoundCostChart
                     rounds={turns}
@@ -2546,10 +2546,10 @@ function BillingDashboard({
                   <section className={css.ubCard} data-testid="billing-panel-share">
                     <div className={css.ubCardHead}>
                       <h3 className={css.ubCardTitle}>
-                        {t('billing.peakShare')}
+                        {t('peakShare')}
                       </h3>
                       <span className={css.ubCardSub}>
-                        {t('billing.peakSharePerCall')}
+                        {t('peakSharePerCall')}
                       </span>
                     </div>
                     <div className={css.shareTrack} data-testid="billing-share-track">
@@ -2559,14 +2559,14 @@ function BillingDashboard({
                     <div className={css.shareLegend}>
                       <span className={css.shareItem}>
                         <span className={css.shareDot} style={{ background: 'var(--dsw-static-blue-500)' }} />
-                        {t('billing.peak')}
+                        {t('peak')}
                         <span className={css.shareValue} data-testid="billing-share-peak">
                           {money(peakShare.peak)} · {peakPct.toFixed(1)}%
                         </span>
                       </span>
                       <span className={css.shareItem}>
                         <span className={css.shareDot} style={{ background: 'color-mix(in srgb, var(--dsw-static-blue-500) 30%, var(--dsw-alias-bg-module-platform))' }} />
-                        {t('billing.offPeak')}
+                        {t('offPeak')}
                         <span className={css.shareValue} data-testid="billing-share-offpeak">
                           {money(peakShare.offPeak)} · {(100 - peakPct).toFixed(1)}%
                         </span>
@@ -2575,7 +2575,7 @@ function BillingDashboard({
                     {/* 挪谷省钱提示：峰时费用若发生在低谷档可省的金额（官方峰价为谷价 2 倍）。 */}
                     {offPeakSavings > 0 && (
                       <div className={css.staleNotice} data-testid="billing-share-savings">
-                        {t('billing.offPeakSavings').replace('{amount}', money(offPeakSavings))}
+                        {t('offPeakSavings').replace('{amount}', money(offPeakSavings))}
                       </div>
                     )}
                   </section>
@@ -2591,7 +2591,7 @@ function BillingDashboard({
               {visibleRelayRows.length > 0 && (
                 <section className={css.panel} data-testid="billing-panel-relay-quota">
                   <div className={css.panelHead}>
-                    <h3 className={css.panelTitle}>{t('billing.panelRelayQuota')}</h3>
+                    <h3 className={css.panelTitle}>{t('panelRelayQuota')}</h3>
                   </div>
                   <div className={css.providerGroupList} data-testid="billing-relay-quotas">
                     {visibleRelayRows.map(row => (
@@ -2602,16 +2602,16 @@ function BillingDashboard({
                         </span>
                         <span className={css.siteRowMeta}>
                           {row.balance !== undefined && (
-                            <span className={css.siteRowCost}>{t('billing.relayBalance')} {row.balance.toFixed(2)}</span>
+                            <span className={css.siteRowCost}>{t('relayBalance')} {row.balance.toFixed(2)}</span>
                           )}
                           {(row.windows?.length ?? 0) > 0
                             ? row.windows?.map(window => {
                               const low = window.remainingPercent < 20
                               return (
-                                <span key={window.kind} className={clsx(css.siteRowCalls, low && css.siteRowCallsLow)}>{t('billing.relayWindowUsed')} {window.usedPercent}%</span>
+                                <span key={window.kind} className={clsx(css.siteRowCalls, low && css.siteRowCallsLow)}>{t('relayWindowUsed')} {window.usedPercent}%</span>
                               )
                             })
-                            : <span className={css.siteRowCalls}>{t('billing.relayNoQuota')}</span>}
+                            : <span className={css.siteRowCalls}>{t('relayNoQuota')}</span>}
                         </span>
                       </div>
                     ))}
@@ -2624,24 +2624,24 @@ function BillingDashboard({
               <section className={css.panel} data-testid="billing-panel-providers">
                 <div className={css.panelHead}>
                   <h3 className={css.panelTitle}>
-                    {t('billing.providerBilling')}
+                    {t('providerBilling')}
                   </h3>
                   {renderSlot('billing.dashboard.decor', { position: 'models' })}
                   {/* 更新时间精确到时分秒；旧快照没有时间戳时留空。 */}
                   <span className={css.panelHint}>
                     {stats.updatedAt !== undefined
-                      ? `${t('billing.lastUpdated')} ${formatClock(stats.updatedAt)}`
+                      ? `${t('lastUpdated')} ${formatClock(stats.updatedAt)}`
                       : ''}
                   </span>
                 </div>
                 {quotasStale && (
                   <div className={css.staleNotice} data-testid="billing-subscriptions-stale">
-                    {t('billing.subscriptionsStale')}
+                    {t('subscriptionsStale')}
                   </div>
                 )}
                 {providerGroups.length === 0 ? (
                   <div className={css.emptyRow} data-testid="billing-provider-empty">
-                    {t('billing.noData')}
+                    {t('noData')}
                   </div>
                 ) : (
                   <div className={css.providerGroupList} data-testid="billing-provider-groups">
@@ -2661,7 +2661,7 @@ function BillingDashboard({
                             )}
                             {!hideBalanceForGroup(group) && group.balance !== undefined && (
                               <span className={css.providerGroupBalance} data-testid="billing-provider-balance">
-                                <span className={css.providerGroupBalanceLabel}>{t('billing.balance')}</span>
+                                <span className={css.providerGroupBalanceLabel}>{t('balance')}</span>
                                 {renderBalance(group.balance)}
                               </span>
                             )}
@@ -2673,12 +2673,12 @@ function BillingDashboard({
                             <table className={css.modelTable}>
                               <thead>
                                 <tr>
-                                  <th>{t('billing.model')}</th>
-                                  <th className={css.numCol}>{t('billing.calls')}</th>
-                                  <th className={css.numCol}>{t('billing.inputTokens')}</th>
-                                  <th className={css.numCol}>{t('billing.outputTokens')}</th>
-                                  <th className={css.numCol}>{t('billing.cacheHitRate')}</th>
-                                  <th className={css.numCol}>{t('billing.actual')}</th>
+                                  <th>{t('model')}</th>
+                                  <th className={css.numCol}>{t('calls')}</th>
+                                  <th className={css.numCol}>{t('inputTokens')}</th>
+                                  <th className={css.numCol}>{t('outputTokens')}</th>
+                                  <th className={css.numCol}>{t('cacheHitRate')}</th>
+                                  <th className={css.numCol}>{t('actual')}</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -2693,13 +2693,13 @@ function BillingDashboard({
                                             {/* 未收录：真实 id 不在计费目录，费用按兜底档估算，明确标注。 */}
                                             {row.uncatalogued && (
                                               <span className={css.uncataloguedTag} data-testid="billing-uncatalogued-tag">
-                                                {t('billing.uncatalogued')}
+                                                {t('uncatalogued')}
                                               </span>
                                             )}
                                             {/* 估算价：厂商未公布官方按量单价，避免误当正式定价。 */}
                                             {row.estimatedPricing && (
                                               <span className={css.estimatedTag} data-testid="billing-estimated-tag">
-                                                {t('billing.estimatedPricing')}
+                                                {t('estimatedPricing')}
                                               </span>
                                             )}
                                           </span>
@@ -2713,7 +2713,7 @@ function BillingDashboard({
                                     <td className={css.numCol}>{formatPercent(row.cacheHitRate)}</td>
                                     <td className={css.numCol}>
                                       {row.plan
-                                        ? <span className={css.planTag}>{t('billing.subscriptionIncluded')}</span>
+                                        ? <span className={css.planTag}>{t('subscriptionIncluded')}</span>
                                         : row.actual !== undefined
                                           ? (() => {
                                             const official = row.officialCost
@@ -2752,13 +2752,13 @@ function BillingDashboard({
                                       // 档位知识自动识别（原生币月费 + 周期额度口径）；无档位时回退 CNY 月费。
                                       const tier = tierInfoOf(quota.provider)
                                       const tierFee = tier !== undefined
-                                        ? t('billing.subscriptionFeePerMonth').replace('{amount}', tier.currency === 'USD' ? `$${tier.amount}` : `¥${tier.amount}`)
+                                        ? t('subscriptionFeePerMonth').replace('{amount}', tier.currency === 'USD' ? `$${tier.amount}` : `¥${tier.amount}`)
                                         : undefined
                                       return (
                                         <span className={css.subscriptionPlan} data-kind="code">
                                           {tierFee ?? (quota.subscriptionAmount !== undefined && quota.subscriptionAmount > 0
-                                            ? t('billing.subscriptionFeePerMonth').replace('{amount}', money(quota.subscriptionAmount))
-                                            : t('billing.planTypeCode'))}
+                                            ? t('subscriptionFeePerMonth').replace('{amount}', money(quota.subscriptionAmount))
+                                            : t('planTypeCode'))}
                                           {tier?.label !== undefined && (
                                             <span className={css.subscriptionTier} data-testid={`billing-tier-${quota.provider}`}>
                                               {tier.label}
@@ -2766,18 +2766,18 @@ function BillingDashboard({
                                           )}
                                           {tier !== undefined && (
                                             <span className={css.subscriptionAuto} data-testid={`billing-auto-${quota.provider}`}>
-                                              {t('billing.subscriptionAutoDetect')}
+                                              {t('subscriptionAutoDetect')}
                                             </span>
                                           )}
                                         </span>
                                       )
                                     })()}
-                                    {quota.planType === 'token' && <span className={css.subscriptionPlan} data-kind="token">{t('billing.planTypeToken')}</span>}
+                                    {quota.planType === 'token' && <span className={css.subscriptionPlan} data-kind="token">{t('planTypeToken')}</span>}
                                     {quota.plan !== undefined && <span className={css.subscriptionPlan}>{quota.plan}</span>}
                                   </div>
                                   {statusText !== '' && <div className={css.subscriptionStatus}>{statusText}</div>}
                                   {quota.windows.length === 0 && statusText === '' && (
-                                    <div className={css.subscriptionStatus}>{t('billing.subscriptionNoApi')}</div>
+                                    <div className={css.subscriptionStatus}>{t('subscriptionNoApi')}</div>
                                   )}
                                   {quota.windows.map(window => (() => {
                                     const used = Math.min(100, Math.max(0, window.usedPercent))
@@ -2800,13 +2800,13 @@ function BillingDashboard({
                                         <span className={css.subscriptionMeta}>
                                           <span className={clsx(css.subscriptionPct, exhausted && css.subscriptionExhausted)}>
                                             {exhausted
-                                              ? t('billing.subscriptionExhausted')
-                                              : t('billing.subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
+                                              ? t('subscriptionExhausted')
+                                              : t('subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
                                           </span>
                                           {window.resetsAt !== undefined && (
                                             <span className={css.subscriptionReset}>
                                               {/* 重置时间完整显示（本地时区）；与「剩余%」上下排布，不再横挤进度条。 */}
-                                              {t('billing.subscriptionReset').replace('{date}', `${localDayStamp(new Date(window.resetsAt).getTime())} ${formatClock(new Date(window.resetsAt).getTime())}`)}
+                                              {t('subscriptionReset').replace('{date}', `${localDayStamp(new Date(window.resetsAt).getTime())} ${formatClock(new Date(window.resetsAt).getTime())}`)}
                                             </span>
                                           )}
                                         </span>
@@ -2824,15 +2824,15 @@ function BillingDashboard({
                 )}
               </section>
               {/* 数据导出：按日 / 按会话 CSV 与全量 JSON（对账用），文件名带日期范围。 */}
-              <div className={css.exportBar} data-testid="billing-export-bar" role="group" aria-label={t('billing.export')}>
-                <span className={css.exportLabel}>{t('billing.export')}</span>
+              <div className={css.exportBar} data-testid="billing-export-bar" role="group" aria-label={t('export')}>
+                <span className={css.exportLabel}>{t('export')}</span>
                 <button
                   type="button"
                   className={css.exportButton}
                   data-testid="billing-export-day"
                   onClick={() => { downloadText(exportFileName('usage-daily', 'csv', Object.keys(byDay)), dayRowsCsv(byDay), 'text/csv') }}
                 >
-                  {t('billing.exportCsvDay')}
+                  {t('exportCsvDay')}
                 </button>
                 {stats.bySession !== undefined && (
                   <button
@@ -2841,7 +2841,7 @@ function BillingDashboard({
                     data-testid="billing-export-sessions"
                     onClick={() => { downloadText(exportFileName('usage-sessions', 'csv', Object.keys(byDay)), sessionRowsCsv(stats.bySession ?? []), 'text/csv') }}
                   >
-                    {t('billing.exportCsvSession')}
+                    {t('exportCsvSession')}
                   </button>
                 )}
                 {stats.bySite !== undefined && (
@@ -2851,7 +2851,7 @@ function BillingDashboard({
                     data-testid="billing-export-sites"
                     onClick={() => { downloadText(exportFileName('usage-sites', 'csv', Object.keys(byDay)), siteRowsCsv(stats.bySite ?? {}), 'text/csv') }}
                   >
-                    {t('billing.exportCsvSite')}
+                    {t('exportCsvSite')}
                   </button>
                 )}
                 <button
@@ -2860,7 +2860,7 @@ function BillingDashboard({
                   data-testid="billing-export-json"
                   onClick={() => { downloadText(exportFileName('usage-stats', 'json', Object.keys(byDay)), JSON.stringify(stats, null, 2), 'application/json') }}
                 >
-                  {t('billing.exportJson')}
+                  {t('exportJson')}
                 </button>
               </div>
               {/* 费用构成（估算）：输出成本实测计价，输入成本按 user/tool 消息
@@ -2869,10 +2869,10 @@ function BillingDashboard({
                 <section className={css.panel} data-testid="billing-panel-roles">
                   <div className={css.panelHead}>
                     <h3 className={css.panelTitle}>
-                      {t('billing.roleCost')}
+                      {t('roleCost')}
                     </h3>
                     <span className={css.panelHint}>
-                      {t('billing.roleHint')}
+                      {t('roleHint')}
                     </span>
                   </div>
                   <div className={css.shareTrack} data-testid="billing-role-track">
@@ -2900,14 +2900,14 @@ function BillingDashboard({
                 return (
                   <div className={css.ubStatGrid} data-testid="billing-panel-buckets">
                     <div className={css.ubStatCard}>
-                      <span className={css.ubStatLabel}>{t('billing.official')}（=DeepSeek 直连）</span>
+                      <span className={css.ubStatLabel}>{t('official')}（=DeepSeek 直连）</span>
                       <span className={css.ubStatValue}>{money(bucketSummary.officialCost)}</span>
-                      <span className={css.ubStatDetail}>{bucketSummary.officialCalls} {t('billing.calls')} · {officialPct.toFixed(1)}%</span>
+                      <span className={css.ubStatDetail}>{bucketSummary.officialCalls} {t('calls')} · {officialPct.toFixed(1)}%</span>
                     </div>
                     <div className={css.ubStatCard}>
-                      <span className={css.ubStatLabel}>{t('billing.thirdParty')}（中转）</span>
+                      <span className={css.ubStatLabel}>{t('thirdParty')}（中转）</span>
                       <span className={css.ubStatValue}>{money(bucketSummary.thirdCost)}</span>
-                      <span className={css.ubStatDetail}>{bucketSummary.thirdCalls} {t('billing.calls')} · {(100 - officialPct).toFixed(1)}%</span>
+                      <span className={css.ubStatDetail}>{bucketSummary.thirdCalls} {t('calls')} · {(100 - officialPct).toFixed(1)}%</span>
                     </div>
                   </div>
                 )
@@ -2917,10 +2917,10 @@ function BillingDashboard({
                 <section className={css.ubCard} data-testid="billing-panel-workspaces">
                   <div className={css.ubCardHead}>
                     <h3 className={css.ubCardTitle}>
-                      {t('billing.workspaces')}
+                      {t('workspaces')}
                     </h3>
                     <span className={css.ubCardSub}>
-                      {t('billing.workspacesHint')}
+                      {t('workspacesHint')}
                     </span>
                   </div>
                   <ul className={css.rowlist}>
@@ -2936,7 +2936,7 @@ function BillingDashboard({
                             <span className={css.rowlineName}>{row.name}</span>
                             <span className={css.rowlineRight}>
                               <span className={css.num}>{money(row.cost)}</span>
-                              <span className={css.rowlineMuted}>{row.calls} {t('billing.calls')}</span>
+                              <span className={css.rowlineMuted}>{row.calls} {t('calls')}</span>
                               <span className={css.rowlineChev} aria-hidden="true">›</span>
                             </span>
                           </button>
@@ -2952,7 +2952,7 @@ function BillingDashboard({
                                   <span className={css.rowlineName}>{s.title ?? s.id.slice(0, 8)}</span>
                                   <span className={css.rowlineRight}>
                                     <span className={css.num}>{money(s.cost)}</span>
-                                    <span className={css.rowlineMuted}>{s.calls} {t('billing.calls')}</span>
+                                    <span className={css.rowlineMuted}>{s.calls} {t('calls')}</span>
                                   </span>
                                 </div>
                               ))}
@@ -2968,11 +2968,11 @@ function BillingDashboard({
                 <section className={css.ubCard} data-testid="billing-panel-sessions">
                   <div className={css.ubCardHead}>
                     <h3 className={css.ubCardTitle}>
-                      {t('billing.sessions')}
+                      {t('sessions')}
                     </h3>
                     <span className={css.ubCardSub}>
                       {stats.bySession.length > SESSION_DISPLAY_LIMIT
-                        ? t('billing.sessionOverflow')
+                        ? t('sessionOverflow')
                           .replace('{limit}', String(SESSION_DISPLAY_LIMIT))
                           .replace('{total}', String(stats.bySession.length))
                         : `${stats.bySession.length}`}
@@ -2981,24 +2981,24 @@ function BillingDashboard({
                   {/* 置信度提示：部分会话数据出自旧版算法的账本行（原日志已删，无法重算）。 */}
                   {(stats.staleLedgerSessions ?? 0) > 0 && (
                     <div className={css.staleNotice} data-testid="billing-sessions-stale">
-                      {t('billing.staleLedgerNotice').replace('{count}', String(stats.staleLedgerSessions))}
+                      {t('staleLedgerNotice').replace('{count}', String(stats.staleLedgerSessions))}
                     </div>
                   )}
                   <div className={css.ubTablewrap} data-testid="billing-sessions-table">
                     <table className={css.ubTable}>
                       <thead>
                         <tr>
-                          <th>{t('billing.sessionTitle')}</th>
-                          <th>{t('billing.project')}</th>
-                          <th className={css.numCol}>{t('billing.calls')}</th>
-                          <th className={css.numCol}>{t('billing.actual')}</th>
-                          <th className={css.numCol}>{t('billing.lastActive')}</th>
+                          <th>{t('sessionTitle')}</th>
+                          <th>{t('project')}</th>
+                          <th className={css.numCol}>{t('calls')}</th>
+                          <th className={css.numCol}>{t('actual')}</th>
+                          <th className={css.numCol}>{t('lastActive')}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {stats.bySession.length === 0 && (
                           <tr>
-                            <td colSpan={5} className={css.emptyRow}>{t('billing.noData')}</td>
+                            <td colSpan={5} className={css.emptyRow}>{t('noData')}</td>
                           </tr>
                         )}
                         {stats.bySession.slice(0, SESSION_DISPLAY_LIMIT).map(row => (
@@ -3007,7 +3007,7 @@ function BillingDashboard({
                               <span className={css.modelName}>{row.title ?? row.id.slice(0, 8)}</span>
                               {row.stale === true && (
                                 <span className={clsx(css.ubTag, css.ubTagNeutral)} data-testid="billing-session-stale">
-                                  {t('billing.sessionStaleBadge')}
+                                  {t('sessionStaleBadge')}
                                 </span>
                               )}
                             </td>
@@ -3038,10 +3038,10 @@ function BillingDashboard({
                 <section className={css.panel} data-testid="billing-panel-perf">
                   <div className={css.panelHead}>
                     <h3 className={css.panelTitle}>
-                      {t('billing.perfTitle')}
+                      {t('perfTitle')}
                     </h3>
                     <span className={css.panelHint}>
-                      {t('billing.perfHint')}
+                      {t('perfHint')}
                     </span>
                   </div>
                   <PerfPanel perf={stats.perf} models={chartModels} t={t} />
@@ -3056,30 +3056,30 @@ function BillingDashboard({
               <div className={css.ubAlert} role="note">
                 <div className={css.ubAlertLeft}>
                   <span className={css.ubRate} data-testid="billing-rate">
-                    {t('billing.todayRate')} 1 USD = {formatMoney(rateInfo.rate)}
+                    {t('todayRate')} 1 USD = {formatMoney(rateInfo.rate)}
                   </span>
                   <span className={clsx(css.ubTag, rateInfo.live ? css.ubTagSuccess : css.ubTagNeutral)}>
-                    {rateInfo.live ? t('billing.rateLive') : t('billing.rateBuiltin')}
+                    {rateInfo.live ? t('rateLive') : t('rateBuiltin')}
                   </span>
                 </div>
-                <p className={css.ubAlertNote}>{t('billing.pricingTip')}</p>
+                <p className={css.ubAlertNote}>{t('pricingTip')}</p>
               </div>
 
               {/* 2. 模型单价表：ub-card —— 头部(标题+单位) + 表格（模型点+名 / 峰谷 chips / 未收录行）。 */}
               <section className={css.ubCard} data-testid="billing-panel-pricing">
                 <div className={css.ubCardHead}>
-                  <h3 className={css.ubCardTitle}>{t('billing.pricing')}</h3>
-                  <span className={css.ubCardSub}>{t('billing.pricingUnit')}</span>
+                  <h3 className={css.ubCardTitle}>{t('pricing')}</h3>
+                  <span className={css.ubCardSub}>{t('pricingUnit')}</span>
                 </div>
                 <div className={css.ubTablewrap}>
                   <table className={css.ubTable}>
                     <thead>
                       <tr>
-                        <th>{t('billing.thModel')}</th>
-                        <th className={css.numCol}>{t('billing.thInputMiss')}</th>
-                        <th className={css.numCol}>{t('billing.thInputHit')}</th>
-                        <th className={css.numCol}>{t('billing.output')}</th>
-                        <th className={css.numCol}>{t('billing.band')}</th>
+                        <th>{t('thModel')}</th>
+                        <th className={css.numCol}>{t('thInputMiss')}</th>
+                        <th className={css.numCol}>{t('thInputHit')}</th>
+                        <th className={css.numCol}>{t('output')}</th>
+                        <th className={css.numCol}>{t('band')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3097,7 +3097,7 @@ function BillingDashboard({
                                   {/* 探活命中但无内置/models.dev 价：明确标注，不参与计价。 */}
                                   {entry.uncatalogued && (
                                     <span className={css.ubTagAlert} data-testid="billing-price-uncatalogued">
-                                      {t('billing.uncatalogued')}
+                                      {t('uncatalogued')}
                                     </span>
                                   )}
                                   {/* 限时促销：生效期内在模型名后挂折扣徽章，悬停提示恢复时点；过期自动消失。 */}
@@ -3107,10 +3107,10 @@ function BillingDashboard({
                                       data-testid="billing-price-promo"
                                       title={entry.promo.endsAtMs === undefined
                                         // 无截止日的长期活动：提示待厂商公告，不显示具体日期。
-                                        ? t('billing.promoOpenEnded')
-                                        : t('billing.promoUntil', { date: new Date(entry.promo.endsAtMs).toLocaleDateString() })}
+                                        ? t('promoOpenEnded')
+                                        : t('promoUntil', { date: new Date(entry.promo.endsAtMs).toLocaleDateString() })}
                                     >
-                                      {entry.promo.note ?? t('billing.promoBadge')}
+                                      {entry.promo.note ?? t('promoBadge')}
                                     </span>
                                   )}
                                 </span>
@@ -3131,13 +3131,13 @@ function BillingDashboard({
                                   <span className={css.ubPricepair}>
                                     <span className={css.ubChipPeak}>
                                       {/* 延迟档语义（Gemini Standard/Flex）与时段语义（峰谷）标签不同。 */}
-                                      <span className={css.ubChipLabel}>{entry.tierSemantics === 'latency' ? t('billing.ubStd') : t('billing.ubPeak')}</span>
+                                      <span className={css.ubChipLabel}>{entry.tierSemantics === 'latency' ? t('ubStd') : t('ubPeak')}</span>
                                       <span className={css.num}>
                                         {unitMoney(entry.price.input, entry.price.currency)} / {unitMoney(entry.price.output, entry.price.currency)}
                                       </span>
                                     </span>
                                     <span className={css.ubChipOff}>
-                                      <span className={css.ubChipLabel}>{entry.tierSemantics === 'latency' ? 'Flex' : t('billing.ubOff')}</span>
+                                      <span className={css.ubChipLabel}>{entry.tierSemantics === 'latency' ? 'Flex' : t('ubOff')}</span>
                                       <span className={css.num}>
                                         {unitMoney(entry.price.offPeak.input, entry.price.currency)} / {unitMoney(entry.price.offPeak.output, entry.price.currency)}
                                       </span>
@@ -3145,7 +3145,7 @@ function BillingDashboard({
                                   </span>
                                 )
                                 : hasPrice
-                                  ? <span className={css.flatTag}>{t('billing.flat')}</span>
+                                  ? <span className={css.flatTag}>{t('flat')}</span>
                                   : <span className={css.na}>—</span>}
                             </td>
                           </tr>
@@ -3173,20 +3173,20 @@ function BillingDashboard({
               {/* 3. 计价说明：ub-card —— 头部 + 说明列表。 */}
               <section className={css.ubCard}>
                 <div className={css.ubCardHead}>
-                  <h3 className={css.ubCardTitle}>{t('billing.pricingNotes')}</h3>
+                  <h3 className={css.ubCardTitle}>{t('pricingNotes')}</h3>
                 </div>
                 <ul className={css.ubNotes}>
                   <li className={css.ubNotesItem}>
-                    <span className={css.ubNotesTerm}>{t('billing.cacheHit')}</span>
-                    <span className={css.ubNotesDesc}>{t('billing.noteCache')}</span>
+                    <span className={css.ubNotesTerm}>{t('cacheHit')}</span>
+                    <span className={css.ubNotesDesc}>{t('noteCache')}</span>
                   </li>
                   <li className={css.ubNotesItem}>
-                    <span className={css.ubNotesTerm}>{t('billing.peakBand')}</span>
-                    <span className={css.ubNotesDesc}>{t('billing.noteBand')}</span>
+                    <span className={css.ubNotesTerm}>{t('peakBand')}</span>
+                    <span className={css.ubNotesDesc}>{t('noteBand')}</span>
                   </li>
                   <li className={css.ubNotesItem}>
-                    <span className={css.ubNotesTerm}>{t('billing.pricingSource')}</span>
-                    <span className={css.ubNotesDesc}>{t('billing.noteSource')}</span>
+                    <span className={css.ubNotesTerm}>{t('pricingSource')}</span>
+                    <span className={css.ubNotesDesc}>{t('noteSource')}</span>
                   </li>
                 </ul>
               </section>
@@ -3199,8 +3199,8 @@ function BillingDashboard({
 
         {/* 底部公共细条（ub-footer）：轮询说明 + 版本/许可证，所有 Tab 共享。 */}
         <footer className={css.modalFooter} data-testid="billing-footer">
-          <span>{t('billing.footer')}</span>
-          <span>{t('billing.footerCredit').replace('{version}', stats.pluginVersion === undefined ? '—' : `v${stats.pluginVersion}`)}</span>
+          <span>{t('footer')}</span>
+          <span>{t('footerCredit').replace('{version}', stats.pluginVersion === undefined ? '—' : `v${stats.pluginVersion}`)}</span>
         </footer>
       </div>
     </Modal>
@@ -3441,13 +3441,13 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     const top = crossed[crossed.length - 1] ?? 100
     actions.markTierAlerted(crossed, day)
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
-    const body = t('billing.budgetTierBody')
+    const body = t('budgetTierBody')
       .replace('{cost}', formatMoney(monthCost))
       .replace('{budget}', formatMoney(effectiveBudget))
       .replace('{pct}', String(top))
     // 通知发送失败（部分平台限制）不影响标记：当天不再重试，避免轮询轰炸。
     try {
-      new Notification(t('billing.budget'), { body })
+      new Notification(t('budget'), { body })
     } catch {
       // 平台拒绝构造通知：静默跳过，进度条分档变色兜底。
     }
@@ -3464,10 +3464,10 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     if (!peakConfig.webNotify) return
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
     const minutes = Math.max(1, Math.round((upcoming.atMs - nowMs) / 60_000))
-    const title = upcoming.entering === 'peak' ? t('billing.peakAlertTitlePeak') : t('billing.peakAlertTitleOff')
+    const title = upcoming.entering === 'peak' ? t('peakAlertTitlePeak') : t('peakAlertTitleOff')
     const body = upcoming.entering === 'peak'
-      ? t('billing.tierAlertEnterPeak').replace('{minutes}', String(minutes))
-      : t('billing.tierAlertEnterOff').replace('{minutes}', String(minutes))
+      ? t('tierAlertEnterPeak').replace('{minutes}', String(minutes))
+      : t('tierAlertEnterOff').replace('{minutes}', String(minutes))
     try {
       new Notification(title, { body })
     } catch {
@@ -3500,13 +3500,13 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     if (lastBalanceAlertDay === day) return
     actions.markBalanceAlerted(day)
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
-    const body = t('billing.balanceLowBody')
+    const body = t('balanceLowBody')
       .replace('{name}', lowBalanceRow.name)
       .replace('{balance}', formatMoney(lowBalanceRow.cny))
       .replace('{days}', lowBalanceRow.days === undefined ? '—' : String(lowBalanceRow.days))
     // 通知发送失败（部分平台限制）不影响标记：当天不再重试，避免轮询轰炸。
     try {
-      new Notification(t('billing.balance'), { body })
+      new Notification(t('balance'), { body })
     } catch {
       // 平台拒绝构造通知：静默跳过。
     }
@@ -3537,10 +3537,10 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       if (bal === undefined || bal.totalBalance === undefined) {
         // 无余额/异常时给出状态文案（未配置 / 密钥无效 / 查询失败），而非空。
         const text = bal?.error === 'unauthorized'
-          ? t('billing.balanceUnauthorized')
+          ? t('balanceUnauthorized')
           : bal?.error === 'unreachable' || bal?.error === 'invalid'
-            ? t('billing.balanceUnreachable')
-            : t('billing.balanceUnconfigured')
+            ? t('balanceUnreachable')
+            : t('balanceUnconfigured')
         return { text, low: false }
       }
       const amount = bal.currency === 'USD' ? `$${bal.totalBalance.toFixed(2)}` : formatMoney(bal.totalBalance)
@@ -3551,11 +3551,11 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     const quotaStatus = (name: string): { text: string; low: boolean } => {
       const q = quotas.find(qq => qq.displayName === name || subscriptionVendorOf(qq.provider) === name)
       if (q === undefined || q.windows.length === 0) {
-        return { text: t('billing.subscriptionNoApi'), low: false }
+        return { text: t('subscriptionNoApi'), low: false }
       }
       const lowest = q.windows.reduce((min, window) => Math.min(min, window.remainingPercent), 100)
       return {
-        text: lowest <= 0 ? t('billing.subscriptionExhausted') : t('billing.subscriptionRemaining').replace('{pct}', String(lowest)),
+        text: lowest <= 0 ? t('subscriptionExhausted') : t('subscriptionRemaining').replace('{pct}', String(lowest)),
         low: lowest < 20,
       }
     }

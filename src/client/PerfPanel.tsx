@@ -122,7 +122,7 @@ function fmtTick(value: number): string {
 
 /** tooltip 数值格式：首字延时取整毫秒；生成速度保留 1 位小数并带单位。 */
 function fmtValue(value: number, metric: PerfMetric, t: (key: UsageBillingKey) => string): string {
-  return metric === 'ttft' ? `${Math.round(value)} ms` : `${value.toFixed(1)} ${t('billing.perfTpsUnit')}`
+  return metric === 'ttft' ? `${Math.round(value)} ms` : `${value.toFixed(1)} ${t('perfTpsUnit')}`
 }
 
 /**
@@ -242,7 +242,7 @@ export function PerfPanel({
   }, [perf, rows, litKeys, prefs.metric])
 
   if (perf === undefined || rows.length === 0) {
-    return <div className={css.chartEmpty} data-testid="billing-perf-empty">{t('billing.perfEmpty')}</div>
+    return <div className={css.chartEmpty} data-testid="billing-perf-empty">{t('perfEmpty')}</div>
   }
 
   const toggleModel = (key: string): void => {
@@ -269,15 +269,15 @@ export function PerfPanel({
         <table className={css.modelTable}>
           <thead>
             <tr>
-              <th>{t('billing.model')}</th>
-              <th className={css.numCol}>{t('billing.perfSamples')}</th>
-              <th className={css.numCol}>{t('billing.perfTtft')}</th>
-              <th className={css.numCol}>{t('billing.perfP50')}</th>
-              <th className={css.numCol}>{t('billing.perfP90')}</th>
-              <th className={css.numCol}>{t('billing.perfMax')}</th>
-              <th className={css.numCol}>{t('billing.perfTps')}</th>
-              <th className={css.numCol}>{t('billing.perfLatency')}</th>
-              <th className={css.numCol}>{t('billing.perfEstimated')}</th>
+              <th>{t('model')}</th>
+              <th className={css.numCol}>{t('perfSamples')}</th>
+              <th className={css.numCol}>{t('perfTtft')}</th>
+              <th className={css.numCol}>{t('perfP50')}</th>
+              <th className={css.numCol}>{t('perfP90')}</th>
+              <th className={css.numCol}>{t('perfMax')}</th>
+              <th className={css.numCol}>{t('perfTps')}</th>
+              <th className={css.numCol}>{t('perfLatency')}</th>
+              <th className={css.numCol}>{t('perfEstimated')}</th>
             </tr>
           </thead>
           <tbody>
@@ -312,7 +312,7 @@ export function PerfPanel({
       {hourLayout !== null && (
         <div data-testid="billing-perf-hour">
           <div className={css.perfBar}>
-            <span className={css.rangeToggle} role="group" aria-label={t('billing.perfTitle')}>
+            <span className={css.rangeToggle} role="group" aria-label={t('perfTitle')}>
               {(['ttft', 'tps'] as const).map(metric => (
                 <button
                   key={metric}
@@ -323,21 +323,21 @@ export function PerfPanel({
                   onClick={() => { setMetric(metric) }}
                 >
                   {metric === 'ttft'
-                    ? `${t('billing.perfTtft')} (ms)`
-                    : `${t('billing.perfTps')} (${t('billing.perfTpsUnit')})`}
+                    ? `${t('perfTtft')} (ms)`
+                    : `${t('perfTps')} (${t('perfTpsUnit')})`}
                 </button>
               ))}
             </span>
           </div>
           {/* 模型 chips：点击开/关该模型曲线；全选一键点亮全部。 */}
-          <div className={css.perfChips} role="group" aria-label={t('billing.model')}>
+          <div className={css.perfChips} role="group" aria-label={t('model')}>
             <button
               type="button"
               className={css.perfChip}
               data-testid="billing-perf-chip-all"
               onClick={() => { updatePrefs({ metric: prefs.metric, models: rows.map(row => row.key) }) }}
             >
-              {t('billing.perfAll')}
+              {t('perfAll')}
             </button>
             {rows.map(row => {
               const lit = litKeys.includes(row.key)
@@ -447,13 +447,13 @@ export function PerfPanel({
             )}
           </div>
           ) : (
-            <div className={css.chartEmpty} data-testid="billing-perf-chart-empty">{t('billing.perfChartEmpty')}</div>
+            <div className={css.chartEmpty} data-testid="billing-perf-chart-empty">{t('perfChartEmpty')}</div>
           )}
         </div>
       )}
       {/* 旧 host 文档缺 byHourModel（无任何小时数据）→ 空态提示（表格仍可用）。 */}
       {hourLayout === null && (
-        <div className={css.chartEmpty} data-testid="billing-perf-chart-empty">{t('billing.perfChartEmpty')}</div>
+        <div className={css.chartEmpty} data-testid="billing-perf-chart-empty">{t('perfChartEmpty')}</div>
       )}
     </div>
   )

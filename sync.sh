@@ -131,6 +131,26 @@ else
   npx tsc -b tsconfig.json
   npx tsdown
 
+  # ---- 客户端 bundle 体积门禁 ----
+  # DSH Store 自动审查对单运行文件有 256 KiB（262144 字节）硬上限，超限即
+  # fail-closed（更新暂缓，Store issue #255）。在构建出口当场量测：超过
+  # 245 KiB 警告（接近审查线，新功能需评估体积成本）、超过 256 KiB 直接
+  # 失败，把体积成本暴露在每次构建，而不是等 Store 八小时复检打回。
+  CLIENT_BYTES="$(node -p "require('fs').statSync('$SRC/lib/client.js').size")"
+  HARD_BYTES=$((256 * 1024))
+  WARN_BYTES=$((HARD_BYTES - 11 * 1024))
+  if [ "$CLIENT_BYTES" -gt "$HARD_BYTES" ]; then
+    echo "[错误] lib/client.js = ${CLIENT_BYTES} 字节，超过 DSH Store 单文件上限 ${HARD_BYTES}（256 KiB）"
+    echo "       发布会被 Store 暂缓（fail-closed）；请先压缩 bundle 体积再构建"
+    exit 1
+  fi
+  if [ "$CLIENT_BYTES" -gt "$WARN_BYTES" ]; then
+    echo "[警告] lib/client.js = ${CLIENT_BYTES} 字节，距 Store 上限仅 $((HARD_BYTES - CLIENT_BYTES)) 字节"
+    echo "       新增功能请同步评估体积（文案/资产/依赖），避免下次发版撞线"
+  else
+    echo "[检查] lib/client.js = ${CLIENT_BYTES} 字节（Store 上限 ${HARD_BYTES}）"
+  fi
+
   # harness-a1 副本从 0.1.2 宿主侧加载，需要 lib 产物；
   # 独立仓产物与它同形态（同一 0.1.2 种子工厂），直接同步即可。
   rsync -a --delete "$SRC/lib/" "$TEST_DEST/lib/"
