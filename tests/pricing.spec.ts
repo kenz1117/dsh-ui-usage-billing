@@ -283,6 +283,50 @@ describe('computeCostAt (P0-1)', () => {
   })
 })
 
+describe('legacy base prices (pre peak-era)', () => {
+  const MILLION = 1_000_000
+  // buckets：2M 输入（1M 命中 + 1M 未命中）+ 1M 输出，与峰谷组同构便于对照。
+  const buckets = { input: 2 * MILLION, cacheHit: MILLION, cacheMiss: MILLION, output: MILLION }
+  // 分界 = UTC 2026-08-16T16:00Z（北京 2026-08-17 周一 00:00）。
+  const before = Date.UTC(2026, 7, 15, 10) // 北京 8-15 周六 18:00（峰谷时代前）
+  const boundary = Date.parse('2026-08-16T16:00:00Z') // 分界整点：北京 00:00 谷档
+
+  it('charges the official pre-peak base price for flash', () => {
+    // 基础价：缓存命中 ¥0.02、未命中 ¥1、输出 ¥2（每 1M）。
+    expect(computeCostAt(modelOf('flash'), buckets, before))
+      .toBeCloseTo((MILLION * 0.02 + MILLION * 1 + MILLION * 2) / MILLION, 10)
+  })
+
+  it('charges the official pre-peak base price for pro', () => {
+    // 基础价：缓存命中 ¥0.025、未命中 ¥3、输出 ¥6（每 1M）。
+    expect(computeCostAt(modelOf('pro'), buckets, before))
+      .toBeCloseTo((MILLION * 0.025 + MILLION * 3 + MILLION * 6) / MILLION, 10)
+  })
+
+  it('prices flash-vision-exp at the flash legacy base', () => {
+    expect(computeCostAt(modelOf('flash-vision-exp'), buckets, before))
+      .toBe(computeCostAt(modelOf('flash'), buckets, before))
+  })
+
+  it('switches to peak/off-peak bands at the boundary instant', () => {
+    // 分界整点（北京周一 00:00）起按谷档：¥0.05 + ¥1.5 + ¥4.5 = ¥6.05，不再是基础价 ¥3.02。
+    expect(computeCostAt(modelOf('flash'), buckets, boundary))
+      .toBeCloseTo((MILLION * 0.05 + MILLION * 1.5 + MILLION * 4.5) / MILLION, 10)
+  })
+
+  it('keeps user prices authoritative over the legacy band', () => {
+    // 用户价 = 实付价：即使事件在峰谷时代之前，也不套内置 legacy 口径。
+    const priced = { ...modelOf('flash'), userPriced: true as const, price: { currency: 'CNY' as const, input: 9, cacheHit: 0.3, output: 27 } }
+    expect(computeCostAt(priced, buckets, before))
+      .toBeCloseTo((MILLION * 0.3 + MILLION * 9 + MILLION * 27) / MILLION, 10)
+  })
+
+  it('leaves non-DeepSeek models untouched by the legacy band', () => {
+    expect(computeCostAt(modelOf('glm'), buckets, before))
+      .toBe(computeCostAt(modelOf('glm'), buckets, boundary))
+  })
+})
+
 describe('currency display (P2-3)', () => {
   it('converts CNY to USD by the built-in rate', () => {
     expect(cnyToUsd(6.79)).toBeCloseTo(1, 10)

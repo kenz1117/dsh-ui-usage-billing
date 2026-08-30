@@ -133,6 +133,13 @@ export declare function getRateInfo(): {
 };
 /** Default share of traffic assumed to fall in the peak band (0..1). */
 export declare const DEFAULT_PEAK_SHARE = 0.5;
+/**
+ * 峰谷计价时代分界（UTC 2026-08-16T16:00:00Z，即北京时间 2026-08-17 00:00）：
+ * DeepSeek V4 自此起按峰/谷两档计价。此前官方只有基础价一档——历史事件若
+ * 套现行峰/谷档价会把成本高估约 50%（谷价 = 基础价 × 1.5）。半开区间：该
+ * 时刻及之后按峰谷档计。
+ */
+export declare const PEAK_ERA_START_MS: number;
 /** 计费时段档位：高峰 / 空闲（官方 DeepSeek 刊例价：高峰 = 空闲 × 2）。 */
 export type PriceTierId = 'peak' | 'offPeak';
 /** 成本显示币种：人民币（国内模型直价）/ 美元（国外模型直价或换算显示）。 */
@@ -369,6 +376,10 @@ export declare function computeCost(entry: ModelEntry, buckets: TokenUsageBucket
  * （null/NaN，理论不发生在真实事件流）时回退 {@link DEFAULT_PEAK_SHARE} 混合，
  * 保持旧语义不低估。平档模型（无 offPeak）两个时段同价。限时促销与峰谷档
  * 同口径：按事件时刻判定该笔流量当时享受的单价。
+ *
+ * 历史正确性：事件时刻早于 {@link PEAK_ERA_START_MS} 的 DeepSeek V4 流量按
+ * 当时官方基础价（{@link LEGACY_DEEPSEEK_BANDS}）计费，不套现行峰/谷档——
+ * 否则峰谷开闸前的历史账单会被系统性高估。
  * @param entry - the catalog entry whose prices apply.
  * @param buckets - token usage counts.
  * @param timeMs - the call's wall-clock time (epoch ms); null falls back to the peak-share mix.
