@@ -73,6 +73,26 @@ export declare const SITE_LIST_STORAGE_KEY = "dsh.ui-usage-billing.sites";
 export declare function loadSiteListPrefs(): SiteListPrefs;
 /** 写入站点列表偏好。失败静默（展示偏好非关键）。 */
 export declare function saveSiteListPrefs(prefs: SiteListPrefs): void;
+/**
+ * 即时代费条（平价消耗胶囊，composer dock 的 LiveCostBar）的显示偏好。
+ * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）；
+ * 设置 Tab 与 LiveCostBar 分属两个 React 树，跨树同步走 localStorage +
+ * `LIVE_COST_BAR_PREF_EVENT` CustomEvent（同文档即时生效，跨标签页靠 storage 事件）。
+ */
+export interface LiveCostBarPrefs {
+    /** 是否显示输入框下方的即时代费条胶囊（默认 true：保持历史行为）。 */
+    show: boolean;
+}
+/** 默认即时代费条偏好：显示（升级用户零感知）。 */
+export declare const DEFAULT_LIVE_COST_BAR_PREFS: LiveCostBarPrefs;
+/** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
+export declare const LIVE_COST_BAR_STORAGE_KEY = "dsh.ui-usage-billing.livecost";
+/** 设置 Tab 切换后派发的 CustomEvent 名（LiveCostBar 监听它即时显隐）。 */
+export declare const LIVE_COST_BAR_PREF_EVENT = "dsh.ui-usage-billing.livecost-pref";
+/** 读取即时代费条偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
+export declare function loadLiveCostBarPrefs(): LiveCostBarPrefs;
+/** 写入即时代费条偏好。失败静默（展示偏好非关键）。 */
+export declare function saveLiveCostBarPrefs(prefs: LiveCostBarPrefs): void;
 /** 用户自定义单价（与 client/pricing.ts 的 `UserPriceEntry` 同形；type import，无运行时依赖）。 */
 export type StoredUserPrice = UserPriceEntry;
 /** 自定义价表：模型（+可选来源）→ 单价，条目列表（支持同名模型绑定不同中转站 origin）。 */
