@@ -5,8 +5,8 @@
  * 可选：跨 tab 只保留一个提醒 leader（Web Locks 优先，降级 localStorage 租约），
  * 避免多窗口同时弹同一条。配置持久化在 localStorage（默认关闭，用户在面板设置开启）。
  */
-import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
-import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store';
+import type { SessionListState } from '@deepseek-ai/dsh-client-runtime/client';
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-runtime/client';
 /** 配置持久化 key：开启/关闭 + 提醒持续模式（0=常驻，其余=秒后自动关）。 */
 export declare const COMPLETION_NOTIFY_KEY = "dsh-billing-completion-notify-v1";
 export interface CompletionNotifyConfig {
