@@ -1376,6 +1376,59 @@
   font-weight: 600;
 }
 
+/* ── 性能曲线工具条：指标 tab（复用 rangeToggle）+ 模型 chips ───────── */
+
+.perfBar {
+  display: flex;
+  align-items: center;
+  margin: 10px 0 2px;
+}
+
+/* 模型 chip：可点击的图例胶囊；点亮时文字/描边染模型色（inline），熄灭置灰。 */
+.perfChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 2px;
+}
+
+.perfChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  padding: 2px 9px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, opacity 120ms ease;
+}
+
+.perfChip:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.perfChipOff {
+  opacity: 0.45;
+}
+
+.perfChipDot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+}
+
+/* 吸附小时处各模型曲线的高亮圆点：白描边浮在彩线上。 */
+.chartHoverDot {
+  stroke: var(--dsw-alias-bg-layer-2);
+  stroke-width: 1.5;
+}
+
 /* ── Tables ─────────────────────────────────────────────────────────── */
 
 .tableScroll {

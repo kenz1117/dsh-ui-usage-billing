@@ -46,7 +46,7 @@ if [ ! -f "$SRC/package.json" ]; then
   exit 1
 fi
 if [ ! -f "$DEST/package.json" ]; then
-  echo "[错误] 未找到主仓副本：$DEST（请确认 deepseek-harness 已检出）"
+  echo "[错误] 未找到主仓副本：${DEST}（请确认 deepseek-harness 已检出）"
   exit 1
 fi
 

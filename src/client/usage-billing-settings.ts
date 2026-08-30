@@ -266,3 +266,48 @@ export function saveUserPrices(prices: UserPriceMap): void {
     // ignore: storage full / unavailable — display preference is non-critical.
   }
 }
+
+/** 性能曲线的指标视角。 */
+export type PerfMetric = 'ttft' | 'tps'
+
+/**
+ * 性能面板的视图偏好：当前指标 tab 与点亮的模型曲线集合。
+ * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
+ */
+export interface PerfViewPrefs {
+  /** 当前指标：首字延时（ms）/ 生成速度（tok/s）。 */
+  metric: PerfMetric
+  /** 点亮的模型键列表；缺省 = 按样本数前 5（用户未碰过图例时跟随默认）。 */
+  models?: string[]
+}
+
+/** 默认性能视图偏好：首字延时 tab；模型集合跟随默认（前 5）。 */
+export const DEFAULT_PERF_VIEW_PREFS: PerfViewPrefs = { metric: 'ttft' }
+
+/** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
+export const PERF_VIEW_STORAGE_KEY = 'dsh.ui-usage-billing.perf'
+
+/** 读取性能视图偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
+export function loadPerfViewPrefs(): PerfViewPrefs {
+  try {
+    const raw = localStorage.getItem(PERF_VIEW_STORAGE_KEY)
+    if (raw === null) return { ...DEFAULT_PERF_VIEW_PREFS }
+    const parsed = JSON.parse(raw) as Partial<PerfViewPrefs>
+    return {
+      metric: parsed.metric === 'tps' ? 'tps' : 'ttft',
+      // models 缺省 = 从未碰过图例（跟随默认前 5）；空数组 = 用户显式全关，需保留。
+      ...(Array.isArray(parsed.models) ? { models: parsed.models.filter(entry => typeof entry === 'string') } : {}),
+    }
+  } catch {
+    return { ...DEFAULT_PERF_VIEW_PREFS }
+  }
+}
+
+/** 写入性能视图偏好。失败静默（展示偏好非关键）。 */
+export function savePerfViewPrefs(prefs: PerfViewPrefs): void {
+  try {
+    localStorage.setItem(PERF_VIEW_STORAGE_KEY, JSON.stringify(prefs))
+  } catch {
+    // ignore: storage full / unavailable — display preference is non-critical.
+  }
+}

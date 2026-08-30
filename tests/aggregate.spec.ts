@@ -966,8 +966,41 @@ describe('performance aggregation (TTFT / tps / latency)', () => {
     // 总延迟：两次都是 1000-100=900。
     expect(flash?.latencyAvg).toBe(900)
     expect(flash?.estimatedSamples).toBe(0)
-    // 两个样本同属一个本地小时 → 小时桶 samples = 2。
-    expect(Object.keys(stats.perf?.byHour ?? {}).length).toBe(1)
+    // 两个样本同属一个本地小时 → 小时×模型桶只有一个小时键。
+    const hourKeys = Object.keys(stats.perf?.byHourModel ?? {})
+    expect(hourKeys).toHaveLength(1)
+    // 该小时内 flash 桶：样本 2、TTFT 均值 200、速度均值 375（与按模型口径一致）。
+    expect(stats.perf?.byHourModel[hourKeys[0]!]?.flash).toMatchObject({
+      samples: 2, ttftAvg: 200, tpsAvg: 375,
+    })
+  })
+
+  it('splits hour perf cells by model so curves can compare models', async () => {
+    // 同一小时两个模型：flash 有输出（有 tps），glm 零输出（无 tps）。
+    const stats = await aggregateUsage(fakePersistence({
+      'session-a': [
+        ev('step/start', 1, 0, { turn: 1, step: 1 }),
+        ev('request/header', 2, 100, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+        ev('assistant/chunk', 3, 200, { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'a' } }),
+        ev('assistant/chunk', 4, 300, { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'b' } }),
+        ev('assistant/message', 5, 1_000, { turn: 1, step: 1, usage: { inputTokens: 10, outputTokens: 50 } }),
+      ] as unknown as SessionEvent[],
+      'session-b': [
+        ev('step/start', 1, 0, { turn: 1, step: 1 }),
+        ev('request/header', 2, 300, { header: { config: { provider: 'zai-coding-cn', model: 'glm-5.3-flash' } } }),
+        ev('assistant/chunk', 3, 400, { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'a' } }),
+        ev('assistant/message', 4, 1_000, { turn: 1, step: 1, usage: { inputTokens: 10, outputTokens: 0 } }),
+      ] as unknown as SessionEvent[],
+    }))
+    const hourKeys = Object.keys(stats.perf?.byHourModel ?? {})
+    expect(hourKeys).toHaveLength(1)
+    const hourCell = stats.perf?.byHourModel[hourKeys[0]!] ?? {}
+    // 同一小时按模型分桶互不混淆：样本各归各键，不跨模型混合。
+    expect(hourCell.flash).toMatchObject({ samples: 1, ttftAvg: 100 })
+    expect(hourCell.flash?.tpsAvg).toBe(500)
+    expect(hourCell['glm-5.3-flash']).toMatchObject({ samples: 1, ttftAvg: 100 })
+    // 零输出 → 无生成速度（曲线在该模型的速度视图断开）。
+    expect(hourCell['glm-5.3-flash']?.tpsAvg).toBeUndefined()
   })
 })
 
