@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSH Usage Billing — 重构视觉 Demo（方向 A · 数据终端感）</title>
+<style>
+/* ===== 模拟宿主 dsw 令牌（暗色主场景） ===== */
+:root{
+  --dsw-alias-label-primary:#e8ecf2;--dsw-alias-label-secondary:#9aa5b5;--dsw-alias-label-tertiary:#6b7686;
+  --dsw-alias-label-caption:#5a6474;--dsw-alias-label-dimmed:#4a5364;
+  --dsw-alias-bg-layer-1:#0d1420;--dsw-alias-bg-layer-2:#111a28;--dsw-alias-bg-layer-3:#16202f;
+  --dsw-alias-bg-module-platform:#0a1018;
+  --dsw-alias-border-l1:#1e2a3c;--dsw-alias-border-l2:#2a3850;
+  --dsw-static-blue-500:#4d9fff;--dsw-static-amber-500:#f0b429;--dsw-static-red-500:#ff5c5c;
+  --dsw-static-red-400:#ff7a7a;--dsw-static-green-500:#3fce8f;--dsw-static-neutral-bluish-00:#182436;
+  --dsw-alias-interactive-bg-hover:#1a2536;
+  --mono:ui-monospace,'SF Mono',Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);
+  font:13px/1.5 -apple-system,'PingFang SC',system-ui,sans-serif;padding:28px 32px 60px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+h1{font-size:16px;font-weight:600;margin-bottom:4px}
+.sub{color:var(--dsw-alias-label-secondary);font-size:12px;margin-bottom:24px}
+.sub b{color:var(--dsw-static-blue-500);font-weight:500}
+
+/* ===== 表面切换条 ===== */
+.tabs{display:flex;gap:6px;margin-bottom:20px}
+.tabs button{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);
+  color:var(--dsw-alias-label-secondary);padding:7px 16px;border-radius:8px;font-size:12px;cursor:pointer}
+.tabs button.on{color:var(--dsw-alias-label-primary);border-color:var(--dsw-static-blue-500);
+  background:var(--dsw-alias-bg-layer-3)}
+.view{display:none}.view.on{display:block}
+
+/* ===== 卡片语汇 ===== */
+.card{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:12px}
+.sect{margin-bottom:14px}
+.sect h3{font-size:12px;font-weight:600;color:var(--dsw-alias-label-tertiary);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+
+/* ===== Surface A 计费卡（三档容器响应并排演示） ===== */
+.sc-row{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+.sc{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);
+  border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;cursor:pointer;
+  transition:border-color .15s}
+.sc:hover{border-color:var(--dsw-static-blue-500)}
+.sc .lb{font-size:10px;color:var(--dsw-alias-label-tertiary);letter-spacing:.06em;
+  text-transform:uppercase;display:flex;justify-content:space-between;align-items:center}
+.sc .main{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;
+  color:var(--dsw-alias-label-primary);letter-spacing:-.02em}
+.sc .meta{font-size:11px;color:var(--dsw-alias-label-secondary);display:flex;gap:8px;align-items:center}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--dsw-static-green-500)}
+.sc-260{width:260px}.sc-260 .main{font-size:26px}
+.sc-170{width:170px}.sc-170 .main{font-size:20px}
+.sc-110{width:110px}.sc-110 .main{font-size:17px}
+.sc .arrow{margin-left:auto;color:var(--dsw-alias-label-dimmed);font-size:11px}
+
+/* 触发弹层 */
+.pop{width:260px;background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l2);
+  border-radius:10px;padding:12px;margin-top:10px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.pop .row{display:flex;align-items:center;gap:8px;padding:6px 0}
+.pop .row+.row{border-top:1px solid var(--dsw-alias-border-l1)}
+.pop .bar{flex:1;height:4px;border-radius:2px;background:var(--dsw-static-neutral-bluish-00);overflow:hidden}
+.pop .bar i{display:block;height:100%;background:var(--dsw-static-blue-500)}
+.pop .bar i.warn{background:var(--dsw-static-amber-500)}.pop .bar i.bad{background:var(--dsw-static-red-500)}
+.pop .pct{font-family:var(--mono);font-size:11px;color:var(--dsw-alias-label-secondary);width:34px;text-align:right}
+
+/* ===== Surface C dock 胶囊 ===== */
+.composer{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);
+  border-radius:10px;padding:10px 14px;margin-bottom:8px;color:var(--dsw-alias-label-dimmed);font-size:12px}
+.fee{display:inline-flex;align-items:center;gap:10px;background:var(--dsw-alias-bg-layer-3);
+  border:1px solid var(--dsw-alias-border-l2);border-radius:16px;padding:5px 14px;
+  font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums;
+  color:var(--dsw-alias-label-secondary);backdrop-filter:blur(6px)}
+.fee .chip{padding:1px 8px;border-radius:10px;font-size:10.5px}
+.fee .peak{background:rgba(240,180,41,.12);color:var(--dsw-static-amber-500)}
+.fee .sep{color:var(--dsw-alias-label-dimmed)}
+.fee b{color:var(--dsw-alias-label-primary);font-weight:600}
+.fee .warn{color:var(--dsw-static-red-400)}
+
+/* ===== Surface B 仪表盘 ===== */
+.dash{max-width:760px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);
+  border-radius:14px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.5)}
+.dhead{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 0}
+.dhead .title{font-size:13px;font-weight:600}
+.dtab{display:flex;gap:2px;padding:10px 14px 0;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.dtab button{background:none;border:none;color:var(--dsw-alias-label-tertiary);font-size:12px;
+  padding:8px 14px;cursor:pointer;border-radius:8px 8px 0 0}
+.dtab button.on{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);
+  box-shadow:inset 0 -2px 0 var(--dsw-static-blue-500)}
+.dbody{padding:16px 18px 18px}
+
+/* 概览：Hero 唯一锚点 */
+.hero{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:4px}
+.hero .big{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:44px;font-weight:700;
+  letter-spacing:-.03em;color:var(--dsw-alias-label-primary)}
+.hero .big small{font-size:20px;font-weight:500;color:var(--dsw-alias-label-tertiary);margin-left:2px}
+.hero .yoy{font-family:var(--mono);font-size:12px;color:var(--dsw-static-green-500);padding-bottom:8px}
+.herosub{font-size:11.5px;color:var(--dsw-alias-label-secondary);margin-bottom:16px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.kpi{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);
+  border-radius:10px;padding:10px 12px}
+.kpi .k{font-size:10px;color:var(--dsw-alias-label-tertiary);letter-spacing:.05em;text-transform:uppercase}
+.kpi .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:16px;font-weight:600;margin-top:2px}
+.kpi .d{font-family:var(--mono);font-size:10px;margin-top:2px;color:var(--dsw-alias-label-dimmed)}
+.heat{display:grid;grid-template-columns:repeat(21,1fr);gap:3px}
+.heat i{aspect-ratio:1;border-radius:3px;background:var(--dsw-static-neutral-bluish-00)}
+.budget{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:11px;color:var(--dsw-alias-label-secondary)}
+.bbar{flex:1;height:5px;border-radius:3px;background:var(--dsw-static-neutral-bluish-00)}
+.bbar i{display:block;height:100%;width:62%;border-radius:3px;
+  background:linear-gradient(90deg,var(--dsw-static-blue-500),var(--dsw-static-blue-500))}
+
+/* 趋势：视图切换 + 堆叠图 + 图例聚焦 */
+.vrow{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.seg{display:flex;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);
+  border-radius:8px;padding:2px}
+.seg button{background:none;border:none;color:var(--dsw-alias-label-tertiary);font-size:11px;
+  padding:4px 12px;border-radius:6px;cursor:pointer}
+.seg button.on{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary)}
+.legend{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.legend button{display:flex;align-items:center;gap:5px;background:var(--dsw-alias-bg-layer-2);
+  border:1px solid var(--dsw-alias-border-l1);border-radius:8px;color:var(--dsw-alias-label-secondary);
+  font-size:10.5px;padding:4px 10px;cursor:pointer;font-family:var(--mono)}
+.legend button.on{border-color:var(--dsw-static-blue-500);color:var(--dsw-alias-label-primary)}
+.legend .sw{width:8px;height:8px;border-radius:2px}
+.stack{display:flex;align-items:flex-end;gap:6px;height:120px;padding:0 4px}
+.stack .day{flex:1;display:flex;flex-direction:column-reverse;gap:1px;cursor:pointer}
+.stack .day i{border-radius:2px;transition:opacity .15s}
+.stack .day.dim i{opacity:.15}
+.tl{display:flex;justify-content:space-between;font-family:var(--mono);
+  font-size:9.5px;color:var(--dsw-alias-label-dimmed);padding:6px 4px 0}
+
+/* 表格 */
+table{width:100%;border-collapse:collapse;font-size:11.5px}
+th{font-size:10px;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.06em;
+  text-align:left;padding:6px 10px;border-bottom:1px solid var(--dsw-alias-border-l2);font-weight:500}
+td{padding:7px 10px;border-bottom:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary)}
+tr:hover td{background:var(--dsw-alias-interactive-bg-hover)}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;
+  color:var(--dsw-alias-label-primary)}
+tr:focusable{cursor:pointer}
+.mtag{display:inline-flex;align-items:center;gap:5px}
+.mtag .sw{width:7px;height:7px;border-radius:2px}
+.over{color:var(--dsw-static-amber-500);font-size:10px;border:1px solid rgba(240,180,41,.35);
+  border-radius:4px;padding:0 4px;margin-left:6px}
+
+/* 设置 */
+.setcard{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);
+  border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.setcard .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.setcell{border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:10px 12px;
+  display:flex;flex-direction:column;gap:6px}
+.setcell .t{font-size:12px;font-weight:600}
+.setcell .d{font-size:10.5px;color:var(--dsw-alias-label-tertiary)}
+.sw{display:flex;align-items:center;justify-content:space-between;margin-top:2px}
+.sw .st{font-family:var(--mono);font-size:10px;color:var(--dsw-alias-label-tertiary)}
+.tgl{width:30px;height:17px;border-radius:9px;background:var(--dsw-static-neutral-bluish-00);
+  position:relative;cursor:pointer;flex-shrink:0}
+.tgl::after{content:'';position:absolute;width:13px;height:13px;border-radius:50%;
+  background:var(--dsw-alias-label-dimmed);top:2px;left:2px;transition:all .15s}
+.tgl.on{background:var(--dsw-static-blue-500)}.tgl.on::after{left:15px;background:#fff}
+.srow{display:flex;align-items:center;justify-content:space-between;padding:7px 0;
+  border-bottom:1px solid var(--dsw-alias-border-l1);font-size:11.5px}
+.srow:last-child{border-bottom:none}
+.srow .h{color:var(--dsw-alias-label-secondary)}
+.cap{font-size:10px;color:var(--dsw-alias-label-dimmed);margin-top:14px;line-height:1.8}
+.mono{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<h1>DSH Usage Billing — 重构视觉 Demo</h1>
+<p class="sub">方向 <b>A · 数据终端感</b>：等宽数字 · 细描边 · 单强调色 · Hero 唯一锚点 · 暗色主场景。全部数据为真实量级样例。</p>
+
+<div class="tabs" id="tabs">
+  <button class="on" data-v="v-sc">计费卡 + 弹层</button>
+  <button data-v="v-dock">即时代费条</button>
+  <button data-v="v-dash">仪表盘</button>
+  <button data-v="v-set">设置页</button>
+</div>
+
+<!-- ============ Surface A 计费卡 ============ -->
+<div class="view on" id="v-sc">
+  <div class="sect"><h3>计费卡 · 容器查询三档（260 / 170 / 110px）</h3>
+  <div class="sc-row">
+    <div class="sc sc-260">
+      <div class="lb"><span>本月费用</span><span class="dot" title="模型健康"></span></div>
+      <div class="main">¥186.42</div>
+      <div class="meta"><span>今日 ¥12.08</span><span>较上月 <span class="num" style="color:var(--dsw-static-green-500)">-18%</span></span><span class="arrow">详情 ›</span></div>
+    </div>
+    <div class="sc sc-170">
+      <div class="lb"><span>本月费用</span><span class="dot"></span></div>
+      <div class="main">¥186.42</div>
+      <div class="meta"><span>今日 ¥12.08</span></div>
+    </div>
+    <div class="sc sc-110">
+      <div class="lb"><span>本月</span></div>
+      <div class="main">¥186.4</div>
+    </div>
+  </div></div>
+  <div class="sect"><h3>计费卡 · 触发弹层（hover 展开，combined 合并视图）</h3>
+  <div class="sc-row" style="align-items:flex-start">
+    <div class="sc sc-260" style="cursor:default">
+      <div class="lb"><span>本月费用</span><span class="dot"></span></div>
+      <div class="main">¥186.42</div>
+      <div class="meta"><span>今日 ¥12.08</span><span class="arrow">详情 ›</span></div>
+      <div class="pop">
+        <div class="row"><span style="font-size:11px;color:var(--dsw-alias-label-secondary)">DeepSeek · coding 套餐</span>
+          <span class="bar"><i></i></span><span class="pct">62%</span></div>
+        <div class="row"><span style="font-size:11px;color:var(--dsw-alias-label-secondary)">Kimi · token 充值</span>
+          <span class="bar"><i class="warn"></i></span><span class="pct">81%</span></div>
+        <div class="row"><span style="font-size:11px;color:var(--dsw-alias-label-secondary)">MiniMax · agent</span>
+          <span class="bar"><i class="bad"></i></span><span class="pct">96%</span></div>
+        <div class="row" style="font-size:10px;color:var(--dsw-alias-label-dimmed);justify-content:space-between">
+          <span>按套餐余额降序</span><span style="cursor:pointer;color:var(--dsw-static-blue-500)">设置目标 ›</span></div>
+      </div>
+    </div>
+    <div style="max-width:320px;font-size:11.5px;color:var(--dsw-alias-label-tertiary);line-height:1.8;padding-top:8px">
+      弹层设计要点：套餐行 = 名称 + 额度进度条 + 百分比（等宽右对齐）；进度条色阶
+      <span class="mono" style="color:var(--dsw-static-blue-500)">blue</span> /
+      <span class="mono" style="color:var(--dsw-static-amber-500)">amber(≥80%)</span> /
+      <span class="mono" style="color:var(--dsw-static-red-500)">red(≥95%)</span>
+      与 dock 预警 chips 同阈值同语言；按余额降序，无目标时显示空态引导到设置。
+    </div>
+  </div></div>
+</div>
+
+<!-- ============ Surface C dock ============ -->
+<div class="view" id="v-dock">
+  <div class="sect"><h3>即时代费条 · composer dock（信息优先级降级演示）</h3>
+  <div class="composer">| 继续帮我优化这个查询语句，把 join 改写为…</div>
+  <div class="fee"><span class="chip peak">峰 ×2 · 23:41 后转谷</span><span class="sep">|</span>
+    <span>本轮 <b>¥0.42</b></span><span class="sep">·</span><span>会话 <b>¥3.18</b></span>
+    <span class="sep">|</span><span style="color:var(--dsw-static-amber-500)">Kimi 81%</span><span class="warn">MiniMax 96%</span></div>
+  <div style="height:14px"></div>
+  <div class="composer">| 短输入宽度（窄 composer）：预警 chips 先藏</div>
+  <div class="fee"><span class="chip peak">峰 ×2</span><span class="sep">·</span>
+    <span>本轮 <b>¥0.42</b></span><span class="sep">·</span><span>会话 <b>¥3.18</b></span></div>
+  <div style="height:14px"></div>
+  <div class="composer">| 最窄（110px 容器）：仅费用</div>
+  <div class="fee"><span>¥0.42</span><span class="sep">/</span><b>¥3.18</b></div>
+  <p class="cap">降级顺序（brief §Surface C）：额度预警 → 倒计时 → 档位 chip → 费用永显。显隐由设置页控制（机制不变）。</p></div>
+</div>
+
+<!-- ============ Surface B 仪表盘 ============ -->
+<div class="view" id="v-dash">
+  <div class="dash">
+    <div class="dhead"><span class="title">费用与账单</span>
+      <span class="mono" style="font-size:10px;color:var(--dsw-alias-label-dimmed)">v1.0.18 · 0.1.2-alpha.1</span></div>
+    <div class="dtab" id="dtabs">
+      <button class="on" data-t="t-ov">概览</button><button data-t="t-tr">趋势</button>
+      <button data-t="t-de">明细</button><button data-t="t-rate">费率</button><button data-t="t-set">设置</button>
+    </div>
+    <div class="dbody">
+      <!-- 概览 -->
+      <div id="t-ov">
+        <div class="hero"><div class="big">¥186.42<small>CNY</small></div>
+          <div class="yoy">▼ 18% vs 上月</div></div>
+        <div class="herosub">本月预计 ¥243 · 截至今日 23 天 · 全部厂商</div>
+        <div class="kpis">
+          <div class="kpi"><div class="k">今日</div><div class="v">¥12.08</div><div class="d">会话 14</div></div>
+          <div class="kpi"><div class="k">缓存命中</div><div class="v">87.4%</div><div class="d">输入占比 60-95%</div></div>
+          <div class="kpi"><div class="k">峰值日</div><div class="v">¥31.77</div><div class="d">08-14 峰时段</div></div>
+          <div class="kpi"><div class="k">本月调用</div><div class="v">8,412</div><div class="d">reasoning 31%</div></div>
+        </div>
+        <div class="sect"><h3>每日用量热力图（近三周）</h3>
+          <div class="heat" id="heat"></div></div>
+        <div class="budget"><span>预算 ¥300 / 月</span><span class="bbar"><i></i></span><span class="mono">62% · 剩余 ¥113.58 · 预计月末触顶</span></div>
+      </div>
+      <!-- 趋势：按模型 + 聚焦 -->
+      <div id="t-tr" style="display:none">
+        <div class="vrow">
+          <div class="seg"><button class="on">7 天</button><button>30 天</button></div>
+          <div class="seg"><button>费用</button><button class="on">Token</button></div>
+          <div class="legend" id="legend"></div>
+        </div>
+        <div class="stack" id="stack"></div>
+        <div class="tl"><span>08-24</span><span>08-26</span><span>08-28</span><span>08-30</span></div>
+        <p class="cap">点击图例聚焦：目标模型保持原色，其余弱化至 15%；y 轴与日总量不变（规模感可读）。点击模型表格行同效；再次点击解除。旧快照无 byDayModels 时自动隐藏此切换。</p>
+      </div>
+      <!-- 明细 -->
+      <div id="t-de" style="display:none">
+        <table>
+          <tr><th>模型</th><th class="n">调用</th><th class="n">输入(含命中)</th><th class="n">输出</th><th class="n">Token 总量</th><th class="n">费用</th></tr>
+          <tr><td><span class="mtag"><span class="sw" style="background:#4d9fff"></span>deepseek-chat</span></td>
+            <td class="n">4,218</td><td class="n">118.4M</td><td class="n">9.2M</td><td class="n">127.6M</td><td class="n">¥86.20</td></tr>
+          <tr><td><span class="mtag"><span class="sw" style="background:#3fce8f"></span>deepseek-reasoner</span></td>
+            <td class="n">1,842</td><td class="n">41.2M</td><td class="n">6.8M</td><td class="n">48.0M</td><td class="n">¥62.14</td></tr>
+          <tr><td><span class="mtag"><span class="sw" style="background:#f0b429"></span>kimi-k2</span></td>
+            <td class="n">986</td><td class="n">22.7M</td><td class="n">2.1M</td><td class="n">24.8M</td><td class="n">¥28.90</td></tr>
+          <tr><td><span class="mtag"><span class="sw" style="background:#ff5c5c"></span>minimax-m1</span></td>
+            <td class="n">411</td><td class="n">9.9M</td><td class="n">0.8M</td><td class="n">10.7M</td><td class="n">¥9.18</td></tr>
+        </table>
+        <p class="cap">明细规则：数字右对齐等宽；模型列带色点（跨页同色）；行 hover 即聚焦态预览。</p>
+      </div>
+      <!-- 费率 -->
+      <div id="t-rate" style="display:none">
+        <table>
+          <tr><th>模型</th><th class="n">输入 ¥/M</th><th class="n">输出 ¥/M</th><th>峰谷</th><th>来源</th></tr>
+          <tr><td>deepseek-chat</td><td class="n">2.00</td><td class="n">8.00</td><td>峰 ×2 / 谷 ×1</td><td>官方目录</td></tr>
+          <tr><td>deepseek-reasoner</td><td class="n">4.00</td><td class="n">16.00</td><td>峰 ×2 / 谷 ×1</td><td>官方目录</td></tr>
+          <tr><td>kimi-k2 <span class="over">自定义</span></td><td class="n">3.10</td><td class="n">12.40</td><td>—</td><td>用户覆盖</td></tr>
+          <tr><td>minimax-m1</td><td class="n">1.00</td><td class="n">4.00</td><td>—</td><td>官方目录</td></tr>
+        </table>
+        <p class="cap">用户覆盖价用 amber「自定义」标记——费率页一眼区分口径来源。</p>
+      </div>
+      <!-- 设置 -->
+      <div id="t-set" style="display:none">
+        <div class="setcard"><div class="g3">
+          <div class="setcell"><div class="t">usage_stats 工具</div><div class="d">暴露用量查询工具给 Agent（重启生效）</div>
+            <div class="sw"><span class="st">关闭</span><span class="tgl"></span></div></div>
+          <div class="setcell"><div class="t">平价消耗胶囊</div><div class="d">输入框下方的即时代费条</div>
+            <div class="sw"><span class="st">显示</span><span class="tgl on"></span></div></div>
+          <div class="setcell"><div class="t">中转站列表</div><div class="d">隐藏「未识别」占位条目</div>
+            <div class="sw"><span class="st">显示</span><span class="tgl on"></span></div></div>
+        </div></div>
+        <div class="setcard"><div class="g3">
+          <div class="setcell"><div class="t">模型用量悬浮窗</div><div class="d">计费卡 hover 弹层的展示范围</div>
+            <div class="sw"><span class="st">全部订阅</span><span class="tgl on"></span></div></div>
+          <div class="setcell"><div class="t">计费卡主指标</div><div class="d">卡片大数字显示口径</div>
+            <div class="sw"><span class="st">费用</span><span class="tgl on"></span></div></div>
+        </div></div>
+        <div class="setcard"><div class="srow"><span class="h">月度预算 · ¥300 · 62% 已用</span>
+          <span class="mono" style="color:var(--dsw-alias-label-tertiary)">编辑</span></div>
+          <div class="srow"><span class="h">峰谷提醒 · 提前 30 分钟 · 弹窗+通知</span>
+            <span class="mono" style="color:var(--dsw-alias-label-tertiary)">编辑</span></div>
+          <div class="srow"><span class="h">自定义单价 · 1 条覆盖</span>
+            <span class="mono" style="color:var(--dsw-alias-label-tertiary)">编辑</span></div>
+        </div>
+        <p class="cap">设置页信息架构（brief 目标 3）：按意图分组——「功能开关」一行三列 / 「展示内容」一行两列 / 配置类收敛为行式摘要+编辑入口（点开为行内展开，不再整卡铺开）。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 设置页独立视图（复用 v-set 内容于仪表盘内，这里省略重复） ============ -->
+<p class="cap" style="margin-top:26px">
+  令牌基线：label-primary/secondary/tertiary/caption/dimmed · bg-layer-1/2/3 · border-l1/l2 ·
+  blue(强调) amber(峰谷/预警) red(超支) green(健康) · 数字一律 tabular-nums 等宽 ·
+  色阶阈值统一：amber ≥80% · red ≥95% · 告警/进度/徽章三处同语言。
+  完整需求见 docs/redesign-brief.md；暗色为主场景，亮态由宿主令牌自适应。
+</p>
+
+<script>
+// 表面切换
+document.getElementById('tabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return
+  document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b))
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === b.dataset.v))
+})
+// 仪表盘 Tab
+document.getElementById('dtabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return
+  document.querySelectorAll('#dtabs button').forEach(x => x.classList.toggle('on', x === b))
+  document.querySelectorAll('.dbody > div').forEach(v => v.style.display = v.id === b.dataset.t ? '' : 'none')
+})
+// 热力图（21 格，随机量级）
+const heat = document.getElementById('heat')
+const hs = [0,.1,.25,.4,.6,.8,1, .15,.5,.9,.35,.7,1,.05, .6,.85,.3,.5,.95,.2,.75]
+for (const v of hs) { const i = document.createElement('i')
+  if (v > 0) i.style.background = `rgba(77,159,255,${.12 + v * .8})`; heat.appendChild(i) }
+// 趋势堆叠（按模型，7 天 × 4 模型）+ 图例聚焦
+const models = [
+  { n:'deepseek-chat', c:'#4d9fff', w:[.5,.4,.6,.45,.7,.55,.65] },
+  { n:'deepseek-reasoner', c:'#3fce8f', w:[.3,.35,.2,.4,.15,.3,.2] },
+  { n:'kimi-k2', c:'#f0b429', w:[.15,.2,.15,.1,.1,.1,.1] },
+  { n:'minimax-m1', c:'#ff5c5c', w:[.05,.05,.05,.05,.05,.05,.05] },
+]
+let focus = -1
+const stack = document.getElementById('stack'), legend = document.getElementById('legend')
+function render() {
+  stack.innerHTML = ''; legend.innerHTML = ''
+  for (let d = 0; d < 7; d++) {
+    const day = document.createElement('div'); day.className = 'day' + (focus >= 0 ? ' dim' : '')
+    for (let m = 0; m < models.length; m++) {
+      const i = document.createElement('i')
+      i.style.height = (models[m].w[d] * 100) + '%'
+      i.style.background = models[m].c
+      if (focus >= 0 && focus !== m) i.style.opacity = .15
+      day.appendChild(i)
+    }
+    stack.appendChild(day)
+  }
+  models.forEach((m, idx) => {
+    const b = document.createElement('button')
+    b.innerHTML = `<span class="sw" style="background:${m.c}"></span>${m.n}`
+    if (focus === idx) b.classList.add('on')
+    b.onclick = () => { focus = focus === idx ? -1 : idx; render() }
+    legend.appendChild(b)
+  })
+}
+render()
+</script>
+</body>
+</html>
