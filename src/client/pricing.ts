@@ -223,6 +223,27 @@ export function getRateInfo(): { rate: number; live: boolean } {
 /** Default share of traffic assumed to fall in the peak band (0..1). */
 export const DEFAULT_PEAK_SHARE = 0.5
 
+/**
+ * 峰谷计价时代分界（UTC 2026-08-16T16:00:00Z，即北京时间 2026-08-17 00:00）：
+ * DeepSeek V4 自此起按峰/谷两档计价。此前官方只有基础价一档——历史事件若
+ * 套现行峰/谷档价会把成本高估约 50%（谷价 = 基础价 × 1.5）。半开区间：该
+ * 时刻及之后按峰谷档计。
+ */
+export const PEAK_ERA_START_MS = Date.parse('2026-08-16T16:00:00Z')
+
+/**
+ * DeepSeek V4 峰谷时代之前的官方基础价（CNY / 1M tokens）：官方中文定价页
+ * 峰谷改版前的基础价档（缓存写沿用历史规则按命中价计）。键为内置目录键，
+ * flash-vision-exp 与 flash 同价。仅当事件时刻早于 {@link PEAK_ERA_START_MS}
+ * 且条目未被用户价覆盖（用户价是实付价，优先于一切内置口径）时启用；
+ * 币种固定 CNY——内置 DeepSeek 目录即人民币刊例，不随 live 覆盖漂移。
+ */
+const LEGACY_DEEPSEEK_BANDS: Readonly<Record<string, PriceBand>> = {
+  flash: { input: 1, cacheHit: 0.02, output: 2 },
+  'flash-vision-exp': { input: 1, cacheHit: 0.02, output: 2 },
+  pro: { input: 3, cacheHit: 0.025, output: 6 },
+}
+
 /** 计费时段档位：高峰 / 空闲（官方 DeepSeek 刊例价：高峰 = 空闲 × 2）。 */
 export type PriceTierId = 'peak' | 'offPeak'
 
@@ -1519,6 +1540,10 @@ export function computeCost(
  * （null/NaN，理论不发生在真实事件流）时回退 {@link DEFAULT_PEAK_SHARE} 混合，
  * 保持旧语义不低估。平档模型（无 offPeak）两个时段同价。限时促销与峰谷档
  * 同口径：按事件时刻判定该笔流量当时享受的单价。
+ *
+ * 历史正确性：事件时刻早于 {@link PEAK_ERA_START_MS} 的 DeepSeek V4 流量按
+ * 当时官方基础价（{@link LEGACY_DEEPSEEK_BANDS}）计费，不套现行峰/谷档——
+ * 否则峰谷开闸前的历史账单会被系统性高估。
  * @param entry - the catalog entry whose prices apply.
  * @param buckets - token usage counts.
  * @param timeMs - the call's wall-clock time (epoch ms); null falls back to the peak-share mix.
@@ -1534,6 +1559,11 @@ export function computeCostAt(
   if (timeMs === null || timeMs === undefined || !Number.isFinite(timeMs)) return computeCost(entry, buckets, peakShare)
   // 促销与峰谷档同口径：按事件时刻判定该笔流量当时享受的单价。
   const priced = applyPromo(entry, timeMs)
+  // 峰谷时代之前的历史流量按当时基础价计（用户价 = 实付价，跳过内置 legacy 口径）。
+  const legacy = timeMs < PEAK_ERA_START_MS && entry.userPriced !== true
+    ? LEGACY_DEEPSEEK_BANDS[entry.key]
+    : undefined
+  if (legacy !== undefined) return priceBandCost(legacy, buckets, 'CNY')
   if (priced.price.offPeak === undefined) return priceBandCost(priced.price, buckets, priced.price.currency)
   const band = tierAt(timeMs) === 'peak' ? priced.price : priced.price.offPeak
   return priceBandCost(band, buckets, priced.price.currency)

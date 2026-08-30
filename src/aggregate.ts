@@ -563,10 +563,12 @@ export interface UsageLedgerDocument {
  * 两次 header 之间的用量串到上一个模型，订阅模型首当其冲，issue #14）；v2 =
  * `assistant/message` 自带 source 归账（1.0.7 起）；v3 = 联网搜索请求按次估算
  * 计费（issue #15，1.0.9 起）；v4 = 模型×日期×站点三维桶（issue #16，按 origin
- * 绑定自定义价的显示层重估）——旧行缺该维度，按无 origin 价处理。
+ * 绑定自定义价的显示层重估）——旧行缺该维度，按无 origin 价处理；v5 = 峰谷
+ * 时代之前（2026-08-16T16:00Z）的 DeepSeek 事件按当时基础价计费（v4 把全部
+ * 历史套现行峰/谷档价，高估约 50%）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export const FOLD_VERSION = 4
+export const FOLD_VERSION = 5
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
