@@ -1795,30 +1795,25 @@
   font-size: 12px;
 }
 
-.modelTable,
-.pricingTable {
+.modelTable {
   width: 100%;
   border-collapse: collapse;
   font-size: 12.5px;
 }
 
 .modelTable th,
-.modelTable td,
-.pricingTable th,
-.pricingTable td {
+.modelTable td th td {
   padding: 7px 10px;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
   text-align: left;
   white-space: nowrap;
 }
 
-.modelTable tbody tr:last-child td,
-.pricingTable tbody tr:last-child td {
+.modelTable tbody tr:last-child td tbody tr:last-child td {
   border-bottom: 0;
 }
 
-.modelTable thead th,
-.pricingTable thead th {
+.modelTable thead th thead th {
   font-size: 11px;
   font-weight: 600;
   color: var(--dsw-alias-label-tertiary);
@@ -1827,13 +1822,11 @@
   letter-spacing: 0.05em;
 }
 
-.modelTable tbody tr,
-.pricingTable tbody tr {
+.modelTable tbody tr tbody tr {
   transition: background-color 120ms ease;
 }
 
-.modelTable tbody tr:hover,
-.pricingTable tbody tr:hover {
+.modelTable tbody tr:hover tbody tr:hover {
   background: transparent;
 }
 
@@ -1885,10 +1878,6 @@
 
 /* ── Pricing collapse toggle ────────────────────────────────────────── */
 
-.pricingToggle:hover .panelTitle,
-.pricingToggle:focus-visible .panelTitle {
-  color: var(--dsw-alias-label-primary);
-}
 
 /* 中转站分布 / 额度行：轻量行式，左侧徽标 + 站点名，右侧金额 + 调用或窗口。 */
 .siteRow {
@@ -3601,8 +3590,7 @@
 /* ── 设置 Tab：分区标题 + 分组说明 ─────────────────────────────────── */
 
 /* 明细/费率表：首列模型名，其余数值列右对齐等宽（设计 §明细）。 */
-.modelTable tbody td:not(:first-child),
-.pricingTable tbody td:not(:first-child) {
+.modelTable tbody td:not(:first-child) tbody td:not(:first-child) {
   text-align: right;
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;

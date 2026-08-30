@@ -2,7 +2,6 @@
 
 export type UsageBillingKey =
   | 'title'
-  | 'subtitle'
   | 'cost'
   | 'todayCost'
   | 'monthCost'
@@ -10,7 +9,6 @@ export type UsageBillingKey =
   | 'monthProjected'
   | 'liveTurn'
   | 'liveSession'
-  | 'totalCost'
   | 'calls'
   | 'cacheHitRate'
   | 'tokens'
@@ -35,21 +33,15 @@ export type UsageBillingKey =
   | 'budgetTierBody'
   | 'models'
   | 'providerBilling'
-  | 'estimated'
   | 'actual'
   | 'pricing'
-  | 'showPricing'
-  | 'hidePricing'
-  | 'pricePerM'
   | 'input'
   | 'output'
   | 'cacheHit'
   | 'peak'
   | 'offPeak'
   | 'flat'
-  | 'peakHours'
   | 'band'
-  | 'openDashboard'
   | 'close'
   | 'footer'
   | 'footerCredit'
@@ -82,7 +74,6 @@ export type UsageBillingKey =
   | 'balanceLowBody'
   | 'reconcileDrift'
   | 'reconcileDismiss'
-  | 'subscriptions'
   | 'subscriptionNotConfigured'
   | 'subscriptionUnauthorized'
   | 'subscriptionUnavailable'
@@ -110,8 +101,6 @@ export type UsageBillingKey =
   | 'cardMetricMoney'
   | 'cardMetricTokens'
   | 'triggerMonthTokens'
-  | 'floatPrev'
-  | 'floatNext'
   | 'subscriptionsStale'
   | 'staleLedgerNotice'
   | 'tokenCacheWrite'
@@ -139,23 +128,16 @@ export type UsageBillingKey =
   | 'anomaly'
   | 'workspaces'
   | 'workspacesHint'
-  | 'plan'
-  | 'remaining'
-  | 'unknownModel'
   | 'model'
   | 'thModel'
   | 'thInputMiss'
   | 'thInputHit'
-  | 'currentRound'
   | 'costAbbr'
   | 'tabOverview'
   | 'tabTrends'
   | 'tabProviders'
-  | 'tabDetails'
   | 'tabPricing'
   | 'tabSettings'
-  | 'settingsHead'
-  | 'settingsHint'
   | 'budgetHint'
   | 'peakAlertHint'
   | 'peakAlertDescPeak'
@@ -202,8 +184,6 @@ export type UsageBillingKey =
   | 'free'
   | 'official'
   | 'thirdParty'
-  | 'officialCost'
-  | 'thirdPartyCost'
   | 'perfSamples'
   | 'perfTtft'
   | 'perfP50'
@@ -222,9 +202,6 @@ export type UsageBillingKey =
   | 'activeDays'
   | 'streakDays'
   | 'subscriptionAutoDetect'
-  | 'pluginInfo'
-  | 'pluginName'
-  | 'pluginDescription'
   | 'pluginVersion'
   | 'pluginAuthor'
   | 'pluginRepository'
@@ -258,17 +235,9 @@ export type UsageBillingKey =
   | 'balanceDaysUnit'
   | 'popTodayModel'
   | 'popNoConsumption'
-  | 'popQuotaAlert'
-  | 'popRiskNone'
   | 'popTitle'
   | 'popDirectLead'
   | 'popSubLead'
-  | 'popBalanceNormal'
-  | 'popBalanceLow'
-  | 'popQuotaNormal'
-  | 'popQuotaLow'
-  | 'alertBalanceLow'
-  | 'alertQuotaLow'
   | 'unpricedHint'
   | 'searchEstimateHint'
   | 'siteListDisplay'
@@ -288,7 +257,6 @@ export const NS = 'usageBilling'
 
 export const zh: Record<UsageBillingKey, string> = {
   'title': '使用统计',
-  'subtitle': '计费仪表盘',
   'cost': '费用',
   'todayCost': '今日费用',
   'monthCost': '本月费用',
@@ -296,7 +264,6 @@ export const zh: Record<UsageBillingKey, string> = {
   'monthProjected': '本月预计',
   'liveTurn': '本轮',
   'liveSession': '会话',
-  'totalCost': '总费用',
   'calls': '调用',
   'cacheHitRate': '缓存命中率',
   'tokens': 'Token',
@@ -321,21 +288,15 @@ export const zh: Record<UsageBillingKey, string> = {
   'budgetTierBody': '本月花费 {cost} 已达预算 {budget} 的 {pct}%',
   'models': '模型计费明细',
   'providerBilling': '厂商计费与订阅',
-  'estimated': '估算',
   'actual': '实际',
   'pricing': '模型单价表',
-  'showPricing': '查看模型单价',
-  'hidePricing': '收起单价表',
-  'pricePerM': '¥ / 1M tokens',
   'input': '输入',
   'output': '输出',
   'cacheHit': '缓存命中',
   'peak': '高峰',
   'offPeak': '低谷',
   'flat': '全天统一',
-  'peakHours': '高峰时段',
   'band': '时段',
-  'openDashboard': '打开计费仪表盘',
   'close': '关闭',
   'footer': '每 30s 自动轮询 · 仅统计本机 dsh 会话',
   'footerCredit': 'dsh-ui-usage-billing {version} · MIT',
@@ -368,7 +329,6 @@ export const zh: Record<UsageBillingKey, string> = {
   'balanceLowBody': '{name} 余额 {balance}，约可撑 {days} 天，请及时充值',
   'reconcileDrift': '系统监控到{provider}官方余额变动 {spent}，本面板记录 {today}，差额通常由其它工具或 API 的消耗所致',
   'reconcileDismiss': '知道了',
-  'subscriptions': '订阅套餐',
   'subscriptionNotConfigured': '未配置密钥',
   'subscriptionUnauthorized': '密钥无效',
   'subscriptionUnavailable': '查询失败',
@@ -395,8 +355,6 @@ export const zh: Record<UsageBillingKey, string> = {
   'cardMetricTokens': 'Token 消耗',
   'floatNoTargets': '未指定订阅通道，请在设置中勾选要展示的订阅。',
   'floatNoTargetsHint': '暂无可选的订阅通道。',
-  'floatPrev': '上一张订阅',
-  'floatNext': '下一张订阅',
   'subscriptionsStale': '订阅额度刷新失败，以下为缓存数据',
   'staleLedgerNotice': '{count} 个会话出自旧版算法存档（日志已删，无法重算），模型归属可能有误差',
   'tokenCacheWrite': '写入',
@@ -424,23 +382,16 @@ export const zh: Record<UsageBillingKey, string> = {
   'anomaly': '成本突增',
   'workspaces': '工作区统计',
   'workspacesHint': '点击行下钻项目成本前 5 会话',
-  'plan': '套餐',
-  'remaining': '剩余',
-  'unknownModel': '未定价',
   'model': '模型',
   'thModel': '模型名称',
   'thInputMiss': '输入缓存未命中',
   'thInputHit': '输入缓存命中',
-  'currentRound': '当前',
   'costAbbr': '费用',
   'tabOverview': '概览',
   'tabTrends': '趋势',
   'tabProviders': '账单',
-  'tabDetails': '统计',
   'tabPricing': '费率',
   'tabSettings': '设置',
-  'settingsHead': '偏好设置',
-  'settingsHint': '管理与计费相关的偏好',
   'budgetHint': '设置月度上限，用于本月预计与超支分段提醒',
   'peakAlertHint': '在切档前弹窗提醒，可选同步系统通知',
   'peakAlertDescPeak': '即将进入高峰时段，价格将上调，请提前安排长任务',
@@ -488,8 +439,6 @@ export const zh: Record<UsageBillingKey, string> = {
   'free': '免费',
   'official': '官方',
   'thirdParty': '三方',
-  'officialCost': '官方费用',
-  'thirdPartyCost': '三方费用',
   'perfSamples': '样本',
   'perfTtft': '首字延时',
   'perfP50': 'P50',
@@ -508,9 +457,6 @@ export const zh: Record<UsageBillingKey, string> = {
   'activeDays': '活跃天数',
   'streakDays': '连续使用',
   'subscriptionAutoDetect': '自动识别',
-  'pluginInfo': '插件信息',
-  'pluginName': '插件名',
-  'pluginDescription': '描述',
   'pluginVersion': '版本',
   'pluginAuthor': '作者',
   'pluginRepository': '仓库',
@@ -545,16 +491,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'popTodayModel': '主力消耗模型余额',
   'popTitle': '用量速览',
   'popNoConsumption': '暂无消耗',
-  'popQuotaAlert': '额度提醒',
-  'popRiskNone': '余额与配额正常',
   'popDirectLead': '直联',
   'popSubLead': '订阅',
-  'popBalanceNormal': '余额正常',
-  'popBalanceLow': '余额不足',
-  'popQuotaNormal': '配额正常',
-  'popQuotaLow': '配额将尽',
-  'alertBalanceLow': '{name} 余额不足',
-  'alertQuotaLow': '{name} 配额将尽',
   'unpricedHint': '{count} 个模型未收录计价，费用已按 0 计',
   'searchEstimateHint': '含 {count} 次联网搜索请求的估算费用（每次约 {each}；日志无用量事件，按次估算，可在配置 searchCallEstimateCny 调整或关闭）',
   'siteListDisplay': '中转站列表',
@@ -573,7 +511,6 @@ export const zh: Record<UsageBillingKey, string> = {
 
 export const en: Record<UsageBillingKey, string> = {
   'title': 'Usage',
-  'subtitle': 'Billing dashboard',
   'cost': 'Cost',
   'todayCost': 'Today',
   'monthCost': 'This month',
@@ -581,7 +518,6 @@ export const en: Record<UsageBillingKey, string> = {
   'monthProjected': 'Projected',
   'liveTurn': 'Turn',
   'liveSession': 'Session',
-  'totalCost': 'Total',
   'calls': 'Calls',
   'cacheHitRate': 'Cache Hit',
   'tokens': 'Tokens',
@@ -606,21 +542,15 @@ export const en: Record<UsageBillingKey, string> = {
   'budgetTierBody': 'This month {cost} reached {pct}% of the budget {budget}',
   'models': 'Model billing',
   'providerBilling': 'Provider billing & subscriptions',
-  'estimated': 'Est.',
   'actual': 'Actual',
   'pricing': 'Model pricing',
-  'showPricing': 'View pricing',
-  'hidePricing': 'Hide pricing',
-  'pricePerM': '¥ / 1M tokens',
   'input': 'Input',
   'output': 'Output',
   'cacheHit': 'Cache hit',
   'peak': 'Peak',
   'offPeak': 'Off-peak',
   'flat': 'Flat',
-  'peakHours': 'Peak hours',
   'band': 'Band',
-  'openDashboard': 'Open billing dashboard',
   'close': 'Close',
   'footer': 'Polls every 30s · local dsh sessions only',
   'footerCredit': 'dsh-ui-usage-billing {version} · MIT',
@@ -653,7 +583,6 @@ export const en: Record<UsageBillingKey, string> = {
   'balanceLowBody': '{name} balance {balance}, ~{days} days left, please top up',
   'reconcileDrift': 'Detected {provider} official balance moved {spent}, this panel recorded {today}; the gap usually comes from other tools or APIs consuming too',
   'reconcileDismiss': 'Got it',
-  'subscriptions': 'Subscriptions',
   'subscriptionNotConfigured': 'Key not set',
   'subscriptionUnauthorized': 'Bad key',
   'subscriptionUnavailable': 'Unavailable',
@@ -680,8 +609,6 @@ export const en: Record<UsageBillingKey, string> = {
   'cardMetricTokens': 'Token usage',
   'floatNoTargets': 'No subscription selected — pick some in Settings.',
   'floatNoTargetsHint': 'No subscription channel available.',
-  'floatPrev': 'Previous subscription',
-  'floatNext': 'Next subscription',
   'subscriptionsStale': 'Subscription refresh failed — showing cached data',
   'staleLedgerNotice': '{count} sessions use legacy-algorithm archives (logs deleted); attribution may be off',
   'tokenCacheWrite': 'written',
@@ -709,23 +636,16 @@ export const en: Record<UsageBillingKey, string> = {
   'anomaly': 'Cost spike',
   'workspaces': 'Workspaces',
   'workspacesHint': 'Click a row to drill into its top-5 sessions',
-  'plan': 'Plan',
-  'remaining': 'Left',
-  'unknownModel': 'Unpriced',
   'model': 'Model',
   'thModel': 'Model name',
   'thInputMiss': 'Input (cache miss)',
   'thInputHit': 'Input (cache hit)',
-  'currentRound': 'current',
   'costAbbr': 'cost',
   'tabOverview': 'Overview',
   'tabTrends': 'Trends',
   'tabProviders': 'Bills',
-  'tabDetails': 'Stats',
   'tabPricing': 'Rates',
   'tabSettings': 'Settings',
-  'settingsHead': 'Preferences',
-  'settingsHint': 'Manage billing-related preferences',
   'budgetHint': 'Set a monthly cap for projections and tier alerts',
   'peakAlertHint': 'Alert before a tier switch, optionally via system notification',
   'peakAlertDescPeak': 'About to enter peak hours — prices rise, plan long tasks ahead',
@@ -773,8 +693,6 @@ export const en: Record<UsageBillingKey, string> = {
   'free': 'Free',
   'official': 'Official',
   'thirdParty': 'Third-party',
-  'officialCost': 'Official cost',
-  'thirdPartyCost': 'Third-party cost',
   'perfSamples': 'Samples',
   'perfTtft': 'TTFT',
   'perfP50': 'P50',
@@ -793,9 +711,6 @@ export const en: Record<UsageBillingKey, string> = {
   'activeDays': 'Active days',
   'streakDays': 'Streak',
   'subscriptionAutoDetect': 'Auto',
-  'pluginInfo': 'Plugin info',
-  'pluginName': 'Name',
-  'pluginDescription': 'Description',
   'pluginVersion': 'Version',
   'pluginAuthor': 'Author',
   'pluginRepository': 'Repository',
@@ -830,16 +745,8 @@ export const en: Record<UsageBillingKey, string> = {
   'popTodayModel': 'Main model balance',
   'popTitle': 'Usage overview',
   'popNoConsumption': 'No usage yet',
-  'popQuotaAlert': 'Quota alerts',
-  'popRiskNone': 'Balances & quotas OK',
   'popDirectLead': 'Direct',
   'popSubLead': 'Subscription',
-  'popBalanceNormal': 'balance ok',
-  'popBalanceLow': 'balance low',
-  'popQuotaNormal': 'quota ok',
-  'popQuotaLow': 'quota low',
-  'alertBalanceLow': '{name} balance low',
-  'alertQuotaLow': '{name} quota low',
   'unpricedHint': '{count} models not priced; their cost counts as 0',
   'searchEstimateHint': 'Includes estimated cost of {count} web-search requests (~{each} each; no usage events logged, per-call estimate; tune via searchCallEstimateCny)',
   'siteListDisplay': 'Relay lists',
