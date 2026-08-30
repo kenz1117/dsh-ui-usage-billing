@@ -63,8 +63,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Required services for the usage billing surface. */
-export const inject = ['slots', 'locale', 'remote', 'remote.llm', 'sessions']
+/** Required services for the usage billing surface.
+ *
+ * `remote.llm` is deliberately NOT injected: the LLM remote namespace only
+ * exists on 0.1.2-alpha.1 hosts, and a pending injection blocks the whole
+ * web boot on older hosts. `checkModels` probes `ctx.remote.llm` defensively
+ * instead — on hosts without it the model health check degrades to the
+ * static catalog result (the surrounding try/catch already swallows the
+ * undefined access). */
+export const inject = ['slots', 'locale', 'remote', 'sessions']
 
 /**
  * Client plugin body: the UsageBilling entry in the sidebar footer.
@@ -141,7 +148,10 @@ export function apply(ctx: Context): void {
             catalog,
           }
         } catch {
-          return { checked: true, available: false, models: 0, failures: 0, okProviders: [], badProviders: [] }
+          // 旧宿主没有 remote.llm（undefined 访问抛 TypeError 落到这里）：
+          // 返回 checked: false 让 UI 回到中性 idle 态（灰点、无告警徽章），
+          // 而不是渲染成「检查完成但全部不可用」的红色告警。
+          return { checked: false, available: false, models: 0, failures: 0, okProviders: [], badProviders: [] }
         }
       },
       publishCosts: (costs) => { metrics.publishCosts(costs) },

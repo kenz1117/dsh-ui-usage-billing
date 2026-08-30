@@ -6,17 +6,16 @@
  * composer card, same posture as ui-conversation's own StatsLine), so it stays
  * visible while working without opening the full dashboard. Data comes from the
  * same `/api/billing/usage-stats` endpoint the dashboard polls; the bar reads
- * the current session id off the framework snapshot (`useSession` parent of
- * `sessionId`) and matches `bySession` (session total) and `byTurn` (latest
- * turn cost). Rendering is a pure function of the snapshot, never a side effect.
+ * the current session id from the session-scope standard kit and matches
+ * `bySession` (session total) and `byTurn` (latest turn cost). Rendering is a
+ * pure function of props and polled data, never a side effect.
  *
  * The bar also carries two ambient signals: the current peak/off-peak pricing
  * tier with a switch countdown (DeepSeek time-of-day pricing), and quota chips
  * for subscription plans running low (≤20% remaining), so cost pressure is
  * visible without opening the dashboard.
  */
-import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots';
-import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-runtime/client';
+import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { UsageBillingKey } from './locales.ts';
 /** The usage-stats shape the composer bar needs (a thin slice, not the whole doc). */
 export interface LiveStats {
@@ -67,15 +66,16 @@ export declare function lowQuotaChips(quotas: readonly QuotaSlice[], threshold?:
     kind: string;
     pct: number;
 }[];
-/** Props: the session-scope snapshot selector the framework injects. */
+/** Props: the framework's session identity plus the owning dock's locale seat. */
 export interface LiveCostBarProps {
-    useSession: SnapshotSelectorHook<ConversationSnapshot>;
+    /** Current Session identity supplied by the session-scope standard kit. */
+    sessionId: SessionId;
     /** The owning dock's locale seat (bound to the billing NS). */
     t: (key: UsageBillingKey) => string;
 }
 /**
  * Render the live cost ticker for the current session.
- * @param props - framework session snapshot hook and locale.
+ * @param props - framework session identity and locale.
  */
-export declare function LiveCostBar({ useSession, t }: LiveCostBarProps): React.ReactNode;
+export declare function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode;
 //# sourceMappingURL=live-cost.d.ts.map

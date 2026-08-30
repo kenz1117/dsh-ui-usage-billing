@@ -56,9 +56,7 @@ echo "  源码：$SRC"
 echo "  目标：$DEST"
 
 # ---- 1/4 同步源码（独立仓为权威，目标目录按源删增改） ----
-# scripts/clientBundle.ts 只同步测试副本：主仓副本的宿主是 master（0.1.1 线），
-# 平台种子与 0.1.2 线不同（多 web-react/ui-attachment/schema-form，少 client-store），
-# 它必须保留 master 种子版的 bundle 工厂，把 0.1.2-only 的依赖内联进本地产物。
+# 主仓已升级到 0.1.2-alpha.1 源码，三份构建形态统一（同一 0.1.2 种子工厂）。
 for d in "$DEST" "$TEST_DEST"; do
   if [ ! -f "$d/package.json" ]; then
     echo "[警告] 跳过不存在的副本：$d"
@@ -66,12 +64,10 @@ for d in "$DEST" "$TEST_DEST"; do
   fi
   rsync -a --delete "$SRC/src/" "$d/src/"
   rsync -a --delete "$SRC/tests/" "$d/tests/"
+  mkdir -p "$d/scripts"
+  cp "$SRC/scripts/clientBundle.ts" "$d/scripts/clientBundle.ts"
   cp "$SRC/tsdown.config.ts" "$d/tsdown.config.ts"
   cp "$SRC/cordis.patch.yml" "$d/cordis.patch.yml"
-  if [ "$d" = "$TEST_DEST" ]; then
-    mkdir -p "$d/scripts"
-    cp "$SRC/scripts/clientBundle.ts" "$d/scripts/clientBundle.ts"
-  fi
 done
 
 # ---- 2/4 同步版本号与 tsconfig 文件清单 ----
@@ -116,22 +112,29 @@ for (const face of ["host", "client"]) {
 done
 
 # ---- 3/4 构建 ----
-# 两份产物各有归属，不互相覆盖：
-# - 主仓副本（master 种子 bundle 工厂）→ 本机 3080 实例运行验证；
-# - 独立仓（0.1.2-alpha.1 种子 bundle 工厂）→ 与 npm/GitHub 发布物同形态，
-#   发版前无需再手动构建。主仓副本的产物绝不回拷本仓，避免种子形态污染发布物。
+# 三份产物形态统一（0.1.2-alpha.1 种子）：
+# - 主仓副本 → Electron 宿主加载（插件 entry 经 profile patch 注册）；
+# - harness-a1 副本 → 测试宿主加载（lib 由独立仓产物同步）；
+# - 独立仓 → npm/GitHub 发布物。
+# 主仓副本的 tsc 用 --noCheck：主仓聚合带官方 main 开发态的类型债，
+# 类型把关由独立仓构建（权威环境）承担，这里只产运行产物。
 if [ "$NO_BUILD" = "1" ]; then
   echo "[跳过] 构建（--no-build）"
 else
-  echo "[构建] 主仓副本（master 种子，本机 3080 用）"
+  echo "[构建] 主仓副本（0.1.2 种子，Electron 宿主用）"
   cd "$DEST"
-  npx tsc -b tsconfig.json
+  npx tsc -b tsconfig.json --noCheck
   npx tsdown
 
   echo "[构建] 独立仓（0.1.2-alpha.1 种子，发布形态）"
   cd "$SRC"
   npx tsc -b tsconfig.json
   npx tsdown
+
+  # harness-a1 副本从 0.1.2 宿主侧加载，需要 lib 产物；
+  # 独立仓产物与它同形态（同一 0.1.2 种子工厂），直接同步即可。
+  rsync -a --delete "$SRC/lib/" "$TEST_DEST/lib/"
+  echo "[同步] harness-a1 副本 lib/ 产物已更新（宿主加载用）"
 fi
 
 # ---- 测试（可选） ----
