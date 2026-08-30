@@ -465,19 +465,22 @@
 
 /* ── Tab 导航（概览 / 明细 / 用量 / 趋势 / 费率 / 设置） ────────────── */
 
+/* 分段控件：整条浅底胶囊组，激活段以实底浮起，分段感一眼可辨。 */
 .tabNav {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  margin: 14px 24px 0;
+  padding: 4px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 .tabButton {
-  margin: 8px 0;
   border: none;
-  border-radius: 8px;
-  padding: 6px 12px;
+  border-radius: 7px;
+  padding: 6px 14px;
   background: transparent;
   color: var(--dsw-alias-label-tertiary);
   font-size: 13px;
@@ -494,15 +497,14 @@
   outline: none;
 }
 
-/* 激活项：中性分段态（设计 tab.is-active = overlay 底 + 主字 + medium），
-   替代原实色蓝 pill，更贴近设计中性 token 语言。 */
+/* 激活段：弹窗底色实底 + 轻投影浮起，替代下划线分段语言。 */
 .tabButtonActive,
 .tabButtonActive:hover,
 .tabButtonActive:focus-visible {
-  background: var(--dsw-alias-bg-layer-3);
+  background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
   font-weight: 600;
-  box-shadow: inset 0 -2px 0 var(--dsw-static-blue-500);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
 }
 
 /* Tab 内容分区：切换时 140ms 淡入上移。 */
@@ -595,10 +597,14 @@
   min-width: 0;
 }
 
+/* 标签：大写小字距，与 KPI 卡标签同一「仪表标注」口径。 */
 .heroLabel {
-  font-size: 11px;
-  line-height: 16px;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 500;
   color: var(--dsw-alias-label-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   white-space: nowrap;
 }
 
@@ -782,9 +788,9 @@
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
-  font-size: 18px;
-  line-height: 24px;
-  font-weight: 600;
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 650;
   color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
@@ -797,18 +803,29 @@
   flex: 1;
 }
 
+/* 同环比徽章：状态色 12% surface 胶囊底 + 状态色字，涨跌一眼可辨。 */
 .delta {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  margin-left: 4px;
-  font-size: 11px;
-  line-height: 17px;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  line-height: 16px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.deltaUp { color: var(--dsw-static-green-500); }
-.deltaDown { color: var(--dsw-static-red-500); }
+.deltaUp {
+  color: var(--dsw-static-green-500);
+  background: color-mix(in srgb, var(--dsw-static-green-500) 12%, transparent);
+}
+
+.deltaDown {
+  color: var(--dsw-static-red-500);
+  background: color-mix(in srgb, var(--dsw-static-red-500) 12%, transparent);
+}
 
 /* 未计价模型提示条：Hero 与 KPI 之间的轻量警告，琥珀低饱和，不打断视觉流。 */
 .unpricedHint {
@@ -850,18 +867,18 @@
 }
 
 .kpiLabel {
-  font-size: 11px;
-  line-height: 15px;
+  font-size: 10px;
+  line-height: 14px;
   color: var(--dsw-alias-label-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 10px;
+  letter-spacing: 0.06em;
+  font-weight: 500;
 }
 
 .kpiValue {
-  font-size: 24px;
-  line-height: 32px;
-  font-weight: 600;
+  font-size: 26px;
+  line-height: 34px;
+  font-weight: 650;
   color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
@@ -2018,12 +2035,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 费用数字为主视觉（600 主色），分隔符弱化为静音点。 */
-.feeBar b {
-  color: var(--dsw-alias-label-primary);
-  font-weight: 600;
-}
-
+/* 分隔符弱化为静音点，费用数字由 .feeNum 承担主视觉（600 主色）。 */
 .feeBar .feeSep {
   color: var(--dsw-alias-label-dimmed);
 }
@@ -2031,7 +2043,8 @@
 .feeCount { color: var(--dsw-alias-label-primary); font-weight: 600; }
 .feeSuffix { color: var(--dsw-alias-label-tertiary); }
 .feeItem { color: var(--dsw-alias-label-secondary); white-space: nowrap; }
-.feeNum { color: var(--dsw-alias-label-primary); }
+/* 费用数字：主色 + 600 加重，是这条统计条的视觉锚点。 */
+.feeNum { color: var(--dsw-alias-label-primary); font-weight: 600; }
 .feeSep { color: var(--dsw-alias-label-tertiary); }
 
 /* 档位 / 额度预警 chip：小胶囊，状态色 surface 底 + 状态色字。 */
@@ -3531,7 +3544,8 @@
 /* ── 设置 Tab：分区标题 + 分组说明 ─────────────────────────────────── */
 
 /* 明细/费率表：首列模型名，其余数值列右对齐等宽（设计 §明细）。 */
-.modelTable tbody td:not(:first-child) {
+.modelTable tbody td:not(:first-child),
+.pricingTable tbody td:not(:first-child) {
   text-align: right;
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
