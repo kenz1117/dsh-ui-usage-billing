@@ -2,7 +2,8 @@
 # sync.sh —— 插件开发一键同步脚本
 #
 # 方向：独立仓（本目录，权威源码） → DSH 主仓副本（本机 3080 实例的插件加载来源）
-# 动作：同步源码与配置清单 → 在主仓副本内完成 tsc + tsdown 构建 → 产物回拷到本仓 lib/
+# 动作：同步源码与配置清单到两个运行副本 → 双副本各自构建（主仓副本产本机运行
+#       产物，独立仓产发布形态产物）→ 可选在 harness-a1 跑测试
 #
 # 用法：
 #   ./sync.sh               # 同步 + 构建 + 回拷（常规流程）
@@ -55,6 +56,9 @@ echo "  源码：$SRC"
 echo "  目标：$DEST"
 
 # ---- 1/4 同步源码（独立仓为权威，目标目录按源删增改） ----
+# scripts/clientBundle.ts 只同步测试副本：主仓副本的宿主是 master（0.1.1 线），
+# 平台种子与 0.1.2 线不同（多 web-react/ui-attachment/schema-form，少 client-store），
+# 它必须保留 master 种子版的 bundle 工厂，把 0.1.2-only 的依赖内联进本地产物。
 for d in "$DEST" "$TEST_DEST"; do
   if [ ! -f "$d/package.json" ]; then
     echo "[警告] 跳过不存在的副本：$d"
@@ -62,10 +66,12 @@ for d in "$DEST" "$TEST_DEST"; do
   fi
   rsync -a --delete "$SRC/src/" "$d/src/"
   rsync -a --delete "$SRC/tests/" "$d/tests/"
-  mkdir -p "$d/scripts"
-  cp "$SRC/scripts/clientBundle.ts" "$d/scripts/clientBundle.ts"
   cp "$SRC/tsdown.config.ts" "$d/tsdown.config.ts"
   cp "$SRC/cordis.patch.yml" "$d/cordis.patch.yml"
+  if [ "$d" = "$TEST_DEST" ]; then
+    mkdir -p "$d/scripts"
+    cp "$SRC/scripts/clientBundle.ts" "$d/scripts/clientBundle.ts"
+  fi
 done
 
 # ---- 2/4 同步版本号与 tsconfig 文件清单 ----
@@ -109,19 +115,24 @@ for (const face of ["host", "client"]) {
 }'
 done
 
-# ---- 3/4 构建（在主仓副本内：tsc 双 face 产 lib/types，tsdown 产三件 bundle） ----
+# ---- 3/4 构建 ----
+# 两份产物各有归属，不互相覆盖：
+# - 主仓副本（master 种子 bundle 工厂）→ 本机 3080 实例运行验证；
+# - 独立仓（0.1.2-alpha.1 种子 bundle 工厂）→ 与 npm/GitHub 发布物同形态，
+#   发版前无需再手动构建。主仓副本的产物绝不回拷本仓，避免种子形态污染发布物。
 if [ "$NO_BUILD" = "1" ]; then
   echo "[跳过] 构建（--no-build）"
 else
-  echo "[构建] tsc（host + client 双 face）+ tsdown（node half + client half）"
+  echo "[构建] 主仓副本（master 种子，本机 3080 用）"
   cd "$DEST"
   npx tsc -b tsconfig.json
   npx tsdown
-fi
 
-# ---- 4/4 产物回拷（主仓副本 lib/ → 本仓 lib/，与 npm 发布物保持一致） ----
-rsync -a --delete "$DEST/lib/" "$SRC/lib/"
-echo "[回拷] lib/ 产物已同步回独立仓"
+  echo "[构建] 独立仓（0.1.2-alpha.1 种子，发布形态）"
+  cd "$SRC"
+  npx tsc -b tsconfig.json
+  npx tsdown
+fi
 
 # ---- 测试（可选） ----
 # 测试环境用 deepseek-harness-a1（0.1.2-alpha.1 worktree）：主仓 master 宿主不提供
