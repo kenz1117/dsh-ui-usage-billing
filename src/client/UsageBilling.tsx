@@ -18,13 +18,17 @@ import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   type BillingCardPrefs,
   DEFAULT_ENABLE_USAGE_STATS_TOOL,
+  type LiveCostBarPrefs,
+  LIVE_COST_BAR_PREF_EVENT,
   loadBillingCardPrefs,
   type FloatWindowPrefs,
   loadFloatWindowPrefs,
+  loadLiveCostBarPrefs,
   loadSiteListPrefs,
   loadUserPrices,
   saveBillingCardPrefs,
   saveFloatWindowPrefs,
+  saveLiveCostBarPrefs,
   saveSiteListPrefs,
   saveUserPrices,
   type SiteListPrefs,
@@ -1201,6 +1205,10 @@ interface BillingDashboardProps {
   sitePrefs: SiteListPrefs
   /** 中转站列表展示偏好更新（父组件持久化）。 */
   onSitePrefs: (next: SiteListPrefs) => void
+  /** 即时代费条（平价消耗胶囊）显示偏好（设置 Tab 编辑，跨树经 CustomEvent 通知 dock）。 */
+  liveCostPrefs: LiveCostBarPrefs
+  /** 即时代费条显示偏好更新（父组件持久化并广播）。 */
+  onLiveCostPrefs: (next: LiveCostBarPrefs) => void
   /** 订阅刷新是否失败（保留旧快照并标记缓存）。 */
   quotasStale: boolean
 }
@@ -1429,7 +1437,8 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
 function BillingDashboard({
   stats, t, onClose, userPrices, onUserPrices, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, turns,
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
-  peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, sitePrefs, onSitePrefs, quotasStale,
+  peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, sitePrefs, onSitePrefs,
+  liveCostPrefs, onLiveCostPrefs, quotasStale,
 }: BillingDashboardProps): React.ReactNode {
   // 趋势图指标：费用（堆叠/默认）或 Token（单色总量）。
   const [trendMetric, setTrendMetric] = useState<TrendMetric>('cost')
@@ -2400,7 +2409,29 @@ function BillingDashboard({
                 </div>
               </section>
 
-              {/* 6. 中转站列表展示：隐藏「未知路由 / 未识别」占位条目（issue #17）。 */}
+              {/* 6. 即时代费条（平价消耗胶囊）：仅头部显隐开关；与 dock 分属两个 React 树，
+                  持久化到 localStorage 并广播 CustomEvent，LiveCostBar 监听后即时显隐。 */}
+              <section className={css.setCard} data-testid="billing-livecost-setting">
+                <div className={css.setCardHead}>
+                  <div className={css.setCardMeta}>
+                    <h3 className={css.setCardTitle}>{t('billing.liveCostBar')}</h3>
+                    <p className={css.setCardDesc}>{t('billing.liveCostBarHint')}</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={liveCostPrefs.show}
+                    aria-label={t('billing.liveCostBar')}
+                    data-testid="billing-livecost-toggle"
+                    className={clsx(css.switch, liveCostPrefs.show && css.switchOn)}
+                    onClick={() => onLiveCostPrefs({ show: !liveCostPrefs.show })}
+                  >
+                    <span className={css.switchKnob} />
+                  </button>
+                </div>
+              </section>
+
+              {/* 7. 中转站列表展示：隐藏「未知路由 / 未识别」占位条目（issue #17）。 */}
               <section className={css.setCard} data-testid="billing-site-list-setting">
                 <div className={css.setCardHead}>
                   <div className={css.setCardMeta}>
@@ -2421,10 +2452,10 @@ function BillingDashboard({
                 </div>
               </section>
 
-              {/* 7. 自定义单价：set-card——已存价列表 + 新增行；显示层重估，口径差异见说明。 */}
+              {/* 8. 自定义单价：set-card——已存价列表 + 新增行；显示层重估，口径差异见说明。 */}
               <UserPriceCard userPrices={userPrices} onUserPrices={onUserPrices} t={t} />
 
-              {/* 8. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
+              {/* 9. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
               <PluginInfoCard t={t} version={stats.pluginVersion} />
             </div>
           )}
@@ -3222,6 +3253,14 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     setSitePrefs(next)
     saveSiteListPrefs(next)
   }, [])
+  // 即时代费条（平价消耗胶囊）显示偏好：localStorage 持久化；LiveCostBar 与本组件
+  // 分属两个 React 树，写回后广播 CustomEvent 让 dock 上的胶囊条即时显隐。
+  const [liveCostPrefs, setLiveCostPrefs] = useState<LiveCostBarPrefs>(() => loadLiveCostBarPrefs())
+  const updateLiveCostPrefs = useCallback((next: LiveCostBarPrefs): void => {
+    setLiveCostPrefs(next)
+    saveLiveCostBarPrefs(next)
+    window.dispatchEvent(new CustomEvent(LIVE_COST_BAR_PREF_EVENT))
+  }, [])
   // 计费卡显示偏好：localStorage 持久化（修改即写回，仅 client 侧）。
   const [cardPrefs, setCardPrefs] = useState<BillingCardPrefs>(() => loadBillingCardPrefs())
   const updateCardPrefs = useCallback((next: BillingCardPrefs): void => {
@@ -3596,6 +3635,8 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           onCardPrefs={updateCardPrefs}
           sitePrefs={sitePrefs}
           onSitePrefs={updateSitePrefs}
+          liveCostPrefs={liveCostPrefs}
+          onLiveCostPrefs={updateLiveCostPrefs}
           quotasStale={quotasStale}
         />
       )}

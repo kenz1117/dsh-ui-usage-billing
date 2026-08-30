@@ -54,7 +54,7 @@
 - **Billing dashboard (tabbed)**: Overview / Trends / Providers / Stats / Rates / Settings — hero figures + YoY/DoD + month projection + KPI×4 + heatmap; 7/30-day trend (switches between Cost / Tokens); provider billing & subscriptions; export / cost breakdown / workspaces / session detail; model rate table; budget & peak alerts. Restrained tones, `--dsw-*` tokens, dark/light adaptive.
 
   ![Overview: month cost hero, budget progress, KPIs and usage heatmap](screenshots/1.png)
-- **Live cost bar**: below the composer, persistent "This turn ¥x · Session ¥y" plus the peak/off-peak tier & switch countdown and subscription low-quota chips (≤20% appear, ≤10% red).
+- **Live cost bar**: below the composer, persistent "This turn ¥x · Session ¥y" plus the peak/off-peak tier & switch countdown and subscription low-quota chips (≤20% appear, ≤10% red); the whole capsule can be hidden via the settings-tab "Live cost capsule" toggle (display-only preference persisted locally; stats and alerts are unaffected).
 - **Peak/off-peak switch alert**: a popover before a tier switch plus an optional system notification (lead time / position / mode / preview configurable), distinguishing "About to enter peak ×2 — can wait" / "About to enter off-peak, price halves".
 - **Plugin info card**: a persistent "About" card in the Settings tab — name, description, author (jump to GitHub), source repo, npm, MIT license, version (read server-side from the package's `package.json`, single source of truth, correct on publish).
 

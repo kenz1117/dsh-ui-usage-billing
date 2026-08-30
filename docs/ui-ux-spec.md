@@ -136,6 +136,8 @@ composer 即时费用条（常驻，输入框下）
 
 **数据**：`sessionId`；`sessionCostOf / turnCostOf`；`tierCountdown(nowMs)`；`lowQuotaChips(quotas, 20)`。
 
+**显隐开关**：设置 Tab「平价消耗胶囊」卡（`billing-livecost-toggle`）——localStorage 持久化（`dsh.ui-usage-billing.livecost`，默认显示），切换后经 `dsh.ui-usage-billing.livecost-pref` CustomEvent 通知本组件即时显隐（跨标签页走 storage 事件）；隐藏时返回 null，纯显示门控，统计与提醒不受影响。
+
 **设计机会点**：常驻条轻微玻璃底或 hover 浮现；峰谷 chip 与费用主次分明；低配额 chip 加 icon。
 
 ## 七、表面 C — 峰谷切换提醒浮层（PeakAlertBanner）
