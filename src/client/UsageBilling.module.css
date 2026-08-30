@@ -895,6 +895,13 @@
   gap: 10px;
 }
 
+/* 面板头部右侧控件组（Token 每日图：视角切换 + 7/30 天切换）。 */
+.panelHeadControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .panelTitle {
   margin: 0;
   font-size: 14px;
@@ -1266,6 +1273,15 @@
   gap: 5px;
 }
 
+/* Token tooltip（按模型视角）：模型段下方的 命中/未命中/输出 明细小字。 */
+.chartTooltipModelDetail {
+  margin: -2px 0 4px 13px;
+  font-size: 10.5px;
+  line-height: 14px;
+  color: var(--dsw-alias-label-caption);
+  font-variant-numeric: tabular-nums;
+}
+
 .chartBarPlaceholder {
   fill: color-mix(in srgb, var(--dsw-alias-label-secondary) 30%, transparent);
 }
@@ -1309,6 +1325,29 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+/* Token 每日图（按模型视角）图例项：可点击聚焦单个模型（与模型 Token 表行联动）。 */
+.chartLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.chartLegendItem:hover {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.chartLegendItemActive {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
 }
 
 /* ── Tables ─────────────────────────────────────────────────────────── */
@@ -1717,6 +1756,16 @@
 .modelTable tbody tr:hover,
 .pricingTable tbody tr:hover {
   background: transparent;
+}
+
+/* 模型 Token 表：行点击聚焦（仅按日 × 模型明细可用时行可点），聚焦行常亮描底。 */
+.modelTable tbody tr.modelRowFocusable {
+  cursor: pointer;
+}
+
+.modelTable tbody tr.modelRowActive,
+.modelTable tbody tr.modelRowActive:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 .numCol {

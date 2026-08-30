@@ -241,6 +241,10 @@ export type UsageBillingKey =
   | 'billing.tokenMiss'
   | 'billing.tokenHit'
   | 'billing.tokenOutput'
+  | 'billing.tokenViewStructure'
+  | 'billing.tokenViewModel'
+  | 'billing.tokenHitShort'
+  | 'billing.tokenMissShort'
   | 'billing.tokenTotal'
   | 'billing.tokenShare'
   | 'billing.usageStatsTool'
@@ -521,6 +525,10 @@ export const zh: Record<UsageBillingKey, string> = {
   'billing.tokenMiss': '输入（缓存未命中）',
   'billing.tokenHit': '输入（缓存命中）',
   'billing.tokenOutput': '输出',
+  'billing.tokenViewStructure': '按结构',
+  'billing.tokenViewModel': '按模型',
+  'billing.tokenHitShort': '命中',
+  'billing.tokenMissShort': '未命中',
   'billing.tokenTotal': '总 Token',
   'billing.tokenShare': '占比',
   'billing.usageStatsTool': '注入用量查询工具',
@@ -800,6 +808,10 @@ export const en: Record<UsageBillingKey, string> = {
   'billing.tokenMiss': 'Input (cache miss)',
   'billing.tokenHit': 'Input (cache hit)',
   'billing.tokenOutput': 'Output',
+  'billing.tokenViewStructure': 'Structure',
+  'billing.tokenViewModel': 'By model',
+  'billing.tokenHitShort': 'Hit',
+  'billing.tokenMissShort': 'Miss',
   'billing.tokenTotal': 'Total tokens',
   'billing.tokenShare': 'Share',
   'billing.usageStatsTool': 'Inject usage-stats tool',
