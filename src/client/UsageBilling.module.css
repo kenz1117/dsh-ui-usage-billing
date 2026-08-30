@@ -396,14 +396,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 20px 24px;
+  padding: 12px 18px;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
 
 .dashboardTitle {
   margin: 0;
-  font-size: 16px;
-  line-height: 24px;
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
 }
@@ -456,7 +456,7 @@
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 12px 24px;
+  padding: 8px 18px;
   border-top: 1px solid var(--dsw-alias-border-l1);
   font-size: 11px;
   line-height: 16px;
@@ -573,11 +573,11 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 24px;
+  gap: 12px;
+  padding: 14px 16px;
   overflow: hidden;
   border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--dsw-alias-bg-layer-2);
 }
 
@@ -615,21 +615,21 @@
   gap: 4px;
 }
 
-/* 币种符号：小号，弱化为读数前缀，突出右侧大数字。 */
+/* 币种符号：小号，弱化为读数前缀，突出右侧主数字。 */
 .heroCurrency {
-  font-size: 22px;
-  line-height: 28px;
+  font-size: 15px;
+  line-height: 20px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--dsw-alias-label-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-/* 本月主数字：40px 等宽数字（设计 hero__amount），保持读数感但收敛尺寸。 */
+/* 本月主数字：28px 等宽数字 —— 弹窗空间有限，主锚点靠字重与灰度对比而非尺寸堆叠。 */
 .heroValue {
-  font-size: 40px;
-  line-height: 48px;
-  font-weight: 700;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 650;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -637,19 +637,19 @@
 }
 
 .heroMeta {
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 17px;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 15px;
   color: var(--dsw-alias-label-caption);
   white-space: nowrap;
 }
 
-/* 环形仪表盘：中心百分比 + 标签，SVG 半径为 52（周长 ≈ 326.7）。 */
+/* 环形仪表盘：中心百分比 + 标签，SVG viewBox 120 等比缩放，容器 72px 紧凑档。 */
 .heroGauge {
   position: relative;
   flex: none;
-  width: 96px;
-  height: 96px;
+  width: 72px;
+  height: 72px;
 }
 
 .heroGaugeSvg {
@@ -662,13 +662,13 @@
 .heroGaugeTrack {
   fill: none;
   stroke: var(--dsw-alias-bg-module-platform);
-  stroke-width: 9;
+  stroke-width: 7;
 }
 
 .heroGaugeArc {
   fill: none;
   stroke: var(--dsw-static-blue-500);
-  stroke-width: 9;
+  stroke-width: 7;
   stroke-linecap: round;
   transition: stroke-dasharray 260ms ease;
 }
@@ -688,8 +688,8 @@
 }
 
 .heroGaugePct {
-  font-size: 18px;
-  line-height: 22px;
+  font-size: 14px;
+  line-height: 18px;
   font-weight: 700;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
@@ -701,8 +701,8 @@
 }
 
 .heroGaugeLabel {
-  font-size: 10px;
-  line-height: 14px;
+  font-size: 9px;
+  line-height: 12px;
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -753,11 +753,11 @@
   white-space: nowrap;
 }
 
-/* 底部读数排：本年 / 今日 / 本月预计 三等分，上缘细分隔线与顶层区隔。 */
+/* 底部读数排：本年 / 今日 / 本月预计 三等分；标签大写化与 heroLabel 同一仪表标注口径。 */
 .heroSide {
   display: flex;
   align-items: stretch;
-  padding-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--dsw-alias-border-l1);
 }
 
@@ -765,9 +765,9 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
-  padding-left: 16px;
+  padding-left: 14px;
   /* 设计「副行分隔」：分隔项间以细竖线区隔，替代纯留白。 */
   border-left: 1px solid var(--dsw-alias-border-l1);
 }
@@ -778,9 +778,12 @@
 }
 
 .heroSideLabel {
-  font-size: 11px;
-  line-height: 15px;
+  font-size: 10px;
+  line-height: 13px;
   color: var(--dsw-alias-label-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -788,9 +791,9 @@
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
-  font-size: 20px;
-  line-height: 26px;
-  font-weight: 650;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
   color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
@@ -846,18 +849,18 @@
 .kpiGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .kpiTile {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 16px;
+  gap: 2px;
+  padding: 10px 12px;
   overflow: hidden;
   border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--dsw-alias-bg-layer-2);
   transition: border-color 160ms ease;
 }
@@ -868,16 +871,17 @@
 
 .kpiLabel {
   font-size: 10px;
-  line-height: 14px;
+  line-height: 13px;
   color: var(--dsw-alias-label-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 500;
 }
 
+/* KPI 值：16px 次级读数 —— 与 hero 28px 主锚点拉开两级，弹窗内不做第二层大数字。 */
 .kpiValue {
-  font-size: 26px;
-  line-height: 34px;
+  font-size: 16px;
+  line-height: 22px;
   font-weight: 650;
   color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
@@ -889,8 +893,8 @@
 }
 
 .kpiDetail {
-  font-size: 11px;
-  line-height: 15px;
+  font-size: 10.5px;
+  line-height: 14px;
   color: var(--dsw-alias-label-caption);
   white-space: nowrap;
   overflow: hidden;
@@ -902,10 +906,10 @@
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px 18px;
+  gap: 8px;
+  padding: 12px 14px;
   border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--dsw-alias-bg-layer-2);
   transition: border-color 160ms ease;
 }
@@ -1749,7 +1753,7 @@
 .modelTable td,
 .pricingTable th,
 .pricingTable td {
-  padding: 9px 12px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
   text-align: left;
   white-space: nowrap;
