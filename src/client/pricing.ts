@@ -232,6 +232,14 @@ export const DEFAULT_PEAK_SHARE = 0.5
 export const PEAK_ERA_START_MS = Date.parse('2026-08-16T16:00:00Z')
 
 /**
+ * 周末全谷规则分界（UTC 2026-08-22T16:00:00Z，即北京时间 2026-08-23 00:00）：
+ * 官方自此刻起周六/周日全天不区分峰谷（高峰时段收窄为工作日）；生效前的
+ * 周末仍按 v1 峰谷规则（周六日 9-12 / 14-18 同样是高峰时段）。历史事件的
+ * 档位判定按事件所在时段适用各自的规则，不得统一套现行规则重算历史。
+ */
+export const WEEKEND_OFFPEAK_START_MS = Date.parse('2026-08-22T16:00:00Z')
+
+/**
  * DeepSeek V4 峰谷时代之前的官方基础价（CNY / 1M tokens）：官方中文定价页
  * 峰谷改版前的基础价档（缓存写沿用历史规则按命中价计）。键为内置目录键，
  * flash-vision-exp 与 flash 同价。仅当事件时刻早于 {@link PEAK_ERA_START_MS}
@@ -1536,14 +1544,27 @@ export function computeCost(
 }
 
 /**
+ * v1 峰谷档判定（峰谷开闸起、周末全谷分界止）：不豁免周末——该时段官方
+ * 高峰时段为每天 9-12 / 14-18（周六日同样计峰）。仅用于历史事件计费；
+ * 「当前时刻」的档位（提醒/时段条/费率展示）一律走 {@link tierAt} 现行规则。
+ */
+function tariffV1At(timeMs: number): PriceTierId {
+  const beijingHour = (new Date(timeMs).getUTCHours() + 8) % 24
+  return isPeakHour(beijingHour) ? 'peak' : 'offPeak'
+}
+
+/**
  * 按调用时刻精确判定高峰/空闲档并计价（P0-1：替代固定比例混合）。时刻未知
  * （null/NaN，理论不发生在真实事件流）时回退 {@link DEFAULT_PEAK_SHARE} 混合，
  * 保持旧语义不低估。平档模型（无 offPeak）两个时段同价。限时促销与峰谷档
  * 同口径：按事件时刻判定该笔流量当时享受的单价。
  *
- * 历史正确性：事件时刻早于 {@link PEAK_ERA_START_MS} 的 DeepSeek V4 流量按
- * 当时官方基础价（{@link LEGACY_DEEPSEEK_BANDS}）计费，不套现行峰/谷档——
- * 否则峰谷开闸前的历史账单会被系统性高估。
+ * 历史正确性（按变更节点分段适用规则，不统一套现行价重算历史）：
+ * - 早于 {@link PEAK_ERA_START_MS} 的事件按当时官方基础价
+ *   （{@link LEGACY_DEEPSEEK_BANDS}）计费；
+ * - 峰谷开闸至 {@link WEEKEND_OFFPEAK_START_MS} 之间按 v1 规则（周末不豁免，
+ *   周六日 9-12 / 14-18 计峰）；
+ * - 周末全谷分界起按现行规则（{@link tierAt}，周六日全天低谷）。
  * @param entry - the catalog entry whose prices apply.
  * @param buckets - token usage counts.
  * @param timeMs - the call's wall-clock time (epoch ms); null falls back to the peak-share mix.
@@ -1565,7 +1586,9 @@ export function computeCostAt(
     : undefined
   if (legacy !== undefined) return priceBandCost(legacy, buckets, 'CNY')
   if (priced.price.offPeak === undefined) return priceBandCost(priced.price, buckets, priced.price.currency)
-  const band = tierAt(timeMs) === 'peak' ? priced.price : priced.price.offPeak
+  // 档位判定按事件时刻分段适用规则：v1 窗口不豁免周末，分界起周末全谷。
+  const tier = timeMs < WEEKEND_OFFPEAK_START_MS ? tariffV1At(timeMs) : tierAt(timeMs)
+  const band = tier === 'peak' ? priced.price : priced.price.offPeak
   return priceBandCost(band, buckets, priced.price.currency)
 }
 

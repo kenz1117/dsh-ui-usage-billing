@@ -107,4 +107,24 @@ export declare const USER_PRICES_STORAGE_KEY = "dsh.ui-usage-billing.prices";
 export declare function loadUserPrices(): UserPriceMap;
 /** 写入用户自定义价。失败静默（展示偏好非关键）。 */
 export declare function saveUserPrices(prices: UserPriceMap): void;
+/** 性能曲线的指标视角。 */
+export type PerfMetric = 'ttft' | 'tps';
+/**
+ * 性能面板的视图偏好：当前指标 tab 与点亮的模型曲线集合。
+ * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
+ */
+export interface PerfViewPrefs {
+    /** 当前指标：首字延时（ms）/ 生成速度（tok/s）。 */
+    metric: PerfMetric;
+    /** 点亮的模型键列表；缺省 = 按样本数前 5（用户未碰过图例时跟随默认）。 */
+    models?: string[];
+}
+/** 默认性能视图偏好：首字延时 tab；模型集合跟随默认（前 5）。 */
+export declare const DEFAULT_PERF_VIEW_PREFS: PerfViewPrefs;
+/** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
+export declare const PERF_VIEW_STORAGE_KEY = "dsh.ui-usage-billing.perf";
+/** 读取性能视图偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
+export declare function loadPerfViewPrefs(): PerfViewPrefs;
+/** 写入性能视图偏好。失败静默（展示偏好非关键）。 */
+export declare function savePerfViewPrefs(prefs: PerfViewPrefs): void;
 //# sourceMappingURL=usage-billing-settings.d.ts.map

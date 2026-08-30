@@ -325,6 +325,31 @@ describe('legacy base prices (pre peak-era)', () => {
     expect(computeCostAt(modelOf('glm'), buckets, before))
       .toBe(computeCostAt(modelOf('glm'), buckets, boundary))
   })
+
+  it('charges weekend peak hours in the v1 window (before the weekend off-peak boundary)', () => {
+    // v1 规则（北京 8-17 00:00 ~ 8-23 00:00）：周末不豁免，周六 10:00 计峰。
+    const satV1 = Date.UTC(2026, 7, 22, 2) // 北京 8-22（周六）10:00
+    expect(computeCostAt(modelOf('flash'), buckets, satV1))
+      .toBeCloseTo((MILLION * 0.1 + MILLION * 3 + MILLION * 9) / MILLION, 10)
+  })
+
+  it('charges weekend off-peak all day from the 08-23 boundary onward', () => {
+    // 分界整点（北京 8-23 00:00 周日）起周末全天低谷；再下一个周六同样。
+    const sunNew = Date.parse('2026-08-22T16:00:00Z') // 北京 8-23（周日）00:00 整
+    const satAfter = Date.UTC(2026, 7, 29, 2) // 北京 8-29（周六）10:00
+    const offPeakCost = (MILLION * 0.05 + MILLION * 1.5 + MILLION * 4.5) / MILLION
+    expect(computeCostAt(modelOf('flash'), buckets, sunNew)).toBeCloseTo(offPeakCost, 10)
+    expect(computeCostAt(modelOf('flash'), buckets, satAfter)).toBeCloseTo(offPeakCost, 10)
+  })
+
+  it('keeps weekday peaks unaffected by the weekend-boundary change', () => {
+    // 周一 10:00 在分界前后都是峰时（周末规则变更不波及工作日）。
+    const monBefore = Date.UTC(2026, 7, 17, 2) // 北京 8-17（周一）10:00
+    const monAfter = Date.UTC(2026, 7, 24, 2) // 北京 8-24（周一）10:00
+    const peakCost = (MILLION * 0.1 + MILLION * 3 + MILLION * 9) / MILLION
+    expect(computeCostAt(modelOf('flash'), buckets, monBefore)).toBeCloseTo(peakCost, 10)
+    expect(computeCostAt(modelOf('flash'), buckets, monAfter)).toBeCloseTo(peakCost, 10)
+  })
 })
 
 describe('currency display (P2-3)', () => {

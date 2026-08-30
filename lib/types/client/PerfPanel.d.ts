@@ -1,12 +1,13 @@
 /**
- * PerfPanel: per-model latency/perf table + per-hour TTFT/generation-speed curve.
+ * PerfPanel: per-model latency/perf table + per-hour per-model comparison curve.
  *
  * Reads the optional `perf` field of the usage-stats document (aggregated by
  * the host from session logs). Renders a per-model table of TTFT mean/P50/P90,
  * generation speed, total latency and estimated-step count, plus a small
- * dependency-free SVG twin-series hourly curve (TTFT in ms on the left axis,
- * tokens/s on the right). Absent `perf` (older snapshot or stream-less logs)
- * renders an empty state; the panel never fabricates samples.
+ * dependency-free SVG hourly curve: one colored polyline per lit model with a
+ * metric tab (TTFT ms / tok/s) and clickable model chips; hovering snaps to the
+ * nearest hour and shows a crosshair + tooltip listing every lit model's value.
+ * Absent `perf` renders an empty state; the panel never fabricates samples.
  */
 import type { TrendSeriesModel } from './TrendChart.tsx';
 import type { UsageBillingKey } from './locales.ts';
@@ -24,8 +25,8 @@ export interface PerfModelData {
     latencyAvg: number;
     estimatedSamples: number;
 }
-/** 每小时性能统计（与服务端 `HourPerf` 同形）。 */
-export interface PerfHourData {
+/** 小时×模型性能统计（与服务端 `HourModelPerf` 同形）。 */
+export interface PerfHourModelData {
     samples: number;
     ttftAvg: number;
     tpsAvg?: number;
@@ -33,12 +34,13 @@ export interface PerfHourData {
 /** 性能指标文档（服务端可选 `perf` 字段；旧快照缺失）。 */
 export interface ClientPerf {
     byModel: Record<string, PerfModelData>;
-    byHour: Record<string, PerfHourData>;
+    /** 小时 → 模型 → 小时统计；旧 host 文档缺失时图表区按空态兜底。 */
+    byHourModel: Record<string, Record<string, PerfHourModelData>>;
 }
 /**
  * Render the performance panel.
  * @param props.perf - the optional perf doc; `undefined`/empty renders an empty state.
- * @param props.models - model legend (key/name/color) for the table swatches and curve legend.
+ * @param props.models - model legend (key/name/color) for the table swatches and curve chips.
  * @param props.t - locale function.
  */
 export declare function PerfPanel({ perf, models, t, }: {

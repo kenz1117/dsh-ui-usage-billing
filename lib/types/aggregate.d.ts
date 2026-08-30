@@ -236,8 +236,8 @@ export interface RoleCost {
 export interface PerfStats {
     /** 按模型聚合（键 = 计费目录键；未收录模型原样保留）。 */
     byModel: Record<string, ModelPerf>;
-    /** 按小时聚合（键 = {@link hourStamp}，北京时间）。 */
-    byHour: Record<string, HourPerf>;
+    /** 按小时×模型聚合（外键 = {@link hourStamp}，内键 = 模型目录键；北京时间）。 */
+    byHourModel: Record<string, Record<string, HourModelPerf>>;
 }
 /** 一个模型的性能统计：首字延时均值 / P50 / P90、生成速度均值、总延迟均值。 */
 export interface ModelPerf {
@@ -260,11 +260,11 @@ export interface ModelPerf {
     /** 以 step/start 估算的样本数（工具续写步骤无独立 request/header）。 */
     estimatedSamples: number;
 }
-/** 一个小时的性能统计（键 = {@link hourStamp}）。 */
-export interface HourPerf {
+/** 一个小时单模型的性能统计（外键 = {@link hourStamp}，内键 = 模型目录键）。 */
+export interface HourModelPerf {
     samples: number;
     ttftAvg: number;
-    /** 平均生成速度（tokens/s）；该小时无可测生成窗口时缺失。 */
+    /** 平均生成速度（tokens/s）；该小时该模型无可测生成窗口时缺失。 */
     tpsAvg?: number;
 }
 /** 会话明细行：仪表盘「会话明细」面板的数据源。 */
@@ -422,10 +422,11 @@ export interface UsageLedgerDocument {
  * 计费（issue #15，1.0.9 起）；v4 = 模型×日期×站点三维桶（issue #16，按 origin
  * 绑定自定义价的显示层重估）——旧行缺该维度，按无 origin 价处理；v5 = 峰谷
  * 时代之前（2026-08-16T16:00Z）的 DeepSeek 事件按当时基础价计费（v4 把全部
- * 历史套现行峰/谷档价，高估约 50%）。
+ * 历史套现行峰/谷档价，高估约 50%）；v6 = v1 峰谷窗口（至 2026-08-22T16:00Z）
+ * 的周末不豁免峰时（v5 错套现行周末全谷规则，低估该窗口周六日的峰时费用）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export declare const FOLD_VERSION = 5;
+export declare const FOLD_VERSION = 6;
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
  * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并
