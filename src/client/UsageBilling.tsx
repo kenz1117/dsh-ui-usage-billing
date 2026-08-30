@@ -678,10 +678,10 @@ async function loadUsageStats(): Promise<UsageStats | null> {
       ...(candidate.byRole !== null && typeof candidate.byRole === 'object'
         ? { byRole: candidate.byRole as { user: number; assistant: number; tool: number } }
         : {}),
-      // 性能指标：旧快照缺失；仅接受含 byModel/byHour 的对象形状。
+      // 性能指标：旧快照缺失；仅接受含 byModel/byHourModel 的对象形状。
       ...(candidate.perf !== null && typeof candidate.perf === 'object'
         && candidate.perf.byModel !== null && typeof candidate.perf.byModel === 'object'
-        && candidate.perf.byHour !== null && typeof candidate.perf.byHour === 'object'
+        && candidate.perf.byHourModel !== null && typeof candidate.perf.byHourModel === 'object'
         ? { perf: candidate.perf as ClientPerf }
         : {}),
       ...(typeof candidate.pluginVersion === 'string' ? { pluginVersion: candidate.pluginVersion } : {}),

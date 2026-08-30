@@ -1,18 +1,21 @@
 /**
- * PerfPanel: per-model latency/perf table + per-hour TTFT/generation-speed curve.
+ * PerfPanel: per-model latency/perf table + per-hour per-model comparison curve.
  *
  * Reads the optional `perf` field of the usage-stats document (aggregated by
  * the host from session logs). Renders a per-model table of TTFT mean/P50/P90,
  * generation speed, total latency and estimated-step count, plus a small
- * dependency-free SVG twin-series hourly curve (TTFT in ms on the left axis,
- * tokens/s on the right). Absent `perf` (older snapshot or stream-less logs)
- * renders an empty state; the panel never fabricates samples.
+ * dependency-free SVG hourly curve: one colored polyline per lit model with a
+ * metric tab (TTFT ms / tok/s) and clickable model chips; hovering snaps to the
+ * nearest hour and shows a crosshair + tooltip listing every lit model's value.
+ * Absent `perf` renders an empty state; the panel never fabricates samples.
  */
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import clsx from 'clsx'
 import css from './UsageBilling.module.css'
 import type { TrendSeriesModel } from './TrendChart.tsx'
 import type { UsageBillingKey } from './locales.ts'
+import { loadPerfViewPrefs, savePerfViewPrefs, type PerfMetric, type PerfViewPrefs } from './usage-billing-settings.ts'
 
 /** 每模型性能统计（与服务端 `ModelPerf` 同形）。 */
 export interface PerfModelData {
@@ -29,8 +32,8 @@ export interface PerfModelData {
   estimatedSamples: number
 }
 
-/** 每小时性能统计（与服务端 `HourPerf` 同形）。 */
-export interface PerfHourData {
+/** 小时×模型性能统计（与服务端 `HourModelPerf` 同形）。 */
+export interface PerfHourModelData {
   samples: number
   ttftAvg: number
   tpsAvg?: number
@@ -39,7 +42,8 @@ export interface PerfHourData {
 /** 性能指标文档（服务端可选 `perf` 字段；旧快照缺失）。 */
 export interface ClientPerf {
   byModel: Record<string, PerfModelData>
-  byHour: Record<string, PerfHourData>
+  /** 小时 → 模型 → 小时统计；旧 host 文档缺失时图表区按空态兜底。 */
+  byHourModel: Record<string, Record<string, PerfHourModelData>>
 }
 
 /** 一个模型的渲染行：模型 + 颜色 + 性能列。 */
@@ -66,23 +70,44 @@ const PAD = { top: 14, right: 42, bottom: 22, left: 46 }
 /** 小时曲线最多展示的小时数（避免窗口内小时过多挤成一团）。 */
 const MAX_HOURS = 48
 
-/** 数字趋势曲线端点：`{ ttftMs, tps? }` 按小时键升序。 */
-interface HourPoint {
-  key: string
-  ttftMs: number
-  tps?: number
+/** 图例默认点亮的模型数（按样本数取前 N；长尾模型点击 chip 随时加入）。 */
+const DEFAULT_LIT_MODELS = 5
+
+/** 一条模型曲线上的有值小时点。 */
+interface SeriesPoint {
+  /** 小时索引（在窗口小时键数组中的下标）。 */
+  i: number
+  x: number
+  y: number
+  /** 当前指标的数值（ttftAvg 或 tpsAvg）。 */
+  v: number
 }
 
-/** 最近窗口内的小时点（键升序，尾部补齐空白，最旧在前）。 */
-function sortHourPoints(byHour: Record<string, PerfHourData>): HourPoint[] {
-  const keys = Object.keys(byHour).sort()
-  const points: HourPoint[] = []
-  for (const key of keys.slice(-MAX_HOURS)) {
-    const data = byHour[key]
-    if (data === undefined) continue
-    points.push({ key, ttftMs: data.ttftAvg, ...(data.tpsAvg === undefined ? {} : { tps: data.tpsAvg }) })
-  }
-  return points
+/** 一条模型曲线：折线段（无样本小时断开）+ 有值点。 */
+interface PerfSeries {
+  key: string
+  name: string
+  color: string
+  /** 连续样本段的 SVG path（模型在该小时无样本时断开，不 fabricated 连线）。 */
+  segments: string[]
+  points: SeriesPoint[]
+}
+
+/** 小时曲线布局：比例尺 + 各模型曲线。 */
+interface HourLayout {
+  hourKeys: string[]
+  n: number
+  plotW: number
+  plotH: number
+  inner: (i: number) => number
+  yOf: (v: number) => number
+  series: PerfSeries[]
+  /** 纵轴刻度值（降序）。 */
+  ticks: number[]
+  /** 横轴稀疏标注的小时下标。 */
+  xTicks: number[]
+  /** 点亮模型在窗口内的有值点总数（0 → 图表区显示空态提示）。 */
+  totalPoints: number
 }
 
 /** 短小时标签 `MM-DD HH`（跨天在小时键上有日期，直接截取即可辨识）。 */
@@ -90,10 +115,20 @@ function shortHour(key: string): string {
   return key.slice(5, 13).replace('T', ' ')
 }
 
+/** 轴刻度数值格式：大值取整、小值保留 1 位小数。 */
+function fmtTick(value: number): string {
+  return value >= 100 ? String(Math.round(value)) : String(Number(value.toFixed(1)))
+}
+
+/** tooltip 数值格式：首字延时取整毫秒；生成速度保留 1 位小数并带单位。 */
+function fmtValue(value: number, metric: PerfMetric, t: (key: UsageBillingKey) => string): string {
+  return metric === 'ttft' ? `${Math.round(value)} ms` : `${value.toFixed(1)} ${t('billing.perfTpsUnit')}`
+}
+
 /**
  * Render the performance panel.
  * @param props.perf - the optional perf doc; `undefined`/empty renders an empty state.
- * @param props.models - model legend (key/name/color) for the table swatches and curve legend.
+ * @param props.models - model legend (key/name/color) for the table swatches and curve chips.
  * @param props.t - locale function.
  */
 export function PerfPanel({
@@ -105,6 +140,14 @@ export function PerfPanel({
   models: readonly TrendSeriesModel[]
   t: (key: UsageBillingKey) => string
 }): React.ReactNode {
+  // 视图偏好（指标 tab + 点亮模型）：localStorage 持久化（修改即写回，仅 client 侧）。
+  const [prefs, setPrefs] = useState<PerfViewPrefs>(() => loadPerfViewPrefs())
+  const [hover, setHover] = useState<number | null>(null)
+  const updatePrefs = (next: PerfViewPrefs): void => {
+    setPrefs(next)
+    savePerfViewPrefs(next)
+  }
+
   const colorOf = (model: string): string => models.find(m => m.key === model)?.color ?? '#8b95a3'
 
   // 模型行：按样本数降序（活跃模型靠前），色点取自模型图例。
@@ -129,33 +172,95 @@ export function PerfPanel({
       .sort((a, b) => b.samples - a.samples || b.ttftP90 - a.ttftP90)
   }, [perf, models])
 
-  // 小时序列：TTFT 折线（左轴 ms）+ 速度折线（右轴 tok/s）。
-  const hourLayout = useMemo(() => {
-    const points = perf === undefined ? [] : sortHourPoints(perf.byHour)
-    if (points.length === 0) return null
-    const n = points.length
+  // 点亮的模型：偏好里存过 → 按存档（过滤已下线模型，可为空集）；从未碰过图例 → 默认前 5。
+  const litKeys: string[] = useMemo(() => {
+    if (perf === undefined) return []
+    if (prefs.models !== undefined) {
+      const known = new Set(Object.keys(perf.byModel))
+      return prefs.models.filter(key => known.has(key))
+    }
+    return rows.slice(0, DEFAULT_LIT_MODELS).map(row => row.key)
+  }, [perf, rows, prefs.models])
+
+  // 小时曲线布局：窗口小时键（升序、截尾 48）+ 点亮模型各自的有值点与折线段。
+  const hourLayout: HourLayout | null = useMemo(() => {
+    if (perf === undefined) return null
+    const hourKeys = Object.keys(perf.byHourModel).sort().slice(-MAX_HOURS)
+    if (hourKeys.length === 0) return null
+    const n = hourKeys.length
     const plotW = W - PAD.left - PAD.right
     const plotH = H - PAD.top - PAD.bottom
     const inner = (i: number): number => (n === 1 ? PAD.left + plotW / 2 : PAD.left + (plotW * i) / (n - 1))
-    const maxTtft = Math.max(...points.map(p => p.ttftMs), 1)
-    const maxTps = Math.max(...points.map(p => p.tps ?? 0), 1)
-    const yTtft = (v: number): number => PAD.top + plotH - (v / maxTtft) * plotH
-    const yTps = (v: number): number => PAD.top + plotH - (v / maxTps) * plotH
-    const ttftPath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${inner(i)} ${yTtft(p.ttftMs)}`).join(' ')
-    const tpsPath = points.some(p => p.tps !== undefined)
-      ? points.map((p, i) => `${i === 0 ? 'M' : 'L'}${inner(i)} ${yTps(p.tps ?? 0)}`).join(' ')
-      : ''
+    const lit = new Set(litKeys)
+    // 当前指标取值：生成速度缺失（该小时该模型无可测窗口）→ 断开不画。
+    const valueOf = (cell: PerfHourModelData | undefined): number | undefined =>
+      prefs.metric === 'ttft' ? cell?.ttftAvg : cell?.tpsAvg
+    const series: PerfSeries[] = []
+    let maxV = 0
+    for (const row of rows) {
+      if (!lit.has(row.key)) continue
+      const points: SeriesPoint[] = []
+      for (let i = 0; i < n; i++) {
+        const hourKey = hourKeys[i]
+        if (hourKey === undefined) continue
+        const v = valueOf(perf.byHourModel[hourKey]?.[row.key])
+        if (v === undefined || !Number.isFinite(v)) continue
+        points.push({ i, x: inner(i), y: 0, v })
+        if (v > maxV) maxV = v
+      }
+      series.push({ key: row.key, name: row.name, color: row.color, segments: [], points })
+    }
+    // 纵轴比例尺：0 → 点亮模型在窗口内的最大值（下限 1 防除零）；全空时也产出布局，
+    // 由渲染层按 totalPoints === 0 显示空态提示（tab + chips 工具条保持可见）。
+    const totalPoints = series.reduce((sum, s) => sum + s.points.length, 0)
+    maxV = Math.max(maxV, 1)
+    const yOf = (v: number): number => PAD.top + plotH - (v / maxV) * plotH
+    for (const s of series) {
+      let path = ''
+      let prev = -2
+      for (const p of s.points) {
+        p.y = yOf(p.v)
+        // 小时不连续 → 断开成新段（缺失样本不 fabricated 连线）。
+        if (path !== '' && p.i !== prev + 1) {
+          s.segments.push(path)
+          path = ''
+        }
+        path += `${path === '' ? 'M' : 'L'}${p.x} ${p.y} `
+        prev = p.i
+      }
+      if (path !== '') s.segments.push(path)
+    }
     const step = Math.max(1, Math.ceil(n / 8))
-    const indices: number[] = []
-    for (let i = 0; i < n; i += step) indices.push(i)
-    if (n > 0 && indices[indices.length - 1] !== n - 1) indices.push(n - 1)
-    const ttftTicks = [0, 0.5, 1].map(f => maxTtft * f).reverse()
-    return { points, n, inner, yTtft, ttftPath, tpsPath, indices, ttftTicks, maxTps }
-  }, [perf])
+    const xTicks: number[] = []
+    for (let i = 0; i < n; i += step) xTicks.push(i)
+    if (xTicks[xTicks.length - 1] !== n - 1) xTicks.push(n - 1)
+    return {
+      hourKeys, n, plotW, plotH, inner, yOf, series,
+      ticks: [0, 0.5, 1].map(f => maxV * f).reverse(),
+      xTicks, totalPoints,
+    }
+  }, [perf, rows, litKeys, prefs.metric])
 
   if (perf === undefined || rows.length === 0) {
     return <div className={css.chartEmpty} data-testid="billing-perf-empty">{t('billing.perfEmpty')}</div>
   }
+
+  const toggleModel = (key: string): void => {
+    const lit = litKeys.includes(key)
+    const next = lit ? litKeys.filter(k => k !== key) : [...litKeys, key]
+    updatePrefs({ metric: prefs.metric, models: next })
+  }
+  const setMetric = (metric: PerfMetric): void => {
+    updatePrefs({ metric, ...(prefs.models !== undefined ? { models: prefs.models } : {}) })
+  }
+
+  // hover 行：该小时有值（当前指标）的点亮模型。
+  const tooltipRows = (hover === null || hourLayout === null)
+    ? []
+    : hourLayout.series.flatMap(s => {
+      const p = s.points.find(pt => pt.i === hover)
+      return p === undefined ? [] : [{ key: s.key, name: s.name, color: s.color, v: p.v }]
+    })
 
   return (
     <div data-testid="billing-perf-panel">
@@ -203,52 +308,152 @@ export function PerfPanel({
         </table>
       </div>
 
-      {/* 按小时 TTFT / 速度曲线：最近窗口双折线（左轴毫秒，右轴 tok/s）。 */}
+      {/* 按小时×模型对比曲线：指标 tab + 模型 chips + hover 十字线/tooltip。 */}
       {hourLayout !== null && (
-        <div className={css.chartWrap} data-testid="billing-perf-hour">
-          <svg
-            viewBox={`0 0 ${W} ${H}`}
-            className={css.chartSvg}
-            role="img"
-            aria-label="Hourly TTFT and generation speed by model"
-          >
-            {hourLayout.ttftTicks.map((value, idx) => {
-              const y = hourLayout.yTtft(value)
-              return (
-                <g key={`ttft-${idx}`}>
-                  <line x1={PAD.left} x2={W - PAD.right} y1={y} y2={y} className={css.chartGrid} />
-                  <text x={PAD.left - 8} y={y + 3} textAnchor="end" className={css.chartAxisLabel}>
-                    {value.toFixed(0)}
-                  </text>
-                </g>
-              )
-            })}
-            <path d={hourLayout.ttftPath} fill="none" className={css.chartLine} />
-            {hourLayout.tpsPath !== '' && <path d={hourLayout.tpsPath} fill="none" className={css.chartLine} style={{ stroke: 'var(--dsw-static-amber-500)', strokeDasharray: '4 4' }} />}
-            {hourLayout.indices.map((i) => {
-              const point = hourLayout.points[i]
-              if (point === undefined) return null
-              return (
-                <text key={point.key} x={hourLayout.inner(i)} y={H - 6} textAnchor="middle" className={css.chartAxisLabel}>
-                  {shortHour(point.key)}
-                </text>
-              )
-            })}
-            <text x={W - PAD.right + 8} y={PAD.top + 4} textAnchor="start" className={css.chartAxisLabel}>
-              {t('billing.perfTpsUnit')} {hourLayout.maxTps.toFixed(0)}
-            </text>
-          </svg>
-          <div className={css.chartLegend}>
-            <span>
-              <span className={css.chartLegendLine} />
-              {t('billing.perfTtft')} (ms)
-            </span>
-            <span>
-              <span className={css.chartLegendLine} style={{ background: 'var(--dsw-static-amber-500)' }} />
-              {t('billing.perfTps')} ({t('billing.perfTpsUnit')})
+        <div data-testid="billing-perf-hour">
+          <div className={css.perfBar}>
+            <span className={css.rangeToggle} role="group" aria-label={t('billing.perfTitle')}>
+              {(['ttft', 'tps'] as const).map(metric => (
+                <button
+                  key={metric}
+                  type="button"
+                  className={clsx(css.rangeButton, prefs.metric === metric && css.rangeButtonActive)}
+                  aria-pressed={prefs.metric === metric}
+                  data-testid={`billing-perf-tab-${metric}`}
+                  onClick={() => { setMetric(metric) }}
+                >
+                  {metric === 'ttft'
+                    ? `${t('billing.perfTtft')} (ms)`
+                    : `${t('billing.perfTps')} (${t('billing.perfTpsUnit')})`}
+                </button>
+              ))}
             </span>
           </div>
+          {/* 模型 chips：点击开/关该模型曲线；全选一键点亮全部。 */}
+          <div className={css.perfChips} role="group" aria-label={t('billing.model')}>
+            <button
+              type="button"
+              className={css.perfChip}
+              data-testid="billing-perf-chip-all"
+              onClick={() => { updatePrefs({ metric: prefs.metric, models: rows.map(row => row.key) }) }}
+            >
+              {t('billing.perfAll')}
+            </button>
+            {rows.map(row => {
+              const lit = litKeys.includes(row.key)
+              return (
+                <button
+                  key={row.key}
+                  type="button"
+                  className={clsx(css.perfChip, !lit && css.perfChipOff)}
+                  style={lit ? { color: row.color, borderColor: `color-mix(in srgb, ${row.color} 45%, transparent)` } : undefined}
+                  aria-pressed={lit}
+                  data-testid={`billing-perf-chip-${row.key}`}
+                  onClick={() => { toggleModel(row.key) }}
+                >
+                  <span
+                    className={css.perfChipDot}
+                    style={{ background: lit ? row.color : 'var(--dsw-alias-label-dimmed)' }}
+                  />
+                  {row.name}
+                </button>
+              )
+            })}
+          </div>
+          {/* 有值点才画曲线区；全空（未选模型 / 该指标无数据）时空态提示，
+              但 tab + chips 工具条保持可见，随时重新点亮。 */}
+          {hourLayout.totalPoints > 0 ? (
+            <div className={css.chartWrap}>
+              <svg
+                viewBox={`0 0 ${W} ${H}`}
+                className={css.chartSvg}
+                role="img"
+                aria-label="Hourly perf comparison by model"
+                onMouseLeave={() => { setHover(null) }}
+                onMouseMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  const x = ((e.clientX - rect.left) / rect.width) * W
+                  const ratio = (x - PAD.left) / hourLayout.plotW
+                  const index = Math.round(ratio * (hourLayout.n - 1))
+                  setHover(Math.min(Math.max(index, 0), hourLayout.n - 1))
+                }}
+              >
+              {/* 纵向网格 + 左轴刻度（当前指标，单轴）。 */}
+              {hourLayout.ticks.map((value, idx) => {
+                const y = hourLayout.yOf(value)
+                return (
+                  <g key={`tick-${idx}`}>
+                    <line x1={PAD.left} x2={W - PAD.right} y1={y} y2={y} className={css.chartGrid} />
+                    <text x={PAD.left - 8} y={y + 3} textAnchor="end" className={css.chartAxisLabel}>
+                      {fmtTick(value)}
+                    </text>
+                  </g>
+                )
+              })}
+              {/* 各模型曲线：颜色 = 模型图例色；无样本小时断开。 */}
+              {hourLayout.series.map(s => s.segments.map((d, idx) => (
+                <path
+                  key={`${s.key}-${idx}`}
+                  d={d}
+                  fill="none"
+                  className={css.chartLine}
+                  style={{ stroke: s.color }}
+                />
+              )))}
+              {/* 横轴小时标注。 */}
+              {hourLayout.xTicks.map((i) => {
+                const key = hourLayout.hourKeys[i]
+                if (key === undefined) return null
+                return (
+                  <text key={key} x={hourLayout.inner(i)} y={H - 6} textAnchor="middle" className={css.chartAxisLabel}>
+                    {shortHour(key)}
+                  </text>
+                )
+              })}
+              {/* Hover 十字线 + 吸附小时处各模型的高亮圆点。 */}
+              {hover !== null && (
+                <line
+                  x1={hourLayout.inner(hover)}
+                  x2={hourLayout.inner(hover)}
+                  y1={PAD.top}
+                  y2={PAD.top + hourLayout.plotH}
+                  className={css.chartCrosshair}
+                />
+              )}
+              {hover !== null && hourLayout.series.map(s => {
+                const p = s.points.find(pt => pt.i === hover)
+                if (p === undefined) return null
+                return <circle key={`${s.key}-dot`} cx={p.x} cy={p.y} r={3.5} fill={s.color} className={css.chartHoverDot} />
+              })}
+            </svg>
+            {/* Hover tooltip：小时标签 + 每个有值点亮模型一行。 */}
+            {hover !== null && tooltipRows.length > 0 && (
+              <div
+                className={css.chartTooltip}
+                data-testid="billing-perf-tooltip"
+                style={{
+                  left: `${(hourLayout.inner(hover) / W) * 100}%`,
+                  top: `${((PAD.top + hourLayout.plotH / 2) / H) * 100}%`,
+                }}
+              >
+                <div className={css.chartTooltipDate}>{shortHour(hourLayout.hourKeys[hover] ?? '')}</div>
+                {tooltipRows.map(row => (
+                  <div key={row.key} className={css.chartTooltipRow}>
+                    <span className={css.chartTooltipSwatch} style={{ background: row.color }} />
+                    {row.name} <strong>{fmtValue(row.v, prefs.metric, t)}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          ) : (
+            <div className={css.chartEmpty} data-testid="billing-perf-chart-empty">{t('billing.perfChartEmpty')}</div>
+          )}
         </div>
+      )}
+      {/* 旧 host 文档缺 byHourModel（无任何小时数据）→ 空态提示（表格仍可用）。 */}
+      {hourLayout === null && (
+        <div className={css.chartEmpty} data-testid="billing-perf-chart-empty">{t('billing.perfChartEmpty')}</div>
       )}
     </div>
   )
