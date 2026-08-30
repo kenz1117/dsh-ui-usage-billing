@@ -3257,6 +3257,40 @@
   background: var(--dsw-alias-bg-layer-2);
 }
 
+/* 聚合卡内的开关网格：一行三列（窄屏折叠单列）。cell 是 setCardHead 形态的
+   独立开关项（title + desc + switch），避免每项各占一张整卡拉长设置页。 */
+.setGrid3,
+.setGrid2 {
+  display: grid;
+  gap: 10px;
+}
+
+.setGrid3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.setGrid2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 720px) {
+  .setGrid3,
+  .setGrid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 网格 cell：卡片内嵌的开关/选择项（弱化描边，与外层 setCard 区分层级）。 */
+.setCell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  min-width: 0;
+}
+
 .setCardHead {
   display: flex;
   align-items: flex-start;

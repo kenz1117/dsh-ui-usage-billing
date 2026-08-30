@@ -2293,169 +2293,172 @@ function BillingDashboard({
                 )}
               </section>
 
-              {/* 3. usage_stats 工具开关：set-card——仅头部(标题+说明+开关)，默认关闭重启生效。 */}
-              <section className={css.setCard} data-testid="billing-usage-stats-tool-setting">
-                <div className={css.setCardHead}>
-                  <div className={css.setCardMeta}>
-                    <h3 className={css.setCardTitle}>{t('billing.usageStatsTool')}</h3>
-                    <p className={css.setCardDesc}>{t('billing.usageStatsToolHint')}</p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={usageStatsEnabled}
-                    aria-label={t('billing.usageStatsTool')}
-                    data-testid="billing-usage-stats-tool-toggle"
-                    className={clsx(css.switch, usageStatsEnabled && css.switchOn)}
-                    onClick={toggleUsageStats}
-                  >
-                    <span className={css.switchKnob} />
-                  </button>
-                </div>
-              </section>
-
-              {/* 4. 模型用量悬浮窗：set-card——头部 + 控制列(展示模式 / 订阅目标多选)。 */}
-              <section className={css.setCard} data-testid="billing-float-setting">
-                <div className={css.setCardHead}>
-                  <div className={css.setCardMeta}>
-                    <h3 className={css.setCardTitle}>{t('billing.floatWindow')}</h3>
-                    <p className={css.setCardDesc}>{t('billing.floatWindowHint')}</p>
-                  </div>
-                </div>
-                <div className={css.ctlCol}>
-                  <div className={css.ctlRow}>
-                    <span className={css.ctlLabel}>{t('billing.floatMode')}</span>
-                    <div className={css.ctlGroup} data-testid="billing-float-mode">
+              {/* 3. 功能开关：三个纯显隐/工具开关聚合为一行三列（usage_stats 工具 /
+                  平价消耗胶囊 / 中转站列表），缩短设置页纵向长度。 */}
+              <section className={css.setCard} data-testid="billing-toggle-setting">
+                <div className={css.setGrid3}>
+                  <div className={css.setCell} data-testid="billing-usage-stats-tool-setting">
+                    <div className={css.setCardHead}>
+                      <div className={css.setCardMeta}>
+                        <h3 className={css.setCardTitle}>{t('billing.usageStatsTool')}</h3>
+                        <p className={css.setCardDesc}>{t('billing.usageStatsToolHint')}</p>
+                      </div>
                       <button
                         type="button"
-                        className={clsx(css.floatModeBtn, floatPrefs.mode === 'combined' && css.floatModeBtnOn)}
-                        data-testid="billing-float-mode-combined"
-                        onClick={() => onFloatPrefs({ mode: 'combined', targets: floatPrefs.targets })}
+                        role="switch"
+                        aria-checked={usageStatsEnabled}
+                        aria-label={t('billing.usageStatsTool')}
+                        data-testid="billing-usage-stats-tool-toggle"
+                        className={clsx(css.switch, usageStatsEnabled && css.switchOn)}
+                        onClick={toggleUsageStats}
                       >
-                        {t('billing.floatModeCombined')}
-                      </button>
-                      <button
-                        type="button"
-                        className={clsx(css.floatModeBtn, floatPrefs.mode === 'subscription' && css.floatModeBtnOn)}
-                        data-testid="billing-float-mode-subscription"
-                        onClick={() => onFloatPrefs({ mode: 'subscription', targets: floatPrefs.targets })}
-                      >
-                        {t('billing.floatModeSubscription')}
+                        <span className={css.switchKnob} />
                       </button>
                     </div>
                   </div>
-                  {floatPrefs.mode === 'subscription' && (
-                    <div className={css.ctlRow}>
-                      <span className={css.ctlLabel}>{t('billing.floatTargets')}</span>
-                      <span className={css.ctlGroup} data-testid="billing-float-targets">
-                        {subscriptionOptions.map((option) => {
-                          const on = floatPrefs.targets.includes(option.id)
-                          return (
-                            <label key={option.id} className={css.floatTarget}>
-                              <input
-                                type="checkbox"
-                                checked={on}
-                                data-testid={`billing-float-target-${option.id}`}
-                                onChange={() => onFloatPrefs({
-                                  mode: 'subscription',
-                                  targets: on
-                                    ? floatPrefs.targets.filter(id => id !== option.id)
-                                    : [...floatPrefs.targets, option.id],
-                                })}
-                              />
-                              <span className={css.floatTargetLabel}>{option.label}</span>
-                            </label>
-                          )
-                        })}
-                        {subscriptionOptions.length === 0 && (
-                          <span className={css.setCardDesc}>{t('billing.floatNoTargetsHint')}</span>
-                        )}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              {/* 5. 计费卡显示：卡面主指标二选一（花费金额 / Token 消耗），控件复用浮窗模式按钮样式。 */}
-              <section className={css.setCard} data-testid="billing-card-setting">
-                <div className={css.setCardHead}>
-                  <div className={css.setCardMeta}>
-                    <h3 className={css.setCardTitle}>{t('billing.cardDisplay')}</h3>
-                    <p className={css.setCardDesc}>{t('billing.cardDisplayHint')}</p>
-                  </div>
-                </div>
-                <div className={css.ctlCol}>
-                  <div className={css.ctlRow}>
-                    <span className={css.ctlLabel}>{t('billing.cardMetric')}</span>
-                    <div className={css.ctlGroup} data-testid="billing-card-metric">
+                  <div className={css.setCell} data-testid="billing-livecost-setting">
+                    <div className={css.setCardHead}>
+                      <div className={css.setCardMeta}>
+                        <h3 className={css.setCardTitle}>{t('billing.liveCostBar')}</h3>
+                        <p className={css.setCardDesc}>{t('billing.liveCostBarHint')}</p>
+                      </div>
                       <button
                         type="button"
-                        className={clsx(css.floatModeBtn, cardPrefs.metric === 'money' && css.floatModeBtnOn)}
-                        data-testid="billing-card-money"
-                        onClick={() => onCardPrefs({ metric: 'money' })}
+                        role="switch"
+                        aria-checked={liveCostPrefs.show}
+                        aria-label={t('billing.liveCostBar')}
+                        data-testid="billing-livecost-toggle"
+                        className={clsx(css.switch, liveCostPrefs.show && css.switchOn)}
+                        onClick={() => onLiveCostPrefs({ show: !liveCostPrefs.show })}
                       >
-                        {t('billing.cardMetricMoney')}
+                        <span className={css.switchKnob} />
                       </button>
+                    </div>
+                  </div>
+                  <div className={css.setCell} data-testid="billing-site-list-setting">
+                    <div className={css.setCardHead}>
+                      <div className={css.setCardMeta}>
+                        <h3 className={css.setCardTitle}>{t('billing.siteListDisplay')}</h3>
+                        <p className={css.setCardDesc}>{t('billing.siteListDisplayHint')}</p>
+                      </div>
                       <button
                         type="button"
-                        className={clsx(css.floatModeBtn, cardPrefs.metric === 'tokens' && css.floatModeBtnOn)}
-                        data-testid="billing-card-tokens"
-                        onClick={() => onCardPrefs({ metric: 'tokens' })}
+                        role="switch"
+                        aria-checked={sitePrefs.hideUnidentified}
+                        aria-label={t('billing.siteListDisplay')}
+                        data-testid="billing-site-hide-unidentified"
+                        className={clsx(css.switch, sitePrefs.hideUnidentified && css.switchOn)}
+                        onClick={() => onSitePrefs({ hideUnidentified: !sitePrefs.hideUnidentified })}
                       >
-                        {t('billing.cardMetricTokens')}
+                        <span className={css.switchKnob} />
                       </button>
                     </div>
                   </div>
                 </div>
               </section>
 
-              {/* 6. 即时代费条（平价消耗胶囊）：仅头部显隐开关；与 dock 分属两个 React 树，
-                  持久化到 localStorage 并广播 CustomEvent，LiveCostBar 监听后即时显隐。 */}
-              <section className={css.setCard} data-testid="billing-livecost-setting">
-                <div className={css.setCardHead}>
-                  <div className={css.setCardMeta}>
-                    <h3 className={css.setCardTitle}>{t('billing.liveCostBar')}</h3>
-                    <p className={css.setCardDesc}>{t('billing.liveCostBarHint')}</p>
+              {/* 4. 展示内容：模型用量悬浮窗（模式 / 订阅目标）与计费卡主指标聚合为
+                  一行两列；订阅目标多选随模式展开在本 cell 内，不跨列。 */}
+              <section className={css.setCard} data-testid="billing-display-setting">
+                <div className={css.setGrid2}>
+                  <div className={css.setCell} data-testid="billing-float-setting">
+                    <div className={css.setCardHead}>
+                      <div className={css.setCardMeta}>
+                        <h3 className={css.setCardTitle}>{t('billing.floatWindow')}</h3>
+                        <p className={css.setCardDesc}>{t('billing.floatWindowHint')}</p>
+                      </div>
+                    </div>
+                    <div className={css.ctlCol}>
+                      <div className={css.ctlRow}>
+                        <span className={css.ctlLabel}>{t('billing.floatMode')}</span>
+                        <div className={css.ctlGroup} data-testid="billing-float-mode">
+                          <button
+                            type="button"
+                            className={clsx(css.floatModeBtn, floatPrefs.mode === 'combined' && css.floatModeBtnOn)}
+                            data-testid="billing-float-mode-combined"
+                            onClick={() => onFloatPrefs({ mode: 'combined', targets: floatPrefs.targets })}
+                          >
+                            {t('billing.floatModeCombined')}
+                          </button>
+                          <button
+                            type="button"
+                            className={clsx(css.floatModeBtn, floatPrefs.mode === 'subscription' && css.floatModeBtnOn)}
+                            data-testid="billing-float-mode-subscription"
+                            onClick={() => onFloatPrefs({ mode: 'subscription', targets: floatPrefs.targets })}
+                          >
+                            {t('billing.floatModeSubscription')}
+                          </button>
+                        </div>
+                      </div>
+                      {floatPrefs.mode === 'subscription' && (
+                        <div className={css.ctlRow}>
+                          <span className={css.ctlLabel}>{t('billing.floatTargets')}</span>
+                          <span className={css.ctlGroup} data-testid="billing-float-targets">
+                            {subscriptionOptions.map((option) => {
+                              const on = floatPrefs.targets.includes(option.id)
+                              return (
+                                <label key={option.id} className={css.floatTarget}>
+                                  <input
+                                    type="checkbox"
+                                    checked={on}
+                                    data-testid={`billing-float-target-${option.id}`}
+                                    onChange={() => onFloatPrefs({
+                                      mode: 'subscription',
+                                      targets: on
+                                        ? floatPrefs.targets.filter(id => id !== option.id)
+                                        : [...floatPrefs.targets, option.id],
+                                    })}
+                                  />
+                                  <span className={css.floatTargetLabel}>{option.label}</span>
+                                </label>
+                              )
+                            })}
+                            {subscriptionOptions.length === 0 && (
+                              <span className={css.setCardDesc}>{t('billing.floatNoTargetsHint')}</span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={liveCostPrefs.show}
-                    aria-label={t('billing.liveCostBar')}
-                    data-testid="billing-livecost-toggle"
-                    className={clsx(css.switch, liveCostPrefs.show && css.switchOn)}
-                    onClick={() => onLiveCostPrefs({ show: !liveCostPrefs.show })}
-                  >
-                    <span className={css.switchKnob} />
-                  </button>
+                  <div className={css.setCell} data-testid="billing-card-setting">
+                    <div className={css.setCardHead}>
+                      <div className={css.setCardMeta}>
+                        <h3 className={css.setCardTitle}>{t('billing.cardDisplay')}</h3>
+                        <p className={css.setCardDesc}>{t('billing.cardDisplayHint')}</p>
+                      </div>
+                    </div>
+                    <div className={css.ctlCol}>
+                      <div className={css.ctlRow}>
+                        <span className={css.ctlLabel}>{t('billing.cardMetric')}</span>
+                        <div className={css.ctlGroup} data-testid="billing-card-metric">
+                          <button
+                            type="button"
+                            className={clsx(css.floatModeBtn, cardPrefs.metric === 'money' && css.floatModeBtnOn)}
+                            data-testid="billing-card-money"
+                            onClick={() => onCardPrefs({ metric: 'money' })}
+                          >
+                            {t('billing.cardMetricMoney')}
+                          </button>
+                          <button
+                            type="button"
+                            className={clsx(css.floatModeBtn, cardPrefs.metric === 'tokens' && css.floatModeBtnOn)}
+                            data-testid="billing-card-tokens"
+                            onClick={() => onCardPrefs({ metric: 'tokens' })}
+                          >
+                            {t('billing.cardMetricTokens')}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </section>
 
-              {/* 7. 中转站列表展示：隐藏「未知路由 / 未识别」占位条目（issue #17）。 */}
-              <section className={css.setCard} data-testid="billing-site-list-setting">
-                <div className={css.setCardHead}>
-                  <div className={css.setCardMeta}>
-                    <h3 className={css.setCardTitle}>{t('billing.siteListDisplay')}</h3>
-                    <p className={css.setCardDesc}>{t('billing.siteListDisplayHint')}</p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={sitePrefs.hideUnidentified}
-                    aria-label={t('billing.siteListDisplay')}
-                    data-testid="billing-site-hide-unidentified"
-                    className={clsx(css.switch, sitePrefs.hideUnidentified && css.switchOn)}
-                    onClick={() => onSitePrefs({ hideUnidentified: !sitePrefs.hideUnidentified })}
-                  >
-                    <span className={css.switchKnob} />
-                  </button>
-                </div>
-              </section>
-
-              {/* 8. 自定义单价：set-card——已存价列表 + 新增行；显示层重估，口径差异见说明。 */}
+              {/* 5. 自定义单价：set-card——已存价列表 + 新增行；显示层重估，口径差异见说明。 */}
               <UserPriceCard userPrices={userPrices} onUserPrices={onUserPrices} t={t} />
 
-              {/* 9. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
+              {/* 6. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
               <PluginInfoCard t={t} version={stats.pluginVersion} />
             </div>
           )}
