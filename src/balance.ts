@@ -376,18 +376,30 @@ export function evalExtract(rule: CustomBalanceExtract, data: unknown): number |
   return base
 }
 
-/** 请求头占位符解析：`{{ENV_NAME}}` 经凭据 seam 替换；解析失败返回 null。 */
-async function resolveHeaders(ctx: Context, headers: Record<string, string>): Promise<Record<string, string> | null> {
+/**
+ * 请求头占位符解析：值中任意位置的 `{{ENV_NAME}}` 经凭据 seam 替换（如
+ * `Bearer {{KEY}}`、`token={{KEY}}`、一处多占位符）；被引用的任一凭据缺失
+ * 或为空 → 返回 null（fail-closed，与完整占位符形态的历史语义一致）。
+ */
+export async function resolveHeaders(ctx: Context, headers: Record<string, string>): Promise<Record<string, string> | null> {
   const resolved: Record<string, string> = {}
   for (const [key, value] of Object.entries(headers)) {
-    const match = /^\{\{([A-Z0-9_]+)\}\}$/i.exec(value.trim())
-    if (match === null) {
+    // 每次新建正则（g 标志的 lastIndex 共享会让 test 后的 matchAll 漏首个匹配）。
+    const matches = [...value.matchAll(/\{\{([A-Z0-9_]+)\}\}/gi)]
+    if (matches.length === 0) {
       resolved[key] = value
       continue
     }
-    const hit = await ctx.credentials.resolve(credentialRef(match[1] ?? ''))
-    if (hit === undefined || hit.value === '') return null
-    resolved[key] = value.replace(match[0], hit.value)
+    // 同名占位符只解析一次；先全量解析再统一替换，避免半替换状态发出。
+    const hits = new Map<string, string | undefined>()
+    for (const m of matches) {
+      const name = m[1] ?? ''
+      if (hits.has(name)) continue
+      const hit = await ctx.credentials.resolve(credentialRef(name))
+      if (hit === undefined || hit.value === '') return null
+      hits.set(name, hit.value)
+    }
+    resolved[key] = value.replace(/\{\{([A-Z0-9_]+)\}\}/gi, (raw, name: string) => hits.get(name) ?? raw)
   }
   return resolved
 }

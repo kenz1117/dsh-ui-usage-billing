@@ -1,25 +1,19 @@
-/**
- * Balance query unit tests: the provider route → key mapping, the classified
- * HTTP outcomes shared by the Bearer fetcher, and the Moonshot/DeepSeek JSON
- * parsers mapping their own fields onto the shared row.
- */
+import { describe, expect, it } from 'vitest'
+import { resolveHeaders } from '../src/balance.ts'
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { queryBalances } from '../src/balance.ts'
-import type { ProviderBalance } from '../src/pricing-shared.ts'
-
-/** A minimal context whose credentials seam resolves each env ref to a fixed value. */
-function fakeContext(envValue: string | undefined) {
+/** 凭据 seam 桩：KEY/TOKEN 可解析，EMPTY 为空串，其余未配置。credentialRef 是 branded 字符串。 */
+function ctxWith(entries: Record<string, string>) {
   return {
     credentials: {
-      // credentialRef() 返回的是字符串本身（branded），resolve(ref) 按 ref 名取值。
-      resolve: vi.fn(async (ref: unknown) => {
-        return ref === 'STUB_KEY' && envValue !== undefined ? { value: envValue } : undefined
-      }),
+      resolve: async (ref: unknown) => {
+        const value = entries[ref as string]
+        return value === undefined ? undefined : { value }
+      },
     },
   } as never
 }
 
+<<<<<<< HEAD
 /** A stubbed fetch answering one JSON body with the given status. */
 function stubFetch(body: unknown, status = 200): void {
   vi.stubGlobal('fetch', vi.fn(async () => ({
@@ -55,16 +49,21 @@ describe('queryBalances provider routing', () => {
     const zhipu = rows.filter(row => row.provider === '智谱 AI')
     expect(zhipu).toHaveLength(1)
     expect(zhipu[0]).toMatchObject({ provider: '智谱 AI', error: 'unconfigured' })
+=======
+describe('resolveHeaders (issue #26)', () => {
+  it('resolves a full-value placeholder unchanged from the historical behavior', async () => {
+    const out = await resolveHeaders(ctxWith({ KEY: 'sk-abc' }), { Authorization: '{{KEY}}' })
+    expect(out).toEqual({ Authorization: 'sk-abc' })
+>>>>>>> c810fe6 (fix: resolve credential placeholders anywhere in custom-balance headers)
   })
 
-  it('classifies a missing secret as unconfigured without fetching', async () => {
-    const ctx = fakeContext(undefined)
-    const fetchSpy = vi.fn()
-    vi.stubGlobal('fetch', fetchSpy)
-    const rows = await queryBalances(ctx, { moonshot: { apiKeyEnv: 'STUB_KEY' } })
-    expect(rows.find(row => row.provider === '月之暗面')).toMatchObject({ provider: '月之暗面', error: 'unconfigured' })
-    expect(fetchSpy).not.toHaveBeenCalled()
+  it('resolves prefixed placeholders like `Bearer {{KEY}}`', async () => {
+    const out = await resolveHeaders(ctxWith({ TOKENDANCE_SPACE_API_KEY: 'sk-abc' }), {
+      Authorization: 'Bearer {{TOKENDANCE_SPACE_API_KEY}}',
+    })
+    expect(out).toEqual({ Authorization: 'Bearer sk-abc' })
   })
+<<<<<<< HEAD
 })
 
 describe('Bearer fetch outcome classification', () => {
@@ -101,5 +100,26 @@ describe('Bearer fetch outcome classification', () => {
       toppedUpBalance: 200,
       grantedBalance: 50,
     })
+=======
+
+  it('resolves query-style placeholders like `token={{KEY}}`', async () => {
+    const out = await resolveHeaders(ctxWith({ KEY: 'sk-abc' }), { 'X-Api': 'token={{KEY}}' })
+    expect(out).toEqual({ 'X-Api': 'token=sk-abc' })
+  })
+
+  it('resolves multiple distinct placeholders in one value', async () => {
+    const out = await resolveHeaders(ctxWith({ A: '1', B: '2' }), { 'X-Mix': '{{A}}-{{B}}-{{A}}' })
+    expect(out).toEqual({ 'X-Mix': '1-2-1' })
+  })
+
+  it('returns null when any referenced credential is missing or empty', async () => {
+    expect(await resolveHeaders(ctxWith({ KEY: 'sk-abc' }), { Authorization: 'Bearer {{MISSING}}' })).toBeNull()
+    expect(await resolveHeaders(ctxWith({ EMPTY: '' }), { Authorization: 'Bearer {{EMPTY}}' })).toBeNull()
+  })
+
+  it('passes through values without placeholders', async () => {
+    const out = await resolveHeaders(ctxWith({}), { Accept: 'application/json' })
+    expect(out).toEqual({ Accept: 'application/json' })
+>>>>>>> c810fe6 (fix: resolve credential placeholders anywhere in custom-balance headers)
   })
 })
