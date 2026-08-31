@@ -253,6 +253,49 @@ function queryXai(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
   })
 }
 
+// ── TokenDance Space（钱包余额，微元计价）──────────────────────────────
+
+/** TokenDance 钱包端点（issue #27：GET + Bearer，与模型调用同一把 key）。 */
+const TOKENDANCE_BALANCE_URL = 'https://tokendance.space/portal/api/v1/user/balance'
+
+/** 微元 → 元：TokenDance 全部金额字段以 1 元 = 1,000,000 微元计。 */
+const TOKENDANCE_MICRO_PER_YUAN = 1_000_000
+
+/**
+ * 从 TokenDance 余额响应提取剩余余额并换算为元。导出供测试：纯函数。
+ * 优先用服务端现成的 `balance.balance`（= credits - credits_used）；缺失时
+ * 按两个明细字段相减推导，字段全部缺失返回 undefined。
+ * @param data - 余额端点的 JSON 响应（`{ balance: { credits, credits_used, balance } }`，微元）。
+ * @returns 剩余余额（元）；提取不到返回 undefined。
+ */
+export function pickTokenDanceBalanceCny(data: unknown): number | undefined {
+  const doc = data as { balance?: { credits?: unknown; credits_used?: unknown; balance?: unknown } } | null
+  const direct = toNumber(doc?.balance?.balance)
+  if (direct !== undefined) return direct / TOKENDANCE_MICRO_PER_YUAN
+  const credits = toNumber(doc?.balance?.credits)
+  const used = toNumber(doc?.balance?.credits_used)
+  if (credits !== undefined && used !== undefined) return (credits - used) / TOKENDANCE_MICRO_PER_YUAN
+  return undefined
+}
+
+/**
+ * 查询 TokenDance Space 钱包余额（issue #26/#27）。`queryBearerBalance` 已覆盖
+ * 认证失败（401 → unauthorized）与熔断/超时/重试，这里只负责微元 → 元换算。
+ * @param ctx - host context carrying the credentials seam.
+ * @param apiKeyEnv - credential reference resolving the TokenDance API key.
+ */
+function queryTokenDance(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
+  return queryBearerBalance(ctx, TOKENDANCE_BALANCE_URL, apiKeyEnv, 'TokenDance', 'TokenDance', (data) => {
+    const cny = pickTokenDanceBalanceCny(data)
+    return {
+      provider: 'TokenDance',
+      displayName: 'TokenDance',
+      currency: 'CNY',
+      ...(cny !== undefined ? { totalBalance: cny } : {}),
+    }
+  })
+}
+
 /**
  * Query the Zhipu GLM / Z.ai (国内 bigmodel-cn 域) account balance.
  * 与订阅（zai-coding-cn 的 Coding Plan）互补：一个平台可同时有钱包余额与订阅
@@ -300,6 +343,19 @@ const QUERIERS: readonly BalanceQuerier[] = [
   // 共用同一把 key，故两条 route 都注册，任一条配了 key 即可读出钱包。
   { route: 'zhipu', displayName: '智谱 AI', querier: queryZhipu },
   { route: 'zai-coding-cn', displayName: '智谱 AI', querier: queryZhipu },
+<<<<<<< HEAD
+=======
+  // TokenDance Space 钱包余额（issue #27）：与模型调用同一把 key，端点返回微元，
+  // 插件统一换算为元展示。route 名取常见候选，命中任一即查。
+  { route: 'tokendance', displayName: 'TokenDance', querier: queryTokenDance },
+  { route: 'tokendance-space', displayName: 'TokenDance', querier: queryTokenDance },
+  // 腾讯云 TokenHub Token Plan 余量：管控面 API 需要 TC3 签名（云 API SecretId/SecretKey），
+  // 推理 route 名由用户自定义，注册常见命名候选，按 displayName 去重后命中任一即查。
+  { route: 'tencent-tokenhub', displayName: '腾讯云 TokenHub', querier: queryTencentTokenPlan },
+  { route: 'tokenhub', displayName: '腾讯云 TokenHub', querier: queryTencentTokenPlan },
+  { route: 'tencent', displayName: '腾讯云 TokenHub', querier: queryTencentTokenPlan },
+  { route: 'tencentcloud', displayName: '腾讯云 TokenHub', querier: queryTencentTokenPlan },
+>>>>>>> 8de13d8 (feat: built-in TokenDance Space wallet balance adapter (issue #27))
 ]
 
 /**

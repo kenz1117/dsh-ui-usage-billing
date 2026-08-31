@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveHeaders } from '../src/balance.ts'
+import { pickTokenDanceBalanceCny, resolveHeaders } from '../src/balance.ts'
 
 /** 凭据 seam 桩：KEY/TOKEN 可解析，EMPTY 为空串，其余未配置。credentialRef 是 branded 字符串。 */
 function ctxWith(entries: Record<string, string>) {
@@ -121,5 +121,25 @@ describe('Bearer fetch outcome classification', () => {
     const out = await resolveHeaders(ctxWith({}), { Accept: 'application/json' })
     expect(out).toEqual({ Accept: 'application/json' })
 >>>>>>> c810fe6 (fix: resolve credential placeholders anywhere in custom-balance headers)
+  })
+})
+
+describe('pickTokenDanceBalanceCny (issue #27)', () => {
+  it('converts the server-side balance field from micro-yuan', () => {
+    // issue #27 的真实样例：balance 81099656 微元 = ¥81.099656。
+    expect(pickTokenDanceBalanceCny({ balance: { credits: 101000000, credits_used: 19900344, balance: 81099656 } }))
+      .toBeCloseTo(81.099656, 6)
+  })
+
+  it('derives the remaining balance when the direct field is absent', () => {
+    expect(pickTokenDanceBalanceCny({ balance: { credits: 101000000, credits_used: 19900344 } }))
+      .toBeCloseTo(81.099656, 6)
+  })
+
+  it('returns undefined for missing or malformed payloads', () => {
+    expect(pickTokenDanceBalanceCny(undefined)).toBeUndefined()
+    expect(pickTokenDanceBalanceCny({})).toBeUndefined()
+    expect(pickTokenDanceBalanceCny({ balance: {} })).toBeUndefined()
+    expect(pickTokenDanceBalanceCny({ error: { code: 'unauthorized' } })).toBeUndefined()
   })
 })
