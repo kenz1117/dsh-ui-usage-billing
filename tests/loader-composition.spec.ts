@@ -220,13 +220,15 @@ describe('usage-billing real Loader composition', () => {
     const balance = await getJson(port, '/api/billing/balance')
     expect(balance.status).toBe(200)
     const balances = (balance.json as { balances: { provider: string; error?: string }[] }).balances
-    expect(balances).toHaveLength(7)
+    expect(balances).toHaveLength(8)
     expect(balances.find(row => row.provider === 'deepseek')).toMatchObject({ error: 'unconfigured' })
     expect(balances.find(row => row.provider === '月之暗面')).toMatchObject({ error: 'unconfigured' })
     expect(balances.find(row => row.provider === '阶跃星辰')).toMatchObject({ error: 'unconfigured' })
     expect(balances.find(row => row.provider === '硅基流动')).toMatchObject({ error: 'unconfigured' })
     expect(balances.find(row => row.provider === 'xAI')).toMatchObject({ error: 'unconfigured' })
     expect(balances.filter(row => row.provider === '智谱 AI')).toHaveLength(1)
+    // TokenDance（issue #27）两条 route 别名按名去重，未配置时保留一条 unconfigured 行。
+    expect(balances.filter(row => row.provider === 'TokenDance')).toHaveLength(1)
     // 腾讯云 TokenHub 四条 route 别名按名去重，未配置时保留一条 unconfigured 行。
     expect(balances.filter(row => row.provider === '腾讯云 TokenHub')).toHaveLength(1)
 
