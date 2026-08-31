@@ -163,6 +163,35 @@ export function getRateInfo(): { rate: number; live: boolean } {
 /** Default share of traffic assumed to fall in the peak band (0..1). */
 export const DEFAULT_PEAK_SHARE = 0.5
 
+/**
+ * 峰谷计价时代分界（UTC 2026-08-16T16:00:00Z，即北京时间 2026-08-17 00:00）：
+ * DeepSeek V4 自此起按峰/谷两档计价。此前官方只有基础价一档——历史事件若
+ * 套现行峰/谷档价会把成本高估约 50%（谷价 = 基础价 × 1.5）。半开区间：该
+ * 时刻及之后按峰谷档计。
+ */
+export const PEAK_ERA_START_MS = Date.parse('2026-08-16T16:00:00Z')
+
+/**
+ * 周末全谷规则分界（UTC 2026-08-22T16:00:00Z，即北京时间 2026-08-23 00:00）：
+ * 官方自此刻起周六/周日全天不区分峰谷（高峰时段收窄为工作日）；生效前的
+ * 周末仍按 v1 峰谷规则（周六日 9-12 / 14-18 同样是高峰时段）。历史事件的
+ * 档位判定按事件所在时段适用各自的规则，不得统一套现行规则重算历史。
+ */
+export const WEEKEND_OFFPEAK_START_MS = Date.parse('2026-08-22T16:00:00Z')
+
+/**
+ * DeepSeek V4 峰谷时代之前的官方基础价（CNY / 1M tokens）：官方中文定价页
+ * 峰谷改版前的基础价档（缓存写沿用历史规则按命中价计）。键为内置目录键，
+ * flash-vision-exp 与 flash 同价。仅当事件时刻早于 {@link PEAK_ERA_START_MS}
+ * 且条目未被用户价覆盖（用户价是实付价，优先于一切内置口径）时启用；
+ * 币种固定 CNY——内置 DeepSeek 目录即人民币刊例，不随 live 覆盖漂移。
+ */
+const LEGACY_DEEPSEEK_BANDS: Readonly<Record<string, PriceBand>> = {
+  flash: { input: 1, cacheHit: 0.02, output: 2 },
+  'flash-vision-exp': { input: 1, cacheHit: 0.02, output: 2 },
+  pro: { input: 3, cacheHit: 0.025, output: 6 },
+}
+
 /** 计费时段档位：高峰 / 空闲（官方 DeepSeek 刊例价：高峰 = 空闲 × 2）。 */
 export type PriceTierId = 'peak' | 'offPeak'
 
@@ -1464,6 +1493,16 @@ export function computeCost(
  * @param peakShare - fallback mix used only when `timeMs` is missing.
  * @returns the estimated cost in CNY（USD 计价模型已按当前汇率折算）。
  */
+/**
+ * v1 峰谷档判定（峰谷开闸起、周末全谷分界止）：不豁免周末——该时段官方
+ * 高峰时段为每天 9-12 / 14-18（周六日同样计峰）。仅用于历史事件计费；
+ * 「当前时刻」的档位（提醒/时段条/费率展示）一律走 {@link tierAt} 现行规则。
+ */
+function tariffV1At(timeMs: number): PriceTierId {
+  const beijingHour = (new Date(timeMs).getUTCHours() + 8) % 24
+  return isPeakHour(beijingHour) ? 'peak' : 'offPeak'
+}
+
 export function computeCostAt(
   entry: ModelEntry,
   buckets: TokenUsageBuckets,
@@ -1473,8 +1512,13 @@ export function computeCostAt(
   if (timeMs === null || timeMs === undefined || !Number.isFinite(timeMs)) return computeCost(entry, buckets, peakShare)
   // 促销与峰谷档同口径：按事件时刻判定该笔流量当时享受的单价。
   const priced = applyPromo(entry, timeMs)
+  const legacy = timeMs < PEAK_ERA_START_MS && entry.userPriced !== true
+    ? LEGACY_DEEPSEEK_BANDS[entry.key]
+    : undefined
+  if (legacy !== undefined) return priceBandCost(legacy, buckets, 'CNY')
   if (priced.price.offPeak === undefined) return priceBandCost(priced.price, buckets, priced.price.currency)
-  const band = tierAt(timeMs) === 'peak' ? priced.price : priced.price.offPeak
+  const tier = timeMs < WEEKEND_OFFPEAK_START_MS ? tariffV1At(timeMs) : tierAt(timeMs)
+  const band = tier === 'peak' ? priced.price : priced.price.offPeak
   return priceBandCost(band, buckets, priced.price.currency)
 }
 

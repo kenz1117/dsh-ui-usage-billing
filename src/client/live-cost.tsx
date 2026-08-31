@@ -136,10 +136,10 @@ async function loadQuotas(): Promise<readonly QuotaSlice[]> {
 /** 额度窗口类型 → 文案 key（本次 / 本周 / 本月 / 计费周期）。 */
 function windowLabelKey(kind: string): UsageBillingKey {
   switch (kind) {
-    case 'session': return 'billing.subscriptionSession'
-    case 'weekly': return 'billing.subscriptionWeekly'
-    case 'monthly': return 'billing.subscriptionMonthly'
-    default: return 'billing.subscriptionBilling'
+    case 'session': return 'subscriptionSession'
+    case 'weekly': return 'subscriptionWeekly'
+    case 'monthly': return 'subscriptionMonthly'
+    default: return 'subscriptionBilling'
   }
 }
 
@@ -196,19 +196,19 @@ export function LiveCostBar({ useSession, t }: LiveCostBarProps): React.ReactNod
   return (
     <span className={css.feeBar} data-testid="billing-live-cost-bar">
       <span className={isPeak ? css.feeChipPrimary : css.feeChipOff} data-testid="billing-live-tier">
-        {isPeak ? t('billing.tierPeak') : t('billing.tierOff')}
+        {isPeak ? t('tierPeak') : t('tierOff')}
       </span>
       <span className={css.feeCount}>{formatSwitchCountdown(tier.nextSwitchInMs)}</span>
-      <span className={css.feeSuffix}>{isPeak ? t('billing.tierToOff') : t('billing.tierToPeak')}</span>
+      <span className={css.feeSuffix}>{isPeak ? t('tierToOff') : t('tierToPeak')}</span>
       {hasCost && (
         <>
           <span className={css.feeSep} aria-hidden="true">·</span>
           <span className={css.feeItem} data-testid="billing-live-turn">
-            {t('billing.liveTurn')} <span className={css.feeNum}>{money(turnCost)}</span>
+            {t('liveTurn')} <span className={css.feeNum}>{money(turnCost)}</span>
           </span>
           <span className={css.feeSep} aria-hidden="true">·</span>
           <span className={css.feeItem} data-testid="billing-live-session">
-            {t('billing.liveSession')} <span className={css.feeNum}>{money(sessionCost)}</span>
+            {t('liveSession')} <span className={css.feeNum}>{money(sessionCost)}</span>
           </span>
         </>
       )}

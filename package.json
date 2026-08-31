@@ -1,7 +1,7 @@
 {
   "name": "@kenz1117/dsh-ui-usage-billing",
   "description": "Usage billing dashboard for DeepSeek Harness: sidebar cost metrics plus a full dashboard modal, priced from a current multi-provider catalog with real usage aggregated from session logs.",
-  "version": "1.0.11",
+  "version": "1.1.0",
   "publishConfig": {
     "access": "public"
   },
@@ -51,7 +51,8 @@
   "scripts": {
     "bundle": "tsdown",
     "watch": "tsdown --watch",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build": "bash build.sh"
   },
   "license": "MIT",
   "engines": {

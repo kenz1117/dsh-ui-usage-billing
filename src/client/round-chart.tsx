@@ -62,12 +62,12 @@ export function RoundCostChart({ rounds, flags, currency, t }: {
   rounds: readonly RoundChartRow[]
   flags: readonly AnomalyFlag[]
   currency: CostCurrency
-  t: (key: 'billing.model' | 'billing.costAbbr') => string
+  t: (key: 'model' | 'costAbbr') => string
 }): React.ReactNode {
   const visible = useMemo(() => rounds.slice(-DISPLAY_LIMIT), [rounds])
   const flagKey = useMemo(() => new Set(flags.map(flag => `${flag.sessionId}:${flag.turn}`)), [flags])
   const maxCost = useMemo(() => Math.max(0.0001, ...visible.map(round => round.cost)), [visible])
-  if (visible.length === 0) return <div className={css.roundsEmpty}>{t('billing.model')} —</div>
+  if (visible.length === 0) return <div className={css.roundsEmpty}>{t('model')} —</div>
   const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
 
   return (
@@ -87,7 +87,7 @@ export function RoundCostChart({ rounds, flags, currency, t }: {
                   className={flagged ? css.roundsBarFlagged : css.roundsBar}
                   style={{ height: `${height}%` }}
                   data-testid="round-bar"
-                  title={`${t('billing.model')} ${round.model} · ${money(round.cost)} · ${dateTime(round.startedAt)}${round.endedAt !== undefined ? ` → ${clock(round.endedAt)} (${duration(round.endedAt - round.startedAt)})` : ''}`}
+                  title={`${t('model')} ${round.model} · ${money(round.cost)} · ${dateTime(round.startedAt)}${round.endedAt !== undefined ? ` → ${clock(round.endedAt)} (${duration(round.endedAt - round.startedAt)})` : ''}`}
                 >
                   {flagged && <span className={css.roundsFlagMark} aria-hidden="true" />}
                 </div>
@@ -97,7 +97,7 @@ export function RoundCostChart({ rounds, flags, currency, t }: {
         })}
       </div>
       <div className={css.roundsAxis}>
-        <span>{t('billing.costAbbr')} {money(maxCost)}</span>
+        <span>{t('costAbbr')} {money(maxCost)}</span>
         <span>{visible.length} 轮</span>
       </div>
     </div>

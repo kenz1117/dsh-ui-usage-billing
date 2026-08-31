@@ -1,845 +1,845 @@
 /** Locale dictionaries for the usage billing surface. */
 
 export type UsageBillingKey =
-  | 'billing.title'
-  | 'billing.subtitle'
-  | 'billing.cost'
-  | 'billing.todayCost'
-  | 'billing.monthCost'
-  | 'billing.yearCost'
-  | 'billing.monthProjected'
-  | 'billing.liveTurn'
-  | 'billing.liveSession'
-  | 'billing.totalCost'
-  | 'billing.calls'
-  | 'billing.cacheHitRate'
-  | 'billing.tokens'
-  | 'billing.inputTokens'
-  | 'billing.outputTokens'
-  | 'billing.avgCost'
-  | 'billing.trend'
-  | 'billing.trend7d'
-  | 'billing.trend30d'
-  | 'billing.trendMetric'
-  | 'billing.trendMetricCost'
-  | 'billing.trendMetricTokens'
-  | 'billing.trendEmpty'
-  | 'billing.budget'
-  | 'billing.budgetAmount'
-  | 'billing.budgetSummary'
-  | 'billing.sessions'
-  | 'billing.sessionTitle'
-  | 'billing.project'
-  | 'billing.lastActive'
-  | 'billing.sessionOverflow'
-  | 'billing.budgetTierBody'
-  | 'billing.models'
-  | 'billing.providerBilling'
-  | 'billing.estimated'
-  | 'billing.actual'
-  | 'billing.pricing'
-  | 'billing.showPricing'
-  | 'billing.hidePricing'
-  | 'billing.pricePerM'
-  | 'billing.input'
-  | 'billing.output'
-  | 'billing.cacheHit'
-  | 'billing.peak'
-  | 'billing.offPeak'
-  | 'billing.flat'
-  | 'billing.peakHours'
-  | 'billing.band'
-  | 'billing.openDashboard'
-  | 'billing.close'
-  | 'billing.footer'
-  | 'billing.footerCredit'
-  | 'billing.lastUpdated'
-  | 'billing.noData'
-  | 'billing.todayRate'
-  | 'billing.rateLive'
-  | 'billing.rateBuiltin'
-  | 'billing.promoBadge'
-  | 'billing.promoUntil'
-  | 'billing.promoOpenEnded'
-  | 'billing.pricingTip'
-  | 'billing.pricingUnit'
-  | 'billing.pricingNotes'
-  | 'billing.ubPeak'
-  | 'billing.ubOff'
-  | 'billing.ubStd'
-  | 'billing.peakBand'
-  | 'billing.pricingSource'
-  | 'billing.noteCache'
-  | 'billing.noteBand'
-  | 'billing.noteSource'
-  | 'billing.balance'
-  | 'billing.balanceUnconfigured'
-  | 'billing.balanceUnauthorized'
-  | 'billing.balanceUnreachable'
-  | 'billing.uncatalogued'
-  | 'billing.estimatedPricing'
-  | 'billing.balanceDays'
-  | 'billing.balanceLowBody'
-  | 'billing.reconcileDrift'
-  | 'billing.reconcileDismiss'
-  | 'billing.subscriptions'
-  | 'billing.subscriptionNotConfigured'
-  | 'billing.subscriptionUnauthorized'
-  | 'billing.subscriptionUnavailable'
-  | 'billing.subscriptionInvalid'
-  | 'billing.subscriptionRateLimited'
-  | 'billing.subscriptionSession'
-  | 'billing.subscriptionWeekly'
-  | 'billing.subscriptionMonthly'
-  | 'billing.subscriptionBilling'
-  | 'billing.subscriptionRemaining'
-  | 'billing.subscriptionExhausted'
-  | 'billing.subscriptionReset'
-  | 'billing.subscriptionNoApi'
-  | 'billing.floatWindow'
-  | 'billing.floatModeCombined'
-  | 'billing.floatModeSubscription'
-  | 'billing.floatMode'
-  | 'billing.floatTargets'
-  | 'billing.floatWindowHint'
-  | 'billing.floatNoTargets'
-  | 'billing.floatNoTargetsHint'
-  | 'billing.cardDisplay'
-  | 'billing.cardDisplayHint'
-  | 'billing.cardMetric'
-  | 'billing.cardMetricMoney'
-  | 'billing.cardMetricTokens'
-  | 'billing.triggerMonthTokens'
-  | 'billing.floatPrev'
-  | 'billing.floatNext'
-  | 'billing.subscriptionsStale'
-  | 'billing.staleLedgerNotice'
-  | 'billing.tokenCacheWrite'
-  | 'billing.toolRank'
-  | 'billing.toolName'
-  | 'billing.userPrices'
-  | 'billing.userPricesHint'
-  | 'billing.userPriceSave'
-  | 'billing.userPriceModel'
-  | 'billing.userPriceSource'
-  | 'billing.userPriceSourceHint'
-  | 'billing.userPriceCurrency'
-  | 'billing.userPriceAdd'
-  | 'billing.userPriceRemove'
-  | 'billing.sessionStaleBadge'
-  | 'billing.heatmapLess'
-  | 'billing.heatmapMore'
-  | 'billing.currency'
-  | 'billing.currencyCny'
-  | 'billing.currencyUsd'
-  | 'billing.heatmap'
-  | 'billing.rounds'
-  | 'billing.roundsHint'
-  | 'billing.anomaly'
-  | 'billing.workspaces'
-  | 'billing.workspacesHint'
-  | 'billing.plan'
-  | 'billing.remaining'
-  | 'billing.unknownModel'
-  | 'billing.model'
-  | 'billing.thModel'
-  | 'billing.thInputMiss'
-  | 'billing.thInputHit'
-  | 'billing.currentRound'
-  | 'billing.costAbbr'
-  | 'billing.tabOverview'
-  | 'billing.tabTrends'
-  | 'billing.tabProviders'
-  | 'billing.tabDetails'
-  | 'billing.tabPricing'
-  | 'billing.tabSettings'
-  | 'billing.settingsHead'
-  | 'billing.settingsHint'
-  | 'billing.budgetHint'
-  | 'billing.peakAlertHint'
-  | 'billing.peakAlertDescPeak'
-  | 'billing.peakAlertDescOff'
-  | 'billing.export'
-  | 'billing.exportCsvDay'
-  | 'billing.exportCsvSession'
-  | 'billing.exportJson'
-  | 'billing.peakShare'
-  | 'billing.peakSharePerCall'
-  | 'billing.offPeakSavings'
-  | 'billing.perfMax'
-  | 'billing.weekCost'
-  | 'billing.roleCost'
-  | 'billing.roleUser'
-  | 'billing.roleAssistant'
-  | 'billing.roleTool'
-  | 'billing.roleHint'
-  | 'billing.tierPeak'
-  | 'billing.tierOff'
-  | 'billing.tierToPeak'
-  | 'billing.tierToOff'
-  | 'billing.tierAlertEnterPeak'
-  | 'billing.tierAlertEnterOff'
-  | 'billing.peakAlertTitlePeak'
-  | 'billing.peakAlertTitleOff'
-  | 'billing.peakAlert'
-  | 'billing.peakAlertLeadMin'
-  | 'billing.peakAlertPos'
-  | 'billing.peakAlertMode'
-  | 'billing.peakAlertPosCorner'
-  | 'billing.peakAlertPosCenter'
-  | 'billing.peakAlertModePeak'
-  | 'billing.peakAlertModeOff'
-  | 'billing.peakAlertModeBoth'
-  | 'billing.peakAlertWebNotify'
-  | 'billing.peakAlertPreview'
-  | 'billing.planTypeCode'
-  | 'billing.planTypeToken'
-  | 'billing.subscriptionFeePerMonth'
-  | 'billing.triggerToday'
-  | 'billing.triggerMonth'
-  | 'billing.subscriptionIncluded'
-  | 'billing.free'
-  | 'billing.official'
-  | 'billing.thirdParty'
-  | 'billing.officialCost'
-  | 'billing.thirdPartyCost'
-  | 'billing.perfSamples'
-  | 'billing.perfTtft'
-  | 'billing.perfP50'
-  | 'billing.perfP90'
-  | 'billing.perfTps'
-  | 'billing.perfLatency'
-  | 'billing.perfEstimated'
-  | 'billing.perfEmpty'
-  | 'billing.perfTpsUnit'
-  | 'billing.perfTitle'
-  | 'billing.perfHint'
-  | 'billing.heatmapYear'
-  | 'billing.heatmapMonth'
-  | 'billing.activeDays'
-  | 'billing.streakDays'
-  | 'billing.subscriptionAutoDetect'
-  | 'billing.pluginInfo'
-  | 'billing.pluginName'
-  | 'billing.pluginDescription'
-  | 'billing.pluginVersion'
-  | 'billing.pluginAuthor'
-  | 'billing.pluginRepository'
-  | 'billing.pluginNpm'
-  | 'billing.pluginLicense'
-  | 'billing.tabToken'
-  | 'billing.tokenExport'
-  | 'billing.tokenExportCsv'
-  | 'billing.tokenCacheHitRate'
-  | 'billing.tokenReasoningShare'
-  | 'billing.tokenReasoningShort'
-  | 'billing.tokenIo'
-  | 'billing.tokenPeak'
-  | 'billing.tokenDaily'
-  | 'billing.tokenByModel'
-  | 'billing.tokenMiss'
-  | 'billing.tokenHit'
-  | 'billing.tokenOutput'
-  | 'billing.tokenTotal'
-  | 'billing.tokenShare'
-  | 'billing.usageStatsTool'
-  | 'billing.usageStatsToolHint'
-  | 'billing.balanceGranted'
-  | 'billing.balanceTopped'
-  | 'billing.balanceDaily'
-  | 'billing.balanceDaysLong'
-  | 'billing.balanceDaysUnit'
-  | 'billing.popTodayModel'
-  | 'billing.popNoConsumption'
-  | 'billing.popQuotaAlert'
-  | 'billing.popRiskNone'
-  | 'billing.popTitle'
-  | 'billing.popDirectLead'
-  | 'billing.popSubLead'
-  | 'billing.popBalanceNormal'
-  | 'billing.popBalanceLow'
-  | 'billing.popQuotaNormal'
-  | 'billing.popQuotaLow'
-  | 'billing.alertBalanceLow'
-  | 'billing.alertQuotaLow'
-  | 'billing.unpricedHint'
-  | 'billing.searchEstimateHint'
-  | 'billing.siteListDisplay'
-  | 'billing.siteListDisplayHint'
-  | 'billing.exportCsvSite'
-  | 'billing.panelRelay'
-  | 'billing.relaySite'
-  | 'billing.relayDirect'
-  | 'billing.relayUnknown'
-  | 'billing.panelRelayQuota'
-  | 'billing.relayBalance'
-  | 'billing.relayNoQuota'
-  | 'billing.relayWindowUsed'
-  | 'billing.relayKindNewApi'
-  | 'billing.relayKindSub2Api'
-  | 'billing.relayKindUnknown'
-  | 'billing.relayCalls'
+  | 'title'
+  | 'subtitle'
+  | 'cost'
+  | 'todayCost'
+  | 'monthCost'
+  | 'yearCost'
+  | 'monthProjected'
+  | 'liveTurn'
+  | 'liveSession'
+  | 'totalCost'
+  | 'calls'
+  | 'cacheHitRate'
+  | 'tokens'
+  | 'inputTokens'
+  | 'outputTokens'
+  | 'avgCost'
+  | 'trend'
+  | 'trend7d'
+  | 'trend30d'
+  | 'trendMetric'
+  | 'trendMetricCost'
+  | 'trendMetricTokens'
+  | 'trendEmpty'
+  | 'budget'
+  | 'budgetAmount'
+  | 'budgetSummary'
+  | 'sessions'
+  | 'sessionTitle'
+  | 'project'
+  | 'lastActive'
+  | 'sessionOverflow'
+  | 'budgetTierBody'
+  | 'models'
+  | 'providerBilling'
+  | 'estimated'
+  | 'actual'
+  | 'pricing'
+  | 'showPricing'
+  | 'hidePricing'
+  | 'pricePerM'
+  | 'input'
+  | 'output'
+  | 'cacheHit'
+  | 'peak'
+  | 'offPeak'
+  | 'flat'
+  | 'peakHours'
+  | 'band'
+  | 'openDashboard'
+  | 'close'
+  | 'footer'
+  | 'footerCredit'
+  | 'lastUpdated'
+  | 'noData'
+  | 'todayRate'
+  | 'rateLive'
+  | 'rateBuiltin'
+  | 'promoBadge'
+  | 'promoUntil'
+  | 'promoOpenEnded'
+  | 'pricingTip'
+  | 'pricingUnit'
+  | 'pricingNotes'
+  | 'ubPeak'
+  | 'ubOff'
+  | 'ubStd'
+  | 'peakBand'
+  | 'pricingSource'
+  | 'noteCache'
+  | 'noteBand'
+  | 'noteSource'
+  | 'balance'
+  | 'balanceUnconfigured'
+  | 'balanceUnauthorized'
+  | 'balanceUnreachable'
+  | 'uncatalogued'
+  | 'estimatedPricing'
+  | 'balanceDays'
+  | 'balanceLowBody'
+  | 'reconcileDrift'
+  | 'reconcileDismiss'
+  | 'subscriptions'
+  | 'subscriptionNotConfigured'
+  | 'subscriptionUnauthorized'
+  | 'subscriptionUnavailable'
+  | 'subscriptionInvalid'
+  | 'subscriptionRateLimited'
+  | 'subscriptionSession'
+  | 'subscriptionWeekly'
+  | 'subscriptionMonthly'
+  | 'subscriptionBilling'
+  | 'subscriptionRemaining'
+  | 'subscriptionExhausted'
+  | 'subscriptionReset'
+  | 'subscriptionNoApi'
+  | 'floatWindow'
+  | 'floatModeCombined'
+  | 'floatModeSubscription'
+  | 'floatMode'
+  | 'floatTargets'
+  | 'floatWindowHint'
+  | 'floatNoTargets'
+  | 'floatNoTargetsHint'
+  | 'cardDisplay'
+  | 'cardDisplayHint'
+  | 'cardMetric'
+  | 'cardMetricMoney'
+  | 'cardMetricTokens'
+  | 'triggerMonthTokens'
+  | 'floatPrev'
+  | 'floatNext'
+  | 'subscriptionsStale'
+  | 'staleLedgerNotice'
+  | 'tokenCacheWrite'
+  | 'toolRank'
+  | 'toolName'
+  | 'userPrices'
+  | 'userPricesHint'
+  | 'userPriceSave'
+  | 'userPriceModel'
+  | 'userPriceSource'
+  | 'userPriceSourceHint'
+  | 'userPriceCurrency'
+  | 'userPriceAdd'
+  | 'userPriceRemove'
+  | 'sessionStaleBadge'
+  | 'heatmapLess'
+  | 'heatmapMore'
+  | 'currency'
+  | 'currencyCny'
+  | 'currencyUsd'
+  | 'heatmap'
+  | 'rounds'
+  | 'roundsHint'
+  | 'anomaly'
+  | 'workspaces'
+  | 'workspacesHint'
+  | 'plan'
+  | 'remaining'
+  | 'unknownModel'
+  | 'model'
+  | 'thModel'
+  | 'thInputMiss'
+  | 'thInputHit'
+  | 'currentRound'
+  | 'costAbbr'
+  | 'tabOverview'
+  | 'tabTrends'
+  | 'tabProviders'
+  | 'tabDetails'
+  | 'tabPricing'
+  | 'tabSettings'
+  | 'settingsHead'
+  | 'settingsHint'
+  | 'budgetHint'
+  | 'peakAlertHint'
+  | 'peakAlertDescPeak'
+  | 'peakAlertDescOff'
+  | 'export'
+  | 'exportCsvDay'
+  | 'exportCsvSession'
+  | 'exportJson'
+  | 'peakShare'
+  | 'peakSharePerCall'
+  | 'offPeakSavings'
+  | 'perfMax'
+  | 'weekCost'
+  | 'roleCost'
+  | 'roleUser'
+  | 'roleAssistant'
+  | 'roleTool'
+  | 'roleHint'
+  | 'tierPeak'
+  | 'tierOff'
+  | 'tierToPeak'
+  | 'tierToOff'
+  | 'tierAlertEnterPeak'
+  | 'tierAlertEnterOff'
+  | 'peakAlertTitlePeak'
+  | 'peakAlertTitleOff'
+  | 'peakAlert'
+  | 'peakAlertLeadMin'
+  | 'peakAlertPos'
+  | 'peakAlertMode'
+  | 'peakAlertPosCorner'
+  | 'peakAlertPosCenter'
+  | 'peakAlertModePeak'
+  | 'peakAlertModeOff'
+  | 'peakAlertModeBoth'
+  | 'peakAlertWebNotify'
+  | 'peakAlertPreview'
+  | 'planTypeCode'
+  | 'planTypeToken'
+  | 'subscriptionFeePerMonth'
+  | 'triggerToday'
+  | 'triggerMonth'
+  | 'subscriptionIncluded'
+  | 'free'
+  | 'official'
+  | 'thirdParty'
+  | 'officialCost'
+  | 'thirdPartyCost'
+  | 'perfSamples'
+  | 'perfTtft'
+  | 'perfP50'
+  | 'perfP90'
+  | 'perfTps'
+  | 'perfLatency'
+  | 'perfEstimated'
+  | 'perfEmpty'
+  | 'perfTpsUnit'
+  | 'perfTitle'
+  | 'perfHint'
+  | 'heatmapYear'
+  | 'heatmapMonth'
+  | 'activeDays'
+  | 'streakDays'
+  | 'subscriptionAutoDetect'
+  | 'pluginInfo'
+  | 'pluginName'
+  | 'pluginDescription'
+  | 'pluginVersion'
+  | 'pluginAuthor'
+  | 'pluginRepository'
+  | 'pluginNpm'
+  | 'pluginLicense'
+  | 'tabToken'
+  | 'tokenExport'
+  | 'tokenExportCsv'
+  | 'tokenCacheHitRate'
+  | 'tokenReasoningShare'
+  | 'tokenReasoningShort'
+  | 'tokenIo'
+  | 'tokenPeak'
+  | 'tokenDaily'
+  | 'tokenByModel'
+  | 'tokenMiss'
+  | 'tokenHit'
+  | 'tokenOutput'
+  | 'tokenTotal'
+  | 'tokenShare'
+  | 'usageStatsTool'
+  | 'usageStatsToolHint'
+  | 'balanceGranted'
+  | 'balanceTopped'
+  | 'balanceDaily'
+  | 'balanceDaysLong'
+  | 'balanceDaysUnit'
+  | 'popTodayModel'
+  | 'popNoConsumption'
+  | 'popQuotaAlert'
+  | 'popRiskNone'
+  | 'popTitle'
+  | 'popDirectLead'
+  | 'popSubLead'
+  | 'popBalanceNormal'
+  | 'popBalanceLow'
+  | 'popQuotaNormal'
+  | 'popQuotaLow'
+  | 'alertBalanceLow'
+  | 'alertQuotaLow'
+  | 'unpricedHint'
+  | 'searchEstimateHint'
+  | 'siteListDisplay'
+  | 'siteListDisplayHint'
+  | 'exportCsvSite'
+  | 'panelRelay'
+  | 'relaySite'
+  | 'relayDirect'
+  | 'relayUnknown'
+  | 'panelRelayQuota'
+  | 'relayBalance'
+  | 'relayNoQuota'
+  | 'relayWindowUsed'
+  | 'relayKindNewApi'
+  | 'relayKindSub2Api'
+  | 'relayKindUnknown'
+  | 'relayCalls'
 
 export const NS = 'usageBilling'
 
 export const zh: Record<UsageBillingKey, string> = {
-  'billing.title': '使用统计',
-  'billing.subtitle': '计费仪表盘',
-  'billing.cost': '费用',
-  'billing.todayCost': '今日费用',
-  'billing.monthCost': '本月费用',
-  'billing.yearCost': '本年费用',
-  'billing.monthProjected': '本月预计',
-  'billing.liveTurn': '本轮',
-  'billing.liveSession': '会话',
-  'billing.totalCost': '总费用',
-  'billing.calls': '调用',
-  'billing.cacheHitRate': '缓存命中率',
-  'billing.tokens': 'Token',
-  'billing.inputTokens': '输入',
-  'billing.outputTokens': '输出',
-  'billing.avgCost': '平均成本',
-  'billing.trend': '每日费用与调用趋势',
-  'billing.trend7d': '7 天',
-  'billing.trend30d': '30 天',
-  'billing.trendMetric': '趋势指标',
-  'billing.trendMetricCost': '费用',
-  'billing.trendMetricTokens': 'Token',
-  'billing.trendEmpty': '暂无趋势数据',
-  'billing.budget': '本月预算',
-  'billing.budgetAmount': '预算金额',
-  'billing.budgetSummary': '本月已用 {used} / {total}；达到 80% 时提醒，达到 100% 时红色脉冲警示',
-  'billing.sessions': '会话明细',
-  'billing.sessionTitle': '标题',
-  'billing.project': '项目',
-  'billing.lastActive': '最后活跃',
-  'billing.sessionOverflow': '仅显示花费前 {limit} 个，共 {total} 个会话',
-  'billing.budgetTierBody': '本月花费 {cost} 已达预算 {budget} 的 {pct}%',
-  'billing.models': '模型计费明细',
-  'billing.providerBilling': '厂商计费与订阅',
-  'billing.estimated': '估算',
-  'billing.actual': '实际',
-  'billing.pricing': '模型单价表',
-  'billing.showPricing': '查看模型单价',
-  'billing.hidePricing': '收起单价表',
-  'billing.pricePerM': '¥ / 1M tokens',
-  'billing.input': '输入',
-  'billing.output': '输出',
-  'billing.cacheHit': '缓存命中',
-  'billing.peak': '高峰',
-  'billing.offPeak': '低谷',
-  'billing.flat': '全天统一',
-  'billing.peakHours': '高峰时段',
-  'billing.band': '时段',
-  'billing.openDashboard': '打开计费仪表盘',
-  'billing.close': '关闭',
-  'billing.footer': '每 30s 自动轮询 · 仅统计本机 dsh 会话',
-  'billing.footerCredit': 'dsh-ui-usage-billing {version} · MIT',
-  'billing.lastUpdated': '数据更新于',
-  'billing.noData': '暂无计费数据',
-  'billing.todayRate': '今日汇率',
-  'billing.rateLive': '实时',
-  'billing.rateBuiltin': '内置',
-  'billing.promoBadge': '限时折扣',
-  'billing.promoUntil': '促销价至 {date}，之后自动恢复刊例价',
-  'billing.promoOpenEnded': '厂商未公布截止时间，当前按折扣计价；公告截止后自动恢复刊例价',
-  'billing.pricingTip': 'DeepSeek 模型自北京时间 2026-08-23（周日）00:00 起：工作日高峰 9-12 / 14-18（×2），周末（周六 / 周日）全天低谷价；双价单元格按峰 / 谷展示，费用按调用时刻计。',
-  'billing.pricingUnit': '单位：人民币 / 每百万 Token',
-  'billing.pricingNotes': '计价说明',
-  'billing.ubPeak': '峰',
-  'billing.ubOff': '谷',
-  'billing.ubStd': '标准',
-  'billing.peakBand': '峰谷分带',
-  'billing.pricingSource': '数据来源',
-  'billing.noteCache': '命中部分按缓存价计费，显著降低成本。',
-  'billing.noteBand': '高峰与空闲时段单价不同，空闲约半价。',
-  'billing.noteSource': '价格来自实时汇率 + 模型定价目录，未收录模型按 0 计并提示。',
-  'billing.balance': '余额',
-  'billing.balanceUnconfigured': '未配置',
-  'billing.balanceUnauthorized': '密钥无效',
-  'billing.balanceUnreachable': '查询失败',
-  'billing.uncatalogued': '未收录',
-  'billing.estimatedPricing': '估算价',
-  'billing.balanceDays': '约可撑 {days} 天',
-  'billing.balanceLowBody': '{name} 余额 {balance}，约可撑 {days} 天，请及时充值',
-  'billing.reconcileDrift': '系统监控到{provider}官方余额变动 {spent}，本面板记录 {today}，差额通常由其它工具或 API 的消耗所致',
-  'billing.reconcileDismiss': '知道了',
-  'billing.subscriptions': '订阅套餐',
-  'billing.subscriptionNotConfigured': '未配置密钥',
-  'billing.subscriptionUnauthorized': '密钥无效',
-  'billing.subscriptionUnavailable': '查询失败',
-  'billing.subscriptionInvalid': '响应异常',
-  'billing.subscriptionRateLimited': '触发限流',
-  'billing.subscriptionSession': '本次',
-  'billing.subscriptionWeekly': '本周',
-  'billing.subscriptionMonthly': '本月',
-  'billing.subscriptionBilling': '计费周期',
-  'billing.subscriptionRemaining': '剩余 {pct}%',
-  'billing.subscriptionExhausted': '已用尽',
-  'billing.subscriptionReset': '{date} 重置',
-  'billing.subscriptionNoApi': '该厂商暂未提供用量查询接口',
-  'billing.floatWindow': '模型用量悬浮窗',
-  'billing.floatModeCombined': '综合',
-  'billing.floatModeSubscription': '订阅卡',
-  'billing.floatMode': '展示模式',
-  'billing.floatTargets': '订阅目标',
-  'billing.floatWindowHint': '悬浮在左下角计费卡上的用量速览；综合=当前样式，订阅卡=每次展示一张订阅额度卡（可切换）。',
-  'billing.cardDisplay': '计费卡显示',
-  'billing.cardDisplayHint': '切换左下角计费卡的主指标：花费金额或 Token 消耗（副行与迷你柱同步切换，悬浮窗不受影响）。',
-  'billing.cardMetric': '主指标',
-  'billing.cardMetricMoney': '花费金额',
-  'billing.cardMetricTokens': 'Token 消耗',
-  'billing.floatNoTargets': '未指定订阅通道，请在设置中勾选要展示的订阅。',
-  'billing.floatNoTargetsHint': '暂无可选的订阅通道。',
-  'billing.floatPrev': '上一张订阅',
-  'billing.floatNext': '下一张订阅',
-  'billing.subscriptionsStale': '订阅额度刷新失败，以下为缓存数据',
-  'billing.staleLedgerNotice': '{count} 个会话出自旧版算法存档（日志已删，无法重算），模型归属可能有误差',
-  'billing.tokenCacheWrite': '写入',
-  'billing.toolRank': '工具排行',
-  'billing.toolName': '工具',
-  'billing.userPrices': '自定义单价',
-  'billing.userPricesHint': '为未收录或变价模型填入实付单价，总览与日趋势按此重估；来源留空=该模型默认价，填入中转站域名=仅该来源的同名模型用此价',
-  'billing.userPriceSave': '保存',
-  'billing.userPriceModel': '模型',
-  'billing.userPriceSource': '来源（中转站域名）',
-  'billing.userPriceSourceHint': '留空=默认价，或 https://api.中转站.com',
-  'billing.userPriceCurrency': '币种',
-  'billing.userPriceAdd': '新增',
-  'billing.userPriceRemove': '删除',
-  'billing.sessionStaleBadge': '旧版统计',
-  'billing.heatmapLess': '少',
-  'billing.heatmapMore': '多',
-  'billing.currency': '币种',
-  'billing.currencyCny': '人民币',
-  'billing.currencyUsd': '美元',
-  'billing.heatmap': '用量热力图',
-  'billing.rounds': '每轮费用',
-  'billing.roundsHint': '最近 {count} 轮 · 柱顶为金额 · 底色为峰谷时段',
-  'billing.anomaly': '成本突增',
-  'billing.workspaces': '工作区统计',
-  'billing.workspacesHint': '点击行下钻项目成本前 5 会话',
-  'billing.plan': '套餐',
-  'billing.remaining': '剩余',
-  'billing.unknownModel': '未定价',
-  'billing.model': '模型',
-  'billing.thModel': '模型名称',
-  'billing.thInputMiss': '输入缓存未命中',
-  'billing.thInputHit': '输入缓存命中',
-  'billing.currentRound': '当前',
-  'billing.costAbbr': '费用',
-  'billing.tabOverview': '概览',
-  'billing.tabTrends': '趋势',
-  'billing.tabProviders': '账单',
-  'billing.tabDetails': '统计',
-  'billing.tabPricing': '费率',
-  'billing.tabSettings': '设置',
-  'billing.settingsHead': '偏好设置',
-  'billing.settingsHint': '管理与计费相关的偏好',
-  'billing.budgetHint': '设置月度上限，用于本月预计与超支分段提醒',
-  'billing.peakAlertHint': '在切档前弹窗提醒，可选同步系统通知',
-  'billing.peakAlertDescPeak': '即将进入高峰时段，价格将上调，请提前安排长任务',
-  'billing.peakAlertDescOff': '即将进入平价时段，价格减半，适合运行大批量任务',
-  'billing.export': '导出',
-  'billing.exportCsvDay': '按日 CSV',
-  'billing.exportCsvSession': '按会话 CSV',
-  'billing.exportJson': '全量 JSON',
-  'billing.peakShare': '峰谷时段占比',
-  'billing.peakSharePerCall': '按调用时刻精确判档',
-  'billing.offPeakSavings': '挪谷可省约 {amount}',
-  'billing.perfMax': '最大 TTFT',
-  'billing.weekCost': '本周',
-  'billing.roleCost': '费用构成',
-  'billing.roleUser': '用户输入',
-  'billing.roleAssistant': '助手输出',
-  'billing.roleTool': '工具结果',
-  'billing.roleHint': '估算：输出按实测计价，输入按消息长度摊分',
-  'billing.tierPeak': '峰时',
-  'billing.tierOff': '平价',
-  'billing.tierToPeak': '后转峰时',
-  'billing.tierToOff': '后转平价',
-  'billing.tierAlertEnterPeak': '{minutes} 分钟后进入峰时（DeepSeek 高峰价 ×2），不急的调用可稍等',
-  'billing.tierAlertEnterOff': '{minutes} 分钟后进入平价（价格减半）',
-  'billing.peakAlertTitlePeak': '即将进入高峰价',
-  'billing.peakAlertTitleOff': '即将进入平价',
-  'billing.peakAlert': '峰谷切换提醒',
-  'billing.peakAlertLeadMin': '提前量（分钟）',
-  'billing.peakAlertPos': '位置',
-  'billing.peakAlertMode': '提醒模式',
-  'billing.peakAlertPosCorner': '右下角',
-  'billing.peakAlertPosCenter': '屏幕居中',
-  'billing.peakAlertModePeak': '仅进入峰时',
-  'billing.peakAlertModeOff': '仅进入平价',
-  'billing.peakAlertModeBoth': '峰与谷都提醒',
-  'billing.peakAlertWebNotify': '同时发系统通知',
-  'billing.peakAlertPreview': '预览提醒',
-  'billing.planTypeCode': '订阅制',
-  'billing.planTypeToken': '按量',
-  'billing.subscriptionFeePerMonth': '{amount}/月',
-  'billing.triggerToday': '今日',
-  'billing.triggerMonth': '当月',
-  'billing.triggerMonthTokens': '当月 Token',
-  'billing.subscriptionIncluded': '订阅包含',
-  'billing.free': '免费',
-  'billing.official': '官方',
-  'billing.thirdParty': '三方',
-  'billing.officialCost': '官方费用',
-  'billing.thirdPartyCost': '三方费用',
-  'billing.perfSamples': '样本',
-  'billing.perfTtft': '首字延时',
-  'billing.perfP50': 'P50',
-  'billing.perfP90': 'P90',
-  'billing.perfTps': '生成速度',
-  'billing.perfLatency': '总延迟',
-  'billing.perfEstimated': '估算样本',
-  'billing.perfEmpty': '暂无性能数据',
-  'billing.perfTpsUnit': 'tok/s',
-  'billing.perfTitle': '性能',
-  'billing.perfHint': '按模型与按小时聚合；估算样本为工具续写步骤',
-  'billing.heatmapYear': '年',
-  'billing.heatmapMonth': '月',
-  'billing.activeDays': '活跃天数',
-  'billing.streakDays': '连续使用',
-  'billing.subscriptionAutoDetect': '自动识别',
-  'billing.pluginInfo': '插件信息',
-  'billing.pluginName': '插件名',
-  'billing.pluginDescription': '描述',
-  'billing.pluginVersion': '版本',
-  'billing.pluginAuthor': '作者',
-  'billing.pluginRepository': '仓库',
-  'billing.pluginNpm': 'npm',
-  'billing.pluginLicense': '许可证',
-  'billing.tabToken': '用量',
-  'billing.tokenExport': '导出 Token',
-  'billing.tokenExportCsv': '按日 Token CSV',
-  'billing.tokenCacheHitRate': '缓存命中率',
-  'billing.tokenReasoningShare': '思考占比',
-  'billing.tokenReasoningShort': '思考',
-  'billing.tokenIo': '输入/输出比',
-  'billing.tokenPeak': '峰值日',
-  'billing.tokenDaily': '每日 Token',
-  'billing.tokenByModel': '模型 Token',
-  'billing.tokenMiss': '输入（缓存未命中）',
-  'billing.tokenHit': '输入（缓存命中）',
-  'billing.tokenOutput': '输出',
-  'billing.tokenTotal': '总 Token',
-  'billing.tokenShare': '占比',
-  'billing.usageStatsTool': '注入用量查询工具',
-  'billing.usageStatsToolHint': '让模型可在对话中查询用量/费用；会占用模型每次请求的上下文，coding 场景建议关闭（改后需重载应用生效）',
-  'billing.balanceGranted': '赠金余额',
-  'billing.balanceTopped': '充值余额',
-  'billing.balanceDaily': '日均消耗',
-  'billing.balanceDaysLong': '约可撑',
-  'billing.balanceDaysUnit': '天',
-  'billing.popTodayModel': '主力消耗模型余额',
-  'billing.popTitle': '用量速览',
-  'billing.popNoConsumption': '暂无消耗',
-  'billing.popQuotaAlert': '额度提醒',
-  'billing.popRiskNone': '余额与配额正常',
-  'billing.popDirectLead': '直联',
-  'billing.popSubLead': '订阅',
-  'billing.popBalanceNormal': '余额正常',
-  'billing.popBalanceLow': '余额不足',
-  'billing.popQuotaNormal': '配额正常',
-  'billing.popQuotaLow': '配额将尽',
-  'billing.alertBalanceLow': '{name} 余额不足',
-  'billing.alertQuotaLow': '{name} 配额将尽',
-  'billing.unpricedHint': '{count} 个模型未收录计价，费用已按 0 计',
-  'billing.searchEstimateHint': '含 {count} 次联网搜索请求的估算费用（每次约 {each}；日志无用量事件，按次估算，可在配置 searchCallEstimateCny 调整或关闭）',
-  'billing.siteListDisplay': '中转站列表',
-  'billing.siteListDisplayHint': '隐藏「未知路由 / 未识别」占位条目，净化中转站分布与额度列表',
-  'billing.exportCsvSite': '按站点 CSV',
-  'billing.panelRelay': '中转站分布',
-  'billing.relaySite': '中转站',
-  'billing.relayDirect': '直连',
-  'billing.relayUnknown': '未知路由',
-  'billing.panelRelayQuota': '中转站额度',
-  'billing.relayBalance': '余额',
-  'billing.relayNoQuota': '未读出额度',
-  'billing.relayWindowUsed': '已用',
-  'billing.relayKindNewApi': 'New API',
-  'billing.relayKindSub2Api': 'Sub2API',
-  'billing.relayKindUnknown': '未识别',
-  'billing.relayCalls': '调用',
+  'title': '使用统计',
+  'subtitle': '计费仪表盘',
+  'cost': '费用',
+  'todayCost': '今日费用',
+  'monthCost': '本月费用',
+  'yearCost': '本年费用',
+  'monthProjected': '本月预计',
+  'liveTurn': '本轮',
+  'liveSession': '会话',
+  'totalCost': '总费用',
+  'calls': '调用',
+  'cacheHitRate': '缓存命中率',
+  'tokens': 'Token',
+  'inputTokens': '输入',
+  'outputTokens': '输出',
+  'avgCost': '平均成本',
+  'trend': '每日费用与调用趋势',
+  'trend7d': '7 天',
+  'trend30d': '30 天',
+  'trendMetric': '趋势指标',
+  'trendMetricCost': '费用',
+  'trendMetricTokens': 'Token',
+  'trendEmpty': '暂无趋势数据',
+  'budget': '本月预算',
+  'budgetAmount': '预算金额',
+  'budgetSummary': '本月已用 {used} / {total}；达到 80% 时提醒，达到 100% 时红色脉冲警示',
+  'sessions': '会话明细',
+  'sessionTitle': '标题',
+  'project': '项目',
+  'lastActive': '最后活跃',
+  'sessionOverflow': '仅显示花费前 {limit} 个，共 {total} 个会话',
+  'budgetTierBody': '本月花费 {cost} 已达预算 {budget} 的 {pct}%',
+  'models': '模型计费明细',
+  'providerBilling': '厂商计费与订阅',
+  'estimated': '估算',
+  'actual': '实际',
+  'pricing': '模型单价表',
+  'showPricing': '查看模型单价',
+  'hidePricing': '收起单价表',
+  'pricePerM': '¥ / 1M tokens',
+  'input': '输入',
+  'output': '输出',
+  'cacheHit': '缓存命中',
+  'peak': '高峰',
+  'offPeak': '低谷',
+  'flat': '全天统一',
+  'peakHours': '高峰时段',
+  'band': '时段',
+  'openDashboard': '打开计费仪表盘',
+  'close': '关闭',
+  'footer': '每 30s 自动轮询 · 仅统计本机 dsh 会话',
+  'footerCredit': 'dsh-ui-usage-billing {version} · MIT',
+  'lastUpdated': '数据更新于',
+  'noData': '暂无计费数据',
+  'todayRate': '今日汇率',
+  'rateLive': '实时',
+  'rateBuiltin': '内置',
+  'promoBadge': '限时折扣',
+  'promoUntil': '促销价至 {date}，之后自动恢复刊例价',
+  'promoOpenEnded': '厂商未公布截止时间，当前按折扣计价；公告截止后自动恢复刊例价',
+  'pricingTip': 'DeepSeek 模型自北京时间 2026-08-23（周日）00:00 起：工作日高峰 9-12 / 14-18（×2），周末（周六 / 周日）全天低谷价；双价单元格按峰 / 谷展示，费用按调用时刻计。',
+  'pricingUnit': '单位：人民币 / 每百万 Token',
+  'pricingNotes': '计价说明',
+  'ubPeak': '峰',
+  'ubOff': '谷',
+  'ubStd': '标准',
+  'peakBand': '峰谷分带',
+  'pricingSource': '数据来源',
+  'noteCache': '命中部分按缓存价计费，显著降低成本。',
+  'noteBand': '高峰与空闲时段单价不同，空闲约半价。',
+  'noteSource': '价格来自实时汇率 + 模型定价目录，未收录模型按 0 计并提示。',
+  'balance': '余额',
+  'balanceUnconfigured': '未配置',
+  'balanceUnauthorized': '密钥无效',
+  'balanceUnreachable': '查询失败',
+  'uncatalogued': '未收录',
+  'estimatedPricing': '估算价',
+  'balanceDays': '约可撑 {days} 天',
+  'balanceLowBody': '{name} 余额 {balance}，约可撑 {days} 天，请及时充值',
+  'reconcileDrift': '系统监控到{provider}官方余额变动 {spent}，本面板记录 {today}，差额通常由其它工具或 API 的消耗所致',
+  'reconcileDismiss': '知道了',
+  'subscriptions': '订阅套餐',
+  'subscriptionNotConfigured': '未配置密钥',
+  'subscriptionUnauthorized': '密钥无效',
+  'subscriptionUnavailable': '查询失败',
+  'subscriptionInvalid': '响应异常',
+  'subscriptionRateLimited': '触发限流',
+  'subscriptionSession': '本次',
+  'subscriptionWeekly': '本周',
+  'subscriptionMonthly': '本月',
+  'subscriptionBilling': '计费周期',
+  'subscriptionRemaining': '剩余 {pct}%',
+  'subscriptionExhausted': '已用尽',
+  'subscriptionReset': '{date} 重置',
+  'subscriptionNoApi': '该厂商暂未提供用量查询接口',
+  'floatWindow': '模型用量悬浮窗',
+  'floatModeCombined': '综合',
+  'floatModeSubscription': '订阅卡',
+  'floatMode': '展示模式',
+  'floatTargets': '订阅目标',
+  'floatWindowHint': '悬浮在左下角计费卡上的用量速览；综合=当前样式，订阅卡=每次展示一张订阅额度卡（可切换）。',
+  'cardDisplay': '计费卡显示',
+  'cardDisplayHint': '切换左下角计费卡的主指标：花费金额或 Token 消耗（副行与迷你柱同步切换，悬浮窗不受影响）。',
+  'cardMetric': '主指标',
+  'cardMetricMoney': '花费金额',
+  'cardMetricTokens': 'Token 消耗',
+  'floatNoTargets': '未指定订阅通道，请在设置中勾选要展示的订阅。',
+  'floatNoTargetsHint': '暂无可选的订阅通道。',
+  'floatPrev': '上一张订阅',
+  'floatNext': '下一张订阅',
+  'subscriptionsStale': '订阅额度刷新失败，以下为缓存数据',
+  'staleLedgerNotice': '{count} 个会话出自旧版算法存档（日志已删，无法重算），模型归属可能有误差',
+  'tokenCacheWrite': '写入',
+  'toolRank': '工具排行',
+  'toolName': '工具',
+  'userPrices': '自定义单价',
+  'userPricesHint': '为未收录或变价模型填入实付单价，总览与日趋势按此重估；来源留空=该模型默认价，填入中转站域名=仅该来源的同名模型用此价',
+  'userPriceSave': '保存',
+  'userPriceModel': '模型',
+  'userPriceSource': '来源（中转站域名）',
+  'userPriceSourceHint': '留空=默认价，或 https://api.中转站.com',
+  'userPriceCurrency': '币种',
+  'userPriceAdd': '新增',
+  'userPriceRemove': '删除',
+  'sessionStaleBadge': '旧版统计',
+  'heatmapLess': '少',
+  'heatmapMore': '多',
+  'currency': '币种',
+  'currencyCny': '人民币',
+  'currencyUsd': '美元',
+  'heatmap': '用量热力图',
+  'rounds': '每轮费用',
+  'roundsHint': '最近 {count} 轮 · 柱顶为金额 · 底色为峰谷时段',
+  'anomaly': '成本突增',
+  'workspaces': '工作区统计',
+  'workspacesHint': '点击行下钻项目成本前 5 会话',
+  'plan': '套餐',
+  'remaining': '剩余',
+  'unknownModel': '未定价',
+  'model': '模型',
+  'thModel': '模型名称',
+  'thInputMiss': '输入缓存未命中',
+  'thInputHit': '输入缓存命中',
+  'currentRound': '当前',
+  'costAbbr': '费用',
+  'tabOverview': '概览',
+  'tabTrends': '趋势',
+  'tabProviders': '账单',
+  'tabDetails': '统计',
+  'tabPricing': '费率',
+  'tabSettings': '设置',
+  'settingsHead': '偏好设置',
+  'settingsHint': '管理与计费相关的偏好',
+  'budgetHint': '设置月度上限，用于本月预计与超支分段提醒',
+  'peakAlertHint': '在切档前弹窗提醒，可选同步系统通知',
+  'peakAlertDescPeak': '即将进入高峰时段，价格将上调，请提前安排长任务',
+  'peakAlertDescOff': '即将进入平价时段，价格减半，适合运行大批量任务',
+  'export': '导出',
+  'exportCsvDay': '按日 CSV',
+  'exportCsvSession': '按会话 CSV',
+  'exportJson': '全量 JSON',
+  'peakShare': '峰谷时段占比',
+  'peakSharePerCall': '按调用时刻精确判档',
+  'offPeakSavings': '挪谷可省约 {amount}',
+  'perfMax': '最大 TTFT',
+  'weekCost': '本周',
+  'roleCost': '费用构成',
+  'roleUser': '用户输入',
+  'roleAssistant': '助手输出',
+  'roleTool': '工具结果',
+  'roleHint': '估算：输出按实测计价，输入按消息长度摊分',
+  'tierPeak': '峰时',
+  'tierOff': '平价',
+  'tierToPeak': '后转峰时',
+  'tierToOff': '后转平价',
+  'tierAlertEnterPeak': '{minutes} 分钟后进入峰时（DeepSeek 高峰价 ×2），不急的调用可稍等',
+  'tierAlertEnterOff': '{minutes} 分钟后进入平价（价格减半）',
+  'peakAlertTitlePeak': '即将进入高峰价',
+  'peakAlertTitleOff': '即将进入平价',
+  'peakAlert': '峰谷切换提醒',
+  'peakAlertLeadMin': '提前量（分钟）',
+  'peakAlertPos': '位置',
+  'peakAlertMode': '提醒模式',
+  'peakAlertPosCorner': '右下角',
+  'peakAlertPosCenter': '屏幕居中',
+  'peakAlertModePeak': '仅进入峰时',
+  'peakAlertModeOff': '仅进入平价',
+  'peakAlertModeBoth': '峰与谷都提醒',
+  'peakAlertWebNotify': '同时发系统通知',
+  'peakAlertPreview': '预览提醒',
+  'planTypeCode': '订阅制',
+  'planTypeToken': '按量',
+  'subscriptionFeePerMonth': '{amount}/月',
+  'triggerToday': '今日',
+  'triggerMonth': '当月',
+  'triggerMonthTokens': '当月 Token',
+  'subscriptionIncluded': '订阅包含',
+  'free': '免费',
+  'official': '官方',
+  'thirdParty': '三方',
+  'officialCost': '官方费用',
+  'thirdPartyCost': '三方费用',
+  'perfSamples': '样本',
+  'perfTtft': '首字延时',
+  'perfP50': 'P50',
+  'perfP90': 'P90',
+  'perfTps': '生成速度',
+  'perfLatency': '总延迟',
+  'perfEstimated': '估算样本',
+  'perfEmpty': '暂无性能数据',
+  'perfTpsUnit': 'tok/s',
+  'perfTitle': '性能',
+  'perfHint': '按模型与按小时聚合；估算样本为工具续写步骤',
+  'heatmapYear': '年',
+  'heatmapMonth': '月',
+  'activeDays': '活跃天数',
+  'streakDays': '连续使用',
+  'subscriptionAutoDetect': '自动识别',
+  'pluginInfo': '插件信息',
+  'pluginName': '插件名',
+  'pluginDescription': '描述',
+  'pluginVersion': '版本',
+  'pluginAuthor': '作者',
+  'pluginRepository': '仓库',
+  'pluginNpm': 'npm',
+  'pluginLicense': '许可证',
+  'tabToken': '用量',
+  'tokenExport': '导出 Token',
+  'tokenExportCsv': '按日 Token CSV',
+  'tokenCacheHitRate': '缓存命中率',
+  'tokenReasoningShare': '思考占比',
+  'tokenReasoningShort': '思考',
+  'tokenIo': '输入/输出比',
+  'tokenPeak': '峰值日',
+  'tokenDaily': '每日 Token',
+  'tokenByModel': '模型 Token',
+  'tokenMiss': '输入（缓存未命中）',
+  'tokenHit': '输入（缓存命中）',
+  'tokenOutput': '输出',
+  'tokenTotal': '总 Token',
+  'tokenShare': '占比',
+  'usageStatsTool': '注入用量查询工具',
+  'usageStatsToolHint': '让模型可在对话中查询用量/费用；会占用模型每次请求的上下文，coding 场景建议关闭（改后需重载应用生效）',
+  'balanceGranted': '赠金余额',
+  'balanceTopped': '充值余额',
+  'balanceDaily': '日均消耗',
+  'balanceDaysLong': '约可撑',
+  'balanceDaysUnit': '天',
+  'popTodayModel': '主力消耗模型余额',
+  'popTitle': '用量速览',
+  'popNoConsumption': '暂无消耗',
+  'popQuotaAlert': '额度提醒',
+  'popRiskNone': '余额与配额正常',
+  'popDirectLead': '直联',
+  'popSubLead': '订阅',
+  'popBalanceNormal': '余额正常',
+  'popBalanceLow': '余额不足',
+  'popQuotaNormal': '配额正常',
+  'popQuotaLow': '配额将尽',
+  'alertBalanceLow': '{name} 余额不足',
+  'alertQuotaLow': '{name} 配额将尽',
+  'unpricedHint': '{count} 个模型未收录计价，费用已按 0 计',
+  'searchEstimateHint': '含 {count} 次联网搜索请求的估算费用（每次约 {each}；日志无用量事件，按次估算，可在配置 searchCallEstimateCny 调整或关闭）',
+  'siteListDisplay': '中转站列表',
+  'siteListDisplayHint': '隐藏「未知路由 / 未识别」占位条目，净化中转站分布与额度列表',
+  'exportCsvSite': '按站点 CSV',
+  'panelRelay': '中转站分布',
+  'relaySite': '中转站',
+  'relayDirect': '直连',
+  'relayUnknown': '未知路由',
+  'panelRelayQuota': '中转站额度',
+  'relayBalance': '余额',
+  'relayNoQuota': '未读出额度',
+  'relayWindowUsed': '已用',
+  'relayKindNewApi': 'New API',
+  'relayKindSub2Api': 'Sub2API',
+  'relayKindUnknown': '未识别',
+  'relayCalls': '调用',
 }
 
 export const en: Record<UsageBillingKey, string> = {
-  'billing.title': 'Usage',
-  'billing.subtitle': 'Billing dashboard',
-  'billing.cost': 'Cost',
-  'billing.todayCost': 'Today',
-  'billing.monthCost': 'This month',
-  'billing.yearCost': 'This year',
-  'billing.monthProjected': 'Projected',
-  'billing.liveTurn': 'Turn',
-  'billing.liveSession': 'Session',
-  'billing.totalCost': 'Total',
-  'billing.calls': 'Calls',
-  'billing.cacheHitRate': 'Cache Hit',
-  'billing.tokens': 'Tokens',
-  'billing.inputTokens': 'Input',
-  'billing.outputTokens': 'Output',
-  'billing.avgCost': 'Avg cost',
-  'billing.trend': 'Daily cost & calls',
-  'billing.trend7d': '7D',
-  'billing.trend30d': '30D',
-  'billing.trendMetric': 'Trend metric',
-  'billing.trendMetricCost': 'Cost',
-  'billing.trendMetricTokens': 'Tokens',
-  'billing.trendEmpty': 'No trend data yet',
-  'billing.budget': 'Monthly budget',
-  'billing.budgetAmount': 'Budget amount',
-  'billing.budgetSummary': 'Used {used} / {total} this month; warn at 80%, pulse red at 100%',
-  'billing.sessions': 'Sessions',
-  'billing.sessionTitle': 'Title',
-  'billing.project': 'Project',
-  'billing.lastActive': 'Last active',
-  'billing.sessionOverflow': 'Top {limit} of {total} sessions by cost',
-  'billing.budgetTierBody': 'This month {cost} reached {pct}% of the budget {budget}',
-  'billing.models': 'Model billing',
-  'billing.providerBilling': 'Provider billing & subscriptions',
-  'billing.estimated': 'Est.',
-  'billing.actual': 'Actual',
-  'billing.pricing': 'Model pricing',
-  'billing.showPricing': 'View pricing',
-  'billing.hidePricing': 'Hide pricing',
-  'billing.pricePerM': '¥ / 1M tokens',
-  'billing.input': 'Input',
-  'billing.output': 'Output',
-  'billing.cacheHit': 'Cache hit',
-  'billing.peak': 'Peak',
-  'billing.offPeak': 'Off-peak',
-  'billing.flat': 'Flat',
-  'billing.peakHours': 'Peak hours',
-  'billing.band': 'Band',
-  'billing.openDashboard': 'Open billing dashboard',
-  'billing.close': 'Close',
-  'billing.footer': 'Polls every 30s · local dsh sessions only',
-  'billing.footerCredit': 'dsh-ui-usage-billing {version} · MIT',
-  'billing.lastUpdated': 'Updated',
-  'billing.noData': 'No billing data yet',
-  'billing.todayRate': 'Today rate',
-  'billing.rateLive': 'Live',
-  'billing.rateBuiltin': 'Built-in',
-  'billing.promoBadge': 'Promo',
-  'billing.promoUntil': 'Promo price until {date}, then list price resumes automatically',
-  'billing.promoOpenEnded': 'End date not announced; billed at the discounted rate until further notice, then list price resumes',
-  'billing.pricingTip': 'DeepSeek models: from 2026-08-23 (Sun) 00:00 Beijing, weekdays peak 9-12 / 14-18 (×2), weekends (Sat/Sun) all-day off-peak; cells show peak/off-peak price, billed at call time.',
-  'billing.pricingUnit': 'Unit: CNY / per 1M tokens',
-  'billing.pricingNotes': 'Pricing notes',
-  'billing.ubPeak': 'Peak',
-  'billing.ubOff': 'Off',
-  'billing.ubStd': 'Std',
-  'billing.peakBand': 'Peak/off-peak band',
-  'billing.pricingSource': 'Data source',
-  'billing.noteCache': 'Cache hits are billed at the cache rate, cutting cost.',
-  'billing.noteBand': 'Peak and off-peak prices differ; off-peak is roughly half price.',
-  'billing.noteSource': 'Prices come from the live rate + model catalog; unlisted models count as 0 and are flagged.',
-  'billing.balance': 'Balance',
-  'billing.balanceUnconfigured': 'Not set',
-  'billing.balanceUnauthorized': 'Bad key',
-  'billing.balanceUnreachable': 'Unavailable',
-  'billing.uncatalogued': 'Not catalogued',
-  'billing.estimatedPricing': 'Estimated',
-  'billing.balanceDays': '~{days} days left',
-  'billing.balanceLowBody': '{name} balance {balance}, ~{days} days left, please top up',
-  'billing.reconcileDrift': 'Detected {provider} official balance moved {spent}, this panel recorded {today}; the gap usually comes from other tools or APIs consuming too',
-  'billing.reconcileDismiss': 'Got it',
-  'billing.subscriptions': 'Subscriptions',
-  'billing.subscriptionNotConfigured': 'Key not set',
-  'billing.subscriptionUnauthorized': 'Bad key',
-  'billing.subscriptionUnavailable': 'Unavailable',
-  'billing.subscriptionInvalid': 'Bad response',
-  'billing.subscriptionRateLimited': 'Rate limited',
-  'billing.subscriptionSession': 'Current',
-  'billing.subscriptionWeekly': 'Weekly',
-  'billing.subscriptionMonthly': 'Monthly',
-  'billing.subscriptionBilling': 'Billing',
-  'billing.subscriptionRemaining': '{pct}% left',
-  'billing.subscriptionExhausted': 'Exhausted',
-  'billing.subscriptionReset': 'Resets {date}',
-  'billing.subscriptionNoApi': 'Provider does not offer a usage API',
-  'billing.floatWindow': 'Model usage popover',
-  'billing.floatModeCombined': 'Combined',
-  'billing.floatModeSubscription': 'Subscription card',
-  'billing.floatMode': 'Display mode',
-  'billing.floatTargets': 'Targets',
-  'billing.floatWindowHint': 'Usage summary floating on the footer card; Combined=current style, Subscription cards=one quota card at a time (switchable).',
-  'billing.cardDisplay': 'Billing card display',
-  'billing.cardDisplayHint': 'Switch the main metric on the bottom-left billing card between cost and token usage (sub row and sparkline follow; the popover is unaffected).',
-  'billing.cardMetric': 'Main metric',
-  'billing.cardMetricMoney': 'Cost',
-  'billing.cardMetricTokens': 'Token usage',
-  'billing.floatNoTargets': 'No subscription selected — pick some in Settings.',
-  'billing.floatNoTargetsHint': 'No subscription channel available.',
-  'billing.floatPrev': 'Previous subscription',
-  'billing.floatNext': 'Next subscription',
-  'billing.subscriptionsStale': 'Subscription refresh failed — showing cached data',
-  'billing.staleLedgerNotice': '{count} sessions use legacy-algorithm archives (logs deleted); attribution may be off',
-  'billing.tokenCacheWrite': 'written',
-  'billing.toolRank': 'Tool calls',
-  'billing.toolName': 'Tool',
-  'billing.userPrices': 'Custom prices',
-  'billing.userPricesHint': 'Enter actual per-1M-token prices; main views are re-costed. Leave source empty for the model default, or enter a relay origin to price only that source.',
-  'billing.userPriceSave': 'Save',
-  'billing.userPriceModel': 'Model',
-  'billing.userPriceSource': 'Source (relay origin)',
-  'billing.userPriceSourceHint': 'Empty = default; e.g. https://api.relay.com',
-  'billing.userPriceCurrency': 'Currency',
-  'billing.userPriceAdd': 'Add',
-  'billing.userPriceRemove': 'Remove',
-  'billing.sessionStaleBadge': 'legacy',
-  'billing.heatmapLess': 'Less',
-  'billing.heatmapMore': 'More',
-  'billing.currency': 'Currency',
-  'billing.currencyCny': 'CNY',
-  'billing.currencyUsd': 'USD',
-  'billing.heatmap': 'Usage heatmap',
-  'billing.rounds': 'Cost per turn',
-  'billing.roundsHint': 'Last {count} rounds · bar tops show amount · fill = peak/off-peak',
-  'billing.anomaly': 'Cost spike',
-  'billing.workspaces': 'Workspaces',
-  'billing.workspacesHint': 'Click a row to drill into its top-5 sessions',
-  'billing.plan': 'Plan',
-  'billing.remaining': 'Left',
-  'billing.unknownModel': 'Unpriced',
-  'billing.model': 'Model',
-  'billing.thModel': 'Model name',
-  'billing.thInputMiss': 'Input (cache miss)',
-  'billing.thInputHit': 'Input (cache hit)',
-  'billing.currentRound': 'current',
-  'billing.costAbbr': 'cost',
-  'billing.tabOverview': 'Overview',
-  'billing.tabTrends': 'Trends',
-  'billing.tabProviders': 'Bills',
-  'billing.tabDetails': 'Stats',
-  'billing.tabPricing': 'Rates',
-  'billing.tabSettings': 'Settings',
-  'billing.settingsHead': 'Preferences',
-  'billing.settingsHint': 'Manage billing-related preferences',
-  'billing.budgetHint': 'Set a monthly cap for projections and tier alerts',
-  'billing.peakAlertHint': 'Alert before a tier switch, optionally via system notification',
-  'billing.peakAlertDescPeak': 'About to enter peak hours — prices rise, plan long tasks ahead',
-  'billing.peakAlertDescOff': 'About to enter off-peak hours — price halves, ideal for large batches',
-  'billing.export': 'Export',
-  'billing.exportCsvDay': 'Daily CSV',
-  'billing.exportCsvSession': 'Sessions CSV',
-  'billing.exportJson': 'Full JSON',
-  'billing.peakShare': 'Peak vs off-peak',
-  'billing.peakSharePerCall': 'per-call attribution, full history',
-  'billing.offPeakSavings': 'Shift peak to off-peak: save ~{amount}',
-  'billing.perfMax': 'Max TTFT',
-  'billing.weekCost': 'This week',
-  'billing.roleCost': 'Cost breakdown',
-  'billing.roleUser': 'User input',
-  'billing.roleAssistant': 'Assistant output',
-  'billing.roleTool': 'Tool results',
-  'billing.roleHint': 'Estimated: output priced exactly, input split by message size',
-  'billing.tierPeak': 'Peak',
-  'billing.tierOff': 'Off-peak',
-  'billing.tierToPeak': 'until peak',
-  'billing.tierToOff': 'until off-peak',
-  'billing.tierAlertEnterPeak': 'Peak pricing (2x) starts in {minutes} min — non-urgent calls can wait',
-  'billing.tierAlertEnterOff': 'Off-peak pricing (50% off) starts in {minutes} min',
-  'billing.peakAlertTitlePeak': 'Peak pricing incoming',
-  'billing.peakAlertTitleOff': 'Off-peak incoming',
-  'billing.peakAlert': 'Peak/off-peak alert',
-  'billing.peakAlertLeadMin': 'Lead time (min)',
-  'billing.peakAlertPos': 'Position',
-  'billing.peakAlertMode': 'Remind mode',
-  'billing.peakAlertPosCorner': 'Bottom-right',
-  'billing.peakAlertPosCenter': 'Center',
-  'billing.peakAlertModePeak': 'Entering peak only',
-  'billing.peakAlertModeOff': 'Entering off-peak only',
-  'billing.peakAlertModeBoth': 'Both',
-  'billing.peakAlertWebNotify': 'Also send system notification',
-  'billing.peakAlertPreview': 'Preview alert',
-  'billing.planTypeCode': 'Subscription',
-  'billing.planTypeToken': 'Usage',
-  'billing.subscriptionFeePerMonth': '{amount}/mo',
-  'billing.triggerToday': 'Today',
-  'billing.triggerMonth': 'This month',
-  'billing.triggerMonthTokens': 'Monthly tokens',
-  'billing.subscriptionIncluded': 'Included',
-  'billing.free': 'Free',
-  'billing.official': 'Official',
-  'billing.thirdParty': 'Third-party',
-  'billing.officialCost': 'Official cost',
-  'billing.thirdPartyCost': 'Third-party cost',
-  'billing.perfSamples': 'Samples',
-  'billing.perfTtft': 'TTFT',
-  'billing.perfP50': 'P50',
-  'billing.perfP90': 'P90',
-  'billing.perfTps': 'Speed',
-  'billing.perfLatency': 'Total latency',
-  'billing.perfEstimated': 'Estimated',
-  'billing.perfEmpty': 'No performance data yet',
-  'billing.perfTpsUnit': 'tok/s',
-  'billing.perfTitle': 'Performance',
-  'billing.perfHint': 'Per model & per hour; estimated samples are tool-continuation steps',
-  'billing.heatmapYear': 'Year',
-  'billing.heatmapMonth': 'Month',
-  'billing.activeDays': 'Active days',
-  'billing.streakDays': 'Streak',
-  'billing.subscriptionAutoDetect': 'Auto',
-  'billing.pluginInfo': 'Plugin info',
-  'billing.pluginName': 'Name',
-  'billing.pluginDescription': 'Description',
-  'billing.pluginVersion': 'Version',
-  'billing.pluginAuthor': 'Author',
-  'billing.pluginRepository': 'Repository',
-  'billing.pluginNpm': 'npm',
-  'billing.pluginLicense': 'License',
-  'billing.tabToken': 'Usage',
-  'billing.tokenExport': 'Export tokens',
-  'billing.tokenExportCsv': 'Daily token CSV',
-  'billing.tokenCacheHitRate': 'Cache hit rate',
-  'billing.tokenReasoningShare': 'Reasoning share',
-  'billing.tokenReasoningShort': 'reasoning',
-  'billing.tokenIo': 'In/out ratio',
-  'billing.tokenPeak': 'Peak day',
-  'billing.tokenDaily': 'Daily tokens',
-  'billing.tokenByModel': 'Tokens by model',
-  'billing.tokenMiss': 'Input (cache miss)',
-  'billing.tokenHit': 'Input (cache hit)',
-  'billing.tokenOutput': 'Output',
-  'billing.tokenTotal': 'Total tokens',
-  'billing.tokenShare': 'Share',
-  'billing.usageStatsTool': 'Inject usage-stats tool',
-  'billing.usageStatsToolHint': 'Lets the model query usage/cost inside a conversation; it consumes context per request, so keep it off for coding (takes effect after a reload)',
-  'billing.balanceGranted': 'Granted',
-  'billing.balanceTopped': 'Topped up',
-  'billing.balanceDaily': 'Daily burn',
-  'billing.balanceDaysLong': '~days left',
-  'billing.balanceDaysUnit': 'days',
-  'billing.popTodayModel': 'Main model balance',
-  'billing.popTitle': 'Usage overview',
-  'billing.popNoConsumption': 'No usage yet',
-  'billing.popQuotaAlert': 'Quota alerts',
-  'billing.popRiskNone': 'Balances & quotas OK',
-  'billing.popDirectLead': 'Direct',
-  'billing.popSubLead': 'Subscription',
-  'billing.popBalanceNormal': 'balance ok',
-  'billing.popBalanceLow': 'balance low',
-  'billing.popQuotaNormal': 'quota ok',
-  'billing.popQuotaLow': 'quota low',
-  'billing.alertBalanceLow': '{name} balance low',
-  'billing.alertQuotaLow': '{name} quota low',
-  'billing.unpricedHint': '{count} models not priced; their cost counts as 0',
-  'billing.searchEstimateHint': 'Includes estimated cost of {count} web-search requests (~{each} each; no usage events logged, per-call estimate; tune via searchCallEstimateCny)',
-  'billing.siteListDisplay': 'Relay lists',
-  'billing.siteListDisplayHint': 'Hide "unknown route / unidentified" placeholder rows in relay distribution and quota lists',
-  'billing.exportCsvSite': 'By site CSV',
-  'billing.panelRelay': 'Relay sites',
-  'billing.relaySite': 'Relay',
-  'billing.relayDirect': 'Direct',
-  'billing.relayUnknown': 'Unknown route',
-  'billing.panelRelayQuota': 'Relay quota',
-  'billing.relayBalance': 'Balance',
-  'billing.relayNoQuota': 'No quota',
-  'billing.relayWindowUsed': 'used',
-  'billing.relayKindNewApi': 'New API',
-  'billing.relayKindSub2Api': 'Sub2API',
-  'billing.relayKindUnknown': 'Unknown',
-  'billing.relayCalls': 'calls',
+  'title': 'Usage',
+  'subtitle': 'Billing dashboard',
+  'cost': 'Cost',
+  'todayCost': 'Today',
+  'monthCost': 'This month',
+  'yearCost': 'This year',
+  'monthProjected': 'Projected',
+  'liveTurn': 'Turn',
+  'liveSession': 'Session',
+  'totalCost': 'Total',
+  'calls': 'Calls',
+  'cacheHitRate': 'Cache Hit',
+  'tokens': 'Tokens',
+  'inputTokens': 'Input',
+  'outputTokens': 'Output',
+  'avgCost': 'Avg cost',
+  'trend': 'Daily cost & calls',
+  'trend7d': '7D',
+  'trend30d': '30D',
+  'trendMetric': 'Trend metric',
+  'trendMetricCost': 'Cost',
+  'trendMetricTokens': 'Tokens',
+  'trendEmpty': 'No trend data yet',
+  'budget': 'Monthly budget',
+  'budgetAmount': 'Budget amount',
+  'budgetSummary': 'Used {used} / {total} this month; warn at 80%, pulse red at 100%',
+  'sessions': 'Sessions',
+  'sessionTitle': 'Title',
+  'project': 'Project',
+  'lastActive': 'Last active',
+  'sessionOverflow': 'Top {limit} of {total} sessions by cost',
+  'budgetTierBody': 'This month {cost} reached {pct}% of the budget {budget}',
+  'models': 'Model billing',
+  'providerBilling': 'Provider billing & subscriptions',
+  'estimated': 'Est.',
+  'actual': 'Actual',
+  'pricing': 'Model pricing',
+  'showPricing': 'View pricing',
+  'hidePricing': 'Hide pricing',
+  'pricePerM': '¥ / 1M tokens',
+  'input': 'Input',
+  'output': 'Output',
+  'cacheHit': 'Cache hit',
+  'peak': 'Peak',
+  'offPeak': 'Off-peak',
+  'flat': 'Flat',
+  'peakHours': 'Peak hours',
+  'band': 'Band',
+  'openDashboard': 'Open billing dashboard',
+  'close': 'Close',
+  'footer': 'Polls every 30s · local dsh sessions only',
+  'footerCredit': 'dsh-ui-usage-billing {version} · MIT',
+  'lastUpdated': 'Updated',
+  'noData': 'No billing data yet',
+  'todayRate': 'Today rate',
+  'rateLive': 'Live',
+  'rateBuiltin': 'Built-in',
+  'promoBadge': 'Promo',
+  'promoUntil': 'Promo price until {date}, then list price resumes automatically',
+  'promoOpenEnded': 'End date not announced; billed at the discounted rate until further notice, then list price resumes',
+  'pricingTip': 'DeepSeek models: from 2026-08-23 (Sun) 00:00 Beijing, weekdays peak 9-12 / 14-18 (×2), weekends (Sat/Sun) all-day off-peak; cells show peak/off-peak price, billed at call time.',
+  'pricingUnit': 'Unit: CNY / per 1M tokens',
+  'pricingNotes': 'Pricing notes',
+  'ubPeak': 'Peak',
+  'ubOff': 'Off',
+  'ubStd': 'Std',
+  'peakBand': 'Peak/off-peak band',
+  'pricingSource': 'Data source',
+  'noteCache': 'Cache hits are billed at the cache rate, cutting cost.',
+  'noteBand': 'Peak and off-peak prices differ; off-peak is roughly half price.',
+  'noteSource': 'Prices come from the live rate + model catalog; unlisted models count as 0 and are flagged.',
+  'balance': 'Balance',
+  'balanceUnconfigured': 'Not set',
+  'balanceUnauthorized': 'Bad key',
+  'balanceUnreachable': 'Unavailable',
+  'uncatalogued': 'Not catalogued',
+  'estimatedPricing': 'Estimated',
+  'balanceDays': '~{days} days left',
+  'balanceLowBody': '{name} balance {balance}, ~{days} days left, please top up',
+  'reconcileDrift': 'Detected {provider} official balance moved {spent}, this panel recorded {today}; the gap usually comes from other tools or APIs consuming too',
+  'reconcileDismiss': 'Got it',
+  'subscriptions': 'Subscriptions',
+  'subscriptionNotConfigured': 'Key not set',
+  'subscriptionUnauthorized': 'Bad key',
+  'subscriptionUnavailable': 'Unavailable',
+  'subscriptionInvalid': 'Bad response',
+  'subscriptionRateLimited': 'Rate limited',
+  'subscriptionSession': 'Current',
+  'subscriptionWeekly': 'Weekly',
+  'subscriptionMonthly': 'Monthly',
+  'subscriptionBilling': 'Billing',
+  'subscriptionRemaining': '{pct}% left',
+  'subscriptionExhausted': 'Exhausted',
+  'subscriptionReset': 'Resets {date}',
+  'subscriptionNoApi': 'Provider does not offer a usage API',
+  'floatWindow': 'Model usage popover',
+  'floatModeCombined': 'Combined',
+  'floatModeSubscription': 'Subscription card',
+  'floatMode': 'Display mode',
+  'floatTargets': 'Targets',
+  'floatWindowHint': 'Usage summary floating on the footer card; Combined=current style, Subscription cards=one quota card at a time (switchable).',
+  'cardDisplay': 'Billing card display',
+  'cardDisplayHint': 'Switch the main metric on the bottom-left billing card between cost and token usage (sub row and sparkline follow; the popover is unaffected).',
+  'cardMetric': 'Main metric',
+  'cardMetricMoney': 'Cost',
+  'cardMetricTokens': 'Token usage',
+  'floatNoTargets': 'No subscription selected — pick some in Settings.',
+  'floatNoTargetsHint': 'No subscription channel available.',
+  'floatPrev': 'Previous subscription',
+  'floatNext': 'Next subscription',
+  'subscriptionsStale': 'Subscription refresh failed — showing cached data',
+  'staleLedgerNotice': '{count} sessions use legacy-algorithm archives (logs deleted); attribution may be off',
+  'tokenCacheWrite': 'written',
+  'toolRank': 'Tool calls',
+  'toolName': 'Tool',
+  'userPrices': 'Custom prices',
+  'userPricesHint': 'Enter actual per-1M-token prices; main views are re-costed. Leave source empty for the model default, or enter a relay origin to price only that source.',
+  'userPriceSave': 'Save',
+  'userPriceModel': 'Model',
+  'userPriceSource': 'Source (relay origin)',
+  'userPriceSourceHint': 'Empty = default; e.g. https://api.relay.com',
+  'userPriceCurrency': 'Currency',
+  'userPriceAdd': 'Add',
+  'userPriceRemove': 'Remove',
+  'sessionStaleBadge': 'legacy',
+  'heatmapLess': 'Less',
+  'heatmapMore': 'More',
+  'currency': 'Currency',
+  'currencyCny': 'CNY',
+  'currencyUsd': 'USD',
+  'heatmap': 'Usage heatmap',
+  'rounds': 'Cost per turn',
+  'roundsHint': 'Last {count} rounds · bar tops show amount · fill = peak/off-peak',
+  'anomaly': 'Cost spike',
+  'workspaces': 'Workspaces',
+  'workspacesHint': 'Click a row to drill into its top-5 sessions',
+  'plan': 'Plan',
+  'remaining': 'Left',
+  'unknownModel': 'Unpriced',
+  'model': 'Model',
+  'thModel': 'Model name',
+  'thInputMiss': 'Input (cache miss)',
+  'thInputHit': 'Input (cache hit)',
+  'currentRound': 'current',
+  'costAbbr': 'cost',
+  'tabOverview': 'Overview',
+  'tabTrends': 'Trends',
+  'tabProviders': 'Bills',
+  'tabDetails': 'Stats',
+  'tabPricing': 'Rates',
+  'tabSettings': 'Settings',
+  'settingsHead': 'Preferences',
+  'settingsHint': 'Manage billing-related preferences',
+  'budgetHint': 'Set a monthly cap for projections and tier alerts',
+  'peakAlertHint': 'Alert before a tier switch, optionally via system notification',
+  'peakAlertDescPeak': 'About to enter peak hours — prices rise, plan long tasks ahead',
+  'peakAlertDescOff': 'About to enter off-peak hours — price halves, ideal for large batches',
+  'export': 'Export',
+  'exportCsvDay': 'Daily CSV',
+  'exportCsvSession': 'Sessions CSV',
+  'exportJson': 'Full JSON',
+  'peakShare': 'Peak vs off-peak',
+  'peakSharePerCall': 'per-call attribution, full history',
+  'offPeakSavings': 'Shift peak to off-peak: save ~{amount}',
+  'perfMax': 'Max TTFT',
+  'weekCost': 'This week',
+  'roleCost': 'Cost breakdown',
+  'roleUser': 'User input',
+  'roleAssistant': 'Assistant output',
+  'roleTool': 'Tool results',
+  'roleHint': 'Estimated: output priced exactly, input split by message size',
+  'tierPeak': 'Peak',
+  'tierOff': 'Off-peak',
+  'tierToPeak': 'until peak',
+  'tierToOff': 'until off-peak',
+  'tierAlertEnterPeak': 'Peak pricing (2x) starts in {minutes} min — non-urgent calls can wait',
+  'tierAlertEnterOff': 'Off-peak pricing (50% off) starts in {minutes} min',
+  'peakAlertTitlePeak': 'Peak pricing incoming',
+  'peakAlertTitleOff': 'Off-peak incoming',
+  'peakAlert': 'Peak/off-peak alert',
+  'peakAlertLeadMin': 'Lead time (min)',
+  'peakAlertPos': 'Position',
+  'peakAlertMode': 'Remind mode',
+  'peakAlertPosCorner': 'Bottom-right',
+  'peakAlertPosCenter': 'Center',
+  'peakAlertModePeak': 'Entering peak only',
+  'peakAlertModeOff': 'Entering off-peak only',
+  'peakAlertModeBoth': 'Both',
+  'peakAlertWebNotify': 'Also send system notification',
+  'peakAlertPreview': 'Preview alert',
+  'planTypeCode': 'Subscription',
+  'planTypeToken': 'Usage',
+  'subscriptionFeePerMonth': '{amount}/mo',
+  'triggerToday': 'Today',
+  'triggerMonth': 'This month',
+  'triggerMonthTokens': 'Monthly tokens',
+  'subscriptionIncluded': 'Included',
+  'free': 'Free',
+  'official': 'Official',
+  'thirdParty': 'Third-party',
+  'officialCost': 'Official cost',
+  'thirdPartyCost': 'Third-party cost',
+  'perfSamples': 'Samples',
+  'perfTtft': 'TTFT',
+  'perfP50': 'P50',
+  'perfP90': 'P90',
+  'perfTps': 'Speed',
+  'perfLatency': 'Total latency',
+  'perfEstimated': 'Estimated',
+  'perfEmpty': 'No performance data yet',
+  'perfTpsUnit': 'tok/s',
+  'perfTitle': 'Performance',
+  'perfHint': 'Per model & per hour; estimated samples are tool-continuation steps',
+  'heatmapYear': 'Year',
+  'heatmapMonth': 'Month',
+  'activeDays': 'Active days',
+  'streakDays': 'Streak',
+  'subscriptionAutoDetect': 'Auto',
+  'pluginInfo': 'Plugin info',
+  'pluginName': 'Name',
+  'pluginDescription': 'Description',
+  'pluginVersion': 'Version',
+  'pluginAuthor': 'Author',
+  'pluginRepository': 'Repository',
+  'pluginNpm': 'npm',
+  'pluginLicense': 'License',
+  'tabToken': 'Usage',
+  'tokenExport': 'Export tokens',
+  'tokenExportCsv': 'Daily token CSV',
+  'tokenCacheHitRate': 'Cache hit rate',
+  'tokenReasoningShare': 'Reasoning share',
+  'tokenReasoningShort': 'reasoning',
+  'tokenIo': 'In/out ratio',
+  'tokenPeak': 'Peak day',
+  'tokenDaily': 'Daily tokens',
+  'tokenByModel': 'Tokens by model',
+  'tokenMiss': 'Input (cache miss)',
+  'tokenHit': 'Input (cache hit)',
+  'tokenOutput': 'Output',
+  'tokenTotal': 'Total tokens',
+  'tokenShare': 'Share',
+  'usageStatsTool': 'Inject usage-stats tool',
+  'usageStatsToolHint': 'Lets the model query usage/cost inside a conversation; it consumes context per request, so keep it off for coding (takes effect after a reload)',
+  'balanceGranted': 'Granted',
+  'balanceTopped': 'Topped up',
+  'balanceDaily': 'Daily burn',
+  'balanceDaysLong': '~days left',
+  'balanceDaysUnit': 'days',
+  'popTodayModel': 'Main model balance',
+  'popTitle': 'Usage overview',
+  'popNoConsumption': 'No usage yet',
+  'popQuotaAlert': 'Quota alerts',
+  'popRiskNone': 'Balances & quotas OK',
+  'popDirectLead': 'Direct',
+  'popSubLead': 'Subscription',
+  'popBalanceNormal': 'balance ok',
+  'popBalanceLow': 'balance low',
+  'popQuotaNormal': 'quota ok',
+  'popQuotaLow': 'quota low',
+  'alertBalanceLow': '{name} balance low',
+  'alertQuotaLow': '{name} quota low',
+  'unpricedHint': '{count} models not priced; their cost counts as 0',
+  'searchEstimateHint': 'Includes estimated cost of {count} web-search requests (~{each} each; no usage events logged, per-call estimate; tune via searchCallEstimateCny)',
+  'siteListDisplay': 'Relay lists',
+  'siteListDisplayHint': 'Hide "unknown route / unidentified" placeholder rows in relay distribution and quota lists',
+  'exportCsvSite': 'By site CSV',
+  'panelRelay': 'Relay sites',
+  'relaySite': 'Relay',
+  'relayDirect': 'Direct',
+  'relayUnknown': 'Unknown route',
+  'panelRelayQuota': 'Relay quota',
+  'relayBalance': 'Balance',
+  'relayNoQuota': 'No quota',
+  'relayWindowUsed': 'used',
+  'relayKindNewApi': 'New API',
+  'relayKindSub2Api': 'Sub2API',
+  'relayKindUnknown': 'Unknown',
+  'relayCalls': 'calls',
 }

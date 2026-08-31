@@ -37,25 +37,25 @@ export function PluginInfoCard({ t, version }: { t: (key: UsageBillingKey) => st
       </div>
       <div className={css.plgGrid}>
         <div className={css.plgItem}>
-          <span className={css.plgLabel}>{t('billing.pluginAuthor')}</span>
+          <span className={css.plgLabel}>{t('pluginAuthor')}</span>
           <a className={css.plgLink} href={`https://github.com/${PLUGIN_AUTHOR_HANDLE}`} target="_blank" rel="noreferrer">
             {PLUGIN_AUTHOR_NAME} ({PLUGIN_AUTHOR_HANDLE})
           </a>
         </div>
         <div className={css.plgItem}>
-          <span className={css.plgLabel}>{t('billing.pluginRepository')}</span>
+          <span className={css.plgLabel}>{t('pluginRepository')}</span>
           <a className={css.plgLink} href={PLUGIN_REPOSITORY} target="_blank" rel="noreferrer">
             GitHub
           </a>
         </div>
         <div className={css.plgItem}>
-          <span className={css.plgLabel}>{t('billing.pluginNpm')}</span>
+          <span className={css.plgLabel}>{t('pluginNpm')}</span>
           <a className={css.plgLink} href={PLUGIN_NPM_URL} target="_blank" rel="noreferrer">
             {PLUGIN_NAME}
           </a>
         </div>
         <div className={css.plgItem}>
-          <span className={css.plgLabel}>{t('billing.pluginLicense')}</span>
+          <span className={css.plgLabel}>{t('pluginLicense')}</span>
           <span className={css.plgVal}>{PLUGIN_LICENSE}</span>
         </div>
       </div>

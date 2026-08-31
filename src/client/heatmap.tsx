@@ -159,7 +159,7 @@ function buildYearWeeks(days: readonly HeatmapDay[], now: Date): Cell[][] {
  * @param props.t - locale function (used for the legend labels).
  * @param props.range - `month` (calendar month) or `year` (last 52 weeks, GitHub style).
  */
-export function UsageHeatmap({ days, currency, now, t, range = 'month' }: { days: readonly HeatmapDay[]; currency: CostCurrency; now?: Date; range?: 'month' | 'year'; t: (key: 'billing.costAbbr' | 'billing.noData' | 'billing.heatmapLess' | 'billing.heatmapMore') => string }): React.ReactNode {
+export function UsageHeatmap({ days, currency, now, t, range = 'month' }: { days: readonly HeatmapDay[]; currency: CostCurrency; now?: Date; range?: 'month' | 'year'; t: (key: 'costAbbr' | 'noData' | 'heatmapLess' | 'heatmapMore') => string }): React.ReactNode {
   const [hover, setHover] = useState<Cell | null>(null)
   const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
   // monthWeeks 无条件计算，保证跨 range 切换时 hooks 顺序稳定。
@@ -215,11 +215,11 @@ export function UsageHeatmap({ days, currency, now, t, range = 'month' }: { days
           </div>
         </div>
         <div className={css.heatmapFooter}>
-          <span className={css.heatmapLegendText}>{t('billing.heatmapLess')}</span>
+          <span className={css.heatmapLegendText}>{t('heatmapLess')}</span>
           <span className={css.heatmapLegend}>
             {LEVEL_COLORS.map((color, level) => <i key={level} style={{ background: color }} />)}
           </span>
-          <span className={css.heatmapLegendText}>{t('billing.heatmapMore')}</span>
+          <span className={css.heatmapLegendText}>{t('heatmapMore')}</span>
         </div>
       </div>
     )
@@ -253,11 +253,11 @@ export function UsageHeatmap({ days, currency, now, t, range = 'month' }: { days
         )}
       </div>
       <div className={css.heatmapFooter}>
-        <span className={css.heatmapLegendText}>{t('billing.heatmapLess')}</span>
+        <span className={css.heatmapLegendText}>{t('heatmapLess')}</span>
         <span className={css.heatmapLegend}>
           {LEVEL_COLORS.map((color, level) => <i key={level} style={{ background: color }} />)}
         </span>
-        <span className={css.heatmapLegendText}>{t('billing.heatmapMore')}</span>
+        <span className={css.heatmapLegendText}>{t('heatmapMore')}</span>
         {hover !== null && (
           <span className={css.heatmapHover} data-testid="heatmap-hover">
             {hover.date} · {money(hover.value)}

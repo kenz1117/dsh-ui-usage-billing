@@ -154,7 +154,7 @@ export function PerfPanel({
   }, [perf])
 
   if (perf === undefined || rows.length === 0) {
-    return <div className={css.chartEmpty} data-testid="billing-perf-empty">{t('billing.perfEmpty')}</div>
+    return <div className={css.chartEmpty} data-testid="billing-perf-empty">{t('perfEmpty')}</div>
   }
 
   return (
@@ -164,15 +164,15 @@ export function PerfPanel({
         <table className={css.modelTable}>
           <thead>
             <tr>
-              <th>{t('billing.model')}</th>
-              <th className={css.numCol}>{t('billing.perfSamples')}</th>
-              <th className={css.numCol}>{t('billing.perfTtft')}</th>
-              <th className={css.numCol}>{t('billing.perfP50')}</th>
-              <th className={css.numCol}>{t('billing.perfP90')}</th>
-              <th className={css.numCol}>{t('billing.perfMax')}</th>
-              <th className={css.numCol}>{t('billing.perfTps')}</th>
-              <th className={css.numCol}>{t('billing.perfLatency')}</th>
-              <th className={css.numCol}>{t('billing.perfEstimated')}</th>
+              <th>{t('model')}</th>
+              <th className={css.numCol}>{t('perfSamples')}</th>
+              <th className={css.numCol}>{t('perfTtft')}</th>
+              <th className={css.numCol}>{t('perfP50')}</th>
+              <th className={css.numCol}>{t('perfP90')}</th>
+              <th className={css.numCol}>{t('perfMax')}</th>
+              <th className={css.numCol}>{t('perfTps')}</th>
+              <th className={css.numCol}>{t('perfLatency')}</th>
+              <th className={css.numCol}>{t('perfEstimated')}</th>
             </tr>
           </thead>
           <tbody>
@@ -235,17 +235,17 @@ export function PerfPanel({
               )
             })}
             <text x={W - PAD.right + 8} y={PAD.top + 4} textAnchor="start" className={css.chartAxisLabel}>
-              {t('billing.perfTpsUnit')} {hourLayout.maxTps.toFixed(0)}
+              {t('perfTpsUnit')} {hourLayout.maxTps.toFixed(0)}
             </text>
           </svg>
           <div className={css.chartLegend}>
             <span>
               <span className={css.chartLegendLine} />
-              {t('billing.perfTtft')} (ms)
+              {t('perfTtft')} (ms)
             </span>
             <span>
               <span className={css.chartLegendLine} style={{ background: 'var(--dsw-static-amber-500)' }} />
-              {t('billing.perfTps')} ({t('billing.perfTpsUnit')})
+              {t('perfTps')} ({t('perfTpsUnit')})
             </span>
           </div>
         </div>

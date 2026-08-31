@@ -97,6 +97,20 @@ export declare function getRateInfo(): {
 };
 /** Default share of traffic assumed to fall in the peak band (0..1). */
 export declare const DEFAULT_PEAK_SHARE = 0.5;
+/**
+ * 峰谷计价时代分界（UTC 2026-08-16T16:00:00Z，即北京时间 2026-08-17 00:00）：
+ * DeepSeek V4 自此起按峰/谷两档计价。此前官方只有基础价一档——历史事件若
+ * 套现行峰/谷档价会把成本高估约 50%（谷价 = 基础价 × 1.5）。半开区间：该
+ * 时刻及之后按峰谷档计。
+ */
+export declare const PEAK_ERA_START_MS: number;
+/**
+ * 周末全谷规则分界（UTC 2026-08-22T16:00:00Z，即北京时间 2026-08-23 00:00）：
+ * 官方自此刻起周六/周日全天不区分峰谷（高峰时段收窄为工作日）；生效前的
+ * 周末仍按 v1 峰谷规则（周六日 9-12 / 14-18 同样是高峰时段）。历史事件的
+ * 档位判定按事件所在时段适用各自的规则，不得统一套现行规则重算历史。
+ */
+export declare const WEEKEND_OFFPEAK_START_MS: number;
 /** 计费时段档位：高峰 / 空闲（官方 DeepSeek 刊例价：高峰 = 空闲 × 2）。 */
 export type PriceTierId = 'peak' | 'offPeak';
 /** 成本显示币种：人民币（国内模型直价）/ 美元（国外模型直价或换算显示）。 */
@@ -328,17 +342,6 @@ export declare function resolveToken(name: string): string;
  * @returns the estimated cost in CNY.
  */
 export declare function computeCost(entry: ModelEntry, buckets: TokenUsageBuckets, peakShare?: number, nowMs?: number): number;
-/**
- * 按调用时刻精确判定高峰/空闲档并计价（P0-1：替代固定比例混合）。时刻未知
- * （null/NaN，理论不发生在真实事件流）时回退 {@link DEFAULT_PEAK_SHARE} 混合，
- * 保持旧语义不低估。平档模型（无 offPeak）两个时段同价。限时促销与峰谷档
- * 同口径：按事件时刻判定该笔流量当时享受的单价。
- * @param entry - the catalog entry whose prices apply.
- * @param buckets - token usage counts.
- * @param timeMs - the call's wall-clock time (epoch ms); null falls back to the peak-share mix.
- * @param peakShare - fallback mix used only when `timeMs` is missing.
- * @returns the estimated cost in CNY（USD 计价模型已按当前汇率折算）。
- */
 export declare function computeCostAt(entry: ModelEntry, buckets: TokenUsageBuckets, timeMs: number | null | undefined, peakShare?: number): number;
 /** 人民币 → 美元（显示换算用）：用当前生效汇率（实时优先，缺失回退内置），
  *  与计价链路的 `currentRate()` 同口径，避免实时汇率生效时 USD 显示与计价不一致。 */

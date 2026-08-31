@@ -198,39 +198,39 @@ export function TokenPanel(props: {
   return (
     <div className={css.tokenPanel} data-testid="billing-token-panel">
       {/* 导出工具条。 */}
-      <div className={css.exportBar} role="group" aria-label={t('billing.tokenExport')}>
-        <span className={css.exportLabel}>{t('billing.export')}</span>
+      <div className={css.exportBar} role="group" aria-label={t('tokenExport')}>
+        <span className={css.exportLabel}>{t('export')}</span>
         <button type="button" className={css.exportButton} data-testid="billing-token-export-csv" onClick={exportTokenCsv}>
-          {t('billing.tokenExportCsv')}
+          {t('tokenExportCsv')}
         </button>
         <button type="button" className={css.exportButton} data-testid="billing-token-export-json" onClick={exportTokenJson}>
-          {t('billing.exportJson')}
+          {t('exportJson')}
         </button>
       </div>
 
       {/* Token 结构 KPI。 */}
       <div className={css.kpiGrid} data-testid="billing-token-kpis">
         <div className={css.kpiTile}>
-          <span className={css.kpiLabel}>{t('billing.tokenCacheHitRate')}</span>
+          <span className={css.kpiLabel}>{t('tokenCacheHitRate')}</span>
           <span className={css.kpiValue}>{kpis.cacheHitRate.toFixed(1)}%</span>
           {/* 显式缓存写入（cacheMiss 子集）在命中卡副行附带展示；无该维度时不显示。 */}
           <span className={css.kpiDetail}>
             {formatTokens(kpis.hit)} / {formatTokens(kpis.hit + kpis.miss)}
-            {(total.cacheWrite ?? 0) > 0 ? ` · ${t('billing.tokenCacheWrite')} ${formatTokens(total.cacheWrite ?? 0)}` : ''}
+            {(total.cacheWrite ?? 0) > 0 ? ` · ${t('tokenCacheWrite')} ${formatTokens(total.cacheWrite ?? 0)}` : ''}
           </span>
         </div>
         <div className={css.kpiTile}>
-          <span className={css.kpiLabel}>{t('billing.tokenReasoningShare')}</span>
+          <span className={css.kpiLabel}>{t('tokenReasoningShare')}</span>
           <span className={css.kpiValue}>{kpis.reasoningPct.toFixed(1)}%</span>
           <span className={css.kpiDetail}>{formatTokens(kpis.reasoning)}</span>
         </div>
         <div className={css.kpiTile}>
-          <span className={css.kpiLabel}>{t('billing.tokenIo')}</span>
+          <span className={css.kpiLabel}>{t('tokenIo')}</span>
           <span className={css.kpiValue}>{kpis.io.toFixed(2)}</span>
           <span className={css.kpiDetail}>{formatTokens(kpis.input)} / {formatTokens(kpis.output)}</span>
         </div>
         <div className={css.kpiTile}>
-          <span className={css.kpiLabel}>{t('billing.tokenPeak')}</span>
+          <span className={css.kpiLabel}>{t('tokenPeak')}</span>
           <span className={css.kpiValue}>{kpis.peak === undefined ? '—' : shortNumber(kpis.peak.miss + kpis.peak.hit + kpis.peak.output)}</span>
           <span className={css.kpiDetail}>{kpis.peak?.date ?? '—'}</span>
         </div>
@@ -239,20 +239,20 @@ export function TokenPanel(props: {
       {/* 每日 token 堆叠趋势。 */}
       <section className={css.panel} data-testid="billing-token-daily">
         <div className={css.panelHead}>
-          <h3 className={css.panelTitle}>{t('billing.tokenDaily')}</h3>
-          <span className={css.rangeToggle} role="group" aria-label={t('billing.tokenDaily')}>
+          <h3 className={css.panelTitle}>{t('tokenDaily')}</h3>
+          <span className={css.rangeToggle} role="group" aria-label={t('tokenDaily')}>
             {([7, 30] as const).map(d => (
               <button key={d} type="button" className={clsx(css.rangeButton, trendDays === d && css.rangeButtonActive)} aria-pressed={trendDays === d} onClick={() => { onTrendDays(d) }} data-testid={`billing-token-${d}d`}>
-                {d === 7 ? t('billing.trend7d') : t('billing.trend30d')}
+                {d === 7 ? t('trend7d') : t('trend30d')}
               </button>
             ))}
           </span>
         </div>
         {chart === null ? (
-          <div className={css.chartEmpty}>{t('billing.trendEmpty')}</div>
+          <div className={css.chartEmpty}>{t('trendEmpty')}</div>
         ) : (
           <div className={css.chartWrap}>
-            <svg viewBox={`0 0 ${W} ${H}`} className={css.chartSvg} role="img" aria-label={t('billing.tokenDaily')}>
+            <svg viewBox={`0 0 ${W} ${H}`} className={css.chartSvg} role="img" aria-label={t('tokenDaily')}>
               {[0, 0.5, 1].map((f) => {
                 const v = chart.max * f
                 const yy = chart.y(v)
@@ -284,9 +284,9 @@ export function TokenPanel(props: {
               })}
             </svg>
             <div className={css.chartLegend}>
-              <span><span className={css.chartTooltipSwatch} style={{ background: MISS_COLOR }} />{t('billing.tokenMiss')}</span>
-              <span><span className={css.chartTooltipSwatch} style={{ background: HIT_COLOR }} />{t('billing.tokenHit')}</span>
-              <span><span className={css.chartTooltipSwatch} style={{ background: OUTPUT_COLOR }} />{t('billing.tokenOutput')}</span>
+              <span><span className={css.chartTooltipSwatch} style={{ background: MISS_COLOR }} />{t('tokenMiss')}</span>
+              <span><span className={css.chartTooltipSwatch} style={{ background: HIT_COLOR }} />{t('tokenHit')}</span>
+              <span><span className={css.chartTooltipSwatch} style={{ background: OUTPUT_COLOR }} />{t('tokenOutput')}</span>
             </div>
           </div>
         )}
@@ -295,23 +295,23 @@ export function TokenPanel(props: {
       {/* 模型 token 排行与占比。 */}
       <section className={css.panel} data-testid="billing-token-models">
         <div className={css.panelHead}>
-          <h3 className={css.panelTitle}>{t('billing.tokenByModel')}</h3>
+          <h3 className={css.panelTitle}>{t('tokenByModel')}</h3>
         </div>
         {models.length === 0 ? (
-          <div className={css.emptyRow}>{t('billing.noData')}</div>
+          <div className={css.emptyRow}>{t('noData')}</div>
         ) : (
           <div className={css.tableScroll}>
             <table className={css.modelTable} data-testid="billing-token-model-table">
               <thead>
                 <tr>
-                  <th>{t('billing.model')}</th>
-                  <th className={css.numCol}>{t('billing.inputTokens')}</th>
-                  <th className={css.numCol}>{t('billing.outputTokens')}</th>
-                  <th className={css.numCol}>{t('billing.tokenReasoningShort')}</th>
-                  <th className={css.numCol}>{t('billing.cacheHitRate')}</th>
-                  <th className={css.numCol}>{t('billing.tokenTotal')}</th>
-                  <th className={css.numCol}>{t('billing.tokenShare')}</th>
-                  <th className={css.numCol}>{t('billing.calls')}</th>
+                  <th>{t('model')}</th>
+                  <th className={css.numCol}>{t('inputTokens')}</th>
+                  <th className={css.numCol}>{t('outputTokens')}</th>
+                  <th className={css.numCol}>{t('tokenReasoningShort')}</th>
+                  <th className={css.numCol}>{t('cacheHitRate')}</th>
+                  <th className={css.numCol}>{t('tokenTotal')}</th>
+                  <th className={css.numCol}>{t('tokenShare')}</th>
+                  <th className={css.numCol}>{t('calls')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -348,15 +348,15 @@ export function TokenPanel(props: {
       {toolRows.totalCalls > 0 && (
         <section className={css.panel} data-testid="billing-token-tools">
           <div className={css.panelHead}>
-            <h3 className={css.panelTitle}>{t('billing.toolRank')}</h3>
+            <h3 className={css.panelTitle}>{t('toolRank')}</h3>
           </div>
           <div className={css.tableScroll}>
             <table className={css.modelTable} data-testid="billing-tool-table">
               <thead>
                 <tr>
-                  <th>{t('billing.toolName')}</th>
-                  <th className={css.numCol}>{t('billing.calls')}</th>
-                  <th className={css.numCol}>{t('billing.tokenShare')}</th>
+                  <th>{t('toolName')}</th>
+                  <th className={css.numCol}>{t('calls')}</th>
+                  <th className={css.numCol}>{t('tokenShare')}</th>
                 </tr>
               </thead>
               <tbody>

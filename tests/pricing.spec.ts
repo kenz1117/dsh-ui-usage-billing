@@ -519,3 +519,37 @@ describe('Qwen3.7-Max list price with open-ended promo', () => {
     expect(folded?.extraRows?.find(row => row.label === 'Batch File')?.input).toBe(6)
   })
 })
+
+
+describe('legacy pricing timeline (compat line)', () => {
+  const MILLION = 1_000_000
+  const buckets = { input: 2 * MILLION, cacheHit: MILLION, cacheMiss: MILLION, output: MILLION }
+  const before = Date.UTC(2026, 7, 15, 10) // 北京 8-15（周六）18:00，峰谷时代前
+  const boundary = Date.parse('2026-08-16T16:00:00Z') // 峰谷开闸（北京 8-17 00:00）
+
+  it('charges the official pre-peak base price for flash/pro', () => {
+    expect(computeCostAt(modelOf('flash'), buckets, before))
+      .toBeCloseTo((MILLION * 0.02 + MILLION * 1 + MILLION * 2) / MILLION, 10)
+    expect(computeCostAt(modelOf('pro'), buckets, before))
+      .toBeCloseTo((MILLION * 0.025 + MILLION * 3 + MILLION * 6) / MILLION, 10)
+  })
+
+  it('counts weekend peak hours inside the v1 window', () => {
+    // v1 规则（北京 8-17 ~ 8-23）：周六日 9-12 / 14-18 计峰。
+    const satV1 = Date.UTC(2026, 7, 22, 2) // 北京 8-22（周六）10:00
+    expect(computeCostAt(modelOf('flash'), buckets, satV1))
+      .toBeCloseTo((MILLION * 0.1 + MILLION * 3 + MILLION * 9) / MILLION, 10)
+  })
+
+  it('switches to weekend off-peak at the 08-23 boundary', () => {
+    const sunNew = Date.parse('2026-08-22T16:00:00Z') // 北京 8-23（周日）00:00
+    const offPeakCost = (MILLION * 0.05 + MILLION * 1.5 + MILLION * 4.5) / MILLION
+    expect(computeCostAt(modelOf('flash'), buckets, sunNew)).toBeCloseTo(offPeakCost, 10)
+  })
+
+  it('keeps user prices authoritative over the legacy band', () => {
+    const priced = { ...modelOf('flash'), userPriced: true as const, price: { currency: 'CNY' as const, input: 9, cacheHit: 0.3, output: 27 } }
+    expect(computeCostAt(priced, buckets, before))
+      .toBeCloseTo((MILLION * 0.3 + MILLION * 9 + MILLION * 27) / MILLION, 10)
+  })
+})
