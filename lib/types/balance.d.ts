@@ -15,6 +15,14 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { CustomBalanceConfig, CustomBalanceExtract, ProviderBalance } from './pricing-shared.ts';
 /**
+ * 从 TokenDance 余额响应提取剩余余额并换算为元。导出供测试：纯函数。
+ * 优先用服务端现成的 `balance.balance`（= credits - credits_used）；缺失时
+ * 按两个明细字段相减推导，字段全部缺失返回 undefined。
+ * @param data - 余额端点的 JSON 响应（`{ balance: { credits, credits_used, balance } }`，微元）。
+ * @returns 剩余余额（元）；提取不到返回 undefined。
+ */
+export declare function pickTokenDanceBalanceCny(data: unknown): number | undefined;
+/**
  * Query every configured provider's account balance. A provider is queried only
  * when its llm-pi-ai route has an `apiKeyEnv`; absent routes answer
  * `unconfigured` so the dashboard shows a stable state instead of dropping the row.
