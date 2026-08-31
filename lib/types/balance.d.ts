@@ -53,6 +53,12 @@ export declare function pickRemainingQuota(source: unknown): number | undefined;
  */
 export declare function evalExtract(rule: CustomBalanceExtract, data: unknown): number | undefined;
 /**
+ * 请求头占位符解析：值中任意位置的 `{{ENV_NAME}}` 经凭据 seam 替换（如
+ * `Bearer {{KEY}}`、`token={{KEY}}`、一处多占位符）；被引用的任一凭据缺失
+ * 或为空 → 返回 null（fail-closed，与完整占位符形态的历史语义一致）。
+ */
+export declare function resolveHeaders(ctx: Context, headers: Record<string, string>): Promise<Record<string, string> | null>;
+/**
  * 查询自定义 Provider 余额（插件 config 的 `customBalances`）。每个条目独立
  * 成败：占位符凭据缺失 → unconfigured；401/403 → unauthorized；网络或提取
  * 失败 → unreachable。
