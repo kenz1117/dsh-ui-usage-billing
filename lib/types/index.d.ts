@@ -12,7 +12,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials';
-import { type SettingsProvider } from '@deepseek-ai/dsh-settings';
+import type { SettingsProvider } from '@deepseek-ai/dsh-settings';
 import { type UsageLedgerStore } from './aggregate.ts';
 import type { CustomBalanceConfig, DeclaredEndpointConfig, SubscriptionPlanConfig } from './pricing-shared.ts';
 import { type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts';
