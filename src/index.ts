@@ -28,7 +28,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { writeFileAtomic, withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
-import { settingsNamespace, type SettingsProvider, type SettingsScope } from '@deepseek-ai/dsh-settings'
+import type { SettingsProvider, SettingsScope } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { createUsageAggregator, dayStamp, type UsageLedgerStore } from './aggregate.ts'
 import { applyLivePricing, formatMoney, formatTokens } from './client/pricing.ts'
@@ -98,8 +98,26 @@ export function guardLoopback(req: IncomingMessage, res: ServerResponse): boolea
   return true
 }
 
+/**
+ * 设置命名空间校验（上游 alpha.1 `settingsNamespace` 的本地化，issue #28）：
+ * alpha.2 起该函数不再从 `@deepseek-ai/dsh-settings` 导出，但上游内部保留
+ * 同一 pattern——本地按同一规则校验，预览宿主 API 漂移不再影响插件装载。
+ */
+const SETTINGS_NAMESPACE_PATTERN = /^[a-z][a-z0-9-]*$/
+
+/** 从宿主 `SettingsProvider.register` 签名反推命名空间参数类型（跟随宿主版本，不 import 已移除的 branded 名）。 */
+type NamespaceArg = Parameters<SettingsProvider['register']>[0]
+
+/** 校验并透过合法命名空间 id；非法值 fail-loud（与上游原行为一致）。 */
+function validateSettingsNamespace(value: string): NamespaceArg {
+  if (!SETTINGS_NAMESPACE_PATTERN.test(value)) {
+    throw new TypeError(`settings namespace "${value}" must match ${String(SETTINGS_NAMESPACE_PATTERN)}`)
+  }
+  return value as NamespaceArg
+}
+
 /** usage_stats 工具开关的设置命名空间 id（下端与 node 共用同一常量）。 */
-const usageBillingSettingsNs = settingsNamespace(BILLING_SETTINGS_NAMESPACE)
+const usageBillingSettingsNs = validateSettingsNamespace(BILLING_SETTINGS_NAMESPACE)
 
 /** 该命名空间的 wire schema：`enableUsageStatsTool` 布尔，默认关闭（issue 诉求）。 */
 const UsageBillingSettingsSchema: z<UsageBillingSettings> = z.object({
