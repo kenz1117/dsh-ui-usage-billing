@@ -44,8 +44,10 @@
 
 3080 的插件已切换为 **pnpm link 安装**（`dsh plugin --profile web add "link:/Users/ken/dsh-ui-usage-billing"`），node_modules 里是 symlink 指向本仓，市场识别为本地开发而非线上版本。开发工作流：改代码 → `./sync.sh`（main 线）或 `bash build.sh`（compat 线）构建 lib → 重启 3080 即生效，**不需要发 npm**——npm 发布只发生在发布节点，给外部用户。
 
-- **独立仓当前分支决定 3080 跑哪条线的代码**：main（alpha 线）匹配 alpha.3 宿主；**切到 compat 分支后开 3080 会让稳定线代码跑在预览宿主上，装载即崩**（client-runtime 不在 0.1.2 模块表）。切分支前先想清楚 3080 还开着。
+- **独立仓当前分支决定 3080 跑哪条线的代码**：main（alpha 线）匹配 alpha.5 宿主；**切到 compat 分支后开 3080 会让稳定线代码跑在预览宿主上，装载即崩**（client-runtime 不在 0.1.2 模块表）。切分支前先想清楚 3080 还开着。
 - **pnpm store 版本坑**：主仓 pin pnpm 11（store v11），profile 的 node_modules 由系统 pnpm 10.15（store v10）管理。在 profile 目录用错版本跑 pnpm 后，`dsh plugin add` 会报 `ERR_PNPM_UNEXPECTED_STORE`——解法：`cd ~/.dsh/profiles/web && rm -rf node_modules && pnpm install`（回到 10.15）再 add。
+- **宿主升级时同步升独立仓依赖**：devDependencies 里 pin 的 `@deepseek-ai/dsh-*` 版本要跟宿主代际一致（当前 0.1.2-alpha.5），改完 `pnpm install` 重锁 pnpm-lock.yaml。
+- **本仓测试可独立安装运行**（`pnpm i && pnpm test`），不依赖 harness 工作区。两个已知坑：官方发布的 `@deepseek-ai/dsh-client-test-runtime` 引用了 ui-renderer 未发布的 src/ 文件（registry 安装必坏），client 测试用本仓 `tests/bind-snapshot-selector.ts` 等价替代；宿主 UI 包 lib 产物内联 `.module.css`，靠 `vitest.config.ts` 的 `server.deps.inline` 走 vite 管线，node 原生加载会报 `Unknown file extension .css`。
 
 ## 多会话协作纪律
 
