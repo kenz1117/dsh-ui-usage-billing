@@ -423,10 +423,13 @@ export interface UsageLedgerDocument {
  * 绑定自定义价的显示层重估）——旧行缺该维度，按无 origin 价处理；v5 = 峰谷
  * 时代之前（2026-08-16T16:00Z）的 DeepSeek 事件按当时基础价计费（v4 把全部
  * 历史套现行峰/谷档价，高估约 50%）；v6 = v1 峰谷窗口（至 2026-08-22T16:00Z）
- * 的周末不豁免峰时（v5 错套现行周末全谷规则，低估该窗口周六日的峰时费用）。
+ * 的周末不豁免峰时（v5 错套现行周末全谷规则，低估该窗口周六日的峰时费用）；
+ * v7 = fork 种子边界改用持久化 `SessionHeader.seedLength`（v6 及更早扫描最后一个
+ * `session/end-seed`，resume 续写后继续对话时把本会话历史段误判为种子丢弃，
+ * 会话费用只剩最近一段，issue #29）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export declare const FOLD_VERSION = 6;
+export declare const FOLD_VERSION = 7;
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
  * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并
@@ -472,6 +475,10 @@ export declare function messageTextLength(message: unknown): number;
  *   (default: any `deepseek`-prefixed id). Others count as third-party.
  * @param routes - 当前 provider 路由视图（中转站归组）。
  * @param searchCallEstimateCny - 联网搜索请求的单次费用估算（人民币元；0 关闭估算）。
+ * @param seedLength - 持久化的 fork 血缘边界（`SessionHeader.seedLength`，缺省 0）：
+ *   fork 子会话日志里 `seq < seedLength` 的事件拷贝自父会话、已在父会话计费，
+ *   折叠时跳过以避免重复计费；resume 续写复用同一会话日志（每次续写追加一个
+ *   `session/end-seed` 标记）但 header 保持原 fork 值，历史段照常计费。
  * @returns the per-session fold (cached by the incremental aggregator).
  */
 export declare function foldSession(events: readonly {
@@ -479,7 +486,7 @@ export declare function foldSession(events: readonly {
     time: number;
     data: unknown;
     seq?: number;
-}[], subscriptionProviders: ReadonlySet<string>, officialProviderIds?: ReadonlySet<string>, routes?: Readonly<Record<string, ProviderRouteView>>, searchCallEstimateCny?: number): SessionFold;
+}[], subscriptionProviders: ReadonlySet<string>, officialProviderIds?: ReadonlySet<string>, routes?: Readonly<Record<string, ProviderRouteView>>, searchCallEstimateCny?: number, seedLength?: number): SessionFold;
 /**
  * 增量聚合器：按会话缓存折叠结果，用日志文件的 mtime+size 作失效键——
  * 日志没动的会话直接复用，只有写过的会话重新折叠；整份文档另有短 TTL

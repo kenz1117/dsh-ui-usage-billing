@@ -39,10 +39,13 @@ function message(seq: number, time: number, usage: TokenUsage): SessionEvent {
 const USAGE: TokenUsage = { inputTokens: 100, outputTokens: 50, cacheReadTokens: 800, cacheWriteTokens: 20 }
 
 /** In-memory persistence double over per-session event arrays. */
-function fakePersistence(logs: Record<string, SessionEvent[]>): UsagePersistence {
-  // SessionHeader 只用到 id：整体断言跳过真实 header 的其余必填字段。
+function fakePersistence(
+  logs: Record<string, SessionEvent[]>,
+  metas: Record<string, { seedLength?: number }> = {},
+): UsagePersistence {
+  // SessionHeader 只用到 id 与 seedLength：整体断言跳过真实 header 的其余必填字段。
   return {
-    list: async () => Object.keys(logs).map(id => ({ id })),
+    list: async () => Object.keys(logs).map(id => ({ id, ...(metas[id] ?? {}) })),
     readFrom: async (id: SessionId, fromSeq: number) => ({
       meta: { id },
       events: (logs[id] ?? []).filter(event => event.seq >= fromSeq),
@@ -357,57 +360,109 @@ describe('1.0.8 dimensions (byTier / byTool / cacheWrite)', () => {
   })
 })
 
-describe('fork seed filtering (session/end-seed)', () => {
+describe('fork seed filtering (header.seedLength)', () => {
   /** Fold-session event row helper (durable-shape cast like the aggregator). */
   const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): SessionEvent =>
     ({ type, seq, time, data }) as unknown as SessionEvent
+  const flash = { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }
 
-  it('skips seed events sequenced before the end-seed boundary', () => {
+  it('skips seed events sequenced before the durable seedLength boundary', () => {
     const fold = foldSession([
-      // 种子：父会话拷贝来的事件（seq < 边界 4），不应重复计费。
-      ev('request/header', 1, 1_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      // 种子：父会话拷贝来的事件（seq < seedLength 4），不应重复计费。
+      ev('request/header', 1, 1_000, flash),
       ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE }),
       ev('session/end-seed', 4, 1_002, {}),
-      // 本会话 own 事件（seq >= 边界 4）：正常计费。
-      ev('request/header', 5, 2_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      // 本会话 own 事件（seq > 边界 4）：正常计费。
+      ev('request/header', 5, 2_000, flash),
       ev('assistant/message', 6, 2_001, { turn: 2, step: 1, usage: USAGE }),
-    ], new Set())
+    ], new Set(), undefined, {}, 0, 4)
     // 只有 own 事件的 2 号调计入总调用。
     expect(fold.total.calls).toBe(1)
     expect(fold.turns).toHaveLength(1)
     expect(fold.turns[0]).toMatchObject({ turn: 2 })
   })
 
-  it('takes the LAST end-seed as the boundary for a multi-level fork chain', () => {
+  it('uses the header seedLength as the boundary for a multi-level fork chain', () => {
+    // C fork 自 B：种子 = B 的全量日志（A 种子 + B end-seed + B own），
+    // C 的 header.seedLength = 5（end-seed 之前的全部事件数）。
     const fold = foldSession([
       // A 种子（seq 0–1）。
-      ev('request/header', 0, 1_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('request/header', 0, 1_000, flash),
       ev('assistant/message', 1, 1_001, { turn: 1, step: 1, usage: USAGE }),
       // B 的 end-seed（seq 2）。
       ev('session/end-seed', 2, 1_002, {}),
       // B 的 own 事件（seq 3–4）——对 C 而言仍是种子。
-      ev('request/header', 3, 1_100, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('request/header', 3, 1_100, flash),
       ev('assistant/message', 4, 1_101, { turn: 2, step: 1, usage: USAGE }),
-      // C 的 end-seed（seq 5，最后一个边界）。
+      // C 的 end-seed（seq 5，边界）。
       ev('session/end-seed', 5, 1_102, {}),
       // C 的 own 事件（seq 6）：唯一应计费的。
-      ev('request/header', 6, 2_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('request/header', 6, 2_000, flash),
       ev('assistant/message', 7, 2_001, { turn: 3, step: 1, usage: USAGE }),
-    ], new Set())
+    ], new Set(), undefined, {}, 0, 5)
     expect(fold.total.calls).toBe(1)
     expect(fold.turns).toHaveLength(1)
     expect(fold.turns[0]).toMatchObject({ turn: 3 })
   })
 
-  it('keeps all events when no end-seed boundary exists (non-fork session)', () => {
+  it('keeps billing the own prefix when a forked child is resumed and used again', () => {
+    // fork 子会话（seedLength 4）被 resume：日志追加第二个 end-seed（seq 7）后继续聊。
+    // 边界仍取 header 的 4，原 own 段（seq 5–6）与续写段（seq 8–9）都计费。
     const fold = foldSession([
-      ev('request/header', 1, 1_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('request/header', 1, 1_000, flash),
       ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE }),
-      ev('request/header', 3, 2_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('session/end-seed', 4, 1_002, {}),
+      ev('request/header', 5, 2_000, flash),
+      ev('assistant/message', 6, 2_001, { turn: 2, step: 1, usage: USAGE }),
+      ev('session/end-seed', 7, 2_002, {}),
+      ev('request/header', 8, 3_000, flash),
+      ev('assistant/message', 9, 3_001, { turn: 3, step: 1, usage: USAGE }),
+    ], new Set(), undefined, {}, 0, 4)
+    expect(fold.total.calls).toBe(2)
+    expect(fold.turns).toHaveLength(2)
+  })
+
+  it('bills a resumed-then-used session in full (no fork lineage, issue #29)', () => {
+    // 同一会话 resume 两次后继续聊：日志里有两个 end-seed 且其后还有 live 事件，
+    // header 保持原 fork 值（无 fork 血缘 → seedLength 缺省 0），历史段照常计费。
+    const fold = foldSession([
+      ev('request/header', 0, 1_000, flash),
+      ev('assistant/message', 1, 1_001, { turn: 1, step: 1, usage: USAGE }),
+      ev('session/end-seed', 2, 1_002, {}),
+      ev('request/header', 3, 2_000, flash),
+      ev('assistant/message', 4, 2_001, { turn: 2, step: 1, usage: USAGE }),
+      ev('session/end-seed', 5, 2_002, {}),
+      ev('request/header', 6, 3_000, flash),
+      ev('assistant/message', 7, 3_001, { turn: 3, step: 1, usage: USAGE }),
+    ], new Set())
+    expect(fold.total.calls).toBe(3)
+    expect(fold.turns).toHaveLength(3)
+  })
+
+  it('keeps all events when no seed boundary exists (non-fork session)', () => {
+    const fold = foldSession([
+      ev('request/header', 1, 1_000, flash),
+      ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE }),
+      ev('request/header', 3, 2_000, flash),
       ev('assistant/message', 4, 2_001, { turn: 2, step: 1, usage: USAGE }),
     ], new Set())
     expect(fold.total.calls).toBe(2)
     expect(fold.turns).toHaveLength(2)
+  })
+
+  it('aggregate() honours the header seedLength from persistence.list', async () => {
+    // 聚合层端到端：同一份 fork 形态日志，list 给的 seedLength 决定种子跳过。
+    const log = [
+      ev('request/header', 1, 1_000, flash),
+      ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE }),
+      ev('session/end-seed', 4, 1_002, {}),
+      ev('request/header', 5, 2_000, flash),
+      ev('assistant/message', 6, 2_001, { turn: 2, step: 1, usage: USAGE }),
+    ]
+    const forked = await aggregateUsage(fakePersistence({ s1: log }, { s1: { seedLength: 4 } }))
+    expect(forked.bySession.find(row => row.id === 's1')?.calls).toBe(1)
+    const resumed = await aggregateUsage(fakePersistence({ s1: log }))
+    expect(resumed.bySession.find(row => row.id === 's1')?.calls).toBe(2)
   })
 })
 

@@ -566,10 +566,13 @@ export interface UsageLedgerDocument {
  * 绑定自定义价的显示层重估）——旧行缺该维度，按无 origin 价处理；v5 = 峰谷
  * 时代之前（2026-08-16T16:00Z）的 DeepSeek 事件按当时基础价计费（v4 把全部
  * 历史套现行峰/谷档价，高估约 50%）；v6 = v1 峰谷窗口（至 2026-08-22T16:00Z）
- * 的周末不豁免峰时（v5 错套现行周末全谷规则，低估该窗口周六日的峰时费用）。
+ * 的周末不豁免峰时（v5 错套现行周末全谷规则，低估该窗口周六日的峰时费用）；
+ * v7 = fork 种子边界改用持久化 `SessionHeader.seedLength`（v6 及更早扫描最后一个
+ * `session/end-seed`，resume 续写后继续对话时把本会话历史段误判为种子丢弃，
+ * 会话费用只剩最近一段，issue #29）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export const FOLD_VERSION = 6
+export const FOLD_VERSION = 7
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
@@ -793,6 +796,10 @@ function turnState(turns: Map<number, TurnState>, turn: number): TurnState {
  *   (default: any `deepseek`-prefixed id). Others count as third-party.
  * @param routes - 当前 provider 路由视图（中转站归组）。
  * @param searchCallEstimateCny - 联网搜索请求的单次费用估算（人民币元；0 关闭估算）。
+ * @param seedLength - 持久化的 fork 血缘边界（`SessionHeader.seedLength`，缺省 0）：
+ *   fork 子会话日志里 `seq < seedLength` 的事件拷贝自父会话、已在父会话计费，
+ *   折叠时跳过以避免重复计费；resume 续写复用同一会话日志（每次续写追加一个
+ *   `session/end-seed` 标记）但 header 保持原 fork 值，历史段照常计费。
  * @returns the per-session fold (cached by the incremental aggregator).
  */
 export function foldSession(
@@ -801,29 +808,8 @@ export function foldSession(
   officialProviderIds?: ReadonlySet<string>,
   routes: Readonly<Record<string, ProviderRouteView>> = {},
   searchCallEstimateCny: number = DEFAULT_SEARCH_CALL_ESTIMATE_CNY,
+  seedLength = 0,
 ): SessionFold {
-  // Fork 种子过滤：从父会话 fork 出来的子会话，会把父会话的事件流整段拷贝进
-  // 本会话日志作为构造种子，并在种子末尾追加一个 `session/end-seed` 边界事件，
-  // 该事件的 `seq` = 种子事件数。种子事件在父会话里已经贡献过一次用量，若再
-  // 折叠会重复计费，因此跳过 `seq < 边界` 的所有事件。
-  // 多重 fork 链（A fork B fork C）会出现多个 end-seed：C 的种子包含 B 的
-  // end-seed 与 B 的 own 事件，此时一律取**最后一个** end-seed 的 seq 作为边界，
-  // 才能把 B 的 own 事件（对 C 而言也是种子）一并跳过。
-  let seedBoundary = -1
-  for (const event of events) {
-    if (event.type === 'session/end-seed' && typeof event.seq === 'number' && Number.isFinite(event.seq)) {
-      seedBoundary = Math.max(seedBoundary, event.seq)
-    }
-  }
-  // Fork 种子去重边界。`session/end-seed` 既出现在 fork 子会话（父拷贝种子 + 子 own），
-  // 也出现在 resume/continue 会话（每续写一段就在末尾标记一段结束），单看事件无法区分。
-  // 只当 end-seed **之后确实还有事件**（seq > 边界，即真正的续写 / own 部分）时才把
-  // `seq < 边界` 当父会话种子跳过；末尾就是 end-seed（其后无事件）的会话不做跳过，
-  // 否则会把 resume 续写会话的全部真实调用（如 697 次的大会话）误当种子整体丢弃。
-  if (seedBoundary >= 0) {
-    const hasAfterSeed = events.some(event => typeof event.seq === 'number' && Number.isFinite(event.seq) && event.seq > seedBoundary)
-    if (!hasAfterSeed) seedBoundary = -1
-  }
   const fold: SessionFold = {
     total: emptyUsage(),
     byModel: new Map(),
@@ -855,9 +841,10 @@ export function foldSession(
   // 增量都重复携带工具名，只在首见时计一次调用。
   const toolSeen = new Set<string>()
   for (const event of events) {
-    // Fork 种子跳过：`seq < 边界` 的事件是父会话拷贝来的种子，已计过一次费，
-    // 不再折叠（多重 fork 链取最后一个 end-seed，见上方边界扫描）。
-    if (seedBoundary >= 0 && typeof event.seq === 'number' && Number.isFinite(event.seq) && event.seq < seedBoundary) {
+    // Fork 种子跳过：`seq < seedLength` 的事件是父会话拷贝来的种子，已计过一次费。
+    // 边界取持久化 header 而非扫描日志里的 end-seed：resume 每续写一段就追加一个
+    // end-seed，按最后一个 end-seed 扫描会把本会话自己的历史段误判为种子（issue #29）。
+    if (seedLength > 0 && typeof event.seq === 'number' && Number.isFinite(event.seq) && event.seq < seedLength) {
       continue
     }
     fold.lastActive = Math.max(fold.lastActive, event.time)
@@ -1235,7 +1222,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           const after = await stampOf(meta)
           if (stamp !== null && after !== stamp) continue
           // durable 边界：日志事件是外部 JSON，foldSession 内做运行时收窄。
-          const fold = foldSession(events as { type: string; time: number; data: unknown; seq: number }[], subscriptionProviders, officialProviderIds, routesOf(), searchEstimate)
+          // fork 血缘边界取 header.seedLength（resume 保持原 fork 值，不会误杀历史段）。
+          const fold = foldSession(events as { type: string; time: number; data: unknown; seq: number }[], subscriptionProviders, officialProviderIds, routesOf(), searchEstimate, meta.seedLength ?? 0)
           cache.set(id, { stamp, fold })
           folds.push({ id, ...(meta.cwd === undefined ? {} : { cwd: meta.cwd }), fold })
           included.add(id)
