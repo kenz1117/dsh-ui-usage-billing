@@ -105,12 +105,15 @@ export function guardLoopback(req: IncomingMessage, res: ServerResponse): boolea
  */
 const SETTINGS_NAMESPACE_PATTERN = /^[a-z][a-z0-9-]*$/
 
+/** 从宿主 `SettingsProvider.register` 签名反推命名空间参数类型（跟随宿主版本，不 import 已移除的 branded 名）。 */
+type NamespaceArg = Parameters<SettingsProvider['register']>[0]
+
 /** 校验并透过合法命名空间 id；非法值 fail-loud（与上游原行为一致）。 */
-function validateSettingsNamespace(value: string): string {
+function validateSettingsNamespace(value: string): NamespaceArg {
   if (!SETTINGS_NAMESPACE_PATTERN.test(value)) {
     throw new TypeError(`settings namespace "${value}" must match ${String(SETTINGS_NAMESPACE_PATTERN)}`)
   }
-  return value
+  return value as NamespaceArg
 }
 
 /** usage_stats 工具开关的设置命名空间 id（下端与 node 共用同一常量）。 */

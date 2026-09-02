@@ -343,19 +343,9 @@ const QUERIERS: readonly BalanceQuerier[] = [
   // 共用同一把 key，故两条 route 都注册，任一条配了 key 即可读出钱包。
   { route: 'zhipu', displayName: '智谱 AI', querier: queryZhipu },
   { route: 'zai-coding-cn', displayName: '智谱 AI', querier: queryZhipu },
-<<<<<<< HEAD
-=======
-  // TokenDance Space 钱包余额（issue #27）：与模型调用同一把 key，端点返回微元，
-  // 插件统一换算为元展示。route 名取常见候选，命中任一即查。
+  // TokenDance Space 钱包余额（issue #27 回移）：与模型调用同一把 key，微元换算为元。
   { route: 'tokendance', displayName: 'TokenDance', querier: queryTokenDance },
   { route: 'tokendance-space', displayName: 'TokenDance', querier: queryTokenDance },
-  // 腾讯云 TokenHub Token Plan 余量：管控面 API 需要 TC3 签名（云 API SecretId/SecretKey），
-  // 推理 route 名由用户自定义，注册常见命名候选，按 displayName 去重后命中任一即查。
-  { route: 'tencent-tokenhub', displayName: '腾讯云 TokenHub', querier: queryTencentTokenPlan },
-  { route: 'tokenhub', displayName: '腾讯云 TokenHub', querier: queryTencentTokenPlan },
-  { route: 'tencent', displayName: '腾讯云 TokenHub', querier: queryTencentTokenPlan },
-  { route: 'tencentcloud', displayName: '腾讯云 TokenHub', querier: queryTencentTokenPlan },
->>>>>>> 8de13d8 (feat: built-in TokenDance Space wallet balance adapter (issue #27))
 ]
 
 /**
