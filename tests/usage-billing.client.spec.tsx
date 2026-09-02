@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ComponentProps } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+import { bindSnapshotSelector } from './bind-snapshot-selector'
 import { UsageBilling, providerFromModelKey } from '../src/client/UsageBilling.tsx'
 import { createBillingBudgetStore } from '../src/client/budget-store.ts'
 import { zh } from '../src/client/locales.ts'
