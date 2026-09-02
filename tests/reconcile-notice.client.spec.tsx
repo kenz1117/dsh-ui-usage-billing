@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ComponentProps } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
+import { bindSnapshotSelector } from './bind-snapshot-selector'
 import { UsageBilling, fetchReconcile } from '../src/client/UsageBilling.tsx'
 import { createBillingBudgetStore } from '../src/client/budget-store.ts'
 import { zh } from '../src/client/locales.ts'
@@ -68,7 +68,7 @@ describe('余额差对账提示渲染', () => {
     fireEvent.click(container.querySelector('button')!)
     await screen.findByText('使用统计')
     // 诊断：字典应包含对账文案 key。
-    expect(zh['billing.reconcileDrift'] as string).toBeTruthy()
+    expect(zh['reconcileDrift'] as string).toBeTruthy()
     // 概览 Tab 顶部出现对账提示条。
     expect(await screen.findByTestId('billing-reconcile-notice')).toBeTruthy()
   })
