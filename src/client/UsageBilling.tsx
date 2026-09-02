@@ -275,8 +275,10 @@ function dailyBurnRate(byDay: Record<string, { cost: number }>, today: string): 
  */
 export function projectMonthCost(byDay: Record<string, { cost: number }>, monthPrefix: string, today: string): number {
   const dates = Object.keys(byDay).filter(d => d.startsWith(monthPrefix))
-  // 本月总天数：取当月最后一日的日号（用下月第 0 天）。
-  const monthLen = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
+  // 预测目标月的总天数：从 monthPrefix（YYYY-MM）解析年月，取当月最后一日的日号。
+  // 不能用系统当前月——月初查看上月完整账单时两者错位（如 9 月看 8 月会用 30 天）。
+  const [year, month] = monthPrefix.split('-').map(Number)
+  const monthLen = new Date(year, month, 0).getDate()
   const avg = dates.length > 0
     ? dates.reduce((sum, d) => sum + (byDay[d]?.cost ?? 0), 0) / dates.length
     : dailyBurnRate(byDay, today)
