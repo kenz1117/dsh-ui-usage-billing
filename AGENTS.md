@@ -40,6 +40,18 @@
 
 发版前在对应环境的宿主上装目标版本做真机验收（curl `/api/billing/usage-stats` 看 `pluginVersion`）。**不要共用家目录**——0.1.1 与 0.1.2 宿主凭据格式互污（历史事故）。
 
+## 本地开发模式（3080 日常环境）
+
+3080 的插件已切换为 **pnpm link 安装**（`dsh plugin --profile web add "link:/Users/ken/dsh-ui-usage-billing"`），node_modules 里是 symlink 指向本仓，市场识别为本地开发而非线上版本。开发工作流：改代码 → `./sync.sh`（main 线）或 `bash build.sh`（compat 线）构建 lib → 重启 3080 即生效，**不需要发 npm**——npm 发布只发生在发布节点，给外部用户。
+
+- **独立仓当前分支决定 3080 跑哪条线的代码**：main（alpha 线）匹配 alpha.3 宿主；**切到 compat 分支后开 3080 会让稳定线代码跑在预览宿主上，装载即崩**（client-runtime 不在 0.1.2 模块表）。切分支前先想清楚 3080 还开着。
+- **pnpm store 版本坑**：主仓 pin pnpm 11（store v11），profile 的 node_modules 由系统 pnpm 10.15（store v10）管理。在 profile 目录用错版本跑 pnpm 后，`dsh plugin add` 会报 `ERR_PNPM_UNEXPECTED_STORE`——解法：`cd ~/.dsh/profiles/web && rm -rf node_modules && pnpm install`（回到 10.15）再 add。
+
+## 多会话协作纪律
+
+- **同一时间只允许一个 AI 会话操作本仓工作区**。谁在做，其他会话等。
+- 接手别人的工作区时**先盘点再动手**：`git log`（对方提交了什么）、`git status`/`git diff`（未提交改动——可能是进行中的有效工作，如 issue 修复半成品，保留并完成，不要丢弃）。已提交的工作做交叉核对（对方可能不知道双线策略，把改动落错了分支）。
+
 ## 其他约定
 
 - 计费口径：历史事件一律按**事件发生时刻**生效的官方规则计价，官方调价按变更节点追加规则（见 `src/client/pricing.ts` 的时间线与 README「计费规则时间线」），不得统一套现行规则重算历史。
