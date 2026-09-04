@@ -780,32 +780,38 @@ function turnState(turns: Map<number, TurnState>, turn: number): TurnState {
 }
 
 /**
- * Fold one session's events into a {@link SessionFold}. 每个 LLM 调用归属到
- * 其 `assistant/message` 自带 `message.source` 记录的模型（agent-loop 落盘时从
- * 当次请求复制，每个调用一条，不依赖稀疏的 request/header）；source 缺失时
- * 兜底到最近一次 request/header 的状态。同时提取最新会话标题、最后活跃时间，
- * 并按轮次折叠每轮费用明细（turn/start → turn/end；调用按 (turn) 归组）。
- * @param events - the session's persisted events in log order.
- * @param subscriptionProviders - provider ids billed through subscription plans.
- * @param officialProviderIds - provider ids treated as the official DeepSeek channel
- *   (default: any `deepseek`-prefixed id). Others count as third-party.
- * @param routes - 当前 provider 路由视图（中转站归组）。
- * @param searchCallEstimateCny - 联网搜索请求的单次费用估算（人民币元；0 关闭估算）。
- * @param seedLength - 持久化的 fork 血缘边界（`SessionHeader.seedLength`，缺省 0）：
- *   fork 子会话日志里 `seq < seedLength` 的事件拷贝自父会话、已在父会话计费，
- *   折叠时跳过以避免重复计费；resume 续写复用同一会话日志（每次续写追加一个
- *   `session/end-seed` 标记）但 header 保持原 fork 值，历史段照常计费。
- * @returns the per-session fold (cached by the incremental aggregator).
+ * 跨事件折叠状态机：header/来源归因态、轮次与性能步骤、工具去重。
+ * 增量折叠（issue #30）时跨批次延续，由内存 cache 持有；不入 ledger
+ * （跨进程不序列化——重启后的会话退回全量重折，语义保守正确）。
  */
-export function foldSession(
-  events: readonly { type: string; time: number; data: never; seq?: number }[],
-  subscriptionProviders: ReadonlySet<string>,
-  officialProviderIds?: ReadonlySet<string>,
-  routes: Readonly<Record<string, ProviderRouteView>> = {},
-  searchCallEstimateCny: number = DEFAULT_SEARCH_CALL_ESTIMATE_CNY,
-  seedLength = 0,
-): SessionFold {
-  const fold: SessionFold = {
+interface FoldMachine {
+  key: string
+  subscription: boolean
+  official: boolean
+  siteBucket: string
+  turns: Map<number, TurnState>
+  steps: Map<string, StepPerf>
+  lastOpenStepKey: string | undefined
+  toolSeen: Set<string>
+}
+
+/** 空白折叠状态机（与全量折叠的初值逐字一致）。 */
+function freshMachine(): FoldMachine {
+  return {
+    key: 'other',
+    subscription: false,
+    official: false,
+    siteBucket: 'unknown',
+    turns: new Map(),
+    steps: new Map(),
+    lastOpenStepKey: undefined,
+    toolSeen: new Set(),
+  }
+}
+
+/** 空白 fold 的统一构造：foldSession 与聚合器的分片/增量路径共用同一字段初值。 */
+function freshFold(): SessionFold {
+  return {
     total: emptyUsage(),
     byModel: new Map(),
     byDay: new Map(),
@@ -821,20 +827,39 @@ export function foldSession(
     roles: { userChars: 0, toolChars: 0, inputCost: 0, outputCost: 0 },
     lastActive: 0,
   }
-  let key = 'other'
-  let subscription = false
-  let official = false
-  // 站点桶/模型/订阅/官方的 header 兜底状态：assistant/message 自带 source 时
-  // 以 source 为准；极旧格式日志缺 source 才落到这里维护的值。
-  let siteBucket = 'unknown'
-  const turns = new Map<number, TurnState>()
-  // 性能时间状态机：按 (turn, step) 归属 request/header 与内容 chunk 的时刻。
-  const steps = new Map<string, StepPerf>()
-  // 最近一次 step/start 打开的 step；request/header 不带 turn/step，需借此归属。
-  let lastOpenStepKey: string | undefined
-  // 已计数的工具调用（key = `${turn}:${step}:${index}`）：tool-call-delta 的每个
-  // 增量都重复携带工具名，只在首见时计一次调用。
-  const toolSeen = new Set<string>()
+}
+
+/**
+ * 把一批事件折进既有 fold（状态机跨批次延续）。全量折叠、超大会话的分片折叠、
+ * 活跃会话的 seq 增量折叠共用同一段循环体，保证三种路径的字段语义逐字一致。
+ * @param fold - 累计目标（原地修改）。
+ * @param machine - 折叠状态机：进入时为上一批次末态，返回时为本批次末态。
+ * @param events - 本批次事件（日志顺序）。
+ * @param subscriptionProviders - provider ids billed through subscription plans.
+ * @param officialProviderIds - 官方直连 provider 集合（undefined = 按 deepseek 前缀判定）。
+ * @param routes - 当前 provider 路由视图（中转站归组）。
+ * @param searchCallEstimateCny - 联网搜索请求的单次费用估算（人民币元）。
+ * @param seedLength - fork 血缘边界（seq 低于它的事件是父会话种子，跳过）。
+ */
+function foldInto(
+  fold: SessionFold,
+  machine: FoldMachine,
+  events: readonly { type: string; time: number; data: unknown; seq?: number }[],
+  subscriptionProviders: ReadonlySet<string>,
+  officialProviderIds: ReadonlySet<string> | undefined,
+  routes: Readonly<Record<string, ProviderRouteView>>,
+  searchCallEstimateCny: number,
+  seedLength: number,
+): void {
+  // 归因状态在进出时与 machine 同步：循环体保持与全量折叠完全相同的写法。
+  let key = machine.key
+  let subscription = machine.subscription
+  let official = machine.official
+  let siteBucket = machine.siteBucket
+  const turns = machine.turns
+  const steps = machine.steps
+  let lastOpenStepKey = machine.lastOpenStepKey
+  const toolSeen = machine.toolSeen
   for (const event of events) {
     // Fork 种子跳过：`seq < seedLength` 的事件是父会话拷贝来的种子，已计过一次费。
     // 边界取持久化 header 而非扫描日志里的 end-seed：resume 每续写一段就追加一个
@@ -1011,7 +1036,17 @@ export function foldSession(
       }
     }
   }
-  fold.turns = [...turns.values()]
+  // 归因状态写回 machine：后续批次（分片/增量）从这里继续。
+  machine.key = key
+  machine.subscription = subscription
+  machine.official = official
+  machine.siteBucket = siteBucket
+  machine.lastOpenStepKey = lastOpenStepKey
+}
+
+/** 从轮次状态派生 fold.turns（每批次结束后重派生；半开轮次跨批次保留）。 */
+function refreshTurns(fold: SessionFold, machine: FoldMachine): void {
+  fold.turns = [...machine.turns.values()]
     .filter(state => state.input > 0 || state.output > 0)
     .sort((a, b) => a.turn - b.turn)
     .map(state => ({
@@ -1025,6 +1060,38 @@ export function foldSession(
       startedAt: state.startedAt === Number.MAX_SAFE_INTEGER ? fold.lastActive : state.startedAt,
       ...(state.endedAt === undefined ? {} : { endedAt: state.endedAt }),
     }))
+}
+
+/**
+ * Fold one session's events into a {@link SessionFold}. 每个 LLM 调用归属到
+ * 其 `assistant/message` 自带 `message.source` 记录的模型（agent-loop 落盘时从
+ * 当次请求复制，每个调用一条，不依赖稀疏的 request/header）；source 缺失时
+ * 兜底到最近一次 request/header 的状态。同时提取最新会话标题、最后活跃时间，
+ * 并按轮次折叠每轮费用明细（turn/start → turn/end；调用按 (turn) 归组）。
+ * @param events - the session's persisted events in log order.
+ * @param subscriptionProviders - provider ids billed through subscription plans.
+ * @param officialProviderIds - provider ids treated as the official DeepSeek channel
+ *   (default: any `deepseek`-prefixed id). Others count as third-party.
+ * @param routes - 当前 provider 路由视图（中转站归组）。
+ * @param searchCallEstimateCny - 联网搜索请求的单次费用估算（人民币元；0 关闭估算）。
+ * @param seedLength - 持久化的 fork 血缘边界（`SessionHeader.seedLength`，缺省 0）：
+ *   fork 子会话日志里 `seq < seedLength` 的事件拷贝自父会话、已在父会话计费，
+ *   折叠时跳过以避免重复计费；resume 续写复用同一会话日志（每次续写追加一个
+ *   `session/end-seed` 标记）但 header 保持原 fork 值，历史段照常计费。
+ * @returns the per-session fold (cached by the incremental aggregator).
+ */
+export function foldSession(
+  events: readonly { type: string; time: number; data: unknown; seq?: number }[],
+  subscriptionProviders: ReadonlySet<string>,
+  officialProviderIds?: ReadonlySet<string>,
+  routes: Readonly<Record<string, ProviderRouteView>> = {},
+  searchCallEstimateCny: number = DEFAULT_SEARCH_CALL_ESTIMATE_CNY,
+  seedLength = 0,
+): SessionFold {
+  const fold = freshFold()
+  const machine = freshMachine()
+  foldInto(fold, machine, events, subscriptionProviders, officialProviderIds, routes, searchCallEstimateCny, seedLength)
+  refreshTurns(fold, machine)
   return fold
 }
 
@@ -1125,7 +1192,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
     ? undefined
     : new Set(options.officialProviderIds)
   const maxCacheSessions = options.maxCacheSessions ?? DEFAULT_MAX_CACHE_SESSIONS
-  const cache = new Map<string, { stamp: string | null; fold: SessionFold }>()
+  // 内存 cache 条目：fold 是 Map/Set 重表示；machine + lastSeq 是增量折叠游标
+  // （issue #30），仅本进程内有效——ledger 恢复的行不带 machine，退回全量重折。
+  const cache = new Map<string, { stamp: string | null; fold: SessionFold; machine?: FoldMachine; lastSeq?: number }>()
   // Durable rows stay JSON-safe in memory. The LRU above still bounds the
   // heavier Map/Set representation used for active-session incremental folds.
   const ledger = new Map<string, UsageLedgerSession>()
@@ -1139,6 +1208,32 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
   const routesOf = (): Readonly<Record<string, ProviderRouteView>> => options.resolveRoutes?.() ?? {}
   // 联网搜索请求的单次费用估算（issue #15）；0 = 关闭估算（调用仍计数，不计费）。
   const searchEstimate = options.searchCallEstimateCny ?? DEFAULT_SEARCH_CALL_ESTIMATE_CNY
+  // 全量重折的分片大小：每片折叠后让出事件循环，超大会话不再连续阻塞宿主 RPC（issue #30）。
+  const FOLD_CHUNK_EVENTS = 8000
+
+  /** 把一份（全量或增量）折叠结果登记进 durable ledger；内容无变化时不落盘。 */
+  const recordLedger = (id: string, cwd: string | undefined, stamp: string | null, fold: SessionFold): void => {
+    if (options.ledger === undefined) return
+    const entry: UsageLedgerSession = {
+      id,
+      ...(cwd === undefined ? {} : { cwd }),
+      ...(stamp === null ? {} : { stamp }),
+      foldVersion: FOLD_VERSION,
+      fold: serializeFold(fold),
+    }
+    const row = ledger.get(id)
+    // A no-locate backend has no stable stamp, so compare the serialized row;
+    // located logs use the cheap stamp and metadata check.
+    const changed = row === undefined
+      || row.stamp !== entry.stamp
+      || row.cwd !== entry.cwd
+      || row.foldVersion !== entry.foldVersion
+      || (stamp === null && JSON.stringify(row.fold) !== JSON.stringify(entry.fold))
+    if (changed) {
+      ledger.set(id, entry)
+      ledgerNeedsSave = true
+    }
+  }
 
   const ensureLedgerLoaded = async (): Promise<void> => {
     if (ledgerLoaded || options.ledger === undefined) return
@@ -1211,38 +1306,74 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         // 单个损坏/不可读的会话日志（如 zstd torn frame）不能拖垮整份聚合：
         // 跳到下一个会话，避免面板整体归零。失败会话放进 skipped 末尾告警。
         try {
+          const cwd = meta.cwd
+          // 重启首折快路径：账本行的失效键与当前日志完全一致（同算法版本）时
+          // 零读取复用——几十个历史会话的重启不再各自全量解压一遍。
+          const ledgerRow = ledger.get(id)
+          if (ledgerRow !== undefined && ledgerRow.stamp !== undefined && stamp !== null
+            && ledgerRow.stamp === stamp && (ledgerRow.foldVersion ?? 1) === FOLD_VERSION) {
+            const fold = deserializeFold(ledgerRow.fold)
+            // 不带 machine：下次日志变化时走全量重折（状态机不可跨进程恢复，保守正确）。
+            cache.set(id, { stamp, fold })
+            folds.push({ id, ...(cwd === undefined ? {} : { cwd }), fold })
+            included.add(id)
+            continue
+          }
+          const previous = cache.get(id)
+          if (previous?.machine !== undefined && previous.lastSeq !== undefined) {
+            // seq 增量折叠（issue #30）：活跃会话持续追加使 mtime+size 键每轮失效，
+            // 全量重读会让宿主事件循环连续阻塞十几秒、session/list 全部挂起。
+            // 只读取上次折叠之后的新增段，折进既有 fold（状态机跨批次延续）。
+            const from = previous.lastSeq + 1
+            const { events } = await persistence.readFrom(meta.id, from)
+            const after = await stampOf(meta)
+            if (stamp !== null && after !== stamp) {
+              // 竞态：本批增量可能折进了半截内容，且 fold 已被原地修改——
+              // 只能整条丢弃（含被污染的 fold），下一轮全量重折。
+              cache.delete(id)
+              continue
+            }
+            const first = (events[0] as { seq?: number } | undefined)?.seq
+            if (events.length === 0 || first !== from) {
+              // 起始 seq 之后无事件 / seq 不连续：日志被截断或重写，增量前提
+              // 失效——丢弃缓存退回全量。
+              cache.delete(id)
+              continue
+            }
+            foldInto(previous.fold, previous.machine, events as { type: string; time: number; data: unknown; seq: number }[], subscriptionProviders, officialProviderIds, routesOf(), searchEstimate, meta.seedLength ?? 0)
+            refreshTurns(previous.fold, previous.machine)
+            const last = events[events.length - 1] as { seq?: number }
+            previous.lastSeq = typeof last.seq === 'number' ? last.seq : previous.lastSeq
+            previous.stamp = stamp
+            // LRU touch：增量命中的会话移到缓存末尾，避免被上限清理误淘汰后退化全量。
+            cache.delete(id)
+            cache.set(id, previous)
+            folds.push({ id, ...(cwd === undefined ? {} : { cwd }), fold: previous.fold })
+            included.add(id)
+            recordLedger(id, cwd, stamp, previous.fold)
+            continue
+          }
+          // 全量重折（首次 / 缓存淘汰 / 日志重写）：分片折叠并周期性让出事件循环，
+          // 超大会话不再把宿主 RPC 连续挂死十几秒。
           const { events } = await persistence.readFrom(meta.id, 0)
           // P0-4 竞态加固：读取期间日志被写入（mtime+size 变化），本轮的折叠可能基于
           // 半截内容，丢弃待下一轮重读，避免把不完整事件当作真实用量输出。
           const after = await stampOf(meta)
           if (stamp !== null && after !== stamp) continue
-          // durable 边界：日志事件是外部 JSON，foldSession 内做运行时收窄。
+          // durable 边界：日志事件是外部 JSON，foldInto 内做运行时收窄。
           // fork 血缘边界取 header.seedLength（resume 保持原 fork 值，不会误杀历史段）。
-          const fold = foldSession(events as { type: string; time: number; data: never; seq: number }[], subscriptionProviders, officialProviderIds, routesOf(), searchEstimate, meta.seedLength ?? 0)
-          cache.set(id, { stamp, fold })
-          folds.push({ id, ...(meta.cwd === undefined ? {} : { cwd: meta.cwd }), fold })
-          included.add(id)
-          if (options.ledger !== undefined) {
-            const entry: UsageLedgerSession = {
-              id,
-              ...(meta.cwd === undefined ? {} : { cwd: meta.cwd }),
-              ...(stamp === null ? {} : { stamp }),
-              foldVersion: FOLD_VERSION,
-              fold: serializeFold(fold),
-            }
-            const previous = ledger.get(id)
-            // A no-locate backend has no stable stamp, so compare the serialized row;
-            // located logs use the cheap stamp and metadata check.
-            const changed = previous === undefined
-              || previous.stamp !== entry.stamp
-              || previous.cwd !== entry.cwd
-              || previous.foldVersion !== entry.foldVersion
-              || (stamp === null && JSON.stringify(previous.fold) !== JSON.stringify(entry.fold))
-            if (changed) {
-              ledger.set(id, entry)
-              ledgerNeedsSave = true
-            }
+          const fold = freshFold()
+          const machine = freshMachine()
+          for (let start = 0; start < events.length; start += FOLD_CHUNK_EVENTS) {
+            foldInto(fold, machine, events.slice(start, start + FOLD_CHUNK_EVENTS) as { type: string; time: number; data: unknown; seq: number }[], subscriptionProviders, officialProviderIds, routesOf(), searchEstimate, meta.seedLength ?? 0)
+            if (start + FOLD_CHUNK_EVENTS < events.length) await new Promise<void>(resolve => { setImmediate(resolve) })
           }
+          refreshTurns(fold, machine)
+          const last = events[events.length - 1] as { seq?: number } | undefined
+          cache.set(id, { stamp, fold, machine, ...(last !== undefined && typeof last.seq === 'number' ? { lastSeq: last.seq } : {}) })
+          folds.push({ id, ...(cwd === undefined ? {} : { cwd }), fold })
+          included.add(id)
+          recordLedger(id, cwd, stamp, fold)
         } catch (error) {
           skipped.push(id)
           console.warn('[usage-billing] skip unreadable session', id, error)

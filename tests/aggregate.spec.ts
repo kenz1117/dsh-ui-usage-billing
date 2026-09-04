@@ -6,7 +6,7 @@
  * (the stacked trend chart's input).
  */
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -915,6 +915,120 @@ describe('createUsageAggregator (incremental cache)', () => {
     const empty = await createUsageAggregator(persistence2).aggregate()
     expect(empty.total.calls).toBe(0)
     expect(empty.bySession).toHaveLength(0)
+  })
+
+  const T0 = Date.UTC(2026, 7, 15, 4, 0, 0)
+
+  /** 一段含完整状态机路径的事件：header 归因、source 权威归属、轮次、step 性能、工具去重。 */
+  function firstBatch(): SessionEvent[] {
+    return [
+      header(1, 'deepseek-v4-flash'),
+      { type: 'turn/start', seq: 2, time: T0, data: { turn: 1 } } as unknown as SessionEvent,
+      { type: 'step/start', seq: 3, time: T0 + 100, data: { turn: 1, step: 1 } } as unknown as SessionEvent,
+      {
+        type: 'assistant/chunk', seq: 4, time: T0 + 200,
+        data: { turn: 1, step: 1, chunk: { type: 'tool-call-delta', index: 0, name: 'read_file' } },
+      } as unknown as SessionEvent,
+      {
+        type: 'assistant/chunk', seq: 5, time: T0 + 300,
+        data: { turn: 1, step: 1, chunk: { type: 'tool-call-delta', index: 0, name: 'read_file' } },
+      } as unknown as SessionEvent,
+      message(6, T0 + 400, USAGE),
+    ]
+  }
+
+  /** 追加批次：新轮次、source 缺失（落 header 兜底归属）、同工具新调用。 */
+  function appendedBatch(from: number): SessionEvent[] {
+    return [
+      { type: 'turn/start', seq: from, time: T0 + 1_000, data: { turn: 2 } } as unknown as SessionEvent,
+      { type: 'step/start', seq: from + 1, time: T0 + 1_100, data: { turn: 2, step: 1 } } as unknown as SessionEvent,
+      {
+        type: 'assistant/chunk', seq: from + 2, time: T0 + 1_200,
+        data: { turn: 2, step: 1, chunk: { type: 'tool-call-delta', index: 0, name: 'grep' } },
+      } as unknown as SessionEvent,
+      {
+        type: 'assistant/message', seq: from + 3, time: T0 + 1_300,
+        data: { turn: 2, step: 1, message: { role: 'assistant', content: [] }, usage: USAGE },
+      } as unknown as SessionEvent,
+    ]
+  }
+
+  it('folds an appended batch identically to a single full fold (issue #30)', async () => {
+    vi.useFakeTimers()
+    const logs: Record<string, SessionEvent[]> = { a: firstBatch() }
+    const { persistence, reads } = await fileBackedPersistence(logs)
+    const aggregator = createUsageAggregator(persistence)
+    const first = await aggregator.aggregate()
+    expect(reads.a).toBe(1)
+
+    // 活跃会话追加一段事件：下一次聚合只增量折叠追加段（仍是一次 readFrom 调用）。
+    logs.a = [...firstBatch(), ...appendedBatch(7)]
+    await writeFile(`${join(root!, 'a.jsonl')}`, 'appended')
+    vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
+    const second = await aggregator.aggregate()
+    expect(reads.a).toBe(2)
+    expect(second.total.calls).toBe(2)
+
+    // 等价性：同一份完整日志一次全量折叠的结果必须与「先折前半、增量折后半」逐字段一致。
+    const allAtOnce = await createUsageAggregator(await fileBackedPersistence({ a: logs.a }).then(r => r.persistence)).aggregate()
+    expect(second.total).toEqual(allAtOnce.total)
+    expect(second.byModel).toEqual(allAtOnce.byModel)
+    expect(second.byDay).toEqual(allAtOnce.byDay)
+    expect(second.byTool).toEqual(allAtOnce.byTool)
+    expect(second.bySession).toEqual(allAtOnce.bySession)
+  })
+
+  it('falls back to a full re-fold when the appended log has a sequence gap (issue #30)', async () => {
+    vi.useFakeTimers()
+    const logs: Record<string, SessionEvent[]> = { a: firstBatch() }
+    const { persistence, reads } = await fileBackedPersistence(logs)
+    // 生产配置始终带 ledger：跳号当轮该会话由 durable 行兜底，不缺席。
+    const store = fakeLedgerStore([])
+    const aggregator = createUsageAggregator(persistence, { ledger: store.store })
+    await aggregator.aggregate()
+
+    // 追加段 seq 跳号（日志被截断/重写）：增量前提失效——当轮丢弃该会话，
+    // 由上一轮的账本行兜底；下一轮已无缓存游标，全量重建与「一次全量折叠」一致。
+    logs.a = [...firstBatch(), ...appendedBatch(99)]
+    await writeFile(`${join(root!, 'a.jsonl')}`, 'rewritten')
+    vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
+    const skippedRound = await aggregator.aggregate()
+    expect(reads.a).toBe(2)
+    expect(skippedRound.total.calls).toBe(1)
+
+    vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
+    const rebuilt = await aggregator.aggregate()
+    expect(reads.a).toBe(3)
+    expect(rebuilt.total.calls).toBe(2)
+
+    const direct = await createUsageAggregator(await fileBackedPersistence({ a: logs.a }).then(r => r.persistence)).aggregate()
+    expect(rebuilt.total).toEqual(direct.total)
+  })
+
+  it('serves a matching durable ledger row without reading the log (issue #30)', async () => {
+    vi.useFakeTimers()
+    const logs: Record<string, SessionEvent[]> = { a: firstBatch() }
+    const { persistence, reads, paths } = await fileBackedPersistence(logs)
+    const info = await stat(paths.a!)
+    const store = fakeLedgerStore([{
+      id: 'a',
+      stamp: `${String(info.mtimeMs)}:${String(info.size)}`,
+      foldVersion: FOLD_VERSION,
+      fold: (() => { const row = legacyFold(); row.total.calls = 7; return row })(),
+    }])
+    const aggregator = createUsageAggregator(persistence, { ledger: store.store })
+    const stats = await aggregator.aggregate()
+    // 日志未被触碰：账本行（同 stamp、同算法版本）直接复用，零读取。
+    expect(reads.a ?? 0).toBe(0)
+    expect(stats.total.calls).toBe(7)
+
+    // 日志追加后：账本行恢复不带增量游标，退回全量重折按真实日志计。
+    logs.a = [...firstBatch(), ...appendedBatch(7)]
+    await writeFile(paths.a!, 'appended')
+    vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
+    const refolded = await aggregator.aggregate()
+    expect(reads.a).toBe(1)
+    expect(refolded.total.calls).toBe(2)
   })
 })
 
