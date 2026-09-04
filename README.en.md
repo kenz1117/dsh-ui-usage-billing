@@ -218,6 +218,16 @@ npm publish --access public
 
 The host discovers the browser side automatically via the `dsh.client` declaration (`platform: web`) and the `exports["./client"]` bundle in `package.json` — no registry registration needed.
 
+## 🔐 Permissions & Compatibility (DSH STORE)
+
+- **Permission level: high**: reads durable session logs (files), calls official multi-vendor / subscription / balance / pricing APIs (network), reads `apiKeyEnv` via the credentials seam (credentials), writes the ledger under `~/.dsh` (persistent state); **no** command execution / shell.
+- **Update channel: `user-reviewed`**: with file / network / credential capabilities, DSH STORE requires local manual confirmation on every install; review the repo, pinned commit, lifecycle scripts, and impact scope before installing.
+- **Compatibility**: the preview line (npm `latest`/`alpha`, 1.0.x) targets DSH `0.1.2` (including `0.1.2-rc.1`); the stable line (npm `stable`, 1.1.x) targets legacy hosts `0.1.0-rc.8` ~ `0.1.1-rc.2`. Per-version declarations live in `package.json` under `dsh.compatibility`; the two-line mapping and monitoring mechanism are documented in [COMPATIBILITY.md](COMPATIBILITY.md). Node.js `^22.19.0 || >=24.0.0`.
+- **Lifecycle**: no `preinstall` / `install` / `postinstall` / `prepare` (ready on install).
+- **No impersonation**: adds only its own entry id `ui-usage-billing`; `@deepseek-ai/dsh-*` packages are `peerDependencies` only (no reinstall / replace / shadowing of official components); the package uses the third-party namespace `@kenz1117/*`.
+- **Build artifacts**: runtime files `lib/*` and `cordis.patch.yml` are committed at the pinned commit and declared in `files`.
+- **Source anchor**: sources are locked to a pinned commit on the GitHub default branch and traceable. DSH STORE automation re-reads the default-branch HEAD roughly every 8 hours as the new pinned commit and decides re-review by SemVer change.
+
 ## 🤖 Model Experience
 
 None. This plugin is a pure UI surface: it registers no tools, injects no system prompt, writes no model-visible events to the session log, and touches no session KV cache; usage statistics are aggregated by the server from existing session logs, whose content is owned by other packages.

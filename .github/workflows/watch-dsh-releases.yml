@@ -1,0 +1,45 @@
+# 宿主版本监控：每日对照 npm 上 @deepseek-ai/dsh 的发布与 dist-tags，
+# 与两条发布线（main=预览线 / compat/stable-dsh=稳定线）的兼容矩阵核对，
+# 发现漂移时自动开/更新 label=compat-drift 的 issue。
+# 校验规则本身在 scripts/check-compat.mjs，本地可随时手跑。
+name: watch-dsh-releases
+
+on:
+  schedule:
+    - cron: "17 1 * * *" # 每日 09:17（Asia/Shanghai）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      # main：预览线矩阵 + 校验脚本本体
+      - uses: actions/checkout@v4
+      # compat/stable-dsh：稳定线矩阵（只取 package.json 参与联查）
+      - uses: actions/checkout@v4
+        with:
+          ref: compat/stable-dsh
+          path: compat-line
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: node scripts/check-compat.mjs --peer compat-line/package.json --report drift-report.md
+      - name: 漂移时开/更新 issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create compat-drift --description "宿主版本与兼容矩阵漂移" --color B60205 --force
+          existing=$(gh issue list --label compat-drift --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file drift-report.md
+          else
+            gh issue create --title "[自动] 宿主版本漂移：$(date -u +%F)" --label compat-drift --body-file drift-report.md
+          fi

@@ -8,3 +8,6 @@ lib/types/**/*.js.map
 lib/types/**/*.d.ts.map
 # 设计过程稿件仅本地留存。
 usage-billing-redesign/
+
+# 本地设计稿（不入库，仅本地参考）
+.design/

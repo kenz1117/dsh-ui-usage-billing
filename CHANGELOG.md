@@ -2,9 +2,16 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前为双线发布：**预览线 1.0.x**（npm `alpha`，适配 DSH 0.1.2-alpha.x）与**稳定线 1.1.x**（npm `latest`，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2，维护于 `compat/stable-dsh` 分支）。DSH 0.1.2 正式版发布后两线合并。
+当前为双线发布：**预览线 1.0.x**（npm `latest` + `alpha`，适配 DSH 0.1.2 系；宿主 `latest` 自 0.1.2-rc.1 起指向 0.1.2 系，插件 `latest` 自 v1.0.26 起跟随移交预览线）与**稳定线 1.1.x**（npm `stable`，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2，维护于 `compat/stable-dsh` 分支）。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
-## 预览线（1.0.x，适配 DSH 0.1.2-alpha）
+## 预览线（1.0.x，适配 DSH 0.1.2 系）
+
+### 未发布（v1.0.26）
+
+- 声明 DSH `0.1.2-rc.1` 兼容；新增 `dsh` SemVer 区间声明（`>=0.1.2-alpha.1`），市场可按区间拦截不匹配宿主（issue #31 根因修复）
+- devDependencies 的 `@deepseek-ai/dsh-*` pin 升级至 `0.1.2-rc.1`
+- 新增 [COMPATIBILITY.md](COMPATIBILITY.md)（双线兼容单一事实源）、`scripts/check-compat.mjs`（矩阵校验脚本）、`watch-dsh-releases` 每日监控 workflow（漂移自动开 `compat-drift` issue）
+- 文档：README 兼容段改为双线指引；英文 README 补齐 DSH STORE 权限与兼容声明章节
 
 ### v1.0.25（2026-09-04）
 

@@ -8,8 +8,10 @@
 
 | 线 | 宿主范围 | 版本号 | npm tag | 兼容矩阵声明 |
 |---|---|---|---|---|
-| **稳定线**（主战场） | 0.1.0-rc.8 ~ 0.1.1-rc.2（官方正式版） | `1.1.x` | `latest` | 旧三件套精确 compatible |
-| **预览线** | 0.1.2-alpha.1 ~ 最新预览版（当前 alpha.5） | `1.0.x` | `alpha` | `0.1.2-alpha.*` 逐个声明 |
+| **稳定线**（旧代际维护） | 0.1.0-rc.8 ~ 0.1.1-rc.2（官方正式版） | `1.1.x` | `stable` | rc 三件套精确 compatible + `dsh` 区间（`<0.1.2-0` 封顶） |
+| **预览线**（主战场） | 0.1.2-alpha.1 ~ 最新预览版（当前 rc.1） | `1.0.x` | `latest` + `alpha` | `0.1.2-*` 逐个声明 + `dsh: >=0.1.2-alpha.1` |
+
+**标签策略：插件 `latest` 永远跟随宿主 `latest` 所在代际**（宿主 latest 自 0.1.2-rc.1 起为 0.1.2 系，故插件 latest 自 v1.0.26 起移交预览线，稳定线退到 `stable` tag）。兼容状态与区间写法的完整事实源见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 原则：
 
@@ -26,6 +28,12 @@
 3. **升级本机宿主**：harness 仓库 checkout 目标 tag（先 stash 未提交改动）→ `pnpm install` → headless 起服务（`pnpm dsh --profile web --port 3080 --no-open > /tmp/dsh-<版本>.log 2>&1`，日志重定向避免管道 SIGPIPE 掉服务）→ 浏览器带 token 打开，验收清单：侧边栏胶囊、仪表盘弹窗、余额行、账单数字、Console 零报错。
 4. **通过后才扩兼容声明**（package.json `dshReleases` 逐版本精确 compatible）+ 同步升 devDependencies 的 `@deepseek-ai/dsh-*` pin 版本 + `pnpm install` 重锁。
 5. **双线判定发版**：只有预览线变 → 只发 preview 线；只有正式线变 → 只发 stable 线；都变 → 按发布纪律配对发。验证过哪个版本才能声明哪个版本。
+6. **发版即切 dist-tag**：预览线发布后 `npm dist-tag add @kenz1117/dsh-ui-usage-billing@<版本> latest alpha`；稳定线发布后切 `stable`。发完跑 `node scripts/check-compat.mjs --peer <compat package.json>` 复核双线矩阵。
+
+## 宿主版本监控
+
+- [watch-dsh-releases.yml](.github/workflows/watch-dsh-releases.yml) 每日 09:17（Asia/Shanghai）跑 [scripts/check-compat.mjs](scripts/check-compat.mjs)，对照 npm registry 校验双线矩阵，漂移自动开/更新 `compat-drift` issue——宿主发新版最迟 24 小时内暴露，不允许再靠用户报 issue 发现。
+- 本地随时可跑同一脚本（`--peer` 指到 compat 分支的 package.json 做双线联查）；发布前后各跑一次。
 
 ## 发布纪律
 
@@ -37,8 +45,8 @@
 
 ## 分支与构建
 
-- `main`：预览线开发（0.1.2 面），发布走 npm `alpha` tag。
-- `compat/stable-dsh`：稳定线（0.1.1 面，从 v1.0.11 分叉），发布走 npm `latest` tag。修复用 cherry-pick 同步两条线。
+- `main`：预览线开发（0.1.2 面），发布走 npm `latest` + `alpha` tag。
+- `compat/stable-dsh`：稳定线（0.1.1 面，从 v1.0.11 分叉），发布走 npm `stable` tag。修复用 cherry-pick 同步两条线。
 - main 构建：`./sync.sh`（含 256KiB Store 单文件体积门禁，>245KiB 警告）；compat 构建：`bash build.sh`（同门禁）。
 
 ## 本机测试环境（三套，端口/家目录全隔离）
@@ -57,7 +65,7 @@
 
 - **独立仓当前分支决定 3080 跑哪条线的代码**：main（alpha 线）匹配 alpha.5 宿主；**切到 compat 分支后开 3080 会让稳定线代码跑在预览宿主上，装载即崩**（client-runtime 不在 0.1.2 模块表）。切分支前先想清楚 3080 还开着。
 - **pnpm store 版本坑**：主仓 pin pnpm 11（store v11），profile 的 node_modules 由系统 pnpm 10.15（store v10）管理。在 profile 目录用错版本跑 pnpm 后，`dsh plugin add` 会报 `ERR_PNPM_UNEXPECTED_STORE`——解法：`cd ~/.dsh/profiles/web && rm -rf node_modules && pnpm install`（回到 10.15）再 add。
-- **宿主升级时同步升独立仓依赖**：devDependencies 里 pin 的 `@deepseek-ai/dsh-*` 版本要跟宿主代际一致（当前 0.1.2-alpha.5），改完 `pnpm install` 重锁 pnpm-lock.yaml。
+- **宿主升级时同步升独立仓依赖**：devDependencies 里 pin 的 `@deepseek-ai/dsh-*` 版本要跟宿主代际一致（当前 0.1.2-rc.1），改完 `pnpm install` 重锁 pnpm-lock.yaml。
 - **本仓测试可独立安装运行**（`pnpm i && pnpm test`），不依赖 harness 工作区。两个已知坑：官方发布的 `@deepseek-ai/dsh-client-test-runtime` 引用了 ui-renderer 未发布的 src/ 文件（registry 安装必坏），client 测试用本仓 `tests/bind-snapshot-selector.ts` 等价替代；宿主 UI 包 lib 产物内联 `.module.css`，靠 `vitest.config.ts` 的 `server.deps.inline` 走 vite 管线，node 原生加载会报 `Unknown file extension .css`。
 
 ## 多会话协作纪律
