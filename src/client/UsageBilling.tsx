@@ -282,8 +282,8 @@ export function projectMonthCost(byDay: Record<string, { cost: number }>, monthP
   const dates = Object.keys(byDay).filter(d => d.startsWith(monthPrefix))
   // 预测目标月的总天数：从 monthPrefix（YYYY-MM）解析年月，取当月最后一日的日号。
   // 不能用系统当前月——月初查看上月完整账单时两者错位（如 9 月看 8 月会用 30 天）。
-  const [year, month] = monthPrefix.split('-').map(Number)
-  const monthLen = new Date(year, month, 0).getDate()
+  const parts = monthPrefix.split('-')
+  const monthLen = new Date(Number(parts[0]), Number(parts[1]), 0).getDate()
   const avg = dates.length > 0
     ? dates.reduce((sum, d) => sum + (byDay[d]?.cost ?? 0), 0) / dates.length
     : dailyBurnRate(byDay, today)
@@ -3280,7 +3280,7 @@ const LIVE_COST_POSITIONS = ['below', 'above', 'toolbar'] as const
 function PositionMenu({ liveCostPrefs, onLiveCostPrefs, t }: {
   liveCostPrefs: LiveCostBarPrefs
   onLiveCostPrefs: (next: LiveCostBarPrefs) => void
-  t: PropsLocale<typeof NS>
+  t: (key: UsageBillingKey, params?: Record<string, unknown>) => string
 }): React.ReactNode {
   const [open, setOpen] = useState(false)
   const labels: Record<LiveCostBarPrefs['position'], string> = {

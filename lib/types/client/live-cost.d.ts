@@ -78,4 +78,14 @@ export interface LiveCostBarProps {
  * @param props - framework session identity and locale.
  */
 export declare function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode;
+/**
+ * Render the compact inline chip for the composer tool row (position
+ * 「模型选择前」). Occupies a fixed minimal footprint — tier glyph + session
+ * spend — so it never crowds the model picker; the full breakdown (switch
+ * countdown, turn cost, quota alerts) rides the host Tooltip primitive (the
+ * native title never renders in the webview), and a low quota tints the chip
+ * amber/red instead of growing it.
+ * @param props - framework session identity and locale.
+ */
+export declare function LiveCostChip({ sessionId, t }: LiveCostBarProps): React.ReactNode;
 //# sourceMappingURL=live-cost.d.ts.map

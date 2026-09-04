@@ -82,8 +82,10 @@ export declare function saveSiteListPrefs(prefs: SiteListPrefs): void;
 export interface LiveCostBarPrefs {
     /** 是否显示输入框下方的即时代费条胶囊（默认 true：保持历史行为）。 */
     show: boolean;
+    /** 胶囊位置：below = 输入框下方（默认）；above = 输入框上方；toolbar = 工具行模型选择前的内联 chip。 */
+    position: 'below' | 'above' | 'toolbar';
 }
-/** 默认即时代费条偏好：显示（升级用户零感知）。 */
+/** 默认即时代费条偏好：显示在输入框下方（升级用户零感知）。 */
 export declare const DEFAULT_LIVE_COST_BAR_PREFS: LiveCostBarPrefs;
 /** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
 export declare const LIVE_COST_BAR_STORAGE_KEY = "dsh.ui-usage-billing.livecost";

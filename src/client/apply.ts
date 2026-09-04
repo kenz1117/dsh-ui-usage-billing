@@ -12,6 +12,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 // Type-only: pulls the ui-sidebar SlotMap merge (the sidebar.footer.action entry).
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
@@ -162,22 +163,24 @@ export function apply(ctx: Context): void {
 
   // 即时代费用条：挂在会话 composer 的 dock（stats-line 家族座位），随输入框
   // 常驻显示当前会话累计费用与最新一轮费用，无需打开完整仪表盘。
-  // 组件经框架标准 kit 注入 sessionId，与 StatsLine 同姿态。
-  // 用 inject 往宿主（ui-conversation）已声明的 composer.dock 注入条目，而非 register 声明。
+  // 用 inject 往宿主（ui-conversation）已声明的 composer.dock 注入条目，而非 register 声明；
+  // sessionId 由会话作用域经 inject 提供给组件。
   ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
     name: 'conversation.composer.dock',
     id: 'usage-billing-cost',
     order: 0,
     locale: NS,
+    inject: (sessionId: string) => ({ sessionId: SessionId(sessionId) }),
   }, LiveCostBar))
 
-  // 工具行内联 chip（位置「模型选择前」）：宿主 input.right list 槽，
+  // 工具行内联 chip（位置「输入框内部」）：宿主 input.right list 槽，
   // 渲染在提交动作/模型选择器之前。与 dock 条目按位置偏好互斥渲染。
   ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
     name: 'conversation.input.right',
     id: 'usage-billing-cost-chip',
     order: 0,
     locale: NS,
+    inject: (sessionId: string) => ({ sessionId: SessionId(sessionId) }),
   }, LiveCostChip))
 
   // 对话完成提醒：会话 running→completed 迁移时弹一条桌面通知（默认关闭，

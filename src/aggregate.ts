@@ -12,6 +12,7 @@
  */
 
 import { stat } from 'node:fs/promises'
+import { SessionLogOffset } from '@deepseek-ai/dsh-session/types'
 import type { SessionHeader } from '@deepseek-ai/dsh-session/types'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
@@ -844,7 +845,8 @@ function freshFold(): SessionFold {
  * @param officialProviderIds - 官方直连 provider 集合（undefined = 按 deepseek 前缀判定）。
  * @param routes - 当前 provider 路由视图（中转站归组）。
  * @param searchCallEstimateCny - 联网搜索请求的单次费用估算（人民币元）。
- * @param seedLength - fork 血缘边界（seq 低于它的事件是父会话种子，跳过）。
+ * @param seedLength - fork 血缘边界（seq 低于它的事件是父会话种子，跳过）；
+ *   来源为存储元数据的 `inheritedEventCount`。
  */
 function foldInto(
   fold: SessionFold,
@@ -1079,10 +1081,10 @@ function refreshTurns(fold: SessionFold, machine: FoldMachine): void {
  *   (default: any `deepseek`-prefixed id). Others count as third-party.
  * @param routes - 当前 provider 路由视图（中转站归组）。
  * @param searchCallEstimateCny - 联网搜索请求的单次费用估算（人民币元；0 关闭估算）。
- * @param seedLength - 持久化的 fork 血缘边界（`SessionHeader.seedLength`，缺省 0）：
+ * @param seedLength - 持久化的 fork 血缘边界（存储元数据 `inheritedEventCount`，缺省 0）：
  *   fork 子会话日志里 `seq < seedLength` 的事件拷贝自父会话、已在父会话计费，
  *   折叠时跳过以避免重复计费；resume 续写复用同一会话日志（每次续写追加一个
- *   `session/end-seed` 标记）但 header 保持原 fork 值，历史段照常计费。
+ *   `session/end-seed` 标记）但继承切割保持原值，历史段照常计费。
  * @returns the per-session fold (cached by the incremental aggregator).
  */
 export function foldSession(
@@ -1330,7 +1332,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
             // 全量重读会让宿主事件循环连续阻塞十几秒、session/list 全部挂起。
             // 只读取上次折叠之后的新增段，折进既有 fold（状态机跨批次延续）。
             const from = previous.lastSeq + 1
-            const { events } = await persistence.readFrom(meta.id, from)
+            const { events, inheritedEventCount } = await persistence.readFrom(meta.id, SessionLogOffset(from))
             const after = await stampOf(meta)
             if (stamp !== null && after !== stamp) {
               // 竞态：本批增量可能折进了半截内容，且 fold 已被原地修改——
@@ -1338,17 +1340,17 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
               cache.delete(id)
               continue
             }
-            const first = (events[0] as { seq?: number } | undefined)?.seq
+            const first = events[0]?.seq
             if (events.length === 0 || first !== from) {
               // 起始 seq 之后无事件 / seq 不连续：日志被截断或重写，增量前提
               // 失效——丢弃缓存退回全量。
               cache.delete(id)
               continue
             }
-            foldInto(previous.fold, previous.machine, events as { type: string; time: number; data: unknown; seq: number }[], subscriptionProviders, officialProviderIds, routesOf(), searchEstimate, meta.seedLength ?? 0)
+            foldInto(previous.fold, previous.machine, events, subscriptionProviders, officialProviderIds, routesOf(), searchEstimate, inheritedEventCount)
             refreshTurns(previous.fold, previous.machine)
-            const last = events[events.length - 1] as { seq?: number }
-            previous.lastSeq = typeof last.seq === 'number' ? last.seq : previous.lastSeq
+            const last = events[events.length - 1]
+            previous.lastSeq = last?.seq ?? previous.lastSeq
             previous.stamp = stamp
             // LRU touch：增量命中的会话移到缓存末尾，避免被上限清理误淘汰后退化全量。
             cache.delete(id)
@@ -1360,17 +1362,18 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           }
           // 全量重折（首次 / 缓存淘汰 / 日志重写）：分片折叠并周期性让出事件循环，
           // 超大会话不再把宿主 RPC 连续挂死十几秒。
-          const { events } = await persistence.readFrom(meta.id, 0)
+          const { events, inheritedEventCount } = await persistence.readFrom(meta.id, SessionLogOffset(0))
           // P0-4 竞态加固：读取期间日志被写入（mtime+size 变化），本轮的折叠可能基于
           // 半截内容，丢弃待下一轮重读，避免把不完整事件当作真实用量输出。
           const after = await stampOf(meta)
           if (stamp !== null && after !== stamp) continue
           // durable 边界：日志事件是外部 JSON，foldInto 内做运行时收窄。
-          // fork 血缘边界取 header.seedLength（resume 保持原 fork 值，不会误杀历史段）。
+          // fork 血缘边界取存储元数据的 inheritedEventCount（resume 保持原 fork
+          // 切割，不会误杀历史段）。
           const fold = freshFold()
           const machine = freshMachine()
           for (let start = 0; start < events.length; start += FOLD_CHUNK_EVENTS) {
-            foldInto(fold, machine, events.slice(start, start + FOLD_CHUNK_EVENTS) as { type: string; time: number; data: unknown; seq: number }[], subscriptionProviders, officialProviderIds, routesOf(), searchEstimate, meta.seedLength ?? 0)
+            foldInto(fold, machine, events.slice(start, start + FOLD_CHUNK_EVENTS), subscriptionProviders, officialProviderIds, routesOf(), searchEstimate, inheritedEventCount)
             if (start + FOLD_CHUNK_EVENTS < events.length) await new Promise<void>(resolve => { setImmediate(resolve) })
           }
           refreshTurns(fold, machine)

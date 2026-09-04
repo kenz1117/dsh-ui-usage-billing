@@ -41,13 +41,14 @@ const USAGE: TokenUsage = { inputTokens: 100, outputTokens: 50, cacheReadTokens:
 /** In-memory persistence double over per-session event arrays. */
 function fakePersistence(
   logs: Record<string, SessionEvent[]>,
-  metas: Record<string, { seedLength?: number }> = {},
+  inherited: Record<string, number> = {},
 ): UsagePersistence {
-  // SessionHeader 只用到 id 与 seedLength：整体断言跳过真实 header 的其余必填字段。
+  // readFrom 的返回带 inheritedEventCount（fork 血缘边界）；其余存储元数据字段断言跳过。
   return {
-    list: async () => Object.keys(logs).map(id => ({ id, ...(metas[id] ?? {}) })),
+    list: async () => Object.keys(logs).map(id => ({ id })),
     readFrom: async (id: SessionId, fromSeq: number) => ({
       meta: { id },
+      inheritedEventCount: inherited[id] ?? 0,
       events: (logs[id] ?? []).filter(event => event.seq >= fromSeq),
     }),
   } as unknown as UsagePersistence
@@ -360,7 +361,7 @@ describe('1.0.8 dimensions (byTier / byTool / cacheWrite)', () => {
   })
 })
 
-describe('fork seed filtering (header.seedLength)', () => {
+describe('fork seed filtering (inheritedEventCount)', () => {
   /** Fold-session event row helper (durable-shape cast like the aggregator). */
   const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): SessionEvent =>
     ({ type, seq, time, data }) as unknown as SessionEvent
@@ -382,9 +383,9 @@ describe('fork seed filtering (header.seedLength)', () => {
     expect(fold.turns[0]).toMatchObject({ turn: 2 })
   })
 
-  it('uses the header seedLength as the boundary for a multi-level fork chain', () => {
+  it('uses the inheritedEventCount as the boundary for a multi-level fork chain', () => {
     // C fork 自 B：种子 = B 的全量日志（A 种子 + B end-seed + B own），
-    // C 的 header.seedLength = 5（end-seed 之前的全部事件数）。
+    // C 的 inheritedEventCount = 5（end-seed 之前的全部事件数）。
     const fold = foldSession([
       // A 种子（seq 0–1）。
       ev('request/header', 0, 1_000, flash),
@@ -406,8 +407,8 @@ describe('fork seed filtering (header.seedLength)', () => {
   })
 
   it('keeps billing the own prefix when a forked child is resumed and used again', () => {
-    // fork 子会话（seedLength 4）被 resume：日志追加第二个 end-seed（seq 7）后继续聊。
-    // 边界仍取 header 的 4，原 own 段（seq 5–6）与续写段（seq 8–9）都计费。
+    // fork 子会话（inheritedEventCount 4）被 resume：日志追加第二个 end-seed（seq 7）后继续聊。
+    // 边界仍取持久化元数据的 4，原 own 段（seq 5–6）与续写段（seq 8–9）都计费。
     const fold = foldSession([
       ev('request/header', 1, 1_000, flash),
       ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE }),
@@ -424,7 +425,7 @@ describe('fork seed filtering (header.seedLength)', () => {
 
   it('bills a resumed-then-used session in full (no fork lineage, issue #29)', () => {
     // 同一会话 resume 两次后继续聊：日志里有两个 end-seed 且其后还有 live 事件，
-    // header 保持原 fork 值（无 fork 血缘 → seedLength 缺省 0），历史段照常计费。
+    // 继承切割保持原值（无 fork 血缘 → inheritedEventCount 为 0），历史段照常计费。
     const fold = foldSession([
       ev('request/header', 0, 1_000, flash),
       ev('assistant/message', 1, 1_001, { turn: 1, step: 1, usage: USAGE }),
@@ -450,8 +451,8 @@ describe('fork seed filtering (header.seedLength)', () => {
     expect(fold.turns).toHaveLength(2)
   })
 
-  it('aggregate() honours the header seedLength from persistence.list', async () => {
-    // 聚合层端到端：同一份 fork 形态日志，list 给的 seedLength 决定种子跳过。
+  it('aggregate() honours the inheritedEventCount from persistence.readFrom', async () => {
+    // 聚合层端到端：同一份 fork 形态日志，readFrom 给的 inheritedEventCount 决定种子跳过。
     const log = [
       ev('request/header', 1, 1_000, flash),
       ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE }),
@@ -459,7 +460,7 @@ describe('fork seed filtering (header.seedLength)', () => {
       ev('request/header', 5, 2_000, flash),
       ev('assistant/message', 6, 2_001, { turn: 2, step: 1, usage: USAGE }),
     ]
-    const forked = await aggregateUsage(fakePersistence({ s1: log }, { s1: { seedLength: 4 } }))
+    const forked = await aggregateUsage(fakePersistence({ s1: log }, { s1: 4 }))
     expect(forked.bySession.find(row => row.id === 's1')?.calls).toBe(1)
     const resumed = await aggregateUsage(fakePersistence({ s1: log }))
     expect(resumed.bySession.find(row => row.id === 's1')?.calls).toBe(2)

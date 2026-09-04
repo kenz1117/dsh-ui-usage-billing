@@ -475,10 +475,10 @@ export declare function messageTextLength(message: unknown): number;
  *   (default: any `deepseek`-prefixed id). Others count as third-party.
  * @param routes - 当前 provider 路由视图（中转站归组）。
  * @param searchCallEstimateCny - 联网搜索请求的单次费用估算（人民币元；0 关闭估算）。
- * @param seedLength - 持久化的 fork 血缘边界（`SessionHeader.seedLength`，缺省 0）：
+ * @param seedLength - 持久化的 fork 血缘边界（存储元数据 `inheritedEventCount`，缺省 0）：
  *   fork 子会话日志里 `seq < seedLength` 的事件拷贝自父会话、已在父会话计费，
  *   折叠时跳过以避免重复计费；resume 续写复用同一会话日志（每次续写追加一个
- *   `session/end-seed` 标记）但 header 保持原 fork 值，历史段照常计费。
+ *   `session/end-seed` 标记）但继承切割保持原值，历史段照常计费。
  * @returns the per-session fold (cached by the incremental aggregator).
  */
 export declare function foldSession(events: readonly {
