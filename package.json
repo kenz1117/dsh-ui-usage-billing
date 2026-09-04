@@ -64,6 +64,7 @@
     }
   },
   "scripts": {
+    "build": "tsc -b tsconfig.json --noCheck && tsdown",
     "bundle": "tsdown",
     "watch": "tsdown --watch",
     "test": "vitest run"
@@ -129,6 +130,7 @@
     "react-dom": "^18.2.0",
     "semver": "^7.7.2",
     "tsdown": "^0.22.2",
+    "typescript": "^6.0.3",
     "use-sync-external-store": "1.2.0",
     "vitest": "^4.1.8"
   },

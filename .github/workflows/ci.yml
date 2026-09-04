@@ -26,5 +26,7 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run bundle
+      # tsdown 的 lib entry（lib/types/*.js）是 tsc 中间产物，.gitignore 不入库——
+      # 干净 checkout 必须先跑 tsc，否则 bundle 报 UNRESOLVED_ENTRY。
+      - run: pnpm run build
       - run: pnpm test
