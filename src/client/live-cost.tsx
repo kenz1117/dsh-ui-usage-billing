@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
+import clsx from 'clsx'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { formatMoney, formatSwitchCountdown, tierCountdown } from './pricing.ts'
 import { LIVE_COST_BAR_PREF_EVENT, loadLiveCostBarPrefs } from './usage-billing-settings.ts'
@@ -160,8 +161,13 @@ export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode
   // 两个 React 树，切换后经 LIVE_COST_BAR_PREF_EVENT（同文档）与 storage 事件
   // （跨标签页）通知这里重读 localStorage，胶囊条即时显隐。
   const [visible, setVisible] = useState(() => loadLiveCostBarPrefs().show)
+  // 位置偏好（below=输入框下方 / above=输入框上方）：与显隐同一套跨树同步机制。
+  const [position, setPosition] = useState(() => loadLiveCostBarPrefs().position)
   useEffect(() => {
-    const reread = (): void => { setVisible(loadLiveCostBarPrefs().show) }
+    const reread = (): void => {
+      setVisible(loadLiveCostBarPrefs().show)
+      setPosition(loadLiveCostBarPrefs().position)
+    }
     window.addEventListener(LIVE_COST_BAR_PREF_EVENT, reread)
     window.addEventListener('storage', reread)
     return () => {
@@ -208,8 +214,13 @@ export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode
   // 纯显隐门控：数据轮询与统计口径不受影响）。返回 null 放在全部 hook 之后。
   if (!visible) return null
   // 设计 fee-bar：档位 chip → 倒计时 → 档位说明 → 本轮/会话 → 额度预警 chips。
+  // above 变体：dock list 槽以 Fragment 直排进宿主 composer 卡（flex column），
+  // 对胶囊自身 order:-1 即浮到输入框上方，零宿主 DOM 侵入。
   return (
-    <span className={css.feeBar} data-testid="billing-live-cost-bar">
+    <span
+      className={position === 'above' ? clsx(css.feeBar, css.feeBarAbove) : css.feeBar}
+      data-testid="billing-live-cost-bar"
+    >
       <span className={isPeak ? css.feeChipPrimary : css.feeChipOff} data-testid="billing-live-tier">
         {isPeak ? t('tierPeak') : t('tierOff')}
       </span>

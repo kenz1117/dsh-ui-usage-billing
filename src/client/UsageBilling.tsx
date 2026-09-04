@@ -2363,11 +2363,36 @@ function BillingDashboard({
                         aria-label={t('liveCostBar')}
                         data-testid="billing-livecost-toggle"
                         className={clsx(css.switch, liveCostPrefs.show && css.switchOn)}
-                        onClick={() => onLiveCostPrefs({ show: !liveCostPrefs.show })}
+                        onClick={() => onLiveCostPrefs({ ...liveCostPrefs, show: !liveCostPrefs.show })}
                       >
                         <span className={css.switchKnob} />
                       </button>
                     </div>
+                    {liveCostPrefs.show && (
+                      <div className={css.rdoRow} data-testid="billing-livecost-position">
+                        <span className={css.rdoLabel}>{t('liveCostBarPosition')}</span>
+                        <div className={css.ctlGroup}>
+                          <button
+                            type="button"
+                            className={clsx(css.floatModeBtn, liveCostPrefs.position !== 'above' && css.floatModeBtnOn)}
+                            data-testid="billing-livecost-pos-below"
+                            aria-pressed={liveCostPrefs.position !== 'above'}
+                            onClick={() => onLiveCostPrefs({ ...liveCostPrefs, position: 'below' })}
+                          >
+                            {t('liveCostBarPosBelow')}
+                          </button>
+                          <button
+                            type="button"
+                            className={clsx(css.floatModeBtn, liveCostPrefs.position === 'above' && css.floatModeBtnOn)}
+                            data-testid="billing-livecost-pos-above"
+                            aria-pressed={liveCostPrefs.position === 'above'}
+                            onClick={() => onLiveCostPrefs({ ...liveCostPrefs, position: 'above' })}
+                          >
+                            {t('liveCostBarPosAbove')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className={css.setCell} data-testid="billing-site-list-setting">
                     <div className={css.setCardHead}>

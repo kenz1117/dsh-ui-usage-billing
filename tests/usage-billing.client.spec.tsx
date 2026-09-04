@@ -109,7 +109,7 @@ describe('UsageBilling surface', () => {
       // 关闭：状态翻转、localStorage 持久化、广播 CustomEvent（dock 侧即时显隐信号）。
       fireEvent.click(toggle)
       expect(toggle.getAttribute('aria-checked')).toBe('false')
-      expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.livecost')!)).toEqual({ show: false })
+      expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.livecost')!)).toEqual({ show: false, position: 'below' })
       expect(events).toEqual(['livecost'])
     } finally {
       window.removeEventListener('dsh.ui-usage-billing.livecost-pref', listener)

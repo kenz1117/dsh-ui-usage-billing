@@ -2084,6 +2084,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 上方位置（设置「位置：输入框上方」）：dock list 槽以 Fragment 直排进宿主
+   composer 卡（flex column），胶囊是卡片的直接子元素——order:-1 即浮到
+   输入框区之前；补一点下边距与输入框呼吸，整体高度由内容撑开不变。 */
+.feeBarAbove {
+  order: -1;
+  align-self: flex-start;
+  margin-bottom: 8px;
+}
+
 /* 分隔符弱化为静音点，费用数字由 .feeNum 承担主视觉（600 主色）。 */
 .feeBar .feeSep {
   color: var(--dsw-alias-label-dimmed);

@@ -246,6 +246,9 @@ export type UsageBillingKey =
   | 'siteListDisplayHint'
   | 'liveCostBar'
   | 'liveCostBarHint'
+  | 'liveCostBarPosition'
+  | 'liveCostBarPosBelow'
+  | 'liveCostBarPosAbove'
   | 'exportCsvSite'
   | 'panelRelayQuota'
   | 'relayBalance'
@@ -758,7 +761,10 @@ export const en: Record<UsageBillingKey, string> = {
   'siteListDisplay': 'Relay lists',
   'siteListDisplayHint': 'Hide "unidentified" placeholder rows in the relay quota list',
   'liveCostBar': 'Live cost capsule',
-  'liveCostBarHint': 'The live cost bar under the composer (pricing tier, per-turn/session spend, quota alerts); hiding it never affects stats or alerts',
+  'liveCostBarHint': 'The live cost bar beside the composer (pricing tier, per-turn/session spend, quota alerts); hiding it never affects stats or alerts',
+  'liveCostBarPosition': 'Position',
+  'liveCostBarPosBelow': 'Below composer',
+  'liveCostBarPosAbove': 'Above composer',
   'exportCsvSite': 'By site CSV',
   'panelRelayQuota': 'Relay quotas',
   'relayBalance': 'Balance',

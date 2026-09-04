@@ -87,25 +87,34 @@ describe('lowQuotaChips', () => {
   })
 })
 
-describe('loadLiveCostBarPrefs / saveLiveCostBarPrefs (平价消耗胶囊显隐)', () => {
-  it('defaults to shown when the key is missing', () => {
-    expect(loadLiveCostBarPrefs()).toEqual({ show: true })
+describe('loadLiveCostBarPrefs / saveLiveCostBarPrefs (平价消耗胶囊显隐与位置)', () => {
+  it('defaults to shown + below when the key is missing', () => {
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
   })
 
   it('round-trips an explicit hide through save + load', () => {
-    saveLiveCostBarPrefs({ show: false })
-    expect(loadLiveCostBarPrefs()).toEqual({ show: false })
-    saveLiveCostBarPrefs({ show: true })
-    expect(loadLiveCostBarPrefs()).toEqual({ show: true })
+    saveLiveCostBarPrefs({ show: false, position: 'below' })
+    expect(loadLiveCostBarPrefs()).toEqual({ show: false, position: 'below' })
+    saveLiveCostBarPrefs({ show: true, position: 'below' })
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
+  })
+
+  it('round-trips the above position and rejects invalid values back to below', () => {
+    saveLiveCostBarPrefs({ show: true, position: 'above' })
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'above' })
+    localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":true,"position":"sideways"}')
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
+    localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":true}')
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
   })
 
   it('falls back to shown on corrupt JSON or non-boolean values (only explicit false hides)', () => {
     localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{broken json')
-    expect(loadLiveCostBarPrefs()).toEqual({ show: true })
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
     localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":"yes"}')
-    expect(loadLiveCostBarPrefs()).toEqual({ show: true })
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
     localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":false}')
-    expect(loadLiveCostBarPrefs()).toEqual({ show: false })
+    expect(loadLiveCostBarPrefs()).toEqual({ show: false, position: 'below' })
   })
 })
 
@@ -133,5 +142,18 @@ describe('LiveCostBar visibility gate (设置 Tab 开关跨树生效)', () => {
     await act(async () => { window.dispatchEvent(new StorageEvent('storage')) })
     expect(screen.getByTestId('billing-live-cost-bar')).toBeTruthy()
     view.unmount()
+  })
+
+  it('applies the above-position class when the pref selects it (order:-1 floats the capsule over the composer)', () => {
+    localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":true,"position":"above"}')
+    const view = render(<LiveCostBar sessionId={sessionId} t={t} />)
+    const bar = screen.getByTestId('billing-live-cost-bar')
+    // above 变体挂第二个类（feeBarAbove 携带 order:-1），below/缺省只有基础类。
+    expect(bar.className).toMatch(/feeBarAbove|Above/)
+    view.unmount()
+    localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":true,"position":"below"}')
+    const below = render(<LiveCostBar sessionId={sessionId} t={t} />)
+    expect(screen.getByTestId('billing-live-cost-bar').className).not.toMatch(/Above/)
+    below.unmount()
   })
 })

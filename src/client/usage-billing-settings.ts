@@ -156,10 +156,12 @@ export function saveSiteListPrefs(prefs: SiteListPrefs): void {
 export interface LiveCostBarPrefs {
   /** 是否显示输入框下方的即时代费条胶囊（默认 true：保持历史行为）。 */
   show: boolean
+  /** 胶囊位置：below = 输入框下方（默认，历史行为）；above = 输入框上方。 */
+  position: 'below' | 'above'
 }
 
-/** 默认即时代费条偏好：显示（升级用户零感知）。 */
-export const DEFAULT_LIVE_COST_BAR_PREFS: LiveCostBarPrefs = { show: true }
+/** 默认即时代费条偏好：显示在输入框下方（升级用户零感知）。 */
+export const DEFAULT_LIVE_COST_BAR_PREFS: LiveCostBarPrefs = { show: true, position: 'below' }
 
 /** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
 export const LIVE_COST_BAR_STORAGE_KEY = 'dsh.ui-usage-billing.livecost'
@@ -173,8 +175,12 @@ export function loadLiveCostBarPrefs(): LiveCostBarPrefs {
     const raw = localStorage.getItem(LIVE_COST_BAR_STORAGE_KEY)
     if (raw === null) return { ...DEFAULT_LIVE_COST_BAR_PREFS }
     const parsed = JSON.parse(raw) as Partial<LiveCostBarPrefs>
-    // 只有显式 false 才隐藏，其余（缺字段/非法值）一律按显示兜底。
-    return { show: parsed.show !== false }
+    // 只有显式 false 才隐藏，其余（缺字段/非法值）一律按显示兜底；
+    // position 非法值同样回退 below。
+    return {
+      show: parsed.show !== false,
+      position: parsed.position === 'above' ? 'above' : 'below',
+    }
   } catch {
     return { ...DEFAULT_LIVE_COST_BAR_PREFS }
   }
