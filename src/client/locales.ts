@@ -113,9 +113,11 @@ export type UsageBillingKey =
   | 'userPriceSource'
   | 'userPriceSourceHint'
   | 'userPriceOffPeak'
+  | 'userPriceNormal'
   | 'userPriceCurrency'
   | 'userPriceAdd'
-  | 'userPriceRemove'
+  | 'userPriceRemoveSelected'
+  | 'userPriceSelect'
   | 'sessionStaleBadge'
   | 'heatmapLess'
   | 'heatmapMore'
@@ -367,9 +369,11 @@ export const zh: Record<UsageBillingKey, string> = {
   'userPriceSource': '来源（中转站域名）',
   'userPriceSourceHint': '留空=默认价，或 https://api.中转站.com',
   'userPriceOffPeak': '低谷价',
+  'userPriceNormal': '标准价',
   'userPriceCurrency': '币种',
   'userPriceAdd': '新增',
-  'userPriceRemove': '删除',
+  'userPriceRemoveSelected': '删除所选',
+  'userPriceSelect': '选择此行',
   'sessionStaleBadge': '旧版统计',
   'heatmapLess': '少',
   'heatmapMore': '多',
@@ -621,9 +625,11 @@ export const en: Record<UsageBillingKey, string> = {
   'userPriceSource': 'Source (relay origin)',
   'userPriceSourceHint': 'Empty = default; e.g. https://api.relay.com',
   'userPriceOffPeak': 'Off-peak price',
+  'userPriceNormal': 'Standard price',
   'userPriceCurrency': 'Currency',
   'userPriceAdd': 'Add',
-  'userPriceRemove': 'Remove',
+  'userPriceRemoveSelected': 'Remove selected',
+  'userPriceSelect': 'Select this row',
   'sessionStaleBadge': 'legacy',
   'heatmapLess': 'Less',
   'heatmapMore': 'More',

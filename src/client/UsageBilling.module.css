@@ -3430,43 +3430,95 @@
   flex-wrap: wrap;
 }
 
-/* 自定义单价条目表（issue #16）：模型/来源 + 三桶 + 币种 + 删除。
-   用 grid 显式定列替代 flex-wrap：七列一行排完，删除键永远跟币种同列行尾，
-   不再因折行掉到下一行与币种按钮混排（issue #32 图一）。 */
+/* 自定义单价条目表（issue #16/#32）：行 = 勾选框 + 两行网格
+   （行1 模型/来源；行2 三桶价格/币种）；低谷价子行整宽；
+   删除收敛到底部操作条「删除所选」，与新增/保存并列。 */
 .userPriceRow {
-  display: grid;
-  grid-template-columns: minmax(96px, 1.1fr) minmax(120px, 1.5fr) repeat(3, minmax(64px, 84px)) auto auto;
-  align-items: end;
-  gap: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 8px 0;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
 
-/* 面板过窄时的降级：三列网格换行，字段均分宽度，仍保持网格对齐不散。 */
+.userPriceCheck {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--dsw-static-blue-500);
+}
+
+.userPriceBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 行1：模型 + 来源 + 币种（币种按内容宽度）。 */
+.userPriceLineMeta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  gap: 8px 10px;
+  align-items: end;
+}
+
+/* 面板过窄时的降级：行1 收成两列网格，字段均分宽度不散。 */
 @media (max-width: 720px) {
-  .userPriceRow {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .userPriceLineMeta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-/* grid 单元格内的输入占满列宽（覆盖下面类上的固定 min/max-width）。 */
-.userPriceRow .userPriceInput,
-.userPriceRow .userPriceInputNum {
+/* 行1 输入占满列宽（覆盖下面类上的固定 min/max-width）。 */
+.userPriceLineMeta .userPriceInput {
   width: 100%;
   min-width: 0;
   max-width: none;
   box-sizing: border-box;
 }
 
-/* 低谷价子行：主行下方全宽，label + 三桶输入横排。 */
-.userPriceOffPeak {
-  grid-column: 1 / -1;
+/* 币种 CNY/USD 不竖排（竖排会把行撑高、标签浮到行顶）。 */
+.userPriceBody .ctlGroup {
+  flex-wrap: nowrap;
+}
+
+/* 行1 字段标签允许两行、底部对齐：各列标签行数不同时输入框仍然齐平。 */
+.userPriceLineMeta .userPriceField .ctlLabel {
+  min-height: 30px;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* 价格行（标准价 / 低谷价）：相对行1 的二级分组——缩进 + 左侧引导线 +
+   弱化行标签，一眼看出从属于本条模型/来源；三桶输入横排，两行结构对称。 */
+.userPricePriceLine {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
+  width: calc(100% - 22px);
   flex-wrap: wrap;
-  padding: 2px 0 6px;
+  margin-left: 10px;
+  padding: 2px 0 6px 12px;
+  border-left: 2px solid var(--dsw-alias-border-l1);
+}
+
+/* 二级行标签：窄列、弱色、小字号，与一级字段标签拉开层级。 */
+.userPricePriceLine > .ctlLabel {
+  flex: 0 0 44px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 价格行三输入横排均分、过窄才折行。 */
+.userPricePriceLine .userPriceInputNum {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 120px;
+  max-width: 240px;
+  box-sizing: border-box;
 }
 
 .userPriceField {
@@ -3497,22 +3549,6 @@
 .userPriceInputNum {
   min-width: 72px;
   max-width: 88px;
-}
-
-.userPriceRemove {
-  align-self: center;
-  padding: 4px 8px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--dsw-static-red-400);
-  font-size: 11px;
-  line-height: 16px;
-  cursor: pointer;
-}
-
-.userPriceRemove:hover {
-  border-color: var(--dsw-static-red-400);
 }
 
 /* 单选项（位置 / 提醒模式）：圆点 + 文案，一行内排布。 */

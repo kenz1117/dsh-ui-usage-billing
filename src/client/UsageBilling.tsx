@@ -1275,9 +1275,20 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
 }): React.ReactNode {
   // 本地编辑副本：增删改都在列表内完成，点「保存」才提交；行内价格输入框不会改坏结构。
   const [drafts, setDrafts] = useState<UserPriceMap>(() => [...userPrices])
+  // 勾选集合（行下标）：删除收敛到底部操作条「删除所选」，与新增/保存并列（issue #32）。
+  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set())
+  const toggleSelect = (i: number): void =>
+    setSelected(s => {
+      const next = new Set(s)
+      if (next.has(i)) next.delete(i); else next.add(i)
+      return next
+    })
+  const removeSelected = (): void => {
+    setDrafts(list => list.filter((_, idx) => !selected.has(idx)))
+    setSelected(new Set())
+  }
   const update = (i: number, patch: Partial<UserPriceMap[number]>): void =>
     setDrafts(list => list.map((row, idx) => (idx === i ? { ...row, ...patch } : row)))
-  const remove = (i: number): void => setDrafts(list => list.filter((_, idx) => idx !== i))
   const add = (): void => setDrafts(list => [...list, { key: '', input: 0, cacheHit: 0, output: 0 as number }])
   // 低谷档草稿态（字符串，留空 = 平档）：与主档独立编辑，三值有效才成档。
   const offPeakOf = (i: number): { input: string; cacheHit: string; output: string } => {
@@ -1339,6 +1350,16 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
         </datalist>
         {drafts.map((row, i) => (
           <div key={i} className={css.userPriceRow} data-testid="billing-user-price-row">
+            <input
+              type="checkbox"
+              className={css.userPriceCheck}
+              data-testid="billing-user-price-select"
+              checked={selected.has(i)}
+              aria-label={t('userPriceSelect')}
+              onChange={() => toggleSelect(i)}
+            />
+            <div className={css.userPriceBody}>
+            <div className={css.userPriceLineMeta}>
             <div className={css.userPriceField}>
               <span className={css.ctlLabel}>{t('userPriceModel')}</span>
               <input
@@ -1364,19 +1385,6 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
                 onChange={e => update(i, { origin: e.target.value.trim() })}
               />
             </div>
-            {(['input', 'cacheHit', 'output'] as const).map(kind => (
-              <div key={kind} className={css.userPriceField}>
-                <span className={css.ctlLabel}>{kind === 'input' ? t('tokenMiss') : kind === 'cacheHit' ? t('tokenHit') : t('tokenOutput')}</span>
-                <input
-                  className={css.userPriceInputNum}
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={num(row[kind])}
-                  onChange={e => setNum(i, kind, e.target.value)}
-                />
-              </div>
-            ))}
             <div className={css.userPriceField}>
               <span className={css.ctlLabel}>{t('userPriceCurrency')}</span>
               <div className={css.ctlGroup}>
@@ -1396,14 +1404,28 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
                 </button>
               </div>
             </div>
-            <button type="button" className={css.userPriceRemove} aria-label={t('userPriceRemove')} onClick={() => remove(i)}>
-              {t('userPriceRemove')}
-            </button>
+            </div>
+            <div className={css.userPricePriceLine} data-testid="billing-user-price-normal">
+              <span className={css.ctlLabel}>{t('userPriceNormal')}</span>
+              {(['input', 'cacheHit', 'output'] as const).map(kind => (
+                <input
+                  key={kind}
+                  className={css.userPriceInputNum}
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  placeholder={kind === 'input' ? t('tokenMiss') : kind === 'cacheHit' ? t('tokenHit') : t('tokenOutput')}
+                  aria-label={`${t('userPriceNormal')} ${kind === 'input' ? t('tokenMiss') : kind === 'cacheHit' ? t('tokenHit') : t('tokenOutput')}`}
+                  value={num(row[kind])}
+                  onChange={e => setNum(i, kind, e.target.value)}
+                />
+              ))}
+            </div>
             {(() => {
               // 低谷价子行：三桶留空 = 平档；三值有效即按峰/谷混合估算（issue #18）。
               const off = offPeakOf(i)
               return (
-                <div className={css.userPriceOffPeak} data-testid="billing-user-price-offpeak">
+                <div className={css.userPricePriceLine} data-testid="billing-user-price-offpeak">
                   <span className={css.ctlLabel}>{t('userPriceOffPeak')}</span>
                   {(['input', 'cacheHit', 'output'] as const).map(kind => (
                     <input
@@ -1421,11 +1443,21 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
                 </div>
               )
             })()}
+            </div>
           </div>
         ))}
         <div className={css.ctlRow}>
           <button type="button" className={css.exportButton} data-testid="billing-user-price-add" onClick={add}>
             {t('userPriceAdd')}
+          </button>
+          <button
+            type="button"
+            className={css.exportButton}
+            data-testid="billing-user-price-remove-selected"
+            disabled={selected.size === 0}
+            onClick={removeSelected}
+          >
+            {t('userPriceRemoveSelected')}{selected.size > 0 ? ` (${selected.size})` : ''}
           </button>
           <button type="button" className={css.exportButton} data-testid="billing-user-price-save" onClick={save}>
             {t('userPriceSave')}
