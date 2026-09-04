@@ -6,8 +6,10 @@
 
 ## 预览线（1.0.x，适配 DSH 0.1.2 系）
 
-### 未发布（v1.0.26）
+### v1.0.26（2026-09-04）
 
+- 修复：自定义单价卡改为两级布局（行1 模型/来源/币种；标准价/低谷价为缩进的二级行），删除改为勾选 + 底部「删除所选」（issue #32）
+- 修复：侧栏胶囊在与他插件并列时被挤压成不可读残段；现按 180px 基准公平分配并有 96px 可读地板（issue #32）
 - 声明 DSH `0.1.2-rc.1` 兼容；新增 `dsh` SemVer 区间声明（`>=0.1.2-alpha.1`），市场可按区间拦截不匹配宿主（issue #31 根因修复）
 - devDependencies 的 `@deepseek-ai/dsh-*` pin 升级至 `0.1.2-rc.1`
 - 新增 [COMPATIBILITY.md](COMPATIBILITY.md)（双线兼容单一事实源）、`scripts/check-compat.mjs`（矩阵校验脚本）、`watch-dsh-releases` 每日监控 workflow（漂移自动开 `compat-drift` issue）
