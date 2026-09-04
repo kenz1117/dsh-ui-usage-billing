@@ -14,7 +14,8 @@ import { useCallback, useEffect, useMemo, useState, Fragment } from 'react'
 import clsx from 'clsx'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
-import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutline14, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   type BillingCardPrefs,
   DEFAULT_ENABLE_USAGE_STATS_TOOL,
@@ -2371,35 +2372,7 @@ function BillingDashboard({
                     {liveCostPrefs.show && (
                       <div className={css.rdoRow} data-testid="billing-livecost-position">
                         <span className={css.rdoLabel}>{t('liveCostBarPosition')}</span>
-                        <div className={css.ctlGroup}>
-                          <button
-                            type="button"
-                            className={clsx(css.floatModeBtn, liveCostPrefs.position === 'below' && css.floatModeBtnOn)}
-                            data-testid="billing-livecost-pos-below"
-                            aria-pressed={liveCostPrefs.position === 'below'}
-                            onClick={() => onLiveCostPrefs({ ...liveCostPrefs, position: 'below' })}
-                          >
-                            {t('liveCostBarPosBelow')}
-                          </button>
-                          <button
-                            type="button"
-                            className={clsx(css.floatModeBtn, liveCostPrefs.position === 'above' && css.floatModeBtnOn)}
-                            data-testid="billing-livecost-pos-above"
-                            aria-pressed={liveCostPrefs.position === 'above'}
-                            onClick={() => onLiveCostPrefs({ ...liveCostPrefs, position: 'above' })}
-                          >
-                            {t('liveCostBarPosAbove')}
-                          </button>
-                          <button
-                            type="button"
-                            className={clsx(css.floatModeBtn, liveCostPrefs.position === 'toolbar' && css.floatModeBtnOn)}
-                            data-testid="billing-livecost-pos-toolbar"
-                            aria-pressed={liveCostPrefs.position === 'toolbar'}
-                            onClick={() => onLiveCostPrefs({ ...liveCostPrefs, position: 'toolbar' })}
-                          >
-                            {t('liveCostBarPosToolbar')}
-                          </button>
-                        </div>
+                        <PositionMenu liveCostPrefs={liveCostPrefs} onLiveCostPrefs={onLiveCostPrefs} t={t} />
                       </div>
                     )}
                   </div>
@@ -3293,6 +3266,61 @@ function VendorLogo({ provider, colorVar }: { provider: string; colorVar?: strin
     >
       {provider.trim().charAt(0).toUpperCase()}
     </span>
+  )
+}
+
+/** 胶囊可落点的槽位（below 为默认值，与 usage-billing-settings 的回退一致）。 */
+const LIVE_COST_POSITIONS = ['below', 'above', 'toolbar'] as const
+
+/**
+ * PositionMenu: 平价消耗胶囊的位置选择下拉（宿主 Menu 原语，compact 档对齐
+ * 设置卡的 12px 控件基调）。触发按钮显示当前选中项文案，chevron 展开时旋转；
+ * 列表走 portal 渲染，避免被设置面板的滚动容器裁剪。
+ */
+function PositionMenu({ liveCostPrefs, onLiveCostPrefs, t }: {
+  liveCostPrefs: LiveCostBarPrefs
+  onLiveCostPrefs: (next: LiveCostBarPrefs) => void
+  t: PropsLocale<typeof NS>
+}): React.ReactNode {
+  const [open, setOpen] = useState(false)
+  const labels: Record<LiveCostBarPrefs['position'], string> = {
+    below: t('liveCostBarPosBelow'),
+    above: t('liveCostBarPosAbove'),
+    toolbar: t('liveCostBarPosToolbar'),
+  }
+  const items: MenuEntry[] = LIVE_COST_POSITIONS.map(id => ({ id, label: labels[id] }))
+  return (
+    <Menu
+      open={open}
+      align="end"
+      portal
+      compact
+      items={items}
+      selectedId={liveCostPrefs.position}
+      onSelect={(id) => {
+        setOpen(false)
+        // 选项全部来自 LIVE_COST_POSITIONS，find 收窄回字面量联合。
+        const position = LIVE_COST_POSITIONS.find(p => p === id)
+        if (position === undefined) return
+        onLiveCostPrefs({ ...liveCostPrefs, position })
+      }}
+      onClose={() => { setOpen(false) }}
+      anchor={
+        <button
+          type="button"
+          className={css.rdoSelect}
+          data-testid="billing-livecost-position-select"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => { setOpen(!open) }}
+        >
+          <span>{labels[liveCostPrefs.position]}</span>
+          <span className={clsx(css.rdoChevron, open && css.rdoChevronOpen)} aria-hidden>
+            <IconChevronDownOutline14 />
+          </span>
+        </button>
+      }
+    />
   )
 }
 

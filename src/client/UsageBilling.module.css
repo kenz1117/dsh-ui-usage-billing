@@ -2086,15 +2086,16 @@
 
 /* 上方位置（设置「位置：输入框上方」）：dock list 槽以 Fragment 直排进宿主
    composer 卡（flex column），胶囊是卡片的直接子元素——order:-1 即浮到
-   输入框区之前；补一点下边距与输入框呼吸，整体高度由内容撑开不变。 */
+   输入框区之前；居中与下方一致，补一点下边距与输入框呼吸，整体高度由
+   内容撑开不变。 */
 .feeBarAbove {
   order: -1;
-  align-self: flex-start;
+  align-self: center;
   margin-bottom: 8px;
 }
 
-/* 工具行内联 chip（位置「模型选择前」）：恒定最小占位（档位 + 会话费用），
-   不挤压模型选择器与发送键；完整信息走原生 title 悬浮，额度预警变色不加宽。 */
+/* 工具行内联 chip（位置「输入框内部」）：恒定最小占位（档位 + 会话费用），
+   不挤压模型选择器与发送键；完整信息走 Tooltip 悬浮，额度预警变色不加宽。 */
 .feeInline {
   display: inline-flex;
   align-items: center;
@@ -3061,6 +3062,54 @@
   border-color: var(--dsw-static-blue-500);
   color: var(--dsw-alias-label-primary);
   background: color-mix(in srgb, var(--dsw-static-blue-500) 16%, transparent);
+}
+
+/* 平价消耗胶囊位置行：标签居左、下拉靠右，与开关头部的视觉重心对齐。 */
+.rdoRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.rdoLabel {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 位置下拉触发按钮：延续 floatModeBtn 的描边基调，紧凑单行。 */
+.rdoSelect {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 75%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 60%, transparent);
+  color: var(--dsw-alias-label-primary);
+  padding: 5px 8px 5px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.rdoSelect:hover {
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 85%, transparent);
+}
+
+.rdoSelect:focus-visible {
+  border-color: var(--dsw-static-blue-500);
+  outline: none;
+}
+
+.rdoChevron {
+  display: inline-flex;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.rdoChevronOpen {
+  transform: rotate(180deg);
 }
 
 .floatTarget {
