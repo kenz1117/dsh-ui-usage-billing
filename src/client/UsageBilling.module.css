@@ -169,9 +169,12 @@
 .triggerWrap {
   position: relative;
   display: block;
-  flex: 1 1 auto;
-  min-width: 0;
-  width: 100%;
+  /* footer 横向 flex 行（宿主无 wrap 规则）里的公民策略：独占一行时 grow 满宽
+     保持卡片观感；与他插件并列时按 180px 基准公平分配，96px 地板保证
+     「icon + 当月金额」永远可读，不再被兄弟胶囊挤成「¥ 1..」（issue #32）。 */
+  flex: 1 1 180px;
+  min-width: 96px;
+  max-width: 100%;
   container-type: inline-size;
   container-name: billing-trigger;
 }
@@ -3005,15 +3008,45 @@
   flex-wrap: wrap;
 }
 
-/* 自定义单价条目表（issue #16）：模型/来源 + 三桶 + 币种，一行内排布。 */
+/* 自定义单价条目表（issue #16）：模型/来源 + 三桶 + 币种 + 删除。
+   用 grid 显式定列替代 flex-wrap：七列一行排完，删除键永远跟币种同列行尾，
+   不再因折行掉到下一行与币种按钮混排（issue #32 图一）。 */
 .userPriceRow {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(96px, 1.1fr) minmax(120px, 1.5fr) repeat(3, minmax(64px, 84px)) auto auto;
+  align-items: end;
+  gap: 8px 10px;
   padding: 8px 0;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
+
+/* 面板过窄时的降级：三列网格换行，字段均分宽度，仍保持网格对齐不散。 */
+@media (max-width: 720px) {
+  .userPriceRow {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* grid 单元格内的输入占满列宽（覆盖下面类上的固定 min/max-width）。 */
+.userPriceRow .userPriceInput,
+.userPriceRow .userPriceInputNum {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+/* 低谷价子行：主行下方全宽，label + 三桶输入横排。 */
+.userPriceOffPeak {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  flex-wrap: wrap;
+  padding: 2px 0 6px;
+}
+
 .userPriceField {
   display: flex;
   flex-direction: column;

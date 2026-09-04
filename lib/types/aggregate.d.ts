@@ -479,7 +479,7 @@ export declare function messageTextLength(message: unknown): number;
 export declare function foldSession(events: readonly {
     type: string;
     time: number;
-    data: never;
+    data: unknown;
     seq?: number;
 }[], subscriptionProviders: ReadonlySet<string>, officialProviderIds?: ReadonlySet<string>, routes?: Readonly<Record<string, ProviderRouteView>>, searchCallEstimateCny?: number, seedLength?: number): SessionFold;
 /**
