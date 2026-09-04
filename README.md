@@ -235,7 +235,7 @@ npm publish --access public
 
 - **权限等级：high**：读取持久会话日志（文件）、访问多厂商官方 / 订阅 / 余额 / 定价 API（网络）、经凭据 seam 读取 `apiKeyEnv`（凭据）、写入 `~/.dsh` 账本（持久状态）；**不含**命令执行 / Shell。
 - **更新通道：`user-reviewed`**：本插件具备文件 / 网络 / 凭据能力，DSH STORE 采用每次安装需本机人工确认的通道；安装前请复核仓库、固定 Commit、生命周期脚本与影响范围。
-- **兼容范围**：DSH `0.1.0-rc.8` / `0.1.1-rc.1` / `0.1.1-rc.2` 声明为 `compatible`（见 `package.json` 的 `dsh.compatibility.dshReleases`）；Node.js `^22.19.0 || >=24.0.0`。
+- **兼容范围**：本线为稳定线（npm `stable`，1.1.x），适配 DSH `0.1.0-rc.8` ~ `0.1.1-rc.2`（`dsh.compatibility` 含 SemVer 区间 `<0.1.2-0` 封顶，0.1.2 系宿主会被区间排除）；0.1.2 系宿主请用预览线（npm `latest`，1.0.x）。双线对照与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。Node.js `^22.19.0 || >=24.0.0`。
 - **生命周期**：无 `preinstall` / `install` / `postinstall` / `prepare`（安装即用）。
 - **不冒用官方**：仅新增自有 entry id `ui-usage-billing`；对 `@deepseek-ai/dsh-*` 仅为 `peerDependencies` 依赖（不重复安装 / 不替换 / 不遮蔽官方组件），包名使用第三方命名空间 `@kenz1117/*`。
 - **打包产物**：运行文件 `lib/*` 与 `cordis.patch.yml` 已随固定 Commit 提交并声明在 `files`。
