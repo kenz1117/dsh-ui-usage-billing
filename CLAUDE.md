@@ -32,7 +32,8 @@
 - **一个发布节点 = 双线一对版本同时发**（alpha + latest 同一时间、tag 与 GitHub release 一起出），release note 用双线对照表，不碎片化。
 - **攒批**：日常变更只进分支，攒到节点一起过双线；只有崩溃/账单错误/安全类紧急修复例外（也双线同步）。
 - GitHub release 的 alpha 线 tag 打 **Pre-release** 标记。
-- 发版前跑测试：本仓 `pnpm i && pnpm test`（331 个测试，独立于 harness 工作区）；真机验收用对应环境（见下表）。compat 线同源 cherry-pick 后跑 `bash build.sh` + 3090 验收。
+- 发版前跑测试：本仓 `pnpm i && pnpm test`（两条分支都可独立跑：main 331+，compat 310+；compat 的 client 测试经 `vitest.config.ts` alias 用本地 store stub 顶替 registry 上装不到的 0.1.1 client-runtime）；真机验收用对应环境（见下表）。compat 线 cherry-pick 后跑 `pnpm test` + `bash build.sh` + 3090 验收。
+- **cherry-pick 跨线必须逐项核对三处红线**：① `package.json` 的 version（各线独立）与 `dshReleases`（绝不能被对面线的声明覆盖——稳定线=rc 三件套、预览线=alpha 系，覆盖即重演 #25）；② `lib/client.js` / `lib/index.js` 构建产物（各线独立构建，冲突取 ours 后用对应 build 重建）；③ **cherry-pick 后必跑该线测试**——此前 compat 的测试文件里残留过冲突标记与失效断言（#26/#27 移植时留下），因 compat 无测试环境长期未被发现。
 
 ## 分支与构建
 
@@ -65,6 +66,8 @@
 - 接手别人的工作区时**先盘点再动手**：`git log`（对方提交了什么）、`git status`/`git diff`（未提交改动——可能是进行中的有效工作，如 issue 修复半成品，保留并完成，不要丢弃）。已提交的工作做交叉核对（对方可能不知道双线策略，把改动落错了分支）。
 
 ## 其他约定
+
+- `CLAUDE.md` 是 `AGENTS.md` 的**普通文件拷贝**（DSH Store 契约禁止仓库内符号链接，symlink 会导致收录暂缓）；改 `AGENTS.md` 后必须同步 `cp AGENTS.md CLAUDE.md` 再提交。
 
 - 计费口径：历史事件一律按**事件发生时刻**生效的官方规则计价，官方调价按变更节点追加规则（见 `src/client/pricing.ts` 的时间线与 README「计费规则时间线」），不得统一套现行规则重算历史。
 - 体积红线：`lib/client.js` 上限 256KiB（DSH Store 单文件契约），纯 CSS/文案/资产的增长也要过门禁评估。
