@@ -13,7 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { LiveCostBar, lowQuotaChips, sessionCostOf, turnCostOf, type LiveStats, type QuotaSlice } from '../src/client/live-cost.tsx'
+import { LiveCostBar, LiveCostChip, lowQuotaChips, sessionCostOf, turnCostOf, type LiveStats, type QuotaSlice } from '../src/client/live-cost.tsx'
 import {
   LIVE_COST_BAR_PREF_EVENT,
   LIVE_COST_BAR_STORAGE_KEY,
@@ -99,9 +99,11 @@ describe('loadLiveCostBarPrefs / saveLiveCostBarPrefs (平价消耗胶囊显隐�
     expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
   })
 
-  it('round-trips the above position and rejects invalid values back to below', () => {
+  it('round-trips the above/toolbar positions and rejects invalid values back to below', () => {
     saveLiveCostBarPrefs({ show: true, position: 'above' })
     expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'above' })
+    saveLiveCostBarPrefs({ show: true, position: 'toolbar' })
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'toolbar' })
     localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":true,"position":"sideways"}')
     expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
     localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":true}')
@@ -155,5 +157,24 @@ describe('LiveCostBar visibility gate (设置 Tab 开关跨树生效)', () => {
     const below = render(<LiveCostBar sessionId={sessionId} t={t} />)
     expect(screen.getByTestId('billing-live-cost-bar').className).not.toMatch(/Above/)
     below.unmount()
+  })
+
+  it('swaps the bar for the inline chip when position is toolbar (mutual exclusion by pref)', () => {
+    localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":true,"position":"toolbar"}')
+    // bar 侧：toolbar 时整条不渲染（dock 槽拿到 null）。
+    const barView = render(<LiveCostBar sessionId={sessionId} t={t} />)
+    expect(screen.queryByTestId('billing-live-cost-bar')).toBeNull()
+    barView.unmount()
+    // chip 侧：紧凑 chip 渲染，档位 + 会话费用在行内；完整信息在 aria-label
+    // （宿主 Tooltip 消费 hover 渲染；原生 title 在 webview 不渲染，不用）。
+    const chipView = render(<LiveCostChip sessionId={sessionId} t={t} />)
+    const chip = screen.getByTestId('billing-live-cost-chip')
+    expect(chip.getAttribute('aria-label')).toContain('会话')
+    chipView.unmount()
+    // 非 toolbar 位置时 chip 让位（input.right 槽拿到 null）。
+    localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":true,"position":"below"}')
+    const offView = render(<LiveCostChip sessionId={sessionId} t={t} />)
+    expect(screen.queryByTestId('billing-live-cost-chip')).toBeNull()
+    offView.unmount()
   })
 })

@@ -20,11 +20,12 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the assembled Remote namespaces (ctx.remote.llm).
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
-// Type-only: pulls the ui-conversation SlotMap merge (the composer.dock entry the live cost bar rides).
+// Type-only: pulls the ui-conversation SlotMap merge (the composer.dock entry the live cost bar rides,
+// and the tool-row 'conversation.input.right' seat the chip injects into).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { UsageBilling, type ModelHealth, type UsageBillingInjected } from './UsageBilling.tsx'
 import type { CatalogModel } from './pricing.ts'
-import { LiveCostBar } from './live-cost.tsx'
+import { LiveCostBar, LiveCostChip } from './live-cost.tsx'
 import { en, NS, zh, type UsageBillingKey } from './locales.ts'
 import { createBillingMetrics, type BillingMetricsService } from './billing-service.ts'
 import { createBillingBudgetStore } from './budget-store.ts'
@@ -169,6 +170,15 @@ export function apply(ctx: Context): void {
     order: 0,
     locale: NS,
   }, LiveCostBar))
+
+  // 工具行内联 chip（位置「模型选择前」）：宿主 input.right list 槽，
+  // 渲染在提交动作/模型选择器之前。与 dock 条目按位置偏好互斥渲染。
+  ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
+    name: 'conversation.input.right',
+    id: 'usage-billing-cost-chip',
+    order: 0,
+    locale: NS,
+  }, LiveCostChip))
 
   // 对话完成提醒：会话 running→completed 迁移时弹一条桌面通知（默认关闭，
   // 用户到面板设置开启）。配置持久化在 localStorage，跨 tab 由 notifier 去重。

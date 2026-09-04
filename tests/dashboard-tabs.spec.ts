@@ -20,3 +20,11 @@ describe('DASHBOARD_TABS', () => {
     }
   })
 })
+
+describe('locale dictionaries', () => {
+  it('carry identical key sets in zh and en (a missing entry renders the raw key)', () => {
+    // 防线：zh/en 词典必须键集一致。历史上 zh 条目曾静默丢失导致界面混出
+    // 英文 key（issue 验收抓到过）——这里让缺失直接红灯。
+    expect(Object.keys(zh).sort()).toEqual(Object.keys(en).sort())
+  })
+})

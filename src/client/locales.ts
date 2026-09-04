@@ -249,6 +249,7 @@ export type UsageBillingKey =
   | 'liveCostBarPosition'
   | 'liveCostBarPosBelow'
   | 'liveCostBarPosAbove'
+  | 'liveCostBarPosToolbar'
   | 'exportCsvSite'
   | 'panelRelayQuota'
   | 'relayBalance'
@@ -505,7 +506,11 @@ export const zh: Record<UsageBillingKey, string> = {
   'siteListDisplay': '中转站列表',
   'siteListDisplayHint': '隐藏「未识别」占位条目，净化中转站额度列表',
   'liveCostBar': '平价消耗胶囊',
-  'liveCostBarHint': '输入框下方的即时代费条（峰谷档位、本轮/会话费用与额度预警）；关闭后整条隐藏，统计与提醒不受影响',
+  'liveCostBarHint': '输入框旁的即时代费条（峰谷档位、本轮/会话费用与额度预警）；关闭后整条隐藏，统计与提醒不受影响',
+  'liveCostBarPosition': '位置',
+  'liveCostBarPosBelow': '输入框下方',
+  'liveCostBarPosAbove': '输入框上方',
+  'liveCostBarPosToolbar': '模型选择前',
   'exportCsvSite': '按站点 CSV',
   'panelRelayQuota': '中转站额度',
   'relayBalance': '余额',
@@ -765,6 +770,7 @@ export const en: Record<UsageBillingKey, string> = {
   'liveCostBarPosition': 'Position',
   'liveCostBarPosBelow': 'Below composer',
   'liveCostBarPosAbove': 'Above composer',
+  'liveCostBarPosToolbar': 'Before model picker',
   'exportCsvSite': 'By site CSV',
   'panelRelayQuota': 'Relay quotas',
   'relayBalance': 'Balance',

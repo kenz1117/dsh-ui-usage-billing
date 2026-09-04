@@ -18,9 +18,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
+import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { formatMoney, formatSwitchCountdown, tierCountdown } from './pricing.ts'
 import { LIVE_COST_BAR_PREF_EVENT, loadLiveCostBarPrefs } from './usage-billing-settings.ts'
+import type { LiveCostBarPrefs } from './usage-billing-settings.ts'
 import type { UsageBillingKey } from './locales.ts'
 import css from './UsageBilling.module.css'
 
@@ -152,16 +154,12 @@ export interface LiveCostBarProps {
   t: (key: UsageBillingKey) => string
 }
 
-/**
- * Render the live cost ticker for the current session.
- * @param props - framework session identity and locale.
- */
-export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode {
-  // 显示偏好（设置 Tab「平价消耗胶囊」开关）：挂载读一次；设置 Tab 与本组件分属
-  // 两个 React 树，切换后经 LIVE_COST_BAR_PREF_EVENT（同文档）与 storage 事件
-  // （跨标签页）通知这里重读 localStorage，胶囊条即时显隐。
+/** 胶囊位置偏好（设置 Tab 三选）。 */
+type CapsulePosition = LiveCostBarPrefs['position']
+
+/** 偏好订阅：显隐 + 位置。设置 Tab（另一棵 React 树）改动经 CustomEvent/storage 事件驱动重读。 */
+function useLiveCostPrefs(): { visible: boolean; position: CapsulePosition } {
   const [visible, setVisible] = useState(() => loadLiveCostBarPrefs().show)
-  // 位置偏好（below=输入框下方 / above=输入框上方）：与显隐同一套跨树同步机制。
   const [position, setPosition] = useState(() => loadLiveCostBarPrefs().position)
   useEffect(() => {
     const reread = (): void => {
@@ -175,7 +173,16 @@ export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode
       window.removeEventListener('storage', reread)
     }
   }, [])
-  // 拉取即时代费数据：挂载时一次 + 周期刷新（与仪表盘同频）。
+  return { visible, position }
+}
+
+/** 即时代费数据：挂载/会话切换时拉取 + 周期刷新，派生会话/本轮费用、峰谷档与额度预警。 */
+function useLiveCostData(sessionId: SessionId): {
+  sessionCost: number
+  turnCost: number
+  tier: ReturnType<typeof tierCountdown>
+  chips: ReturnType<typeof lowQuotaChips>
+} {
   const [stats, setStats] = useState<LiveStats | null>(null)
   const [quotas, setQuotas] = useState<readonly QuotaSlice[]>([])
   // 峰谷倒计时独立跳动（30 秒粒度足够，与数据轮询同频但无数据时也刷新）。
@@ -199,20 +206,29 @@ export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode
     }
     // sessionId 变化时重新订阅，以对齐当前会话。
   }, [sessionId])
-
   // 当前会话累计费用与当前轮费用：由纯函数派生，便于测试。
   const sessionCost = useMemo(() => sessionCostOf(stats, sessionId), [stats, sessionId])
   const turnCost = useMemo(() => turnCostOf(stats, sessionId), [stats, sessionId])
   const tier = tierCountdown(nowMs)
   const chips = useMemo(() => lowQuotaChips(quotas), [quotas])
+  return { sessionCost, turnCost, tier, chips }
+}
+
+/**
+ * Render the live cost ticker for the current session.
+ * @param props - framework session identity and locale.
+ */
+export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode {
+  const { visible, position } = useLiveCostPrefs()
+  const { sessionCost, turnCost, tier, chips } = useLiveCostData(sessionId)
 
   const money = (cny: number): string => formatMoney(cny, 'cny')
 
   const hasCost = sessionCost > 0 || turnCost > 0
   const isPeak = tier.tier === 'peak'
-  // 设置 Tab 里关闭「平价消耗胶囊」后整条不渲染（dock 槽位对 null 子元素安全，
-  // 纯显隐门控：数据轮询与统计口径不受影响）。返回 null 放在全部 hook 之后。
-  if (!visible) return null
+  // 设置 Tab 里关闭「平价消耗胶囊」或切到工具行 chip 后，整条不渲染
+  // （dock 槽位对 null 子元素安全，纯显隐门控：数据轮询与统计口径不受影响）。
+  if (!visible || position === 'toolbar') return null
   // 设计 fee-bar：档位 chip → 倒计时 → 档位说明 → 本轮/会话 → 额度预警 chips。
   // above 变体：dock list 槽以 Fragment 直排进宿主 composer 卡（flex column），
   // 对胶囊自身 order:-1 即浮到输入框上方，零宿主 DOM 侵入。
@@ -248,5 +264,41 @@ export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode
         </span>
       ))}
     </span>
+  )
+}
+
+/**
+ * Render the compact inline chip for the composer tool row (position
+ * 「模型选择前」). Occupies a fixed minimal footprint — tier glyph + session
+ * spend — so it never crowds the model picker; the full breakdown (switch
+ * countdown, turn cost, quota alerts) rides the host Tooltip primitive (the
+ * native title never renders in the webview), and a low quota tints the chip
+ * amber/red instead of growing it.
+ * @param props - framework session identity and locale.
+ */
+export function LiveCostChip({ sessionId, t }: LiveCostBarProps): React.ReactNode {
+  const { visible, position } = useLiveCostPrefs()
+  const { sessionCost, turnCost, tier, chips } = useLiveCostData(sessionId)
+  // 非工具行位置时 chip 让位给 bar（同 id 双槽互斥由位置偏好门控）。
+  if (!visible || position !== 'toolbar') return null
+  const isPeak = tier.tier === 'peak'
+  // 额度预警压到 chip 上：最紧张的一档决定颜色（error > alert > normal）。
+  const worst = chips.reduce<number>((min, c) => Math.min(min, c.pct), 100)
+  const cls = worst <= 10 ? css.feeInlineError : worst <= 20 ? css.feeInlineAlert : css.feeInline
+  const title = [
+    `${formatSwitchCountdown(tier.nextSwitchInMs)} ${isPeak ? t('tierToOff') : t('tierToPeak')}`,
+    `${t('liveTurn')} ${formatMoney(turnCost, 'cny')}`,
+    `${t('liveSession')} ${formatMoney(sessionCost, 'cny')}`,
+    ...chips.map(chip => `${chip.name} ${t(windowLabelKey(chip.kind))} ${chip.pct}%`),
+  ].join(' · ')
+  return (
+    <Tooltip label={title} side="top" delayMs={500}>
+      <span className={cls} data-testid="billing-live-cost-chip" role="note" aria-label={title}>
+        <span className={isPeak ? css.feeChipPrimary : css.feeChipOff} data-testid="billing-live-tier">
+          {isPeak ? t('tierPeak') : t('tierOff')}
+        </span>
+        {sessionCost > 0 && <span className={css.feeInlineNum}>{formatMoney(sessionCost, 'cny')}</span>}
+      </span>
+    </Tooltip>
   )
 }

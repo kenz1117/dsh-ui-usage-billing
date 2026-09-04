@@ -156,8 +156,8 @@ export function saveSiteListPrefs(prefs: SiteListPrefs): void {
 export interface LiveCostBarPrefs {
   /** 是否显示输入框下方的即时代费条胶囊（默认 true：保持历史行为）。 */
   show: boolean
-  /** 胶囊位置：below = 输入框下方（默认，历史行为）；above = 输入框上方。 */
-  position: 'below' | 'above'
+  /** 胶囊位置：below = 输入框下方（默认）；above = 输入框上方；toolbar = 工具行模型选择前的内联 chip。 */
+  position: 'below' | 'above' | 'toolbar'
 }
 
 /** 默认即时代费条偏好：显示在输入框下方（升级用户零感知）。 */
@@ -179,7 +179,9 @@ export function loadLiveCostBarPrefs(): LiveCostBarPrefs {
     // position 非法值同样回退 below。
     return {
       show: parsed.show !== false,
-      position: parsed.position === 'above' ? 'above' : 'below',
+      position: parsed.position === 'above' || parsed.position === 'toolbar'
+        ? parsed.position
+        : 'below',
     }
   } catch {
     return { ...DEFAULT_LIVE_COST_BAR_PREFS }

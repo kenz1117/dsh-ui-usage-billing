@@ -2374,9 +2374,9 @@ function BillingDashboard({
                         <div className={css.ctlGroup}>
                           <button
                             type="button"
-                            className={clsx(css.floatModeBtn, liveCostPrefs.position !== 'above' && css.floatModeBtnOn)}
+                            className={clsx(css.floatModeBtn, liveCostPrefs.position === 'below' && css.floatModeBtnOn)}
                             data-testid="billing-livecost-pos-below"
-                            aria-pressed={liveCostPrefs.position !== 'above'}
+                            aria-pressed={liveCostPrefs.position === 'below'}
                             onClick={() => onLiveCostPrefs({ ...liveCostPrefs, position: 'below' })}
                           >
                             {t('liveCostBarPosBelow')}
@@ -2389,6 +2389,15 @@ function BillingDashboard({
                             onClick={() => onLiveCostPrefs({ ...liveCostPrefs, position: 'above' })}
                           >
                             {t('liveCostBarPosAbove')}
+                          </button>
+                          <button
+                            type="button"
+                            className={clsx(css.floatModeBtn, liveCostPrefs.position === 'toolbar' && css.floatModeBtnOn)}
+                            data-testid="billing-livecost-pos-toolbar"
+                            aria-pressed={liveCostPrefs.position === 'toolbar'}
+                            onClick={() => onLiveCostPrefs({ ...liveCostPrefs, position: 'toolbar' })}
+                          >
+                            {t('liveCostBarPosToolbar')}
                           </button>
                         </div>
                       </div>

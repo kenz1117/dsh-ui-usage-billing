@@ -2093,6 +2093,37 @@
   margin-bottom: 8px;
 }
 
+/* 工具行内联 chip（位置「模型选择前」）：恒定最小占位（档位 + 会话费用），
+   不挤压模型选择器与发送键；完整信息走原生 title 悬浮，额度预警变色不加宽。 */
+.feeInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: center;
+  height: 22px;
+  padding: 0 4px 0 4px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: default;
+}
+.feeInline .feeChipPrimary,
+.feeInline .feeChipOff {
+  height: 18px;
+  padding: 0 7px;
+}
+.feeInlineNum {
+  padding-right: 6px;
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+.feeInlineAlert { background: color-mix(in srgb, var(--dsw-static-amber-500) 12%, transparent); }
+.feeInlineAlert .feeInlineNum { color: var(--dsw-static-amber-500); }
+.feeInlineError { background: color-mix(in srgb, var(--dsw-static-red-500) 12%, transparent); }
+.feeInlineError .feeInlineNum { color: var(--dsw-static-red-500); }
+
 /* 分隔符弱化为静音点，费用数字由 .feeNum 承担主视觉（600 主色）。 */
 .feeBar .feeSep {
   color: var(--dsw-alias-label-dimmed);
