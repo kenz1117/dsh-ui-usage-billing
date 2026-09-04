@@ -8,6 +8,7 @@
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/kenz1117/dsh-ui-usage-billing?logo=github"></a>
   <a href="https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing"><img alt="npm version" src="https://img.shields.io/npm/v/@kenz1117/dsh-ui-usage-billing?logo=npm"></a>
   <a href="https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@kenz1117/dsh-ui-usage-billing?logo=npm"></a>
+  <a href="https://github.com/kenz1117/dsh-ui-usage-billing/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/kenz1117/dsh-ui-usage-billing/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/LICENSE"><img alt="License MIT" src="https://img.shields.io/github/license/kenz1117/dsh-ui-usage-billing"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/pulls"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing"><img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/kenz1117/dsh-ui-usage-billing?logo=github"></a>
@@ -37,6 +38,17 @@
 - **Peak/off-peak pricing + switch alerts** — weekday peak split and weekend all-day off-peak, **priced per official change boundary** (base price before 08-17, weekend peak hours 08-17~08-23, weekend all-day off-peak from 08-23), with a popover / system notification before a tier switch, configurable lead time.
 - **Offline & self-contained** — no chart library, no external CDN, pure design tokens; lightweight and ready to use.
 - **Multi-language + dual currency** — Chinese / English, ¥/$ toggle that only affects this plugin.
+
+## ⚖️ How it differs from similar plugins
+
+Peer plugins (cost-meter, usage-stats, dsh-bill, …) each have their strengths; this plugin's positioning:
+
+- **Live pricing sources** — a real-time models.dev catalog + a built-in catalog of 73 models across 24 vendors + user-defined prices in the settings panel (bindable per relay origin); new models don't wait for a hand-edited price table.
+- **History is never recomputed** — every call is priced at its own moment, segmented by official change boundaries (base price before 08-17 → peak/off-peak v1 → weekend all-day off-peak from 08-23); pre-install history is backfilled from existing session logs, and later price changes never rewrite old bills.
+- **Not just "how much" but "on what"** — input split by cache hit/miss (including reasoning), official vs third-party buckets, drill-down by workspace/session/relay site, per-turn cost-spike attribution; plus a performance panel few peers offer (per-model TTFT mean/P50/P90 and generation speed).
+- **Subscription & balance loop** — 7 official provider balances + Coding Plan quotas + relay-station balances and rolling quota windows + self-declared endpoints + cross-reconciliation between official balance deltas and the local ledger.
+- **Uncatalogued models stay visible** — they are explicitly marked "uncatalogued" and counted in the Hero hint; a custom price takes effect immediately instead of silently billing 0 or charging the wrong model's rate.
+- **The model can check for itself** — an optional `usage_stats` tool lets the model answer "what did I spend today" or "which site used the most".
 
 ## 📊 Dashboard
 
