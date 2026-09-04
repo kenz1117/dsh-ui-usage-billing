@@ -165,9 +165,15 @@ export declare function isPeakHour(beijingHour: number): boolean;
  */
 export declare function tierAt(timeMs: number | null | undefined): PriceTierId;
 /**
- * 当前峰谷档位与距下次切换的时长。导出供测试：纯函数。
+ * 当前峰谷档位与距下一切换的时长。导出供测试：纯函数。
+ *
+ * 下一切换点统一定义为档位真正变化的最近边界：自当前时刻起逐天扫描工作日的
+ * 09:00 / 12:00 / 14:00 / 18:00，候选时刻的档位由 {@link tierAt} 判定——
+ * 周末（周六/周日）北京全天低谷、没有边界，扫描自然跳过；工作日深夜跨周末
+ * 时落到周一 09:00 而非周末伪边界（issue #33）。
+ * 最坏情形（周五 18:00 后 → 周一 09:00）约 63h，7 天窗口必然覆盖。
  * @param nowMs - 当前时刻（epoch 毫秒）。
- * @returns 当前档位与到下一个切换边界的毫秒数。
+ * @returns 当前档位与到下一切换边界的毫秒数。
  */
 export declare function tierCountdown(nowMs: number): {
     tier: PriceTierId;

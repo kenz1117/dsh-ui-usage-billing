@@ -286,16 +286,6 @@ function isBeijingWeekend(timeMs: number): boolean {
   return day === 0 || day === 6
 }
 
-/** 距下一个工作日（周一）北京时间 09:00 峰时的毫秒数：周末全天低谷的下一档。 */
-function nextWeekdayPeakInMs(nowMs: number): number {
-  const bj = new Date(nowMs + 8 * 3_600_000)
-  const day = bj.getUTCDay()
-  const elapsed = bj.getUTCHours() * 3_600_000 + bj.getUTCMinutes() * 60_000 + bj.getUTCSeconds() * 1_000 + bj.getUTCMilliseconds()
-  // 到周一：周日(0)=1 天、周六(6)=2 天。
-  const toMonday = day === 0 ? 1 : 2
-  return toMonday * 86_400_000 - elapsed + 9 * 3_600_000
-}
-
 /** 峰谷切换边界（北京时间的当日分钟数）：09:00 / 12:00 / 14:00 / 18:00。 */
 const TIER_BOUNDARY_MINUTES: readonly number[] = [540, 720, 840, 1080]
 
@@ -305,25 +295,33 @@ function beijingMillisOfDay(timeMs: number): number {
 }
 
 /**
- * 当前峰谷档位与距下次切换的时长。导出供测试：纯函数。
+ * 当前峰谷档位与距下一切换的时长。导出供测试：纯函数。
+ *
+ * 下一切换点统一定义为档位真正变化的最近边界：自当前时刻起逐天扫描工作日的
+ * 09:00 / 12:00 / 14:00 / 18:00，候选时刻的档位由 {@link tierAt} 判定——
+ * 周末（周六/周日）北京全天低谷、没有边界，扫描自然跳过；工作日深夜跨周末
+ * 时落到周一 09:00 而非周末伪边界（issue #33）。
+ * 最坏情形（周五 18:00 后 → 周一 09:00）约 63h，7 天窗口必然覆盖。
  * @param nowMs - 当前时刻（epoch 毫秒）。
- * @returns 当前档位与到下一个切换边界的毫秒数。
+ * @returns 当前档位与到下一切换边界的毫秒数。
  */
 export function tierCountdown(nowMs: number): { tier: PriceTierId; nextSwitchInMs: number } {
-  // 周末全天低谷：没有日内切换，下一档是下个工作日（周一）09:00 的峰时。
-  if (isBeijingWeekend(nowMs)) {
-    return { tier: 'offPeak', nextSwitchInMs: nextWeekdayPeakInMs(nowMs) }
-  }
+  const tier = tierAt(nowMs)
   const dayMs = beijingMillisOfDay(nowMs)
-  for (const boundary of TIER_BOUNDARY_MINUTES) {
-    const boundaryMs = boundary * 60_000
-    if (dayMs < boundaryMs) {
-      return { tier: tierAt(nowMs), nextSwitchInMs: boundaryMs - dayMs }
+  for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+    const dayStart = dayOffset * 86_400_000 - dayMs
+    for (const boundary of TIER_BOUNDARY_MINUTES) {
+      const inMs = dayStart + boundary * 60_000
+      // 当天已过的边界不是候选；未来的边界按 tierAt 判档位是否真变化。
+      if (inMs <= 0) continue
+      if (tierAt(nowMs + inMs) !== tier) {
+        return { tier, nextSwitchInMs: inMs }
+      }
     }
   }
-  // 18:00 之后：下一边界是明天 09:00（TIER_BOUNDARY_MINUTES[0] 首项）。
+  // 不可达兜底：7 天窗口内必有档位切换（任一工作日就有四次边界）。
   const firstBoundary = TIER_BOUNDARY_MINUTES[0] ?? 0
-  return { tier: tierAt(nowMs), nextSwitchInMs: 86_400_000 - dayMs + firstBoundary * 60_000 }
+  return { tier, nextSwitchInMs: 86_400_000 - dayMs + firstBoundary * 60_000 }
 }
 
 /**
