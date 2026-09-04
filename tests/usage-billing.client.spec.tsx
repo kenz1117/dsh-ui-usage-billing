@@ -92,29 +92,8 @@ describe('UsageBilling surface', () => {
     expect(screen.getByTestId('billing-trigger').textContent).toContain('¥')
   })
 
-  it('shows the live-cost capsule toggle by default and persists hiding it with a cross-tree broadcast', async () => {
-    // LiveCostBar 与设置面板分属两个 React 树：切换要广播 CustomEvent 通知 dock 侧。
-    const events: string[] = []
-    const listener = (): void => { events.push('livecost') }
-    window.addEventListener('dsh.ui-usage-billing.livecost-pref', listener)
-    try {
-      render(<UsageBilling {...makeProps()} />)
-      fireEvent.click(screen.getByTestId('billing-trigger'))
-      await screen.findByText('使用统计')
-      fireEvent.click(await screen.findByTestId('billing-tab-settings'))
-      // 默认显示：开关 aria-checked=true，localStorage 无记录（升级用户零感知）。
-      const toggle = await screen.findByTestId('billing-livecost-toggle')
-      expect(toggle.getAttribute('aria-checked')).toBe('true')
-      expect(localStorage.getItem('dsh.ui-usage-billing.livecost')).toBeNull()
-      // 关闭：状态翻转、localStorage 持久化、广播 CustomEvent（dock 侧即时显隐信号）。
-      fireEvent.click(toggle)
-      expect(toggle.getAttribute('aria-checked')).toBe('false')
-      expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.livecost')!)).toEqual({ show: false })
-      expect(events).toEqual(['livecost'])
-    } finally {
-      window.removeEventListener('dsh.ui-usage-billing.livecost-pref', listener)
-    }
-  })
+  // live-cost capsule 开关（PR #22）仅存在于预览线：稳定线未回移该功能，
+  // 对应用例留在 main 分支的测试里，这里不测不存在的行为。
 })
 
 describe('providerFromModelKey (B5 model-id fallback)', () => {

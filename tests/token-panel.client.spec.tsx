@@ -43,6 +43,6 @@ describe('TokenPanel', () => {
   it('renders an empty state for the model ranking when there are no calls', () => {
     const empty = { ...STATS, byModel: {} }
     render(<TokenPanel stats={empty} currency="cny" trendDays={7} onTrendDays={() => {}} t={t} />)
-    expect(screen.getByText(zh['billing.noData'])).toBeTruthy()
+    expect(screen.getByText(zh['noData'])).toBeTruthy()
   })
 })
