@@ -35,6 +35,21 @@ let liveRate: number | undefined
 let livePrices: Readonly<Record<string, LivePrice>> | undefined
 let liveExtraModels: readonly ExtraModelPrice[] | undefined
 let liveCatalogModels: readonly CatalogModel[] | undefined
+/**
+ * 用户自定义模型别名（插件配置 `modelKeyAliases`，聚合启动时注入）：真实日志
+ * model id → 计费目录键。优先级高于内置别名表——目录外的新模型无需等发版，
+ * 配置一条别名即完成识别与计价（键必须是 MODEL_CATALOG 的既有 key）。
+ */
+let userModelAliases: Readonly<Record<string, string>> | undefined
+
+/**
+ * 注入用户自定义模型别名（node 半区在插件启动时调用一次）。纯内存状态：
+ * 聚合折叠与客户端渲染共用同一份（两侧一致性由同一注入点保证）。
+ * @param aliases - `model id → 目录键` 映射；undefined/空 = 清除，回退内置表。
+ */
+export function applyUserModelAliases(aliases: Readonly<Record<string, string>> | undefined): void {
+  userModelAliases = aliases !== undefined && Object.keys(aliases).length > 0 ? aliases : undefined
+}
 
 /**
  * 用户自定义单价（设置面板录入，localStorage 持久化）：覆盖内置/models.dev/
@@ -1192,6 +1207,8 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'command-r-08-2024': 'command-r-08-2024',
   'command-r': 'command-r-08-2024',
   // 国产新兴/开源模型 id 变体。
+  // 腾讯混元 TokenHub 短 id（控制台/网关常用形态；价格口径 = hunyuan 条目）。
+  'hy3': 'hunyuan',
   'longcat-2.0': 'longcat-2.0',
   'longcat-2': 'longcat-2.0',
   'minicpm-v-4.5': 'minicpm-v-4.5',
@@ -1289,8 +1306,52 @@ const CATALOG_CANON_INDEX: ReadonlyMap<string, string> = (() => {
  * @param id - 真实模型 id（日志里出现的形式）。
  * @returns 计费目录键。
  */
+/**
+ * 由一个未知模型 id 派生候选 id（仅当直接查全部未命中时才尝试）：
+ * - 剥离组织前缀（`deepseek/deepseek-v4-flash` → `deepseek-v4-flash`）；
+ * - 剥离尾部纯数字段（`deepseek-v4-flash-202605` / `-0731` → `deepseek-v4-flash`，
+ *   覆盖 TokenHub / 官方按日期滚动的快照 id）；
+ * - 两者组合派生。目录键本身（如 `mistral-large-2512`、`command-a-03-2025`）
+ *   在直接查就已命中，永不进入派生分支，不受剥段影响。
+ */
+function derivedKeyCandidates(id: string): string[] {
+  const out: string[] = []
+  const push = (value: string): void => {
+    if (value !== '' && !out.includes(value)) out.push(value)
+  }
+  const stripTrailingDigits = (value: string): void => {
+    let base = value
+    for (;;) {
+      const next = base.replace(/[-_]\d{3,}$/u, '')
+      if (next === base || next === '') return
+      base = next
+      push(base)
+    }
+  }
+  const slash = id.lastIndexOf('/')
+  if (slash > 0 && slash < id.length - 1) {
+    const bare = id.slice(slash + 1)
+    push(bare)
+    stripTrailingDigits(bare)
+  }
+  stripTrailingDigits(id)
+  return out
+}
+
+/** 查一个候选 id（用户别名 → 内置别名 → 目录归一化 → models.dev 补充）；未命中返回 undefined。 */
+function lookupCandidate(candidate: string): string | undefined {
+  const alias = userModelAliases?.[candidate] ?? MODEL_KEY_ALIASES[candidate]
+  if (alias !== undefined) return alias
+  const canon = canonModelId(candidate)
+  if (canon === '') return undefined
+  const hit = CATALOG_CANON_INDEX.get(canon)
+  if (hit !== undefined) return hit
+  const extraHit = (liveExtraModels ?? []).find(item => canonModelId(item.key) === canon)
+  return extraHit?.key
+}
+
 export function resolveCatalogKey(id: string): string {
-  const exact = MODEL_KEY_ALIASES[id] ?? id
+  const exact = userModelAliases?.[id] ?? MODEL_KEY_ALIASES[id] ?? id
   if (exact === id) {
     // 精确别名未命中：做归一化匹配；命中即返回目标键。
     const canon = canonModelId(id)
@@ -1299,6 +1360,12 @@ export function resolveCatalogKey(id: string): string {
       if (hit !== undefined) return hit
       const extraHit = (liveExtraModels ?? []).find(item => canonModelId(item.key) === canon)
       if (extraHit !== undefined) return extraHit.key
+    }
+    // 派生候选（剥组织前缀 / 尾部日期段）按同一口径匹配；全部未命中保持原样
+    // （回退 other，不计费），绝不静默按其他模型的价格记账。
+    for (const candidate of derivedKeyCandidates(id)) {
+      const hit = lookupCandidate(candidate)
+      if (hit !== undefined) return hit
     }
   }
   return exact

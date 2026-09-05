@@ -33,7 +33,7 @@ import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { SettingsProvider, SettingsScope } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { createUsageAggregator, dayStamp, type UsageLedgerStore, type UsagePersistence } from './aggregate.ts'
-import { applyLivePricing, formatMoney, formatTokens } from './client/pricing.ts'
+import { applyLivePricing, applyUserModelAliases, formatMoney, formatTokens } from './client/pricing.ts' 
 import { queryBalances, queryCustomBalances } from './balance.ts'
 import { queryDeclaredEndpoints } from './declarative.ts'
 import { reconcileBalanceDelta, type BalanceRef, type ReconcileEvent } from './reconcile.ts'
@@ -167,6 +167,18 @@ export interface UsageBillingConfig {
    * 计费但本地日志无 usage，按次估值计入今日/本月费用；默认 0.02 元/次，设 0 关闭。
    */
   searchCallEstimateCny?: number
+  /**
+   * 历史路由别名（旧 provider 路由名 → 当前路由名）：改过名/删除过的路由，其
+   * 历史用量原会落「未知路由」桶且站点/订阅/官方判定全部失效；配置别名后按
+   * 目标路由归位。例：`{ "deepseek-official": "tencent", "tencent-cloud": "tencent" }`。
+   */
+  routeAliases?: Record<string, string>
+  /**
+   * 用户自定义模型别名（真实日志 model id → 计费目录键）：目录外的新模型无需
+   * 等发版，配置一条别名即完成识别与计价（值必须是 MODEL_CATALOG 的既有 key，
+   * 如 `{ "hy4-preview": "hunyuan" }`）。聚合折叠与客户端渲染共用同一映射。
+   */
+  modelKeyAliases?: Record<string, string>
 }
 
 /** 实时定价的后台刷新间隔（毫秒）：汇率/模型价低频变化，6 小时一次足够。 */
@@ -534,10 +546,14 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 前端 30 秒轮询只重算写过的会话。
   // 项目归属用工作区标题（host workspaceRegistry 可选；缺失时 resolver 为 undefined，回退目录名）。
   const workspaceTitleResolver = buildWorkspaceTitleResolver(ctx)
+  // 用户自定义模型别名：聚合启动前注入（与客户端渲染共用一张表，见 pricing.ts）。
+  applyUserModelAliases(config.modelKeyAliases)
   const aggregator = createUsageAggregator(adaptSessionPersistence(ctx.sessionPersistence), {
     ...(config.subscriptionProviders === undefined
       ? {}
       : { subscriptionProviders: config.subscriptionProviders }),
+    // 历史路由别名：改名/删除路由的历史用量按别名归位（站点/订阅/官方判定同步生效）。
+    ...(config.routeAliases === undefined ? {} : { routeAliases: config.routeAliases }),
     // 中转站零配置发现：每次聚合读 llm-pi-ai providers 的 baseURL（路由→站点映射）。
     resolveRoutes: () => readPiAiProviderRoutes(ctx.settings),
     // 项目归属用工作区标题命名（host workspaceRegistry 为可选依赖，缺失时回退目录名）。

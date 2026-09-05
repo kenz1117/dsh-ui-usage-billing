@@ -15,10 +15,11 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import {
   aggregateUsage, createUsageAggregator, dayStamp, foldSession, foldUsage, emptyUsage, workspaceNameOf, hostTimeZone,
-  siteBucketKey, siteOriginOf, siteRefOf, runLedgerMigrations, FOLD_VERSION, foldSearchCall,
+  siteBucketKey, siteOriginOf, siteRefOf, runLedgerMigrations, FOLD_VERSION, foldSearchCall, DEFAULT_SUBSCRIPTION_PROVIDERS,
   type LedgerMigration, type UsageLedgerDocument, type UsageLedgerSession,
   AGGREGATE_TTL_MS, SESSION_ROW_LIMIT, type UsagePersistence,
 } from '../src/aggregate.ts'
+import { isSubscriptionProviderId } from '../src/subscriptions.ts'
 
 /** Minimal `request/header` event recording the active model and provider. */
 function header(seq: number, model: string, provider = 'deepseek-official'): SessionEvent {
@@ -618,7 +619,8 @@ describe('aggregateUsage', () => {
   })
 
   it('buckets DeepSeek-official calls as official and the rest as third-party', async () => {
-    // 官方 = provider 以 deepseek 为前缀；其余（如 openrouter 中转）计为三方。
+    // 官方 = 直连路由（配置在册、无 baseURL）按 deepseek 前缀判定；其余（如 openrouter 中转）计为三方。
+    // 未知路由（不在配置里）不猜官方：历史改名路由用 routeAliases 归位（见下方专项用例）。
     const stats = await aggregateUsage(fakePersistence({
       'session-a': [
         header(1, 'deepseek-v4-flash', 'deepseek-official'),
@@ -626,7 +628,9 @@ describe('aggregateUsage', () => {
         header(3, 'deepseek-v4-flash', 'openrouter'),
         message(4, Date.UTC(2026, 7, 15, 5, 0, 0), USAGE),
       ],
-    }))
+    }), {
+      resolveRoutes: () => ({ 'deepseek-official': {}, openrouter: {} }),
+    })
     const flash = stats.byModel.flash
     expect(flash?.calls).toBe(2)
     expect(flash?.officialCalls).toBe(1)
@@ -1288,5 +1292,78 @@ describe('hostTimeZone', () => {
   it('derives the offset from the given instant (UTC+08:00)', () => {
     const tz = hostTimeZone(new Date('2026-08-24T04:00:00+08:00'))
     expect(tz.offset).toMatch(/^UTC[+-]\d{2}:\d{2}$/)
+  })
+})
+
+describe('official channel by origin + route aliases (Tencent gateway)', () => {
+  const tokenhubRoutes = { tencent: { baseURL: 'https://tokenhub.tencentmaas.com/v1' } }
+
+  it('does not mark gateway-sourced deepseek calls official even when the route name says deepseek', () => {
+    // 名为 deepseek-official 的腾讯网关路由：历史实现按 id 前缀误判为官方渠道。
+    const events = [header(1, 'deepseek-v4-flash', 'deepseek-official'), message(2, 2_000, USAGE)]
+    const fold = foldSession(events, new Set(), undefined, tokenhubRoutes)
+    expect(fold.total.officialCalls).toBe(0)
+    expect(fold.total.officialCost).toBe(0)
+  })
+
+  it('still marks api.deepseek.com-origin routes as official', () => {
+    const routes = { deepseek: { baseURL: 'https://api.deepseek.com/v1' } }
+    const events = [header(1, 'deepseek-v4-flash', 'deepseek'), message(2, 2_000, USAGE)]
+    const fold = foldSession(events, new Set(), undefined, routes)
+    expect(fold.total.officialCalls).toBe(1)
+  })
+
+  it('falls back to id-prefix judgement only for direct (configured, no baseURL) routes', () => {
+    const events = [header(1, 'deepseek-v4-flash', 'deepseek-official'), message(2, 2_000, USAGE)]
+    const fold = foldSession(events, new Set(), undefined, { 'deepseek-official': {} })
+    expect(fold.total.officialCalls).toBe(1)
+  })
+
+  it('never guesses official for unknown routes (renamed/deleted config)', () => {
+    // 不在当前配置里的路由无法核实通道：不装确定，历史路由用 routeAliases 归位。
+    const events = [header(1, 'deepseek-v4-flash', 'deepseek-official'), message(2, 2_000, USAGE)]
+    const fold = foldSession(events, new Set(), undefined, {})
+    expect(fold.total.officialCalls).toBe(0)
+  })
+
+  it('routeAliases relocate renamed routes into their current site bucket', () => {
+    const events = [header(1, 'glm-5.3-flash', 'tencent-old'), message(2, 2_000, USAGE)]
+    const fold = foldSession(events, new Set(), undefined, tokenhubRoutes, 0.02, 0, { 'tencent-old': 'tencent' })
+    expect(fold.bySite.get('site:https://tokenhub.tencentmaas.com')?.calls).toBe(1)
+    expect(fold.bySite.get('unknown')).toBeUndefined()
+  })
+
+  it('aliases apply to message.source attribution too', () => {
+    const renamed = {
+      type: 'assistant/message', seq: 2, time: 2_000,
+      data: { turn: 1, step: 1, usage: USAGE, message: { role: 'assistant', content: [], source: { kind: 'model', provider: 'tencent-cloud', model: 'deepseek-v4-flash-202605' } } },
+    } as unknown as SessionEvent
+    const fold = foldSession([renamed], new Set(), undefined, tokenhubRoutes, 0.02, 0, { 'tencent-cloud': 'tencent' })
+    // 组织前缀/日期后缀归一 + 别名路由归位：计价按目录 flash 键、站点按 tokenhub。
+    expect(fold.byModel.get('flash')?.calls).toBe(1)
+    expect(fold.bySite.get('site:https://tokenhub.tencentmaas.com')?.calls).toBe(1)
+  })
+})
+
+describe('subscription matcher (default set vs explicit RE rule)', () => {
+  const tokenhubRoutes = { tencent: { baseURL: 'https://tokenhub.tencentmaas.com/v1' } }
+
+  it('exempts tencent-token-plan calls from token pricing by the default set', () => {
+    const events = [header(1, 'glm-5.3', 'tencent-token-plan'), message(2, 2_000, USAGE)]
+    const fold = foldSession(events, new Set(DEFAULT_SUBSCRIPTION_PROVIDERS), undefined, tokenhubRoutes)
+    expect(fold.total.cost).toBe(0)
+    expect(fold.planCalls.get('glm-5.3')).toBe(1)
+  })
+
+  it('covers suffixed plan route variants when the card id rule is explicitly chosen', () => {
+    const events = [header(1, 'glm-5.3', 'tencent-token-plan-vision'), message(2, 2_000, USAGE)]
+    const fold = foldSession(events, isSubscriptionProviderId, undefined, tokenhubRoutes)
+    expect(fold.total.cost).toBe(0)
+  })
+
+  it('keeps explicit sets as overrides (empty set prices everything)', () => {
+    const events = [header(1, 'glm-5.3', 'tencent-token-plan'), message(2, 2_000, USAGE)]
+    const fold = foldSession(events, new Set(), undefined, tokenhubRoutes)
+    expect(fold.total.cost).toBeGreaterThan(0)
   })
 })
