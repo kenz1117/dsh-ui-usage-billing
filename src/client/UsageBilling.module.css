@@ -2691,6 +2691,28 @@
   white-space: nowrap;
 }
 
+/* 厂商费用合计（issue #34）：付费者视角的一级信息，金额用主色强调，
+   与余额徽章同布局（label 弱化 + 数值醒目）。 */
+.providerGroupCost {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.providerGroupCostLabel {
+  font-size: 11px;
+}
+
+.providerGroupCostValue {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
 .providerGroupBalanceLabel {
   font-size: 11px;
   line-height: 17px;

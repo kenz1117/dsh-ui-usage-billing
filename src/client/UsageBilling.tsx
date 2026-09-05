@@ -896,6 +896,10 @@ interface ProviderBillingGroup {
   dot: string | undefined
 }
 
+/** 厂商组费用合计（实际优先、估算兜底；订阅内调用不计费）——付费者视角的一级信息（issue #34）。 */
+const providerCostOf = (group: ProviderBillingGroup): number =>
+  group.models.reduce((sum, m) => sum + (m.actual ?? m.estimated), 0)
+
 /**
  * Sidebar footer trigger: compact pill in wide mode, icon in rail mode.
  * ZINE 模式下入口由主题插件的贴纸层承担，本触发器由 CSS
@@ -1845,9 +1849,7 @@ function BillingDashboard({
     }
     return groups
       .sort((a, b) => {
-        const costOf = (group: ProviderBillingGroup): number =>
-          group.models.reduce((sum, m) => sum + (m.actual ?? m.estimated), 0)
-        const diff = costOf(b) - costOf(a)
+        const diff = providerCostOf(b) - providerCostOf(a)
         if (diff !== 0) return diff
         // 有模型用量的组排在纯订阅组之前；同为纯订阅组保持原顺序（排序稳定）。
         if (a.models.length === 0 && b.models.length === 0) return 0
@@ -2695,6 +2697,11 @@ function BillingDashboard({
                             <span className={css.providerGroupName}>{providerName(group.name)}</span>
                           </span>
                           <span className={css.providerGroupMeta}>
+                            {/* 费用合计：付费者视角的一级信息（issue #34）——充值与余额都针对厂商。 */}
+                            <span className={css.providerGroupCost} data-testid="billing-provider-cost">
+                              <span className={css.providerGroupCostLabel}>{t('cost')}</span>
+                              <span className={css.providerGroupCostValue}>{money(providerCostOf(group))}</span>
+                            </span>
                             {group.subscriptions.length > 0 && (
                               <span className={css.providerGroupBadge} data-testid="billing-provider-sub-count">
                                 {group.subscriptions.length} 套餐
