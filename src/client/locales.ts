@@ -33,9 +33,7 @@ export type UsageBillingKey =
   | 'budgetTierBody'
   | 'models'
   | 'providerBilling'
-  | 'channelBilling'
   | 'channelUnknown'
-  | 'channelDirect'
   | 'actual'
   | 'pricing'
   | 'input'
@@ -296,10 +294,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'sessionOverflow': '仅显示花费前 {limit} 个，共 {total} 个会话',
   'budgetTierBody': '本月花费 {cost} 已达预算 {budget} 的 {pct}%',
   'models': '模型计费明细',
-  'providerBilling': '厂商计费与订阅',
-  'channelBilling': '按通道聚合',
+  'providerBilling': '提供商计费与订阅',
   'channelUnknown': '未知路由',
-  'channelDirect': '直连',
   'actual': '实际',
   'pricing': '模型单价表',
   'input': '输入',
@@ -560,9 +556,7 @@ export const en: Record<UsageBillingKey, string> = {
   'budgetTierBody': 'This month {cost} reached {pct}% of the budget {budget}',
   'models': 'Model billing',
   'providerBilling': 'Provider billing & subscriptions',
-  'channelBilling': 'By channel',
   'channelUnknown': 'Unknown routes',
-  'channelDirect': 'Direct',
   'actual': 'Actual',
   'pricing': 'Model pricing',
   'input': 'Input',

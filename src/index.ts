@@ -280,6 +280,7 @@ const SUBSCRIPTION_KEY_SOURCES: ReadonlyArray<{ provider: string; key: Exclude<k
   { provider: 'minimax-token-plan-cn', key: 'minmaxApiKey' },
   { provider: 'minimax-cn', key: 'minmaxApiKey' },
   { provider: 'openrouter', key: 'openrouterApiKey' },
+  { provider: 'tencent-token-plan', key: 'tencentCloudApi' },
 ]
 
 /**

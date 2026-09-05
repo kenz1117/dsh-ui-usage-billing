@@ -34,26 +34,6 @@ export declare function queryBalances(ctx: Context, providers: Readonly<Record<s
     apiKeyEnv?: string;
 }>>): Promise<readonly ProviderBalance[]>;
 /**
- * 构造云 API 3.0 TC3-HMAC-SHA256 签名（官方签名方法 v3）。导出供测试：纯函数，
- * 输入确定则签名确定。Action 不参与签名——它走 `X-TC-Action` 请求头。
- * @param secretId - 云 API SecretId。
- * @param secretKey - 云 API SecretKey。
- * @param payload - 已序列化的请求体（含 Action/Version/Region 公共参数）。
- * @param timestamp - 签名时间戳（秒）。
- * @returns Authorization 头的值。
- */
-export declare function tc3Authorization(secretId: string, secretKey: string, payload: string, timestamp: number): string;
-/**
- * 在套餐余量对象里防御性提取「剩余额度」：官方 SubPackageBalance/PackageInfo
- * 的字段名未稳定公开（issue #18 调研期），按语义键名扫描——命中 remaining /
- * balance / left 语义键直接用；命中 total 与 used 则相减推导。数字一律经
- * {@link toNumber} 归一化（上游可能给字符串）。
- * 导出供测试：纯函数。
- * @param source - 套餐详情里的余量对象（PackageInfo / SubPackageBalance 等）。
- * @returns 剩余额度（上游单位，通常为 token 数或元）；提取不到返回 undefined。
- */
-export declare function pickRemainingQuota(source: unknown): number | undefined;
-/**
  * 按 extract 规则从响应 JSON 求值。导出供测试：纯函数。
  * @param rule - 提取规则（const / path / add / subtract / divide）。
  * @param data - 响应 JSON。

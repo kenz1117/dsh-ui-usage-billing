@@ -19,6 +19,7 @@
     "src/balance.ts",
     "src/subscriptions.ts",
     "src/resilience.ts",
+    "src/tc3.ts",
     "src/relay.ts"
   ],
   "references": []

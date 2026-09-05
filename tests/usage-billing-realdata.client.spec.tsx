@@ -73,6 +73,12 @@ const REAL_STATS = {
     { id: 'sess-shop-1', title: '修复登录 bug', cwd: '/home/ken/shop-web', calls: 80, cost: 2.4, lastActive: Date.UTC(2026, 7, 16, 8, 0, 0) },
     { id: 'sess-api-2', cwd: '/home/ken/api-server', calls: 20, cost: 1.02, lastActive: Date.UTC(2026, 7, 15, 9, 30, 0) },
   ],
+  byDayModelsSite: {
+    '2026-08-16': {
+      'flash': { 'site:https://api.deepseek.com': day(50, 32_000_000, 4_000_000, 15_000_000, 17_000_000, 1.12) },
+      'pro': { 'site:https://api.deepseek.com': day(19, 13_000_000, 1_500_000, 6_000_000, 7_000_000, 0.59) },
+    },
+  },
 }
 
 /** 本地时区今日日期戳（与组件的 localDayStamp 同规则）。 */
@@ -248,12 +254,20 @@ describe('UsageBilling real-data surface', () => {
 
   it('marks uncatalogued models and infers their provider from the model id', async () => {
     // mi-mimo-2.5 不在计费目录（收录的是 mimo-v2.5）：落回「其他」并标注未收录，
-    // 提供方从 model id 反推为小米（而不是 Custom）。
+    // 提供方从 model id 反推为小米。提供商（通道）优先分组后，品牌只是行内副标
+    // /徽标——mi-mimo-2.5 与 flash/pro 同走 DeepSeek 官方通道，就落在同一组。
     const stats = {
       ...REAL_STATS,
       byModel: {
         ...REAL_STATS.byModel,
         'mi-mimo-2.5': day(15, 9_000_000, 1_200_000, 3_000_000, 6_000_000, 0.4),
+      },
+      byDayModelsSite: {
+        ...REAL_STATS.byDayModelsSite,
+        '2026-08-16': {
+          ...REAL_STATS.byDayModelsSite['2026-08-16'],
+          'mi-mimo-2.5': { 'site:https://api.deepseek.com': day(15, 9_000_000, 1_200_000, 3_000_000, 6_000_000, 0.4) },
+        },
       },
     }
     vi.stubGlobal('fetch', vi.fn(async (input: string) => {
@@ -263,16 +277,15 @@ describe('UsageBilling real-data surface', () => {
     }))
     const { container } = render(<UsageBilling {...makeProps()} />)
     fireEvent.click(container.querySelector('button')!)
-    // 未收录模型按厂商聚合：mi-mimo-2.5 反推出厂商为「小米」，落进小米厂商组。
-    // 用厂商组 testid 定位（其他厂商组可能排在前，findByTestId 会取到第一个）。
-    // 厂商面板在厂商 Tab：先切 Tab。
     fireEvent.click(await screen.findByTestId('billing-tab-providers'))
     const groups = await screen.findAllByTestId('billing-provider-group')
-    const xiaomi = groups.find(group => group.textContent?.includes('小米'))
-    expect(xiaomi).toBeDefined()
-    const table = xiaomi!.querySelector('[data-testid="billing-table-scroll"]')
+    const deepseek = groups.find(group => group.textContent?.includes('DeepSeek 官方'))
+    expect(deepseek).toBeDefined()
+    const table = deepseek!.querySelector('[data-testid="billing-table-scroll"]')
     expect(table).not.toBeNull()
     await waitFor(() => { expect(table!.textContent).toContain('mi-mimo-2.5') })
+    // 行内副标保留反推出的品牌「小米」。
+    expect(table!.textContent).toContain('小米')
     // 只有这一行未收录（flash / pro 均在目录内）。
     expect(table!.querySelectorAll('[data-testid="billing-uncatalogued-tag"]')).toHaveLength(1)
   })
@@ -371,14 +384,21 @@ describe('UsageBilling real-data surface', () => {
     expect(deepseek!.querySelector('[data-testid="billing-subscription-card"]')).toBeNull()
   })
 
-  it('mixes non-subscription models and subscription quotas in the same vendor group', async () => {
-    // 小米厂商组同时容纳：非订阅按量模型 mi-mimo-2.5（plan=false，显示费用）
-    // 与订阅套餐 xiaomi-token-plan-cn（订阅卡片）——用户提醒的"厂商还有非订阅模型"。
+  it('mixes non-subscription models and subscription quotas in the same channel group', async () => {
+    // mi-mimo-2.5 经 xiaomi 直连订阅路由调用：直连通道 direct:xiaomi-token-plan-cn
+    // 同时容纳订阅卡片与该模型行——「哪个入口」把订阅与用量天然归到一起。
     const stats = {
       ...REAL_STATS,
       byModel: {
         ...REAL_STATS.byModel,
         'mi-mimo-2.5': day(15, 9_000_000, 1_200_000, 3_000_000, 6_000_000, 0.4),
+      },
+      byDayModelsSite: {
+        ...REAL_STATS.byDayModelsSite,
+        '2026-08-16': {
+          ...REAL_STATS.byDayModelsSite['2026-08-16'],
+          'mi-mimo-2.5': { 'direct:xiaomi-token-plan-cn': day(15, 9_000_000, 1_200_000, 3_000_000, 6_000_000, 0.4) },
+        },
       },
     }
     vi.stubGlobal('fetch', vi.fn(async (input: string) => {
@@ -392,12 +412,11 @@ describe('UsageBilling real-data surface', () => {
     }))
     const { container } = render(<UsageBilling {...makeProps()} />)
     fireEvent.click(container.querySelector('button')!)
-    // 厂商面板在厂商 Tab：先切 Tab。
     fireEvent.click(await screen.findByTestId('billing-tab-providers'))
     const groups = await screen.findAllByTestId('billing-provider-group')
-    const xiaomi = groups.find(group => group.textContent?.includes('小米'))
+    const xiaomi = groups.find(group => group.textContent?.includes('mi-mimo-2.5'))
     expect(xiaomi).toBeDefined()
-    // 同厂商组：既有模型用量表（非订阅模型显示费用），又有订阅卡片。
+    // 同一直连通道组：既有模型用量表（非订阅模型显示费用），又有订阅卡片。
     expect(xiaomi!.querySelector('[data-testid="billing-table-scroll"]')).not.toBeNull()
     expect(xiaomi!.querySelector('[data-testid="billing-subscription-card"]')).not.toBeNull()
     // 非订阅模型显示实际费用（0.40 元），不误标「订阅包含」。

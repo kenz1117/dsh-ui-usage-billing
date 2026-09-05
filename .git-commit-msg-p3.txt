@@ -1,0 +1,28 @@
+feat(billing): TokenHub plan adapter + provider-first channel grouping
+
+P3: answer "which provider did I pay and how much did the plan cost me"
+as the primary grouping instead of model brand.
+
+- src/tc3.ts: extract the TokenHub control-plane client (TC3 signing,
+  callTokenHub, defensive quota pickers) out of balance.ts so the
+  subscription adapter shares one implementation; balance behavior
+  unchanged. pickTotalQuota excludes remaining/used-marked keys so a
+  RemainingQuota field is never mistaken for the total (guarded by
+  tests).
+- subscriptions.ts: tencent-token-plan adapter (DescribeTokenPlanList ->
+  DescribeTokenPlan) with display name 腾讯云 Token Plan and a credential
+  hint; windows emitted only when remaining AND total parse — never
+  guessing the total. Keys wired via the provider's apiKeyEnv.
+- UsageBilling: provider-first grouping — the billing section now groups
+  by the channel the calls actually went through (TokenHub / Token Plan
+  / official direct / direct:<route> / unknown) instead of model brand;
+  brand stays as the row logo + sub-line (uncatalogued ids keep their
+  inferred vendor). Subscriptions attach by display name or their direct
+  route channel; balances attach per channel with a DeepSeek official
+  alias; the separate channel section and row badges are folded away.
+- Plan-channel rows show 订阅包含 ≈<catalog estimate> so Token Plan spend
+  has a per-model estimated cost (data: byDayModelsSite x byModel plan
+  flag; no new fold fields).
+- FOLD_VERSION 8: channel-aware attribution (id normalization, origin-
+  based official judgement, tencent-token-plan exemption) re-folds all
+  still-existing logs once; deleted-session rows are kept as stale.

@@ -14,6 +14,7 @@
 
 import type { SubscriptionPlanConfig, SubscriptionQuota, SubscriptionStatus, SubscriptionWindow } from './pricing-shared.ts'
 import { createCooldownGate, withRetry } from './resilience.ts'
+import { callTokenHub, firstEnabledTeamId, parseTencentCredential, pickRemainingQuota, pickTotalQuota } from './tc3.ts'
 
 /** 每平台熔断门：某个订阅适配器连续可重试失败（网络 / 5xx / 429）达阈值后
  *  短路由不可用，避免 30 秒轮询对已故障的上游反复打满超时。鉴权失败（unauthorized）
@@ -32,6 +33,8 @@ export interface SubscriptionKeys {
   minmaxApiKey: string
   /** OpenRouter API key（credits 已用%）。 */
   openrouterApiKey: string
+  /** 腾讯云云 API 密钥对（`<SecretId>:<SecretKey>`，管控面用，非 TokenHub 推理 key）。 */
+  tencentCloudApi: string
   /** Z.ai 区域（global / bigmodel-cn）。 */
   zaiRegion: 'global' | 'bigmodel-cn'
 }
@@ -43,6 +46,7 @@ export const EMPTY_SUBSCRIPTION_KEYS: SubscriptionKeys = {
   opencodeApiKey: '',
   minmaxApiKey: '',
   openrouterApiKey: '',
+  tencentCloudApi: '',
   zaiRegion: 'global',
 }
 
@@ -85,6 +89,7 @@ const SUBSCRIPTION_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   // same plan; users see the official id in the Models page.
   'minimax-cn': 'MiniMax Token Plan（国内）',
   'openrouter': 'OpenRouter',
+  'tencent-token-plan': '腾讯云 Token Plan',
 }
 
 /** 订阅类 provider id 判定：带 coding / agent-plan / token-plan 后缀，或已知订阅通道。 */
@@ -113,6 +118,7 @@ const SUBSCRIPTION_ADAPTERS: Readonly<Record<string, {
   'minimax-token-plan': { collect: collectMiniMax },
   'minimax-token-plan-cn': { collect: collectMiniMax },
   'openrouter': { collect: collectOpenRouter },
+  'tencent-token-plan': { collect: collectTencentTokenPlan },
 }
 
 /** 有额度适配器的 provider id 集合（识别用）。 */
@@ -632,6 +638,51 @@ async function collectOpenRouter(keys: SubscriptionKeys, config: SubscriptionPla
       windows: [],
       ...(status === 'unauthorized' ? { hint: 'OpenRouter 额度接口只认 Management Key；你配的 key 返回了 401，请换成管理密钥（在 openrouter.ai/settings/keys 创建）' } : {}),
     }
+  }
+}
+
+
+/**
+ * 腾讯云 Token Plan（TokenHub 管控面）订阅额度。凭据是云 API 密钥对
+ * `<SecretId>:<SecretKey>`（与余额面板同源、同格式），链路与 balance.ts 的
+ * TokenHub 查询一致：DescribeTokenPlanList 取 TeamId → DescribeTokenPlan 读
+ * 主额度包。管控面字段名未完全稳定：剩余与总额度都能取到才产出百分比窗口，
+ * 只有剩余值时窗口留空（绝不猜总额度），plan 名照常展示。
+ */
+async function collectTencentTokenPlan(keys: SubscriptionKeys, _config: SubscriptionPlanConfig, _timeoutMs: number): Promise<SubscriptionQuota> {
+  const provider = 'tencent-token-plan'
+  const displayName = SUBSCRIPTION_DISPLAY_NAMES[provider] ?? provider
+  // 配置提示：凭据格式是最常见的踩坑点（推理 key ≠ 云 API 密钥对）。
+  const hint = '凭据需为腾讯云云 API 密钥对（SecretId:SecretKey，控制台访问管理获取），非 TokenHub 推理 key'
+  const quota = (partial: Partial<SubscriptionQuota> & { status: SubscriptionQuota['status'] }): SubscriptionQuota => ({
+    provider,
+    displayName,
+    windows: [],
+    hint,
+    ...partial,
+  })
+  if (keys.tencentCloudApi === '') return quota({ status: 'not-configured' })
+  const credential = parseTencentCredential(keys.tencentCloudApi)
+  if (credential === undefined) return quota({ status: 'unauthorized' })
+  try {
+    const list = await callTokenHub(credential.secretId, credential.secretKey, 'DescribeTokenPlanList', {})
+    const teamId = firstEnabledTeamId(list)
+    if (teamId === undefined) return quota({ status: 'invalid-response' })
+    const detail = await callTokenHub(credential.secretId, credential.secretKey, 'DescribeTokenPlan', { TeamId: teamId })
+    const remaining = pickRemainingQuota(detail.PackageInfo) ?? pickRemainingQuota(detail)
+    const total = pickTotalQuota(detail.PackageInfo) ?? pickTotalQuota(detail)
+    const plan = typeof detail.Name === 'string' ? detail.Name : undefined
+    const windows: SubscriptionWindow[] = remaining !== undefined && total !== undefined && total > 0
+      ? [{
+          kind: 'monthly',
+          usedPercent: round1(clampPercent((1 - remaining / total) * 100) ?? 0),
+          remainingPercent: round1(clampPercent((remaining / total) * 100) ?? 0),
+          remaining,
+        }]
+      : []
+    return quota({ status: 'ok', windows, ...(plan !== undefined ? { plan } : {}) })
+  } catch (error) {
+    return quota({ status: statusOf(error) })
   }
 }
 

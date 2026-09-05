@@ -1795,46 +1795,112 @@ function BillingDashboard({
     () => (sitePrefs.hideUnidentified ? relayQuotas.filter(row => row.kind !== 'unknown') : relayQuotas),
     [relayQuotas, sitePrefs.hideUnidentified],
   )
+  // 提供商（通道）优先聚合：一级归属 = 调用实际发生的 llm 入口（腾讯云 TokenHub /
+  // 腾讯云 Token Plan / DeepSeek 官方 / 直连·路由名 / 未知路由），模型品牌（目录
+  // 厂商）只是行内徽标 + 副标——付费视角下「钱花给了哪个提供商」优先于「用了
+  // 哪家的模型」。数据源：byDayModelsSite 模型×日×通道三维（FOLD_VERSION 8 起
+  // 全量快照必含；旧快照缺失时模型统一落「未知路由」组，首次聚合后即恢复）。
   const providerGroups: ProviderBillingGroup[] = useMemo(() => {
-    const subscriptionsByVendor = new Map<string, SubscriptionQuota[]>()
+    const cells = new Map<string, Map<string, { calls: number; input: number; output: number; cacheHit: number; cacheMiss: number; cost: number }>>()
+    for (const models of Object.values(stats.byDayModelsSite ?? {})) {
+      for (const [modelKey, sites] of Object.entries(models)) {
+        for (const [siteKey, usage] of Object.entries(sites)) {
+          let bucket = cells.get(siteKey)
+          if (bucket === undefined) {
+            bucket = new Map()
+            cells.set(siteKey, bucket)
+          }
+          const cell = bucket.get(modelKey) ?? { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0 }
+          cell.calls += usage.calls
+          cell.input += usage.input
+          cell.output += usage.output
+          cell.cacheHit += usage.cacheHit
+          cell.cacheMiss += usage.cacheMiss
+          cell.cost += usage.cost
+          bucket.set(modelKey, cell)
+        }
+      }
+    }
+    const modelsByChannel = new Map<string, ModelRow[]>()
+    for (const [siteKey, bucket] of cells) {
+      const rows = [...bucket.entries()]
+        .filter(([, cell]) => cell.calls > 0)
+        .map(([modelKey, cell], index) => {
+          const entry = modelOf(modelKey)
+          const uncatalogued = entry.key === 'other'
+          // 未收录模型保留 id 反推的品牌（行内徽标/副标），不再决定分组。
+          const provider = uncatalogued ? providerFromModelKey(modelKey) ?? entry.provider : entry.provider
+          return {
+            key: modelKey,
+            name: uncatalogued ? modelKey : entry.name,
+            provider,
+            color: CHART_PALETTE[index % CHART_PALETTE.length] ?? '#8b95a3',
+            calls: cell.calls,
+            input: cell.input,
+            output: cell.output,
+            cacheHitRate: cell.cacheHit + cell.cacheMiss > 0 ? (cell.cacheHit / (cell.cacheHit + cell.cacheMiss)) * 100 : 0,
+            // 目录价预估：订阅通道行即「套餐内预估开销」，按量行即未重估前的目录口径。
+            estimated: computeCost(entry, { input: cell.input, cacheHit: cell.cacheHit, cacheMiss: cell.cacheMiss, output: cell.output }),
+            plan: stats.byModel?.[modelKey]?.plan === true,
+            ...(cell.cost > 0 ? { actual: cell.cost } : {}),
+            uncatalogued,
+            estimatedPricing: entry.estimated === true,
+            officialCalls: 0,
+            officialCost: 0,
+          }
+        })
+        .sort((a, b) => (b.actual ?? b.estimated) - (a.actual ?? a.estimated))
+      if (rows.length > 0) modelsByChannel.set(siteKey, rows)
+    }
+    const channelNameOf = (siteKey: string): string => channelDisplayName(siteKey, lang) ?? t('channelUnknown')
+    // 订阅挂接：显示名命中通道名（腾讯云 Token Plan）优先；否则 direct:<provider id>
+    // 通道存在（直连订阅路由）即挂接；无模型用量的订阅保持独立成组（口径同旧版）。
+    const channelByName = new Map<string, string>()
+    for (const siteKey of modelsByChannel.keys()) channelByName.set(channelNameOf(siteKey), siteKey)
+    const subscriptionsByChannel = new Map<string, SubscriptionQuota[]>()
+    const subGroupNames = new Map<string, string>()
     for (const quota of quotas) {
       if (quota.status === 'not-configured') continue
-      const vendor = subscriptionVendorOf(quota.provider)
-      const list = subscriptionsByVendor.get(vendor)
-      if (list === undefined) subscriptionsByVendor.set(vendor, [quota])
+      const label = quota.displayName ?? subscriptionVendorOf(quota.provider)
+      const siteKey = channelByName.get(label) ?? (modelsByChannel.has(`direct:${quota.provider}`) ? `direct:${quota.provider}` : undefined)
+      const groupKey = siteKey ?? `sub:${subscriptionVendorOf(quota.provider)}`
+      subGroupNames.set(groupKey, siteKey !== undefined ? channelNameOf(siteKey) : subscriptionVendorOf(quota.provider))
+      const list = subscriptionsByChannel.get(groupKey)
+      if (list === undefined) subscriptionsByChannel.set(groupKey, [quota])
       else list.push(quota)
     }
-    const modelsByVendor = new Map<string, ModelRow[]>()
-    // 订阅 vendor 的归一化索引：normalize(vendor名) → vendor名。用于让模型 provider 名
-    // 与订阅 vendor 名在大小写/空格/连字符差异时也能归到同一组。
-    const vendorByNorm = new Map<string, string>()
-    for (const vendor of subscriptionsByVendor.keys()) vendorByNorm.set(normalizeProvider(vendor), vendor)
-    for (const row of modelRows) {
-      // 厂商组 key：优先取「与某订阅 vendor 归一化匹配」的名字；订阅豁免模型（plan=true）
-      // 即使 catalog 未收录（provider 反推为 Custom），也用模型 id 反推的厂商名归组，
-      // 让订阅卡与模型明细落在同一厂商组，避免被甩到 Custom 独立组。
-      let vendorName = row.provider
-      if (row.plan === true) {
-        const inferred = providerFromModelKey(row.key)
-        if (inferred !== undefined) vendorName = inferred
-      }
-      const key = vendorByNorm.get(normalizeProvider(vendorName)) ?? vendorName
-      const list = modelsByVendor.get(key)
-      if (list === undefined) modelsByVendor.set(key, [row])
-      else list.push(row)
+    // 余额挂接：通道显示名直接匹配（腾讯云 TokenHub）；DeepSeek 官方通道别名到 deepseek 余额。
+    const balanceForChannel = (siteKey: string | undefined, name: string): ProviderBalance | undefined =>
+      siteKey === 'direct:deepseek' || siteKey === 'site:https://api.deepseek.com'
+        ? balanceFor('deepseek') ?? balanceFor(name)
+        : balanceFor(name)
+    const groups: ProviderBillingGroup[] = []
+    for (const [siteKey, rows] of modelsByChannel) {
+      groups.push({
+        name: channelNameOf(siteKey),
+        models: rows,
+        subscriptions: subscriptionsByChannel.get(siteKey) ?? [],
+        balance: balanceForChannel(siteKey, channelNameOf(siteKey)),
+        // 健康点取该通道费用最高模型的品牌健康（通道本身不做探活）。
+        dot: providerDot(health, rows[0]?.provider ?? ''),
+      })
     }
-    const names = new Set<string>([...modelsByVendor.keys(), ...subscriptionsByVendor.keys()])
-    const groups = [...names]
-      .map(name => ({
+    for (const [groupKey, name] of subGroupNames) {
+      if (modelsByChannel.has(groupKey)) continue
+      groups.push({
         name,
-        models: modelsByVendor.get(name) ?? [],
-        subscriptions: subscriptionsByVendor.get(name) ?? [],
+        models: [],
+        subscriptions: subscriptionsByChannel.get(groupKey) ?? [],
         balance: balanceFor(name),
         dot: providerDot(health, name),
-      }))
+      })
+    }
     // 纯余额组：自定义 Provider（custom: 前缀）或无对应模型/订阅的余额行，
-    // 以独立厂商组呈现（内置厂商的「未配置」行不补组，避免噪音）。
-    const claimed = new Set(groups.map(group => normalizeProvider(group.name)))
+    // 以独立组呈现（内置厂商的「未配置」行不补组，避免噪音）。
+    const claimed = new Set(groups.flatMap(group => [
+      normalizeProvider(group.name),
+      ...(group.balance !== undefined ? [normalizeProvider(group.balance.provider)] : []),
+    ]))
     for (const balance of balances) {
       if (claimed.has(normalizeProvider(balance.provider))) continue
       if (balance.error === undefined || balance.provider.startsWith('custom:')) {
@@ -1857,75 +1923,7 @@ function BillingDashboard({
         if (a.models.length === 0) return 1
         return a.name.localeCompare(b.name, 'zh')
       })
-  }, [modelRows, quotas, balances, health])
-
-  // 按通道聚合（腾讯云网关场景）：从 byDayModelsSite（[date][model][site]）按
-  // 站点维度汇总，同一模型经不同通道（中转站 / 官方直连 / 未知路由）的用量与
-  // 费用一目了然。纯客户端汇总——服务端三维数据已具备，不再新增 fold 维度；
-  // 费用为服务端口径（目录价），不做显示层重估（与 recost 的 origin 绑定价互补）。
-  const channelGroups = useMemo(() => {
-    const bySite = new Map<string, Map<string, { calls: number; input: number; output: number; cost: number }>>()
-    const tagMap = new Map<string, string[]>()
-    for (const models of Object.values(stats.byDayModelsSite ?? {})) {
-      for (const [modelKey, sites] of Object.entries(models)) {
-        for (const [siteKey, usage] of Object.entries(sites)) {
-          let bucket = bySite.get(siteKey)
-          if (bucket === undefined) {
-            bucket = new Map()
-            bySite.set(siteKey, bucket)
-          }
-          const cell = bucket.get(modelKey) ?? { calls: 0, input: 0, output: 0, cost: 0 }
-          cell.calls += usage.calls
-          cell.input += usage.input
-          cell.output += usage.output
-          cell.cost += usage.cost
-          bucket.set(modelKey, cell)
-          // 厂商行通道徽标：模型 → 去重后的通道名（direct:deepseek 官方直连不标，
-          // 官方是默认认知；unknown 也不标——无法核实通道，装了反而误导）。
-          if (siteKey !== 'unknown' && !siteKey.startsWith('direct:')) {
-            const name = channelDisplayName(siteKey, lang)
-            if (name !== undefined) {
-              const list = tagMap.get(modelKey)
-              if (list === undefined) tagMap.set(modelKey, [name])
-              else if (!list.includes(name)) list.push(name)
-            }
-          }
-        }
-      }
-    }
-    const groups = [...bySite.entries()]
-      .map(([siteKey, models]) => {
-        let calls = 0
-        let cost = 0
-        const rows = [...models.entries()]
-          .filter(([, cell]) => cell.calls > 0)
-          .map(([modelKey, cell]) => {
-            calls += cell.calls
-            cost += cell.cost
-            const entry = modelOf(modelKey)
-            const uncatalogued = entry.key === 'other'
-            return {
-              key: modelKey,
-              name: uncatalogued ? modelKey : entry.name,
-              provider: entry.provider,
-              colorVar: entry.colorVar,
-              calls: cell.calls,
-              input: cell.input,
-              output: cell.output,
-              cost: cell.cost,
-              plan: stats.byModel?.[modelKey]?.plan === true,
-              uncatalogued,
-            }
-          })
-          .sort((a, b) => b.cost - a.cost || b.calls - a.calls)
-        return { key: siteKey, name: channelDisplayName(siteKey, lang) ?? t('channelUnknown'), calls, cost, models: rows }
-      })
-      .filter(group => group.calls > 0)
-      .sort((a, b) => b.cost - a.cost || b.calls - a.calls)
-    return { groups, tagMap }
-  }, [stats.byDayModelsSite, stats.byModel, lang, t])
-  const channelRows = channelGroups.groups
-  const channelTagsByModel = channelGroups.tagMap
+  }, [stats.byDayModelsSite, stats.byModel, quotas, balances, health, lang, t])
 
   // 厂商视图与通道视图共用模型表（同列结构）：表头与模型名单元格各只保留一份
   // JSX，控制 bundle 体积（Store 256KiB 单文件门禁）。showTags 时才渲染估算价
@@ -1944,7 +1942,6 @@ function BillingDashboard({
   )
   const modelNameCell = (
     row: { key: string; name: string; provider: string; uncatalogued?: boolean; estimatedPricing?: boolean; color?: string; colorVar?: string },
-    showTags: boolean,
   ): React.ReactNode => {
     const logoColor = row.color ?? (row.colorVar !== undefined ? resolveToken(row.colorVar) : undefined)
     return (
@@ -1958,16 +1955,11 @@ function BillingDashboard({
                 {t('uncatalogued')}
               </span>
             )}
-            {showTags && row.estimatedPricing && (
+            {row.estimatedPricing && (
               <span className={css.estimatedTag} data-testid="billing-estimated-tag">
                 {t('estimatedPricing')}
               </span>
             )}
-            {showTags && (channelTagsByModel.get(row.key) ?? []).map(name => (
-              <span key={name} className={css.estimatedTag} data-testid="billing-channel-tag">
-                {name}
-              </span>
-            ))}
           </span>
           <span className={css.modelProvider}>{providerName(row.provider)}</span>
         </span>
@@ -2840,7 +2832,7 @@ function BillingDashboard({
                                 {group.models.map(row => (
                                   <tr key={row.key}>
                                     <td>
-                                      {modelNameCell(row, true)}
+                                      {modelNameCell(row)}
                                     </td>
                                     <td className={css.numCol}>{row.calls.toLocaleString()}</td>
                                     <td className={css.numCol}>{formatTokens(row.input)}</td>
@@ -2848,7 +2840,7 @@ function BillingDashboard({
                                     <td className={css.numCol}>{formatPercent(row.cacheHitRate)}</td>
                                     <td className={css.numCol}>
                                       {row.plan
-                                        ? <span className={css.planTag}>{t('subscriptionIncluded')}</span>
+                                        ? <span className={css.planTag}>{t('subscriptionIncluded')}{row.estimated > 0 ? ` ≈${money(row.estimated)}` : ''}</span>
                                         : row.actual !== undefined
                                           ? (() => {
                                             const official = row.officialCost
@@ -2958,43 +2950,6 @@ function BillingDashboard({
                   </div>
                 )}
               </section>
-              {/* 按通道聚合：同一模型的调用按通道（中转站 / 官方直连 / 未知路由）
-              分组统计，看「钱花在哪个网关」。数据与厂商视图互补——厂商视图回答
-              「哪个厂商的模型」，通道视图回答「哪个入口」。行样式复用中转站
-              区块（siteRow），控制 bundle 体积（Store 256KiB 单文件门禁）。 */}
-              {channelRows.length > 0 && (
-                <section className={css.panel} data-testid="billing-panel-channels">
-                  <div className={css.panelHead}>
-                    <h3 className={css.panelTitle}>{t('channelBilling')}</h3>
-                  </div>
-                  <div className={css.providerGroupList} data-testid="billing-channel-groups">
-                    {channelRows.map(group => (
-                      <div key={group.key} className={css.providerGroup} data-testid="billing-channel-group">
-                        <div className={css.providerGroupHead}>
-                          <span className={css.providerGroupName}>{group.name}</span>
-                          <span className={css.providerGroupMeta}>
-                            <span className={css.providerGroupBalance} data-testid="billing-channel-calls">
-                              {group.calls.toLocaleString()} · {money(group.cost)}
-                            </span>
-                          </span>
-                        </div>
-                        {group.models.map(row => (
-                          <div key={row.key} className={css.siteRow} data-testid="billing-channel-model">
-                            {modelNameCell(row, false)}
-                            <span className={css.siteRowMeta}>
-                              <span className={css.siteRowCalls}>{t('calls')} {row.calls.toLocaleString()}</span>
-                              <span className={css.siteRowCalls}>{t('tokens')} {formatTokens(row.input + row.output)}</span>
-                              <span className={css.siteRowCost}>
-                                {row.plan ? <span className={css.planTag}>{t('subscriptionIncluded')}</span> : money(row.cost)}
-                              </span>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
               {/* 数据导出：按日 / 按会话 CSV 与全量 JSON（对账用），文件名带日期范围。 */}
               <div className={css.exportBar} data-testid="billing-export-bar" role="group" aria-label={t('export')}>
                 <span className={css.exportLabel}>{t('export')}</span>

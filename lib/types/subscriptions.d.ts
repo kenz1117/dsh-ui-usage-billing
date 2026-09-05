@@ -24,6 +24,8 @@ export interface SubscriptionKeys {
     minmaxApiKey: string;
     /** OpenRouter API key（credits 已用%）。 */
     openrouterApiKey: string;
+    /** 腾讯云云 API 密钥对（`<SecretId>:<SecretKey>`，管控面用，非 TokenHub 推理 key）。 */
+    tencentCloudApi: string;
     /** Z.ai 区域（global / bigmodel-cn）。 */
     zaiRegion: 'global' | 'bigmodel-cn';
 }

@@ -617,7 +617,10 @@ export interface UsageLedgerDocument {
  * 会话费用只剩最近一段，issue #29）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export const FOLD_VERSION = 7
+// 8：通道感知归属（腾讯云网关修复）——模型 id 归一化（日期后缀/组织前缀/短 id）、
+// 官方渠道改按 baseURL origin 判定、订阅豁免集合加入 tencent-token-plan。旧版本
+// 折叠的账本行语义已过时，bump 后日志仍在的会话全量重折，日志已删的行标记 stale 保留。
+export const FOLD_VERSION = 8
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
