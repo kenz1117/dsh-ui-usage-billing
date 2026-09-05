@@ -13,7 +13,7 @@
 
 import { stat } from 'node:fs/promises'
 import { SessionLogOffset } from '@deepseek-ai/dsh-session/types'
-import type { SessionHeader } from '@deepseek-ai/dsh-session/types'
+import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import { isPriced, MODEL_KEY_ALIASES, resolveCatalogKey, computeCostAt, modelOf, tierAt } from './client/pricing.ts'
@@ -273,11 +273,15 @@ export function workspaceNameOf(cwd: string | undefined): string {
 
 /**
  * The persistence surface the aggregate reads: enough of
- * `SessionPersistence` to list sessions and read each log once; `locate`
- * is optional — backends exposing it give the incremental cache a cheap
- * invalidation stamp (artifact mtime + size), others always re-fold.
+ * `SessionPersistence` to list sessions and read each log once. Two
+ * optional invalidation-stamp sources, checked in order:
+ * `stampOf` (host 0.1.3+: the persistence revision token, exposed by the
+ * host-shape adapter) then `locate` (host 0.1.2: artifact mtime + size).
+ * Neither present means every round re-folds.
  */
-export type UsagePersistence = Pick<SessionPersistence, 'list' | 'readFrom'> & Partial<Pick<SessionPersistence, 'locate'>>
+export type UsagePersistence = Pick<SessionPersistence, 'list' | 'readFrom'>
+  & Partial<Pick<SessionPersistence, 'locate'>>
+  & Partial<{ stampOf(id: SessionId): Promise<string | null> }>
 
 /** The usage-stats document served to the billing dashboard. */
 export interface UsageStatsDocument {
@@ -1261,9 +1265,17 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
     }
   }
 
-  /** 失效键：日志文件的 mtime+size；拿不到（后端无 locate / 文件丢失 / locate 抛错）时返回 null，
-   *  让调用方每次重折。locate 调用也纳入 try，避免单个会话的 locate 异常把整份聚合拖垮。 */
+  /** 失效键：宿主 0.1.3+ 走 adapter 暴露的 revision 令牌；0.1.2 形状退回
+   * 日志文件 mtime+size（经 locate，拿不到或抛错时返回 null 让调用方重折）。
+   * locate/stat 调用纳入 try，避免单个会话的异常把整份聚合拖垮。 */
   const stampOf = async (meta: SessionHeader): Promise<string | null> => {
+    if (persistence.stampOf !== undefined) {
+      try {
+        return await persistence.stampOf(meta.id)
+      } catch {
+        return null
+      }
+    }
     try {
       const location = persistence.locate?.(meta)
       if (location === undefined) return null

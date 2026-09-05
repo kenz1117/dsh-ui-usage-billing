@@ -10,6 +10,7 @@
  * zero while their tokens still count. Pure functions only: the persistence
  * handle is injected, so the fold is unit-testable without a host.
  */
+import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence';
 import type { TokenUsage } from '@deepseek-ai/dsh-llm';
 import { MODEL_KEY_ALIASES, resolveCatalogKey } from './client/pricing.ts';
@@ -155,11 +156,15 @@ export declare const UNKNOWN_WORKSPACE_NAME = "\u2014";
 export declare function workspaceNameOf(cwd: string | undefined): string;
 /**
  * The persistence surface the aggregate reads: enough of
- * `SessionPersistence` to list sessions and read each log once; `locate`
- * is optional — backends exposing it give the incremental cache a cheap
- * invalidation stamp (artifact mtime + size), others always re-fold.
+ * `SessionPersistence` to list sessions and read each log once. Two
+ * optional invalidation-stamp sources, checked in order:
+ * `stampOf` (host 0.1.3+: the persistence revision token, exposed by the
+ * host-shape adapter) then `locate` (host 0.1.2: artifact mtime + size).
+ * Neither present means every round re-folds.
  */
-export type UsagePersistence = Pick<SessionPersistence, 'list' | 'readFrom'> & Partial<Pick<SessionPersistence, 'locate'>>;
+export type UsagePersistence = Pick<SessionPersistence, 'list' | 'readFrom'> & Partial<Pick<SessionPersistence, 'locate'>> & Partial<{
+    stampOf(id: SessionId): Promise<string | null>;
+}>;
 /** The usage-stats document served to the billing dashboard. */
 export interface UsageStatsDocument {
     version: number;

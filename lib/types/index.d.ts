@@ -13,7 +13,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials';
 import type { SettingsProvider } from '@deepseek-ai/dsh-settings';
-import { type UsageLedgerStore } from './aggregate.ts';
+import { type UsageLedgerStore, type UsagePersistence } from './aggregate.ts';
 import type { CustomBalanceConfig, DeclaredEndpointConfig, SubscriptionPlanConfig } from './pricing-shared.ts';
 import { type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts';
 /**
@@ -107,6 +107,17 @@ export declare function resolveSubscriptionKeys(settings: SettingsProvider, cred
     keys: SubscriptionKeys;
     identified: IdentifiedSubscriptionPlan[];
 }>;
+/**
+ * 宿主 persistence 形状适配。宿主 0.1.3 起 SessionPersistence 改为
+ * SessionHandle 模型（open(id,'read') 后经 handle.read(offset) 读，fork 边界
+ * 挂在 handle.inheritedEventCount，list 返回 {header, revision} 快照行，
+ * 0.1.2 的 readFrom/locate 消失）。这里按结构探测把两种宿主形状都收敛为
+ * 聚合层期望的 0.1.2 面貌：0.1.2 直接带 readFrom 的原样直通；0.1.3 的
+ * 读取转为 open → handle.read，revision 令牌经 stampOf 暴露给增量缓存。
+ * 候选时刻的运行时对象是宿主注入的外部形状，结构断言即 durable 收窄点。
+ * 导出供测试：纯函数（不触 ctx）。
+ */
+export declare function adaptSessionPersistence(raw: unknown): UsagePersistence;
 /**
  * Host plugin body: serve real aggregated usage to the browser dashboard.
  * @param ctx - host context carrying webServer and sessionPersistence.

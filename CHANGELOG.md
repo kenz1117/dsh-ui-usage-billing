@@ -6,6 +6,12 @@
 
 ## 预览线（1.0.x，适配 DSH 0.1.2 系）
 
+### v1.0.29-alpha.1（2026-09-05，npm `alpha`）
+
+- 兼容 DSH 0.1.3-alpha.1 的 SessionHandle 持久化模型：宿主 0.1.3 起读取改为 `open(id,'read') → handle.read(offset)`、`list` 返回快照行（`readFrom`/`locate` 消失），注入点按结构探测把两种宿主形状收敛为聚合层的 0.1.2 面貌；revision 令牌经 `stampOf` 暴露，增量折叠在 0.1.3 上照常生效
+- 声明 `0.1.3-alpha.1` 兼容（宿主 npm 尚未发布该版本，真机验证待其上 npm 后补做）
+- 对 0.1.2 系宿主行为零变化（探测直通）；session format v2 的逻辑事件对折叠面天然兼容（`assistant/chunk` 嵌入 message、新增 `assistant/attempt` 由既有运行时收窄安全跳过）
+
 ### v1.0.28（2026-09-05）
 
 - 修复：峰谷倒计时未跳过周末全天空闲——周五深夜（工作日 18:00 后）把周六 09:00 伪边界当「转峰」时刻，与跨零点后显示的周一 09:00 矛盾（issue #33）。下一切换点统一定义为档位真正变化的最近边界，由含周末全谷规则的 `tierAt` 驱动扫描；峰谷切换预告（`upcomingTierSwitch`）同步修正，周末不再误报预告

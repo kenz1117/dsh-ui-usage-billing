@@ -18,6 +18,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: merges the ctx.sessionPersistence service declaration.
 import type {} from '@deepseek-ai/dsh-session-persistence'
+import { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session/types'
+import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 // Type-only: merges the ctx.settings / ctx.credentials service declarations.
 import type {} from '@deepseek-ai/dsh-settings'
@@ -30,7 +32,7 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { SettingsProvider, SettingsScope } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
-import { createUsageAggregator, dayStamp, type UsageLedgerStore } from './aggregate.ts'
+import { createUsageAggregator, dayStamp, type UsageLedgerStore, type UsagePersistence } from './aggregate.ts'
 import { applyLivePricing, formatMoney, formatTokens } from './client/pricing.ts'
 import { queryBalances, queryCustomBalances } from './balance.ts'
 import { queryDeclaredEndpoints } from './declarative.ts'
@@ -428,6 +430,63 @@ async function readOpenCodeToken(): Promise<string> {
   return ''
 }
 
+/** 宿主 0.1.3+ 的 SessionHandle 最小读取面（结构化声明，类型不依赖 0.1.3 包）。 */
+interface HostPersistenceHandle013 {
+  readonly header: SessionHeader
+  readonly inheritedEventCount: number
+  read(offset?: number, length?: number): Promise<readonly SessionEvent[]>
+  [Symbol.asyncDispose]?: () => Promise<void>
+}
+
+/** 宿主 0.1.3+ 的 SessionPersistence 最小面：list 返回 {header, revision} 快照行。 */
+interface HostPersistence013 {
+  list(): Promise<readonly { header: SessionHeader; revision: string | number }[]>
+  open(id: string, access: 'read' | 'write'): Promise<HostPersistenceHandle013>
+}
+
+/**
+ * 宿主 persistence 形状适配。宿主 0.1.3 起 SessionPersistence 改为
+ * SessionHandle 模型（open(id,'read') 后经 handle.read(offset) 读，fork 边界
+ * 挂在 handle.inheritedEventCount，list 返回 {header, revision} 快照行，
+ * 0.1.2 的 readFrom/locate 消失）。这里按结构探测把两种宿主形状都收敛为
+ * 聚合层期望的 0.1.2 面貌：0.1.2 直接带 readFrom 的原样直通；0.1.3 的
+ * 读取转为 open → handle.read，revision 令牌经 stampOf 暴露给增量缓存。
+ * 候选时刻的运行时对象是宿主注入的外部形状，结构断言即 durable 收窄点。
+ * 导出供测试：纯函数（不触 ctx）。
+ */
+export function adaptSessionPersistence(raw: unknown): UsagePersistence {
+  if (typeof (raw as { readFrom?: unknown } | null)?.readFrom === 'function') {
+    return raw as UsagePersistence
+  }
+  const host = raw as HostPersistence013
+  // 最近一次 list 的 revision 表：增量缓存的失效键（readFrom 前后 revision
+  // 不变 ⇒ 日志未动）。每次 list 刷新，未 listed 的会话视为无 stamp（重折）。
+  const revisions = new Map<string, string>()
+  return {
+    list: async () => {
+      const snapshots = await host.list()
+      revisions.clear()
+      for (const snapshot of snapshots) revisions.set(String(snapshot.header.id), String(snapshot.revision))
+      return snapshots.map(snapshot => snapshot.header)
+    },
+    readFrom: async (id, fromSeq) => {
+      const handle = await host.open(id, 'read')
+      try {
+        const events = await handle.read(fromSeq)
+        return {
+          meta: handle.header,
+          fromSeq: SessionLogOffset(fromSeq),
+          inheritedEventCount: SessionLogOffset(handle.inheritedEventCount),
+          events,
+        }
+      } finally {
+        await handle[Symbol.asyncDispose]?.()
+      }
+    },
+    stampOf: async (id: SessionId) => revisions.get(String(id)) ?? null,
+  }
+}
+
 /**
  * Host plugin body: serve real aggregated usage to the browser dashboard.
  * @param ctx - host context carrying webServer and sessionPersistence.
@@ -475,7 +534,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 前端 30 秒轮询只重算写过的会话。
   // 项目归属用工作区标题（host workspaceRegistry 可选；缺失时 resolver 为 undefined，回退目录名）。
   const workspaceTitleResolver = buildWorkspaceTitleResolver(ctx)
-  const aggregator = createUsageAggregator(ctx.sessionPersistence, {
+  const aggregator = createUsageAggregator(adaptSessionPersistence(ctx.sessionPersistence), {
     ...(config.subscriptionProviders === undefined
       ? {}
       : { subscriptionProviders: config.subscriptionProviders }),

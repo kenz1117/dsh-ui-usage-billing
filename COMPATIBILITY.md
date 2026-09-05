@@ -7,9 +7,10 @@
 | 宿主代际 | 版本范围 | 宿主 npm 标签 | 模块面特征 |
 |---|---|---|---|
 | 0.1.0/0.1.1 系（旧） | 0.1.0-rc.8 ~ 0.1.1-rc.2 | （无，已从 latest 退位） | client bundle 提供 `dsh-client-runtime` / `connection` |
-| 0.1.2 系（新） | 0.1.2-alpha.1 ~ 0.1.2-rc.1 起 | `latest` / `next`（rc.1 起）、`alpha` | client bundle 改为 `remote` / `store`；移除 `settingsNamespace` |
+| 0.1.2 系（现行 latest） | 0.1.2-alpha.1 ~ 0.1.2-rc.1 起 | `latest` / `next`（rc.1 起）、`alpha` | client bundle 改为 `remote` / `store`；移除 `settingsNamespace` |
+| 0.1.3 系（GitHub 预发布） | 0.1.3-alpha.1 起 | （npm 未发，仅 GitHub release） | SessionPersistence 改 SessionHandle 模型（`open`/`read`，`readFrom`/`locate` 消失）；session format v2 |
 
-关键事实：宿主 `latest` 自 0.1.2-rc.1 起指向 0.1.2 系——新用户默认装到的就是新代际。
+关键事实：宿主 `latest` 自 0.1.2-rc.1 起指向 0.1.2 系——新用户默认装到的就是新代际。0.1.3-alpha.1 截至目前仅在 GitHub 发 release，npm 未发布；预览线 `dsh` 区间（`>=0.1.2-alpha.1`，无上界）天然覆盖 0.1.3，插件 v1.0.29-alpha.1 起适配其持久化新面（注入点结构探测，双宿主形状通吃）。
 
 ## 插件双线对照
 
