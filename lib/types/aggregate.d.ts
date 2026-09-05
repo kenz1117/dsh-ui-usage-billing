@@ -18,9 +18,9 @@ export { MODEL_KEY_ALIASES, resolveCatalogKey };
 /**
  * 走订阅套餐（coding / token plan / opencode 订阅）的 provider id：这些通道的
  * 调用按套餐计费，不再按 token 计费，因此即使模型 id 与计费表撞名也一律豁免。
- * 与 pi-ai 内置提供方对齐（含各地区变体：qwen/xiaomi 的 token-plan、opencode 与
- * opencode-go、zai-coding-cn）；部署可在 plugin config 的 `subscriptionProviders`
- * 中覆盖。
+ * 此列表保留为显式配置的参考基线；聚合层缺省改用与订阅卡一致的
+ * `isSubscriptionProviderId` 判定（覆盖本列表与全部 `*-token-plan` / `*-coding` 变体），
+ * 部署仍可在 plugin config 的 `subscriptionProviders` 中显式覆盖。
  */
 export declare const DEFAULT_SUBSCRIPTION_PROVIDERS: readonly string[];
 /**
@@ -29,6 +29,23 @@ export declare const DEFAULT_SUBSCRIPTION_PROVIDERS: readonly string[];
  * 调用与费用分桶展示；部署可由配置覆盖（见 {@link AggregateOptions}）。
  */
 export declare function isOfficialProvider(provider: string): boolean;
+/** DeepSeek 官方直连端点的归一化 origin（`siteOriginOf` 口径）：有 baseURL 的路由只有它算官方。 */
+export declare const OFFICIAL_DEEPSEEK_ORIGIN = "https://api.deepseek.com";
+/**
+ * 官方渠道判定（通道优先）：显式 `officialProviderIds` 配置最优先；否则看站点归组——
+ * 有 baseURL 的路由只有 origin 为 DeepSeek 官方域才算官方（修复：名为 `deepseek-*`
+ * 的中转/网关路由曾被按 id 前缀误判为官方，腾讯网关的 DeepSeek 全被计成官方渠道）；
+ * 直连路由（配置在册、无 baseURL）退回按 provider id 前缀判定；**不在当前配置里的
+ * 未知路由一律不算官方**（无法核实通道，不装确定——历史路由用 `routeAliases` 归位）。
+ */
+export declare function officialChannelOf(provider: string, ref: SiteRef, officialProviderIds?: ReadonlySet<string>): boolean;
+/**
+ * 订阅制 provider 匹配器：显式列表（配置覆盖）或判定函数（默认
+ * {@link isSubscriptionProviderId}，与订阅卡识别同一正则口径，修复两者不一致）。
+ */
+export type SubscriptionMatcher = ReadonlySet<string> | ((provider: string) => boolean);
+/** 一个 provider 是否走订阅套餐计费（豁免按 token 计价）。 */
+export declare function isSubscriptionCall(subscription: SubscriptionMatcher, provider: string): boolean;
 /** 一个 provider 路由的站点视图（来自 llm-pi-ai providers 的 baseURL）。 */
 export interface ProviderRouteView {
     /** 该路由配置的端点地址；无值 = 直连厂商（非中转站）。 */
@@ -59,10 +76,16 @@ export declare function siteRefOf(provider: string, routes: Readonly<Record<stri
 export declare function siteBucketKey(ref: SiteRef): string;
 /** Aggregation tuning options. */
 export interface AggregateOptions {
-    /** 订阅制 provider id 列表；默认 {@link DEFAULT_SUBSCRIPTION_PROVIDERS}。 */
+    /** 订阅制 provider id 列表；缺省按订阅卡同款 id 判定（`isSubscriptionProviderId`）。 */
     subscriptionProviders?: readonly string[];
-    /** 官方渠道 provider id 列表；默认按 {@link isOfficialProvider} 判定（DeepSeek 官方直连）。 */
+    /** 官方渠道 provider id 列表；缺省按 {@link officialChannelOf} 判定（通道 origin 优先）。 */
     officialProviderIds?: readonly string[];
+    /**
+     * 历史路由别名（旧路由名 → 当前路由名）：改过名 / 删除过的 provider 路由，
+     * 其历史用量原会落「未知路由」桶；配置别名后按目标路由归组（站点、订阅、
+     * 官方判定都用别名后的路由名）。
+     */
+    routeAliases?: Readonly<Record<string, string>>;
     /** 每会话折叠缓存的上限（默认 {@link DEFAULT_MAX_CACHE_SESSIONS}）；
      *  超限时按最近使用先后淘汰最久未用的会话，防长期运行内存膨胀。 */
     maxCacheSessions?: number;
@@ -434,7 +457,7 @@ export interface UsageLedgerDocument {
  * 会话费用只剩最近一段，issue #29）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export declare const FOLD_VERSION = 7;
+export declare const FOLD_VERSION = 8;
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
  * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并
@@ -475,9 +498,9 @@ export declare function messageTextLength(message: unknown): number;
  * 兜底到最近一次 request/header 的状态。同时提取最新会话标题、最后活跃时间，
  * 并按轮次折叠每轮费用明细（turn/start → turn/end；调用按 (turn) 归组）。
  * @param events - the session's persisted events in log order.
- * @param subscriptionProviders - provider ids billed through subscription plans.
+ * @param subscriptionProviders - 订阅套餐匹配器（显式集合或判定函数）。
  * @param officialProviderIds - provider ids treated as the official DeepSeek channel
- *   (default: any `deepseek`-prefixed id). Others count as third-party.
+ *   (default: channel-origin based via {@link officialChannelOf}). Others count as third-party.
  * @param routes - 当前 provider 路由视图（中转站归组）。
  * @param searchCallEstimateCny - 联网搜索请求的单次费用估算（人民币元；0 关闭估算）。
  * @param seedLength - 持久化的 fork 血缘边界（存储元数据 `inheritedEventCount`，缺省 0）：
@@ -491,7 +514,7 @@ export declare function foldSession(events: readonly {
     time: number;
     data: unknown;
     seq?: number;
-}[], subscriptionProviders: ReadonlySet<string>, officialProviderIds?: ReadonlySet<string>, routes?: Readonly<Record<string, ProviderRouteView>>, searchCallEstimateCny?: number, seedLength?: number): SessionFold;
+}[], subscriptionProviders: SubscriptionMatcher, officialProviderIds?: ReadonlySet<string>, routes?: Readonly<Record<string, ProviderRouteView>>, searchCallEstimateCny?: number, seedLength?: number, routeAliases?: Readonly<Record<string, string>>): SessionFold;
 /**
  * 增量聚合器：按会话缓存折叠结果，用日志文件的 mtime+size 作失效键——
  * 日志没动的会话直接复用，只有写过的会话重新折叠；整份文档另有短 TTL

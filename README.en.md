@@ -53,7 +53,7 @@ Peer plugins (cost-meter, usage-stats, dsh-bill, …) each have their strengths;
 ## 📊 Dashboard
 
 - **Sidebar entry**: a dashboard-style trigger card above the Settings button — month cost as the headline number (monospace) with a 7-day sparkline mini-trend, second line "Today / This week"; collapses to an icon button; hover reveals a quick-look card.
-- **Billing dashboard (tabbed)**: Overview / Trends / Providers / Stats / Rates / Settings — hero figures + YoY/DoD + month projection + KPI×4 + heatmap; 7/30-day trend (switches between Cost / Tokens); provider billing & subscriptions; export / cost breakdown / workspaces / session detail; model rate table; budget & peak alerts. Restrained tones, `--dsw-*` tokens, dark/light adaptive.
+- **Billing dashboard (tabbed)**: Overview / Trends / Providers / Stats / Rates / Settings — hero figures + YoY/DoD + month projection + KPI×4 + heatmap; 7/30-day trend (switches between Cost / Tokens); provider (channel) billing & subscriptions; export / cost breakdown / workspaces / session detail; model rate table; budget & peak alerts. Restrained tones, `--dsw-*` tokens, dark/light adaptive.
 
   ![Overview: month cost hero, budget progress, KPIs and usage heatmap](screenshots/1.png)
 - **Live cost bar**: below the composer, persistent "This turn ¥x · Session ¥y" plus the peak/off-peak tier & switch countdown and subscription low-quota chips (≤20% appear, ≤10% red); the whole capsule can be hidden via the settings-tab "Live cost capsule" toggle (display-only preference persisted locally; stats and alerts are unaffected).
@@ -62,10 +62,11 @@ Peer plugins (cost-meter, usage-stats, dsh-bill, …) each have their strengths;
 
 ## 💰 Billing engine
 
+- **Provider-first grouping**: the billing section groups usage by the llm entry the calls actually went through (channel) — Tencent Cloud TokenHub / Token Plan / DeepSeek official / direct:<route> / unknown routes; the model brand remains as the row logo + sub-line. Official-channel judgement follows the channel origin (`api.deepseek.com`) instead of the route name, so gateway routes named `deepseek-*` no longer count as official traffic. `routeAliases` relocates renamed/deleted historical routes; `modelKeyAliases` binds uncatalogued model ids to catalog keys (date-stamped `deepseek-v4-flash-202605`, org-prefixed `deepseek/deepseek-v4-flash` and the TokenHub short id `hy3` are recognized out of the box).
 - **Live-priced rate table**: models.dev fetched pricing + live-model alignment — the models actually configured are all included; peak/off-peak split (weekdays 9-12 / 14-18 peak ×2, weekends off-peak all day) plus a live USD→CNY rate, refreshed every 6 hours.
 
   ![Rates: model rate table (peak/off-peak split and live rate)](screenshots/5.png)
-- **Official vs third-party buckets**: the detail cost column is split by official DeepSeek direct / third-party relay ("official x / third y" when mixed); the Stats tab has an official/third-party summary card.
+- **Official vs third-party buckets**: the detail cost column is split by official DeepSeek direct / third-party relay ("official x / third y" when mixed); the Stats tab has an official/third-party summary card. Official judgement is channel-origin based (`api.deepseek.com`); web-search assist calls count as official.
 - **Monthly budget + tier alerts**: a budget bar (on/off / amount / progress, ≥80% amber, over red pulse); notifies once per tier crossing 50/80/100%.
 - **Cost-spike attribution**: per-turn cost bars (last 40 turns, amount at bar top, peak/off-peak background bands, >2× spike flagged with attribution).
 
@@ -191,7 +192,9 @@ The public HTTP endpoints and field definitions are documented in source: `GET /
 | `statsPath`             | unset                                   | Absolute path to a fallback `.dsh-usage-stats.json` (used when `sessionPersistence` is unavailable)                    |
 | `ledgerPath`            | `~/.dsh/.dsh-usage-ledger.json`         | Independent durable ledger path; stores folded metrics only (no message bodies or session titles), so deletion does not erase recorded usage |
 | `balanceApiKeyEnv`      | `DEEPSEEK_API_KEY`                      | Credential ref for the DeepSeek balance query; only used as a fallback when llm-pi-ai has no `apiKeyEnv` for deepseek |
-| `subscriptionProviders` | `kimi-coding`, `xiaomi-token-plan-cn`   | Subscription (coding / token plan) provider id list — tokens counted, cost 0                                        |
+| `subscriptionProviders` | 11 built-ins (incl. `tencent-token-plan`) | Subscription (coding / token plan) provider id list — tokens counted, cost 0; aligned with the subscription-card recognition      |
+| `routeAliases`          | not set                                | Historical route aliases (old provider route name -> current route): renamed/deleted routes relocate into their channel instead of the "unknown" bucket. Example: `{ "deepseek-official": "tencent" }` |
+| `modelKeyAliases`       | not set                                | User model aliases (log model id -> billing catalog key, value must be an existing `MODEL_CATALOG` key): bind uncatalogued ids without waiting for a release. Example: `{ "hy4-preview": "hunyuan" }` |
 | `monthlyBudget`         | unset                                   | Default monthly budget (CNY); sent with usage-stats as the budget bar's initial amount (user UI settings take precedence and persist locally) |
 | `lowBalanceThreshold`   | `50`                                    | Low-balance alert threshold (CNY); sent with usage-stats, alerts once a day when any provider's CNY balance is below it |
 | `subscriptionPlans`     | auto-detect                             | Subscription quota adapter whitelist (`{ provider, baseUrl?, region? }`); when unset, auto-detects all subscription providers from `llm-pi-ai` (queries those with a quota API, marks the rest) |

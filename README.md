@@ -52,7 +52,7 @@
 ## 📊 仪表盘
 
 - **侧边栏入口**：设置按钮上方的仪表盘式触发卡——本月费用主数字（等宽字体）+ 近 7 天 sparkline 迷你趋势，副行「今日 / 本周」；折叠栏自动切为图标钮；悬停浮现速览卡。
-- **计费仪表盘（分区 Tab）**：概览 / 趋势 / 明细 / 统计 / 费率 / 设置 六区——Hero 大数字 + 本年/今日环比 + 本月预计 + KPI×4 + 热力图；趋势图 7/30 天（可切费用 / Token）；厂商计费与订阅；导出 / 费用构成 / 工作区 / 会话明细；模型单价表；预算与峰谷提醒。克制冷调、`--dsw-*` 令牌、深浅主题自适应。
+- **计费仪表盘（分区 Tab）**：概览 / 趋势 / 明细 / 统计 / 费率 / 设置 六区——Hero 大数字 + 本年/今日环比 + 本月预计 + KPI×4 + 热力图；趋势图 7/30 天（可切费用 / Token）；提供商计费与订阅（按调用通道分组）；导出 / 费用构成 / 工作区 / 会话明细；模型单价表；预算与峰谷提醒。克制冷调、`--dsw-*` 令牌、深浅主题自适应。
 
   ![概览：本月费用 Hero、预算进度、KPI 与用量热力图](screenshots/1.png)
 - **即时代费用条**：输入框下方常驻「本轮 ¥x · 会话 ¥y」+ 峰谷档位与切换倒计时 + 订阅额度预警 chips（≤20% 浮现、≤10% 红）；可在设置 Tab 以「平价消耗胶囊」开关整条隐藏（显示偏好本地持久化，统计与提醒不受影响）。
@@ -61,18 +61,19 @@
 
 ## 💰 计费引擎
 
+- **提供商优先分组**：计费区块按调用实际发生的 llm 入口（通道）分组——腾讯云 TokenHub / 腾讯云 Token Plan / DeepSeek 官方 / 直连·路由名 / 未知路由，模型品牌只是行内徽标 + 副标；官方判定按通道 origin（`api.deepseek.com`）而非路由名，名为 `deepseek-*` 的网关路由不再被误算官方流量。`routeAliases` 可把改名/删除的历史路由归位，`modelKeyAliases` 可把目录外模型 id 绑定到计费键（日期后缀 `deepseek-v4-flash-202605`、组织前缀 `deepseek/deepseek-v4-flash`、TokenHub 短 id `hy3` 已内置识别）。
 - **实时定价费率表**：models.dev 抓价 + 探活模型对标——系统实际配置模型全纳入；峰谷分时（工作日 9-12 / 14-18 高峰 ×2，周末全天低谷；历史费用按官方变更节点分段计价，见下方「计费细节」）+ 实时汇率（USD→CNY），每 6 小时刷新。
 - **自定义单价**：设置面板为未收录或变价模型填入实付价（未命中 / 缓存命中 / 输出，可选 USD 与低谷价三栏），总览与日趋势按用户价重估显示；支持按中转站来源绑定同模型不同价（origin 规范化宽松匹配），目录外模型填价即生效。
 
   ![费率：模型单价表（峰谷分时与实时汇率）](screenshots/5.png)
-- **官方 vs 三方分桶**：明细费用列按官方 DeepSeek 直连 / 第三方中转分解（混合时「官 x / 三 y」），统计 Tab 有「官方/三方」汇总卡。
+- **官方 vs 三方分桶**：明细费用列按官方 DeepSeek 直连 / 第三方中转分解（混合时「官 x / 三 y」），统计 Tab 有「官方/三方」汇总卡；官方判定以通道 origin 为准（`api.deepseek.com`），联网搜索辅助请求计入官方。
 - **月度预算 + 分档提醒**：预算条（开关 / 金额 / 进度，≥80% 琥珀、超支红脉）；跨 50 / 80 / 100% 各提醒一次；余额折算 CNY 低于阈值每天提醒一次。
 - **成本突增归因**：每轮费用柱状图（最近 40 轮、金额贴柱顶、峰谷背景分带、超 2 倍红标归因）。
 
 ## 🔌 订阅与余额
 
 - **订阅套餐额度**：识别 `llm-pi-ai` 里的订阅类 provider（Kimi / Z.ai / OpenCode Go / MiniMax / OpenRouter / 小米 / 火山…），有额度 API 的实时显示剩余%与重置时间、用尽标红，无 API 标「未接入」；订阅通道模型费用记 0。档位月费与周期额度口径由内置知识库自动识别（如 OpenCode Go $10/月 + 周 $30 额度）。**MiniMax 用户注意**：国内开发者环境请用 `minimax-token-plan-cn`（自动对接 `https://api.minimaxi.com`）；国际保留 `minimax` / `minimax-token-plan`（默认 `https://www.minimaxi.com`）；需要自配中转或 staging 时可在该 provider 设置里覆盖 `baseUrl`。
-- **多厂商余额**：DeepSeek / Kimi / 阶跃星辰 / 硅基流动 / xAI / 智谱 GLM（Z.ai 国内域）内置官方余额，余额列按近 7 天日均折算「约可撑 N 天」；**腾讯云 TokenHub Token Plan** 余量已接入（云 API 管控面，TC3 签名）——凭据值填 `<SecretId>:<SecretKey>`（云 API 密钥对，非 TokenHub 推理 key），推理路由命名为 `tencent-tokenhub` / `tokenhub` / `tencent` / `tencentcloud` 任一即可命中。
+- **多厂商余额**：DeepSeek / Kimi / 阶跃星辰 / 硅基流动 / xAI / 智谱 GLM（Z.ai 国内域）内置官方余额，余额列按近 7 天日均折算「约可撑 N 天」；**腾讯云 TokenHub Token Plan** 余量已接入（云 API 管控面，TC3 签名）——凭据值填 `<SecretId>:<SecretKey>`（云 API 密钥对，非 TokenHub 推理 key），推理路由命名为 `tencent-tokenhub` / `tokenhub` / `tencent` / `tencentcloud` 任一即可命中；订阅卡的 **腾讯云 Token Plan** 额度适配器走同一条 TC3 管控面链路（`src/tc3.ts`，`DescribeTokenPlanList → DescribeTokenPlan`）——把 `tencent-token-plan` 路由的 `apiKeyEnv` 凭据设为云 API 密钥对即可实时显示余量/重置，剩余与总额度都可解析时产出百分比窗口（绝不猜总额度），订阅通道模型行同时显示「订阅包含 ≈目录价预估」。
 - **自定义 Provider 余额**：配置任意 HTTP 端点查余额（`extract` 支持常量 / 点路径 / add-subtract / divide，请求头 `{{ENV}}` 经凭据 seam）。
 - **声明端点 + 余额对账**：**声明端点**（`declaredEndpoints`）为内置表没有的供应商自声明余额/额度接口——只写「数字在哪里」的点路径、无表达式；请求由匹配到同源 provider 的 origin 构造，安全边界（单斜杠绝对路径、仅 GET、拒跨源重定向、响应体/超时上限、凭据只取匹配 provider 自有 `apiKeyEnv`）由 `src/declarative.ts` 强制执行，取错路径在界面标注 `declared` 与 reason。**余额差对账**（`reconcilePath`）用官方（仅 DeepSeek 官方方向）余额当日变动与本地账本当日的官方渠道费用交叉校验，偏差超阈值（0.3 元且 >15%）时提示核对价格表或近期账单；充值 / 授信 / 币种变化重置基准而非告警、余额未减少（走订阅扣费）静默。
 - **中转站归组与额度**：按 provider 的 `baseURL` 归一化 origin 归组——同一中转站的多把 key 合并成一行，站名即域名；对配了 `baseURL` 的路由自动识别 New API 系（`/api/status`）与 Sub2API（`/v1/usage`）的**余额与滚动额度窗口**，读不出标「未读出额度」，剩余 <20% 标红；识别结果有 5 分钟指纹缓存（同站多把 key 独立熔断），`relay-quotas` 端点附 `diagnostics` 供「我的中转站为什么不显示」自查。项目归属优先用工作区标题命名。**未计价的模型**（目录外/无价）费用按 0 计，Hero 下会提示「N 个模型未收录计价」。
@@ -203,7 +204,9 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | `statsPath`             | 未设置                                  | 回退统计文件 `.dsh-usage-stats.json` 的绝对路径（`sessionPersistence` 不可用时生效）                                            |
 | `ledgerPath`            | `~/.dsh/.dsh-usage-ledger.json`       | 独立持久用量账本的绝对路径；只保存折叠后的统计（不保存消息正文或会话标题），永久删除会话不会删除已记录的费用与 token                           |
 | `balanceApiKeyEnv`      | `DEEPSEEK_API_KEY`                   | DeepSeek 余额查询的凭据引用；仅在 llm-pi-ai 未配置 deepseek 的 `apiKeyEnv` 时兜底使用                                             |
-| `subscriptionProviders` | `kimi-coding`、`xiaomi-token-plan-cn` | 订阅制（coding / token 套餐）provider id 列表，照常统计 token、费用记 0                                                        |
+| `subscriptionProviders` | 内置 11 项（含 `tencent-token-plan`） | 订阅制（coding / token 套餐）provider id 列表，照常统计 token、费用记 0；与订阅卡识别口径对齐                                   |
+| `routeAliases`          | 未设置                                  | 历史路由别名（旧 provider 路由名 → 当前路由名）：改名/删除过的路由，其历史用量原落「未知路由」桶且订阅/官方判定失效；配置后按目标路由归位。例：`{ "deepseek-official": "tencent", "tencent-cloud": "tencent" }` |
+| `modelKeyAliases`       | 未设置                                  | 用户自定义模型别名（真实日志 model id → 计费目录键，值须为 `MODEL_CATALOG` 既有 key）：目录外新模型无需等发版，配一条别名即完成识别与计价。例：`{ "hy4-preview": "hunyuan" }` |
 | `monthlyBudget`         | 未设置                                  | 月度预算默认金额（人民币元）；随 usage-stats 下发，作为仪表盘预算条的初始金额（用户在界面上的设置优先并本地持久化）                                             |
 | `lowBalanceThreshold`   | `50`                                 | 余额不足告警阈值（人民币元）；随 usage-stats 下发，任一厂商余额折算人民币低于此值时每天提醒一次                                                       |
 | `subscriptionPlans`     | 自动识别                                 | 订阅额度适配器白名单（`{ provider, baseUrl?, region? }`）；缺省时自动从 `llm-pi-ai` 设置识别所有订阅类 provider（有额度 API 的查额度，无 API 的仅标识） |

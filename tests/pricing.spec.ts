@@ -8,6 +8,7 @@ import { describe, expect, it, afterEach } from 'vitest'
 import {
   applyLiveCatalogModels, applyLivePricing, applyPromo, canonModelId, catalogEntries, cnyToUsd, computeCost,
   computeCostAt, convertUnitPrice, formatMoney, formatPercent, formatTokens, formatUnitPrice,
+  applyUserModelAliases,
   getRateInfo, isPeakHour, isPromoActive, modelOf, MODEL_CATALOG, resolveCatalogKey, tierAt, tierCountdown,
 } from '../src/client/pricing.ts'
 import { PROVIDER_ALIASES } from '../src/client/UsageBilling.tsx'
@@ -586,5 +587,47 @@ describe('Qwen3.7-Max list price with open-ended promo', () => {
     // 促销管线不折算附加参考价。
     const folded = catalogEntries(Date.now()).find(item => item.key === 'qwen-max')
     expect(folded?.extraRows?.find(row => row.label === 'Batch File')?.input).toBe(6)
+  })
+})
+
+describe('resolveCatalogKey derived variants (Tencent TokenHub gateway ids)', () => {
+  it('resolves date-stamped snapshot ids via trailing-digit stripping', () => {
+    // TokenHub / 官方按日期滚动的快照 id：-202605 / -0731 一律落到目录键。
+    expect(resolveCatalogKey('deepseek-v4-flash-202605')).toBe('flash')
+    expect(resolveCatalogKey('deepseek-v4-pro-202606')).toBe('pro')
+    expect(resolveCatalogKey('deepseek-v4-flash-0731')).toBe('flash')
+  })
+
+  it('resolves org-prefixed ids (openrouter style) after stripping the prefix', () => {
+    expect(resolveCatalogKey('deepseek/deepseek-v4-flash')).toBe('flash')
+    expect(resolveCatalogKey('deepseek/deepseek-v4-flash-vision-exp')).toBe('flash-vision-exp')
+  })
+
+  it('resolves TokenHub short ids via aliases', () => {
+    expect(resolveCatalogKey('hy3')).toBe('hunyuan')
+  })
+
+  it('keeps genuine catalog keys with digit tails intact', () => {
+    // 目录键本身以数字段结尾（版本号）：直接查命中，永不进入派生分支。
+    expect(resolveCatalogKey('mistral-large-2512')).toBe('mistral-large-2512')
+    expect(resolveCatalogKey('command-a-03-2025')).toBe('command-a-03-2025')
+  })
+
+  it('keeps unknown models unresolved (never silently priced as another model)', () => {
+    expect(resolveCatalogKey('totally-new-model-x')).toBe('totally-new-model-x')
+  })
+})
+
+describe('applyUserModelAliases (config seam)', () => {
+  afterEach(() => {
+    applyUserModelAliases(undefined)
+  })
+
+  it('lets user aliases bind uncatalogued ids to catalog keys', () => {
+    applyUserModelAliases({ 'hy4-preview': 'hunyuan' })
+    expect(resolveCatalogKey('hy4-preview')).toBe('hunyuan')
+    // 清除后回退原样（未收录）。
+    applyUserModelAliases(undefined)
+    expect(resolveCatalogKey('hy4-preview')).toBe('hy4-preview')
   })
 })

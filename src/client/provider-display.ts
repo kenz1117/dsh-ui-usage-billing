@@ -51,3 +51,50 @@ export function localizeProviderName(name: string, lang: ProviderLang): string {
 export function hasCjk(name: string): boolean {
   return /[\u4e00-\u9fff]/.test(name)
 }
+
+// ── 通道显示名（站点 origin → 人话）─────────────────────────────────────────
+// 「按通道聚合」视图与厂商行的通道徽标用：已知网关/官方端点给品牌名，
+// 未收录 origin 回退主机名，direct/unknown 由渲染层结合文案键处理。
+
+/** 已知站点 origin → 通道显示名（内置表；中英文都读品牌名，语言差异在 en 表兜底）。 */
+const CHANNEL_NAMES: Readonly<Record<string, string>> = {
+  'https://tokenhub.tencentmaas.com': '腾讯云 TokenHub',
+  'https://api.lkeap.cloud.tencent.com': '腾讯云 Token Plan',
+  'https://api.deepseek.com': 'DeepSeek 官方',
+}
+
+/** 通道显示名的英文章表（界面切 USD/英文时使用）；未收录 origin 不在表内。 */
+const CHANNEL_NAMES_EN: Readonly<Record<string, string>> = {
+  '腾讯云 TokenHub': 'Tencent Cloud TokenHub',
+  '腾讯云 Token Plan': 'Tencent Cloud Token Plan',
+  'DeepSeek 官方': 'DeepSeek Official',
+}
+
+/** 站点 origin → 主机名（解析失败原样返回）。 */
+function hostOf(origin: string): string {
+  try {
+    return new URL(origin).host
+  } catch {
+    return origin
+  }
+}
+
+/**
+ * 站点桶 key（`site:<origin>` / `direct:<provider>` / `unknown`）→ 通道显示名。
+ * @param siteKey - 聚合文档 bySite 的桶 key。
+ * @param lang - 显示语言；zh（缺省）用内置中文名，en 走英文章表。
+ * @returns 未知路由桶返回 undefined（渲染层用 locale 文案兜底）。
+ */
+export function channelDisplayName(siteKey: string, lang: ProviderLang = 'zh'): string | undefined {
+  if (siteKey.startsWith('site:')) {
+    const origin = siteKey.slice('site:'.length)
+    const builtin = CHANNEL_NAMES[origin]
+    if (builtin !== undefined) return lang === 'en' ? CHANNEL_NAMES_EN[builtin] ?? builtin : builtin
+    return hostOf(origin)
+  }
+  if (siteKey.startsWith('direct:')) {
+    const provider = siteKey.slice('direct:'.length)
+    return provider === 'deepseek' ? (lang === 'en' ? 'DeepSeek Official' : 'DeepSeek 官方') : `${lang === 'en' ? 'Direct' : '直连'} · ${provider}`
+  }
+  return undefined
+}

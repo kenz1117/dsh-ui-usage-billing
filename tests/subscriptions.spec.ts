@@ -376,3 +376,72 @@ describe('vendor hints (Management Key / OpenCode auth note)', () => {
     expect(quotas[0]?.hint).toContain('auth.json')
   })
 })
+
+describe('tencent-token-plan adapter (TokenHub control plane)', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('is identified with an adapter and a display name', () => {
+    const identified = identifySubscriptionPlans({ 'tencent-token-plan': { apiKeyEnv: 'TENCENT_TOKEN_PLAN_API_KEY' } })
+    expect(identified).toHaveLength(1)
+    expect(identified[0]).toMatchObject({ provider: 'tencent-token-plan', adapter: true, displayName: '腾讯云 Token Plan' })
+  })
+
+  it('degrades to not-configured with a credential-format hint when no key is set', async () => {
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS },
+      [{ provider: 'tencent-token-plan' }],
+    )
+    expect(quotas[0]).toMatchObject({ provider: 'tencent-token-plan', status: 'not-configured' })
+    expect(quotas[0]?.hint).toContain('SecretId')
+  })
+
+  it('marks a non cloud-API credential (inference key without colon) unauthorized', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, tencentCloudApi: 'sk-inference-key' },
+      [{ provider: 'tencent-token-plan' }],
+    )
+    expect(quotas[0]).toMatchObject({ status: 'unauthorized' })
+    // 未通过凭据格式校验就绝不发网络请求。
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('queries plan list then detail and maps remaining/total into a monthly window', async () => {
+    // TC3 管控面两跳：先 DescribeTokenPlanList 取 TeamId，再 DescribeTokenPlan 读额度。
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const action = new Headers(init?.headers).get('x-tc-action') ?? ''
+      const envelope = action === 'describetokenplanlist'
+        ? { Response: { TeamSet: [{ TeamId: 'team-1', Status: 'enable' }] } }
+        : { Response: { Name: 'Token Plan Pro', PackageInfo: { TotalQuota: 1000, RemainingQuota: 250 } } }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => envelope,
+      }
+    }))
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, tencentCloudApi: 'AKIDexample:secret-key' },
+      [{ provider: 'tencent-token-plan' }],
+    )
+    expect(quotas[0]).toMatchObject({ status: 'ok', plan: 'Token Plan Pro' })
+    expect(quotas[0]?.windows).toHaveLength(1)
+    expect(quotas[0]?.windows[0]).toMatchObject({ kind: 'monthly', remainingPercent: 25, usedPercent: 75, remaining: 250 })
+  })
+
+  it('keeps windows empty when only the remaining amount is exposed (never guesses total)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const action = new Headers(init?.headers).get('x-tc-action') ?? ''
+      const envelope = action === 'describetokenplanlist'
+        ? { Response: { TeamSet: [{ TeamId: 'team-1', Status: 'enable' }] } }
+        : { Response: { PackageInfo: { RemainingQuota: 250 } } }
+      return { ok: true, status: 200, json: async () => envelope }
+    }))
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, tencentCloudApi: 'AKIDexample:secret-key' },
+      [{ provider: 'tencent-token-plan' }],
+    )
+    expect(quotas[0]?.status).toBe('ok')
+    expect(quotas[0]?.windows).toHaveLength(0)
+  })
+})

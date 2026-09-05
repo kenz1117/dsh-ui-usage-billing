@@ -65,6 +65,18 @@ export interface UsageBillingConfig {
      * 计费但本地日志无 usage，按次估值计入今日/本月费用；默认 0.02 元/次，设 0 关闭。
      */
     searchCallEstimateCny?: number;
+    /**
+     * 历史路由别名（旧 provider 路由名 → 当前路由名）：改过名/删除过的路由，其
+     * 历史用量原会落「未知路由」桶且站点/订阅/官方判定全部失效；配置别名后按
+     * 目标路由归位。例：`{ "deepseek-official": "tencent", "tencent-cloud": "tencent" }`。
+     */
+    routeAliases?: Record<string, string>;
+    /**
+     * 用户自定义模型别名（真实日志 model id → 计费目录键）：目录外的新模型无需
+     * 等发版，配置一条别名即完成识别与计价（值必须是 MODEL_CATALOG 的既有 key，
+     * 如 `{ "hy4-preview": "hunyuan" }`）。聚合折叠与客户端渲染共用同一映射。
+     */
+    modelKeyAliases?: Record<string, string>;
 }
 /**
  * Create the atomic file-backed durable-ledger store. The previous complete file

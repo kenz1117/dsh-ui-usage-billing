@@ -17,6 +17,7 @@ import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import { isPriced, MODEL_KEY_ALIASES, resolveCatalogKey, computeCostAt, modelOf, tierAt } from './client/pricing.ts'
+import { isSubscriptionProviderId } from './subscriptions.ts'
 
 // 模型别名（真实 provider id → 计费目录键）统一定义在 client/pricing.ts，
 // 聚合层折叠与客户端渲染共用同一张表，避免两侧不一致导致「未收录」。
@@ -25,9 +26,9 @@ export { MODEL_KEY_ALIASES, resolveCatalogKey }
 /**
  * 走订阅套餐（coding / token plan / opencode 订阅）的 provider id：这些通道的
  * 调用按套餐计费，不再按 token 计费，因此即使模型 id 与计费表撞名也一律豁免。
- * 与 pi-ai 内置提供方对齐（含各地区变体：qwen/xiaomi 的 token-plan、opencode 与
- * opencode-go、zai-coding-cn）；部署可在 plugin config 的 `subscriptionProviders`
- * 中覆盖。
+ * 此列表保留为显式配置的参考基线；聚合层缺省改用与订阅卡一致的
+ * `isSubscriptionProviderId` 判定（覆盖本列表与全部 `*-token-plan` / `*-coding` 变体），
+ * 部署仍可在 plugin config 的 `subscriptionProviders` 中显式覆盖。
  */
 export const DEFAULT_SUBSCRIPTION_PROVIDERS: readonly string[] = [
   'kimi-coding',
@@ -39,6 +40,7 @@ export const DEFAULT_SUBSCRIPTION_PROVIDERS: readonly string[] = [
   'xiaomi-token-plan-ams',
   'xiaomi-token-plan-cn',
   'xiaomi-token-plan-sgp',
+  'tencent-token-plan',
 ]
 
 /**
@@ -48,6 +50,38 @@ export const DEFAULT_SUBSCRIPTION_PROVIDERS: readonly string[] = [
  */
 export function isOfficialProvider(provider: string): boolean {
   return /^deepseek(?:-[a-z0-9-]+)?$/i.test(provider.trim())
+}
+
+/** DeepSeek 官方直连端点的归一化 origin（`siteOriginOf` 口径）：有 baseURL 的路由只有它算官方。 */
+export const OFFICIAL_DEEPSEEK_ORIGIN = 'https://api.deepseek.com'
+
+/**
+ * 官方渠道判定（通道优先）：显式 `officialProviderIds` 配置最优先；否则看站点归组——
+ * 有 baseURL 的路由只有 origin 为 DeepSeek 官方域才算官方（修复：名为 `deepseek-*`
+ * 的中转/网关路由曾被按 id 前缀误判为官方，腾讯网关的 DeepSeek 全被计成官方渠道）；
+ * 直连路由（配置在册、无 baseURL）退回按 provider id 前缀判定；**不在当前配置里的
+ * 未知路由一律不算官方**（无法核实通道，不装确定——历史路由用 `routeAliases` 归位）。
+ */
+export function officialChannelOf(
+  provider: string,
+  ref: SiteRef,
+  officialProviderIds?: ReadonlySet<string>,
+): boolean {
+  if (officialProviderIds !== undefined) return officialProviderIds.has(provider)
+  if (ref.kind === 'site') return ref.origin === OFFICIAL_DEEPSEEK_ORIGIN
+  if (ref.kind === 'direct') return isOfficialProvider(provider)
+  return false
+}
+
+/**
+ * 订阅制 provider 匹配器：显式列表（配置覆盖）或判定函数（默认
+ * {@link isSubscriptionProviderId}，与订阅卡识别同一正则口径，修复两者不一致）。
+ */
+export type SubscriptionMatcher = ReadonlySet<string> | ((provider: string) => boolean)
+
+/** 一个 provider 是否走订阅套餐计费（豁免按 token 计价）。 */
+export function isSubscriptionCall(subscription: SubscriptionMatcher, provider: string): boolean {
+  return typeof subscription === 'function' ? subscription(provider) : subscription.has(provider)
 }
 
 // ── 中转站（站点）归组 ──────────────────────────────────────────────────────
@@ -105,10 +139,16 @@ export function siteBucketKey(ref: SiteRef): string {
 
 /** Aggregation tuning options. */
 export interface AggregateOptions {
-  /** 订阅制 provider id 列表；默认 {@link DEFAULT_SUBSCRIPTION_PROVIDERS}。 */
+  /** 订阅制 provider id 列表；缺省按订阅卡同款 id 判定（`isSubscriptionProviderId`）。 */
   subscriptionProviders?: readonly string[]
-  /** 官方渠道 provider id 列表；默认按 {@link isOfficialProvider} 判定（DeepSeek 官方直连）。 */
+  /** 官方渠道 provider id 列表；缺省按 {@link officialChannelOf} 判定（通道 origin 优先）。 */
   officialProviderIds?: readonly string[]
+  /**
+   * 历史路由别名（旧路由名 → 当前路由名）：改过名 / 删除过的 provider 路由，
+   * 其历史用量原会落「未知路由」桶；配置别名后按目标路由归组（站点、订阅、
+   * 官方判定都用别名后的路由名）。
+   */
+  routeAliases?: Readonly<Record<string, string>>
   /** 每会话折叠缓存的上限（默认 {@link DEFAULT_MAX_CACHE_SESSIONS}）；
    *  超限时按最近使用先后淘汰最久未用的会话，防长期运行内存膨胀。 */
   maxCacheSessions?: number
@@ -577,7 +617,10 @@ export interface UsageLedgerDocument {
  * 会话费用只剩最近一段，issue #29）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export const FOLD_VERSION = 7
+// 8：通道感知归属（腾讯云网关修复）——模型 id 归一化（日期后缀/组织前缀/短 id）、
+// 官方渠道改按 baseURL origin 判定、订阅豁免集合加入 tencent-token-plan。旧版本
+// 折叠的账本行语义已过时，bump 后日志仍在的会话全量重折，日志已删的行标记 stale 保留。
+export const FOLD_VERSION = 8
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
@@ -845,22 +888,25 @@ function freshFold(): SessionFold {
  * @param fold - 累计目标（原地修改）。
  * @param machine - 折叠状态机：进入时为上一批次末态，返回时为本批次末态。
  * @param events - 本批次事件（日志顺序）。
- * @param subscriptionProviders - provider ids billed through subscription plans.
- * @param officialProviderIds - 官方直连 provider 集合（undefined = 按 deepseek 前缀判定）。
+ * @param subscriptionProviders - 订阅套餐匹配器（显式集合或判定函数）。
+ * @param officialProviderIds - 官方直连 provider 集合（undefined = 按 {@link officialChannelOf} 通道判定）。
  * @param routes - 当前 provider 路由视图（中转站归组）。
  * @param searchCallEstimateCny - 联网搜索请求的单次费用估算（人民币元）。
  * @param seedLength - fork 血缘边界（seq 低于它的事件是父会话种子，跳过）；
  *   来源为存储元数据的 `inheritedEventCount`。
+ * @param routeAliases - 历史路由别名（旧路由名 → 当前路由名），改名/删除路由的
+ *   历史用量按别名归位，不再落「未知路由」桶。
  */
 function foldInto(
   fold: SessionFold,
   machine: FoldMachine,
   events: readonly { type: string; time: number; data: unknown; seq?: number }[],
-  subscriptionProviders: ReadonlySet<string>,
+  subscriptionProviders: SubscriptionMatcher,
   officialProviderIds: ReadonlySet<string> | undefined,
   routes: Readonly<Record<string, ProviderRouteView>>,
   searchCallEstimateCny: number,
   seedLength: number,
+  routeAliases: Readonly<Record<string, string>> = {},
 ): void {
   // 归因状态在进出时与 machine 同步：循环体保持与全量折叠完全相同的写法。
   let key = machine.key
@@ -918,14 +964,17 @@ function foldInto(
       continue
     }
     if (event.type === 'request/header') {
-      const { model, provider } = (event.data as { header: { config: { model: string; provider: string } } }).header.config
+      const { model, provider: rawProvider } = (event.data as { header: { config: { model: string; provider: string } } }).header.config
+      // 历史路由别名归位：改名/删除的旧路由按别名映射到当前路由后再做一切判定。
+      const provider = routeAliases[rawProvider] ?? rawProvider
       key = resolveCatalogKey(model)
       // 订阅套餐 provider 的调用即使撞名计费表也一律免费。
-      subscription = subscriptionProviders.has(provider)
-      // 官方直连（DeepSeek 官方）vs 第三方中转/代理。
-      official = officialProviderIds === undefined ? isOfficialProvider(provider) : officialProviderIds.has(provider)
+      subscription = isSubscriptionCall(subscriptionProviders, provider)
+      // 官方直连（DeepSeek 官方）vs 第三方中转/代理；有 baseURL 的路由按 origin 判定。
+      const siteRef = siteRefOf(provider, routes)
+      official = officialChannelOf(provider, siteRef, officialProviderIds)
       // 中转站归组：按当前路由映射到站点/直连/未知路由。
-      siteBucket = siteBucketKey(siteRefOf(provider, routes))
+      siteBucket = siteBucketKey(siteRef)
       // request/header 是该 step 的 TTFT 起点；归属到最近打开的 step（无独立请求头的
       // 工具续写步骤保持 undefined，以 step/start 起算估算）。
       if (lastOpenStepKey !== undefined) {
@@ -990,10 +1039,13 @@ function foldInto(
     // source 缺失（极旧格式日志）才兜底到 header 维护的状态。
     const source = (event.data as { message?: { source?: { kind?: unknown; provider?: unknown; model?: unknown } } }).message?.source
     if (source?.kind === 'model' && typeof source.provider === 'string' && typeof source.model === 'string') {
+      // 权威归属同样先做路由别名归位，与 request/header 口径一致。
+      const provider = routeAliases[source.provider] ?? source.provider
       key = resolveCatalogKey(source.model)
-      subscription = subscriptionProviders.has(source.provider)
-      official = officialProviderIds === undefined ? isOfficialProvider(source.provider) : officialProviderIds.has(source.provider)
-      siteBucket = siteBucketKey(siteRefOf(source.provider, routes))
+      subscription = isSubscriptionCall(subscriptionProviders, provider)
+      const siteRef = siteRefOf(provider, routes)
+      official = officialChannelOf(provider, siteRef, officialProviderIds)
+      siteBucket = siteBucketKey(siteRef)
     }
     // 归属到本条 message 的权威模型，token 按缓存分桶累加。
     // 时段按本次调用的实际时刻（event.time）精确判定，不再按固定比例混合。
@@ -1080,9 +1132,9 @@ function refreshTurns(fold: SessionFold, machine: FoldMachine): void {
  * 兜底到最近一次 request/header 的状态。同时提取最新会话标题、最后活跃时间，
  * 并按轮次折叠每轮费用明细（turn/start → turn/end；调用按 (turn) 归组）。
  * @param events - the session's persisted events in log order.
- * @param subscriptionProviders - provider ids billed through subscription plans.
+ * @param subscriptionProviders - 订阅套餐匹配器（显式集合或判定函数）。
  * @param officialProviderIds - provider ids treated as the official DeepSeek channel
- *   (default: any `deepseek`-prefixed id). Others count as third-party.
+ *   (default: channel-origin based via {@link officialChannelOf}). Others count as third-party.
  * @param routes - 当前 provider 路由视图（中转站归组）。
  * @param searchCallEstimateCny - 联网搜索请求的单次费用估算（人民币元；0 关闭估算）。
  * @param seedLength - 持久化的 fork 血缘边界（存储元数据 `inheritedEventCount`，缺省 0）：
@@ -1093,15 +1145,16 @@ function refreshTurns(fold: SessionFold, machine: FoldMachine): void {
  */
 export function foldSession(
   events: readonly { type: string; time: number; data: unknown; seq?: number }[],
-  subscriptionProviders: ReadonlySet<string>,
+  subscriptionProviders: SubscriptionMatcher,
   officialProviderIds?: ReadonlySet<string>,
   routes: Readonly<Record<string, ProviderRouteView>> = {},
   searchCallEstimateCny: number = DEFAULT_SEARCH_CALL_ESTIMATE_CNY,
   seedLength = 0,
+  routeAliases: Readonly<Record<string, string>> = {},
 ): SessionFold {
   const fold = freshFold()
   const machine = freshMachine()
-  foldInto(fold, machine, events, subscriptionProviders, officialProviderIds, routes, searchCallEstimateCny, seedLength)
+  foldInto(fold, machine, events, subscriptionProviders, officialProviderIds, routes, searchCallEstimateCny, seedLength, routeAliases)
   refreshTurns(fold, machine)
   return fold
 }
@@ -1198,10 +1251,16 @@ export interface UsageAggregator {
  * @returns the aggregator holding the per-session fold cache.
  */
 export function createUsageAggregator(persistence: UsagePersistence, options: AggregateOptions = {}): UsageAggregator {
-  const subscriptionProviders = new Set(options.subscriptionProviders ?? DEFAULT_SUBSCRIPTION_PROVIDERS)
+  // 订阅判定默认用显式基线集合（含 tencent-token-plan）。不用 id 正则做默认——
+  // 正则前缀会撞名（如名为 openrouter 的中转路由被误豁免）；需要与订阅卡完全
+  // 同口径时，显式配置传 isSubscriptionProviderId 判定函数（SubscriptionMatcher）。
+  const subscriptionMatcher: SubscriptionMatcher = options.subscriptionProviders === undefined
+    ? new Set(DEFAULT_SUBSCRIPTION_PROVIDERS)
+    : new Set(options.subscriptionProviders)
   const officialProviderIds = options.officialProviderIds === undefined
     ? undefined
     : new Set(options.officialProviderIds)
+  const routeAliases: Readonly<Record<string, string>> = options.routeAliases ?? {}
   const maxCacheSessions = options.maxCacheSessions ?? DEFAULT_MAX_CACHE_SESSIONS
   // 内存 cache 条目：fold 是 Map/Set 重表示；machine + lastSeq 是增量折叠游标
   // （issue #30），仅本进程内有效——ledger 恢复的行不带 machine，退回全量重折。
@@ -1359,7 +1418,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
               cache.delete(id)
               continue
             }
-            foldInto(previous.fold, previous.machine, events, subscriptionProviders, officialProviderIds, routesOf(), searchEstimate, inheritedEventCount)
+            foldInto(previous.fold, previous.machine, events, subscriptionMatcher, officialProviderIds, routesOf(), searchEstimate, inheritedEventCount, routeAliases)
             refreshTurns(previous.fold, previous.machine)
             const last = events[events.length - 1]
             previous.lastSeq = last?.seq ?? previous.lastSeq
@@ -1385,7 +1444,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           const fold = freshFold()
           const machine = freshMachine()
           for (let start = 0; start < events.length; start += FOLD_CHUNK_EVENTS) {
-            foldInto(fold, machine, events.slice(start, start + FOLD_CHUNK_EVENTS), subscriptionProviders, officialProviderIds, routesOf(), searchEstimate, inheritedEventCount)
+            foldInto(fold, machine, events.slice(start, start + FOLD_CHUNK_EVENTS), subscriptionMatcher, officialProviderIds, routesOf(), searchEstimate, inheritedEventCount, routeAliases)
             if (start + FOLD_CHUNK_EVENTS < events.length) await new Promise<void>(resolve => { setImmediate(resolve) })
           }
           refreshTurns(fold, machine)

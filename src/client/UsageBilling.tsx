@@ -52,7 +52,7 @@ import {
 import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
-import { localizeProviderName } from './provider-display.ts'
+import { localizeProviderName, channelDisplayName } from './provider-display.ts'
 import { tierInfoOf } from './plan-knowledge.ts'
 import { vendorLogoOf } from './vendor-logos.ts'
 import { computePeakAlert, loadPeakAlertConfig, savePeakAlertConfig, type PeakAlertConfig, type PeakAlertHit } from './peak-alert.ts'
@@ -1795,46 +1795,112 @@ function BillingDashboard({
     () => (sitePrefs.hideUnidentified ? relayQuotas.filter(row => row.kind !== 'unknown') : relayQuotas),
     [relayQuotas, sitePrefs.hideUnidentified],
   )
+  // 提供商（通道）优先聚合：一级归属 = 调用实际发生的 llm 入口（腾讯云 TokenHub /
+  // 腾讯云 Token Plan / DeepSeek 官方 / 直连·路由名 / 未知路由），模型品牌（目录
+  // 厂商）只是行内徽标 + 副标——付费视角下「钱花给了哪个提供商」优先于「用了
+  // 哪家的模型」。数据源：byDayModelsSite 模型×日×通道三维（FOLD_VERSION 8 起
+  // 全量快照必含；旧快照缺失时模型统一落「未知路由」组，首次聚合后即恢复）。
   const providerGroups: ProviderBillingGroup[] = useMemo(() => {
-    const subscriptionsByVendor = new Map<string, SubscriptionQuota[]>()
+    const cells = new Map<string, Map<string, { calls: number; input: number; output: number; cacheHit: number; cacheMiss: number; cost: number }>>()
+    for (const models of Object.values(stats.byDayModelsSite ?? {})) {
+      for (const [modelKey, sites] of Object.entries(models)) {
+        for (const [siteKey, usage] of Object.entries(sites)) {
+          let bucket = cells.get(siteKey)
+          if (bucket === undefined) {
+            bucket = new Map()
+            cells.set(siteKey, bucket)
+          }
+          const cell = bucket.get(modelKey) ?? { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0 }
+          cell.calls += usage.calls
+          cell.input += usage.input
+          cell.output += usage.output
+          cell.cacheHit += usage.cacheHit
+          cell.cacheMiss += usage.cacheMiss
+          cell.cost += usage.cost
+          bucket.set(modelKey, cell)
+        }
+      }
+    }
+    const modelsByChannel = new Map<string, ModelRow[]>()
+    for (const [siteKey, bucket] of cells) {
+      const rows = [...bucket.entries()]
+        .filter(([, cell]) => cell.calls > 0)
+        .map(([modelKey, cell], index) => {
+          const entry = modelOf(modelKey)
+          const uncatalogued = entry.key === 'other'
+          // 未收录模型保留 id 反推的品牌（行内徽标/副标），不再决定分组。
+          const provider = uncatalogued ? providerFromModelKey(modelKey) ?? entry.provider : entry.provider
+          return {
+            key: modelKey,
+            name: uncatalogued ? modelKey : entry.name,
+            provider,
+            color: CHART_PALETTE[index % CHART_PALETTE.length] ?? '#8b95a3',
+            calls: cell.calls,
+            input: cell.input,
+            output: cell.output,
+            cacheHitRate: cell.cacheHit + cell.cacheMiss > 0 ? (cell.cacheHit / (cell.cacheHit + cell.cacheMiss)) * 100 : 0,
+            // 目录价预估：订阅通道行即「套餐内预估开销」，按量行即未重估前的目录口径。
+            estimated: computeCost(entry, { input: cell.input, cacheHit: cell.cacheHit, cacheMiss: cell.cacheMiss, output: cell.output }),
+            plan: stats.byModel?.[modelKey]?.plan === true,
+            ...(cell.cost > 0 ? { actual: cell.cost } : {}),
+            uncatalogued,
+            estimatedPricing: entry.estimated === true,
+            officialCalls: 0,
+            officialCost: 0,
+          }
+        })
+        .sort((a, b) => (b.actual ?? b.estimated) - (a.actual ?? a.estimated))
+      if (rows.length > 0) modelsByChannel.set(siteKey, rows)
+    }
+    const channelNameOf = (siteKey: string): string => channelDisplayName(siteKey, lang) ?? t('channelUnknown')
+    // 订阅挂接：显示名命中通道名（腾讯云 Token Plan）优先；否则 direct:<provider id>
+    // 通道存在（直连订阅路由）即挂接；无模型用量的订阅保持独立成组（口径同旧版）。
+    const channelByName = new Map<string, string>()
+    for (const siteKey of modelsByChannel.keys()) channelByName.set(channelNameOf(siteKey), siteKey)
+    const subscriptionsByChannel = new Map<string, SubscriptionQuota[]>()
+    const subGroupNames = new Map<string, string>()
     for (const quota of quotas) {
       if (quota.status === 'not-configured') continue
-      const vendor = subscriptionVendorOf(quota.provider)
-      const list = subscriptionsByVendor.get(vendor)
-      if (list === undefined) subscriptionsByVendor.set(vendor, [quota])
+      const label = quota.displayName ?? subscriptionVendorOf(quota.provider)
+      const siteKey = channelByName.get(label) ?? (modelsByChannel.has(`direct:${quota.provider}`) ? `direct:${quota.provider}` : undefined)
+      const groupKey = siteKey ?? `sub:${subscriptionVendorOf(quota.provider)}`
+      subGroupNames.set(groupKey, siteKey !== undefined ? channelNameOf(siteKey) : subscriptionVendorOf(quota.provider))
+      const list = subscriptionsByChannel.get(groupKey)
+      if (list === undefined) subscriptionsByChannel.set(groupKey, [quota])
       else list.push(quota)
     }
-    const modelsByVendor = new Map<string, ModelRow[]>()
-    // 订阅 vendor 的归一化索引：normalize(vendor名) → vendor名。用于让模型 provider 名
-    // 与订阅 vendor 名在大小写/空格/连字符差异时也能归到同一组。
-    const vendorByNorm = new Map<string, string>()
-    for (const vendor of subscriptionsByVendor.keys()) vendorByNorm.set(normalizeProvider(vendor), vendor)
-    for (const row of modelRows) {
-      // 厂商组 key：优先取「与某订阅 vendor 归一化匹配」的名字；订阅豁免模型（plan=true）
-      // 即使 catalog 未收录（provider 反推为 Custom），也用模型 id 反推的厂商名归组，
-      // 让订阅卡与模型明细落在同一厂商组，避免被甩到 Custom 独立组。
-      let vendorName = row.provider
-      if (row.plan === true) {
-        const inferred = providerFromModelKey(row.key)
-        if (inferred !== undefined) vendorName = inferred
-      }
-      const key = vendorByNorm.get(normalizeProvider(vendorName)) ?? vendorName
-      const list = modelsByVendor.get(key)
-      if (list === undefined) modelsByVendor.set(key, [row])
-      else list.push(row)
+    // 余额挂接：通道显示名直接匹配（腾讯云 TokenHub）；DeepSeek 官方通道别名到 deepseek 余额。
+    const balanceForChannel = (siteKey: string | undefined, name: string): ProviderBalance | undefined =>
+      siteKey === 'direct:deepseek' || siteKey === 'site:https://api.deepseek.com'
+        ? balanceFor('deepseek') ?? balanceFor(name)
+        : balanceFor(name)
+    const groups: ProviderBillingGroup[] = []
+    for (const [siteKey, rows] of modelsByChannel) {
+      groups.push({
+        name: channelNameOf(siteKey),
+        models: rows,
+        subscriptions: subscriptionsByChannel.get(siteKey) ?? [],
+        balance: balanceForChannel(siteKey, channelNameOf(siteKey)),
+        // 健康点取该通道费用最高模型的品牌健康（通道本身不做探活）。
+        dot: providerDot(health, rows[0]?.provider ?? ''),
+      })
     }
-    const names = new Set<string>([...modelsByVendor.keys(), ...subscriptionsByVendor.keys()])
-    const groups = [...names]
-      .map(name => ({
+    for (const [groupKey, name] of subGroupNames) {
+      if (modelsByChannel.has(groupKey)) continue
+      groups.push({
         name,
-        models: modelsByVendor.get(name) ?? [],
-        subscriptions: subscriptionsByVendor.get(name) ?? [],
+        models: [],
+        subscriptions: subscriptionsByChannel.get(groupKey) ?? [],
         balance: balanceFor(name),
         dot: providerDot(health, name),
-      }))
+      })
+    }
     // 纯余额组：自定义 Provider（custom: 前缀）或无对应模型/订阅的余额行，
-    // 以独立厂商组呈现（内置厂商的「未配置」行不补组，避免噪音）。
-    const claimed = new Set(groups.map(group => normalizeProvider(group.name)))
+    // 以独立组呈现（内置厂商的「未配置」行不补组，避免噪音）。
+    const claimed = new Set(groups.flatMap(group => [
+      normalizeProvider(group.name),
+      ...(group.balance !== undefined ? [normalizeProvider(group.balance.provider)] : []),
+    ]))
     for (const balance of balances) {
       if (claimed.has(normalizeProvider(balance.provider))) continue
       if (balance.error === undefined || balance.provider.startsWith('custom:')) {
@@ -1857,7 +1923,49 @@ function BillingDashboard({
         if (a.models.length === 0) return 1
         return a.name.localeCompare(b.name, 'zh')
       })
-  }, [modelRows, quotas, balances, health])
+  }, [stats.byDayModelsSite, stats.byModel, quotas, balances, health, lang, t])
+
+  // 厂商视图与通道视图共用模型表（同列结构）：表头与模型名单元格各只保留一份
+  // JSX，控制 bundle 体积（Store 256KiB 单文件门禁）。showTags 时才渲染估算价
+  // 标注与通道徽标（仅厂商视图）。
+  const modelTableHead = (
+    <thead>
+      <tr>
+        <th>{t('model')}</th>
+        <th className={css.numCol}>{t('calls')}</th>
+        <th className={css.numCol}>{t('inputTokens')}</th>
+        <th className={css.numCol}>{t('outputTokens')}</th>
+        <th className={css.numCol}>{t('cacheHitRate')}</th>
+        <th className={css.numCol}>{t('actual')}</th>
+      </tr>
+    </thead>
+  )
+  const modelNameCell = (
+    row: { key: string; name: string; provider: string; uncatalogued?: boolean; estimatedPricing?: boolean; color?: string; colorVar?: string },
+  ): React.ReactNode => {
+    const logoColor = row.color ?? (row.colorVar !== undefined ? resolveToken(row.colorVar) : undefined)
+    return (
+      <span className={css.modelCell}>
+        <VendorLogo provider={row.provider} {...(logoColor !== undefined ? { colorVar: logoColor } : {})} />
+        <span>
+          <span className={css.modelName}>
+            {row.name}
+            {row.uncatalogued && (
+              <span className={css.uncataloguedTag} data-testid="billing-uncatalogued-tag">
+                {t('uncatalogued')}
+              </span>
+            )}
+            {row.estimatedPricing && (
+              <span className={css.estimatedTag} data-testid="billing-estimated-tag">
+                {t('estimatedPricing')}
+              </span>
+            )}
+          </span>
+          <span className={css.modelProvider}>{providerName(row.provider)}</span>
+        </span>
+      </span>
+    )
+  }
 
   // Total: real stats value when present, otherwise the estimated sum.
   const estimatedTotal = modelRows.reduce((sum, row) => sum + row.estimated, 0)
@@ -2719,41 +2827,12 @@ function BillingDashboard({
                         {group.models.length > 0 && (
                           <div className={clsx(css.tableScroll, css.modelTableScroll)} data-testid="billing-table-scroll">
                             <table className={css.modelTable}>
-                              <thead>
-                                <tr>
-                                  <th>{t('model')}</th>
-                                  <th className={css.numCol}>{t('calls')}</th>
-                                  <th className={css.numCol}>{t('inputTokens')}</th>
-                                  <th className={css.numCol}>{t('outputTokens')}</th>
-                                  <th className={css.numCol}>{t('cacheHitRate')}</th>
-                                  <th className={css.numCol}>{t('actual')}</th>
-                                </tr>
-                              </thead>
+                              {modelTableHead}
                               <tbody>
                                 {group.models.map(row => (
                                   <tr key={row.key}>
                                     <td>
-                                      <span className={css.modelCell}>
-                                        <VendorLogo provider={row.provider} colorVar={row.color} />
-                                        <span>
-                                          <span className={css.modelName}>
-                                            {row.name}
-                                            {/* 未收录：真实 id 不在计费目录，费用按兜底档估算，明确标注。 */}
-                                            {row.uncatalogued && (
-                                              <span className={css.uncataloguedTag} data-testid="billing-uncatalogued-tag">
-                                                {t('uncatalogued')}
-                                              </span>
-                                            )}
-                                            {/* 估算价：厂商未公布官方按量单价，避免误当正式定价。 */}
-                                            {row.estimatedPricing && (
-                                              <span className={css.estimatedTag} data-testid="billing-estimated-tag">
-                                                {t('estimatedPricing')}
-                                              </span>
-                                            )}
-                                          </span>
-                                          <span className={css.modelProvider}>{providerName(row.provider)}</span>
-                                        </span>
-                                      </span>
+                                      {modelNameCell(row)}
                                     </td>
                                     <td className={css.numCol}>{row.calls.toLocaleString()}</td>
                                     <td className={css.numCol}>{formatTokens(row.input)}</td>
@@ -2761,7 +2840,7 @@ function BillingDashboard({
                                     <td className={css.numCol}>{formatPercent(row.cacheHitRate)}</td>
                                     <td className={css.numCol}>
                                       {row.plan
-                                        ? <span className={css.planTag}>{t('subscriptionIncluded')}</span>
+                                        ? <span className={css.planTag}>{t('subscriptionIncluded')}{row.estimated > 0 ? ` ≈${money(row.estimated)}` : ''}</span>
                                         : row.actual !== undefined
                                           ? (() => {
                                             const official = row.officialCost

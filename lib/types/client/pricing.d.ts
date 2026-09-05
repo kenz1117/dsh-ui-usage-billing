@@ -27,6 +27,12 @@ import type { LivePricing } from '../pricing-shared.ts';
  */
 export declare const USD_TO_CNY = 6.79;
 /**
+ * 注入用户自定义模型别名（node 半区在插件启动时调用一次）。纯内存状态：
+ * 聚合折叠与客户端渲染共用同一份（两侧一致性由同一注入点保证）。
+ * @param aliases - `model id → 目录键` 映射；undefined/空 = 清除，回退内置表。
+ */
+export declare function applyUserModelAliases(aliases: Readonly<Record<string, string>> | undefined): void;
+/**
  * 用户自定义单价（设置面板录入，localStorage 持久化）：覆盖内置/models.dev/
  * dsh-spend 的全部价格来源，用于新模型上线目录未跟、或厂商未公布按量价的场景。
  * 仅在客户端显示层生效——聚合发生在宿主进程，折叠时的成本仍按内置目录计算，
@@ -324,14 +330,6 @@ export declare const MODEL_KEY_ALIASES: Readonly<Record<string, string>>;
  * @returns 归一化键（字母数字小写串）。
  */
 export declare function canonModelId(id: string): string;
-/**
- * 解析真实日志模型 id → 计费目录键。先精确别名映射（既有行为）；未命中时做
- * 归一化匹配（忽略大小写/分隔符/括号附注），命中内置目录 / 别名目标 / 兜底键 /
- * models.dev 补充键即返回其真实键；完全未知时保持原样（回退 other，不计费）。
- * 供聚合层折叠与客户端渲染共用，两侧一致。
- * @param id - 真实模型 id（日志里出现的形式）。
- * @returns 计费目录键。
- */
 export declare function resolveCatalogKey(id: string): string;
 /** Lookup a model by its stats key; falls back to the generic `other` entry. */
 export declare function modelOf(key: string): ModelEntry;
