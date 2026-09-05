@@ -17,5 +17,12 @@ type ProviderLang = 'zh' | 'en';
 export declare function localizeProviderName(name: string, lang: ProviderLang): string;
 /** 判断一个厂商显示名是否包含中文（用于测试/守卫：保证映射覆盖完整）。 */
 export declare function hasCjk(name: string): boolean;
+/**
+ * 站点桶 key（`site:<origin>` / `direct:<provider>` / `unknown`）→ 通道显示名。
+ * @param siteKey - 聚合文档 bySite 的桶 key。
+ * @param lang - 显示语言；zh（缺省）用内置中文名，en 走英文章表。
+ * @returns 未知路由桶返回 undefined（渲染层用 locale 文案兜底）。
+ */
+export declare function channelDisplayName(siteKey: string, lang?: ProviderLang): string | undefined;
 export {};
 //# sourceMappingURL=provider-display.d.ts.map
