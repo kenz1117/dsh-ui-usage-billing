@@ -131,6 +131,7 @@ export type UsageBillingKey =
   | 'anomaly'
   | 'workspaces'
   | 'workspacesHint'
+  | 'workspaceSubtotal'
   | 'model'
   | 'thModel'
   | 'thInputMiss'
@@ -392,6 +393,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'anomaly': '成本突增',
   'workspaces': '工作区统计',
   'workspacesHint': '点击行下钻项目成本前 5 会话',
+  'workspaceSubtotal': '小计',
   'model': '模型',
   'thModel': '模型名称',
   'thInputMiss': '输入缓存未命中',
@@ -653,6 +655,7 @@ export const en: Record<UsageBillingKey, string> = {
   'anomaly': 'Cost spike',
   'workspaces': 'Workspaces',
   'workspacesHint': 'Click a row to drill into its top-5 sessions',
+  'workspaceSubtotal': 'Subtotal',
   'model': 'Model',
   'thModel': 'Model name',
   'thInputMiss': 'Input (cache miss)',

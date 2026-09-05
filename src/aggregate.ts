@@ -571,6 +571,8 @@ export interface SerializedSessionFold {
   byModel: Record<string, ModelUsage>
   byDay: Record<string, ModelUsage>
   byDayModels: Record<string, Record<string, ModelUsage>>
+  /** 会话标题（session/title 事件的最新文本）；1.0.30 前的账本行不持久化它，缺失回退 id。 */
+  title?: string
   /** 1.0.10（issue #16）新增；模型×日期×站点三维，旧账本行缺失（合并按空处理）。 */
   byDayModelsSite?: Record<string, Record<string, Record<string, ModelUsage>>>
   /** 1.0.8 起新增；旧账本行缺失（合并时按空处理，不触发重折算）。 */
@@ -628,7 +630,9 @@ export interface UsageLedgerDocument {
 // 9：未知路由（不在 llm-pi-ai 配置里的 provider 名）按名兜底判官方——宿主内置官方
 // 直连不经路由表（provider 名 deepseek-official 不在任何配置里），v8 的 unknown 一刀切
 // 把官方直连全量错杀进三方桶。v8 折叠的账本行同样过时，bump 触发全量重折。
-export const FOLD_VERSION = 9
+// 10：账本行开始持久化会话标题（serializeFold 白名单此前漏了 title），v9 行重启复用
+// 后会话明细只剩 id 前缀；bump 让存量账本行全量重折补回标题。
+export const FOLD_VERSION = 10
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
@@ -712,6 +716,8 @@ function serializeFold(fold: SessionFold): SerializedSessionFold {
     perf: fold.perf,
     roles: fold.roles,
     lastActive: fold.lastActive,
+    // 标题随账本持久化：缺失时重启从账本复用的会话明细回退到 id 前缀（用户可读性差）。
+    ...(fold.title !== undefined ? { title: fold.title } : {}),
   }
 }
 
@@ -735,6 +741,7 @@ function deserializeFold(fold: SerializedSessionFold): SessionFold {
     perf: fold.perf,
     roles: fold.roles,
     lastActive: fold.lastActive,
+    ...(fold.title !== undefined ? { title: fold.title } : {}),
   }
 }
 

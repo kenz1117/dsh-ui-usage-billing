@@ -411,6 +411,8 @@ export interface SerializedSessionFold {
     byModel: Record<string, ModelUsage>;
     byDay: Record<string, ModelUsage>;
     byDayModels: Record<string, Record<string, ModelUsage>>;
+    /** 会话标题（session/title 事件的最新文本）；1.0.30 前的账本行不持久化它，缺失回退 id。 */
+    title?: string;
     /** 1.0.10（issue #16）新增；模型×日期×站点三维，旧账本行缺失（合并按空处理）。 */
     byDayModelsSite?: Record<string, Record<string, Record<string, ModelUsage>>>;
     /** 1.0.8 起新增；旧账本行缺失（合并时按空处理，不触发重折算）。 */
@@ -459,7 +461,7 @@ export interface UsageLedgerDocument {
  * 会话费用只剩最近一段，issue #29）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export declare const FOLD_VERSION = 9;
+export declare const FOLD_VERSION = 10;
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
  * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并

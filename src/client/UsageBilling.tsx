@@ -1515,8 +1515,26 @@ function BillingDashboard({
 
   // 余额详情弹窗：记录打开的厂商（按 provider 标识）；点击「约可撑 N 天」圆圈切换。
   const [balanceDetailFor, setBalanceDetailFor] = useState<string | undefined>()
-  // 项目下钻：记录当前展开的项目名；点击项目行切换展开/收起。
-  const [expandedProject, setExpandedProject] = useState<string | undefined>()
+
+  // 会话明细按工作区分组：工作区行内联合计（费用/调用），组内列出会话。
+  // 与服务端 byWorkspace 同口径（projectName 对 cwd 末级目录归并）；顺序沿用 bySession 的费用倒序。
+  const sessionGroups = useMemo(() => {
+    const rows = stats.bySession ?? []
+    const map = new Map<string, SessionBillingRow[]>()
+    for (const row of rows) {
+      const name = projectName(row.cwd) ?? '—'
+      const list = map.get(name)
+      if (list === undefined) map.set(name, [row])
+      else list.push(row)
+    }
+    return [...map].map(([name, list]) => ({
+      name,
+      rows: list,
+      calls: list.reduce((n, r) => n + r.calls, 0),
+      cost: list.reduce((n, r) => n + r.cost, 0),
+    }))
+  }, [stats.bySession])
+
 
   // usage_stats 工具开关：经插件自带的 HTTP 接口读写（不依赖宿主浏览器设置白名单）。
   // 挂载时读一次当前值；点按乐观切换并回写，写失败回滚。工具注入是启动期决策，重启生效。
@@ -3050,58 +3068,8 @@ function BillingDashboard({
                   </div>
                 )
               })()}
-              {/* 工作区统计：设计 rowlist —— 名称 + 费用/调用 + 下钻箭头（点击展开前 5 会话）。 */}
-              {stats.byWorkspace !== undefined && stats.byWorkspace.length > 0 && (
-                <section className={css.ubCard} data-testid="billing-panel-workspaces">
-                  <div className={css.ubCardHead}>
-                    <h3 className={css.ubCardTitle}>
-                      {t('workspaces')}
-                    </h3>
-                    <span className={css.ubCardSub}>
-                      {t('workspacesHint')}
-                    </span>
-                  </div>
-                  <ul className={css.rowlist}>
-                    {stats.byWorkspace.map(row => (
-                      <Fragment key={row.name}>
-                        <li>
-                          <button
-                            type="button"
-                            className={css.rowline}
-                            data-testid={`billing-workspace-${row.name}`}
-                            onClick={() => { setExpandedProject(expandedProject === row.name ? undefined : row.name) }}
-                          >
-                            <span className={css.rowlineName}>{row.name}</span>
-                            <span className={css.rowlineRight}>
-                              <span className={css.num}>{money(row.cost)}</span>
-                              <span className={css.rowlineMuted}>{row.calls} {t('calls')}</span>
-                              <span className={css.rowlineChev} aria-hidden="true">›</span>
-                            </span>
-                          </button>
-                        </li>
-                        {/* 项目下钻：展开时列出该项目成本最高的会话（最多 5 条）。 */}
-                        {expandedProject === row.name && (
-                          <li className={css.rowlineDrillWrap}>
-                            {stats.bySession
-                              ?.filter(s => projectName(s.cwd) === row.name)
-                              .slice(0, 5)
-                              .map(s => (
-                                <div key={s.id} className={css.rowlineDrill}>
-                                  <span className={css.rowlineName}>{s.title ?? s.id.slice(0, 8)}</span>
-                                  <span className={css.rowlineRight}>
-                                    <span className={css.num}>{money(s.cost)}</span>
-                                    <span className={css.rowlineMuted}>{s.calls} {t('calls')}</span>
-                                  </span>
-                                </div>
-                              ))}
-                          </li>
-                        )}
-                      </Fragment>
-                    ))}
-                  </ul>
-                </section>
-              )}
-              {/* 会话明细：设计 card——表（标题/项目/调用/费用/最后活跃）+ 溢出说明。 */}
+              {/* 会话明细：按工作区分组——组行内联合计（费用/调用），组内列出会话，
+                  吸收原「工作区统计」卡片（下钻交互由平铺分组替代）。 */}
               {stats.bySession !== undefined && (
                 <section className={css.ubCard} data-testid="billing-panel-sessions">
                   <div className={css.ubCardHead}>
@@ -3127,37 +3095,48 @@ function BillingDashboard({
                       <thead>
                         <tr>
                           <th>{t('sessionTitle')}</th>
-                          <th>{t('project')}</th>
                           <th className={css.numCol}>{t('calls')}</th>
                           <th className={css.numCol}>{t('actual')}</th>
                           <th className={css.numCol}>{t('lastActive')}</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {stats.bySession.length === 0 && (
+                        {sessionGroups.length === 0 && (
                           <tr>
-                            <td colSpan={5} className={css.emptyRow}>{t('noData')}</td>
+                            <td colSpan={4} className={css.emptyRow}>{t('noData')}</td>
                           </tr>
                         )}
-                        {stats.bySession.slice(0, SESSION_DISPLAY_LIMIT).map(row => (
-                          <tr key={row.id}>
-                            <td>
-                              <span className={css.modelName}>{row.title ?? row.id.slice(0, 8)}</span>
-                              {row.stale === true && (
-                                <span className={clsx(css.ubTag, css.ubTagNeutral)} data-testid="billing-session-stale">
-                                  {t('sessionStaleBadge')}
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              <span className={css.modelProvider}>{projectName(row.cwd) ?? '—'}</span>
-                            </td>
-                            <td className={css.numCol}>{row.calls.toLocaleString()}</td>
-                            <td className={css.numCol}>{money(row.cost)}</td>
-                            <td className={css.numCol}>
-                              {row.lastActive > 0 ? `${localDayStamp(row.lastActive)} ${formatClock(row.lastActive)}` : '—'}
-                            </td>
-                          </tr>
+                        {sessionGroups.map(group => (
+                          <Fragment key={group.name}>
+                            {/* 工作区组行：名称 + 该工作区的费用/调用内联合计。 */}
+                            <tr data-testid={`billing-session-group-${group.name}`}>
+                              <td>
+                                <span className={css.modelName}>{group.name}</span>
+                              </td>
+                              <td className={css.numCol}>{group.calls.toLocaleString()}</td>
+                              <td className={css.numCol}>{money(group.cost)}</td>
+                              <td className={css.numCol}>
+                                <span className={css.modelProvider}>{t('workspaceSubtotal')}</span>
+                              </td>
+                            </tr>
+                            {group.rows.slice(0, SESSION_DISPLAY_LIMIT).map(row => (
+                              <tr key={row.id}>
+                                <td>
+                                  <span className={css.modelName}>{row.title ?? row.id.slice(0, 8)}</span>
+                                  {row.stale === true && (
+                                    <span className={clsx(css.ubTag, css.ubTagNeutral)} data-testid="billing-session-stale">
+                                      {t('sessionStaleBadge')}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className={css.numCol}>{row.calls.toLocaleString()}</td>
+                                <td className={css.numCol}>{money(row.cost)}</td>
+                                <td className={css.numCol}>
+                                  {row.lastActive > 0 ? `${localDayStamp(row.lastActive)} ${formatClock(row.lastActive)}` : '—'}
+                                </td>
+                              </tr>
+                            ))}
+                          </Fragment>
                         ))}
                       </tbody>
                     </table>

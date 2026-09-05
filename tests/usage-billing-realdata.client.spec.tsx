@@ -169,18 +169,21 @@ describe('UsageBilling real-data surface', () => {
     expect(screen.queryByTestId('billing-budget-track')).toBeNull()
   })
 
-  it('shows the sessions panel with title, project basename, and cost rows', async () => {
+  it('shows the sessions panel grouped by workspace with subtotal rows', async () => {
     const { container } = render(<UsageBilling {...makeProps()} />)
     fireEvent.click(container.querySelector('button')!)
     // 会话明细在明细 Tab 内默认展开：切 Tab 后表格直接可见。
     fireEvent.click(await screen.findByTestId('billing-tab-providers'))
     const table = await screen.findByTestId('billing-sessions-table')
-    // 标题行按费用倒序；无标题会话回退为 id 前 8 位；项目取 cwd 末级目录。
+    // 标题行按费用倒序；无标题会话回退为 id 前 8 位；工作区分组行内联合计。
     expect(table.textContent).toContain('修复登录 bug')
     expect(table.textContent).toContain('shop-web')
     expect(table.textContent).toContain('api-server')
     expect(table.textContent).toContain('sess-api')
-    expect(table.querySelectorAll('tbody tr')).toHaveLength(2)
+    // 每个工作区一行小计（2 组）+ 每会话一行（2 行）。
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(4)
+    expect(screen.getByTestId('billing-session-group-shop-web')).toBeTruthy()
+    expect(screen.getByTestId('billing-session-group-api-server')).toBeTruthy()
   })
 
   it('notifies once per tier per day as spend crosses budget tiers', async () => {
