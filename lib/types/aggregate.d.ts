@@ -35,8 +35,10 @@ export declare const OFFICIAL_DEEPSEEK_ORIGIN = "https://api.deepseek.com";
  * 官方渠道判定（通道优先）：显式 `officialProviderIds` 配置最优先；否则看站点归组——
  * 有 baseURL 的路由只有 origin 为 DeepSeek 官方域才算官方（修复：名为 `deepseek-*`
  * 的中转/网关路由曾被按 id 前缀误判为官方，腾讯网关的 DeepSeek 全被计成官方渠道）；
- * 直连路由（配置在册、无 baseURL）退回按 provider id 前缀判定；**不在当前配置里的
- * 未知路由一律不算官方**（无法核实通道，不装确定——历史路由用 `routeAliases` 归位）。
+ * 直连路由（配置在册、无 baseURL）与路由表查不到的未知名都退回按 provider id
+ * 前缀判定——宿主内置的官方直连不经 llm-pi-ai 路由，其 provider 名不在路由表中，
+ * 按 unknown 一刀切会把它错杀成三方（回归修复）；配置外的同名网关残留可用
+ * `routeAliases` 显式归位到真实通道。
  */
 export declare function officialChannelOf(provider: string, ref: SiteRef, officialProviderIds?: ReadonlySet<string>): boolean;
 /**
@@ -457,7 +459,7 @@ export interface UsageLedgerDocument {
  * 会话费用只剩最近一段，issue #29）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export declare const FOLD_VERSION = 8;
+export declare const FOLD_VERSION = 9;
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
  * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并

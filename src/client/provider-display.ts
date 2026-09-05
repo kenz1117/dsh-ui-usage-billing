@@ -94,7 +94,10 @@ export function channelDisplayName(siteKey: string, lang: ProviderLang = 'zh'): 
   }
   if (siteKey.startsWith('direct:')) {
     const provider = siteKey.slice('direct:'.length)
-    return provider === 'deepseek' ? (lang === 'en' ? 'DeepSeek Official' : 'DeepSeek 官方') : `${lang === 'en' ? 'Direct' : '直连'} · ${provider}`
+    // 内置官方直连（不经 llm-pi-ai 网关，路由表里没有它的配置行）统一显示官方名，
+    // 而非「直连 · deepseek-official」这类裸路由名。
+    if (/^deepseek(?:-[a-z0-9-]+)?$/i.test(provider)) return lang === 'en' ? 'DeepSeek Official' : 'DeepSeek 官方'
+    return `${lang === 'en' ? 'Direct' : '直连'} · ${provider}`
   }
   return undefined
 }

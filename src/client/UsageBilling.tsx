@@ -1853,40 +1853,51 @@ function BillingDashboard({
       if (rows.length > 0) modelsByChannel.set(siteKey, rows)
     }
     const channelNameOf = (siteKey: string): string => channelDisplayName(siteKey, lang) ?? t('channelUnknown')
+    // 同显示名的桶合并为一组：direct:deepseek 与 direct:deepseek-official 都映射
+    // 「DeepSeek 官方」，按 siteKey 分列会渲染出两个同名组。
+    const mergedByChannel = new Map<string, ModelRow[]>()
+    for (const [siteKey, rows] of modelsByChannel) {
+      const name = channelNameOf(siteKey)
+      const existing = mergedByChannel.get(name)
+      if (existing === undefined) mergedByChannel.set(name, [...rows])
+      else {
+        existing.push(...rows)
+        existing.sort((a, b) => (b.actual ?? b.estimated) - (a.actual ?? a.estimated))
+      }
+    }
     // 订阅挂接：显示名命中通道名（腾讯云 Token Plan）优先；否则 direct:<provider id>
     // 通道存在（直连订阅路由）即挂接；无模型用量的订阅保持独立成组（口径同旧版）。
-    const channelByName = new Map<string, string>()
-    for (const siteKey of modelsByChannel.keys()) channelByName.set(channelNameOf(siteKey), siteKey)
     const subscriptionsByChannel = new Map<string, SubscriptionQuota[]>()
     const subGroupNames = new Map<string, string>()
     for (const quota of quotas) {
       if (quota.status === 'not-configured') continue
       const label = quota.displayName ?? subscriptionVendorOf(quota.provider)
-      const siteKey = channelByName.get(label) ?? (modelsByChannel.has(`direct:${quota.provider}`) ? `direct:${quota.provider}` : undefined)
-      const groupKey = siteKey ?? `sub:${subscriptionVendorOf(quota.provider)}`
-      subGroupNames.set(groupKey, siteKey !== undefined ? channelNameOf(siteKey) : subscriptionVendorOf(quota.provider))
+      const directName = channelNameOf(`direct:${quota.provider}`)
+      const merged = mergedByChannel.has(label) ? label : mergedByChannel.has(directName) ? directName : undefined
+      const groupKey = merged ?? `sub:${subscriptionVendorOf(quota.provider)}`
+      subGroupNames.set(groupKey, merged ?? subscriptionVendorOf(quota.provider))
       const list = subscriptionsByChannel.get(groupKey)
       if (list === undefined) subscriptionsByChannel.set(groupKey, [quota])
       else list.push(quota)
     }
     // 余额挂接：通道显示名直接匹配（腾讯云 TokenHub）；DeepSeek 官方通道别名到 deepseek 余额。
-    const balanceForChannel = (siteKey: string | undefined, name: string): ProviderBalance | undefined =>
-      siteKey === 'direct:deepseek' || siteKey === 'site:https://api.deepseek.com'
+    const balanceForChannel = (name: string): ProviderBalance | undefined =>
+      name === channelNameOf('direct:deepseek') || name === channelNameOf('site:https://api.deepseek.com')
         ? balanceFor('deepseek') ?? balanceFor(name)
         : balanceFor(name)
     const groups: ProviderBillingGroup[] = []
-    for (const [siteKey, rows] of modelsByChannel) {
+    for (const [name, rows] of mergedByChannel) {
       groups.push({
-        name: channelNameOf(siteKey),
+        name,
         models: rows,
-        subscriptions: subscriptionsByChannel.get(siteKey) ?? [],
-        balance: balanceForChannel(siteKey, channelNameOf(siteKey)),
+        subscriptions: subscriptionsByChannel.get(name) ?? [],
+        balance: balanceForChannel(name),
         // 健康点取该通道费用最高模型的品牌健康（通道本身不做探活）。
         dot: providerDot(health, rows[0]?.provider ?? ''),
       })
     }
     for (const [groupKey, name] of subGroupNames) {
-      if (modelsByChannel.has(groupKey)) continue
+      if (mergedByChannel.has(groupKey)) continue
       groups.push({
         name,
         models: [],

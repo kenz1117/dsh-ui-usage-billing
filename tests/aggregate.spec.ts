@@ -140,8 +140,8 @@ describe('byDayModelsSite (issue #16)', () => {
     const events: SessionEvent[] = [header(1, 'deepseek-v4-flash', 'deepseek-official'), message(2, 2_000, USAGE)]
     const fold = foldSession(events, new Set())
     const day = dayStamp(2_000)
-    // 无 routes 配置时 provider 归为 unknown；flash 为目录键。
-    const siteCell = fold.byDayModelsSite.get(day)?.get('flash')?.get('unknown')
+    // 无 routes 配置时内置官方直连（deepseek-* 形态）按 direct 归位；flash 为目录键。
+    const siteCell = fold.byDayModelsSite.get(day)?.get('flash')?.get('direct:deepseek-official')
     expect(siteCell?.calls).toBe(1)
     expect(siteCell?.cacheMiss).toBe(120)
   })
@@ -1298,10 +1298,11 @@ describe('hostTimeZone', () => {
 describe('official channel by origin + route aliases (Tencent gateway)', () => {
   const tokenhubRoutes = { tencent: { baseURL: 'https://tokenhub.tencentmaas.com/v1' } }
 
-  it('does not mark gateway-sourced deepseek calls official even when the route name says deepseek', () => {
-    // 名为 deepseek-official 的腾讯网关路由：历史实现按 id 前缀误判为官方渠道。
+  it('does not mark gateway-sourced deepseek calls official when the route origin is not DeepSeek', () => {
+    // 名为 deepseek-official 且 baseURL 指向腾讯的网关路由（在册）：site 分支按
+    // 通道 origin 判定，不因 id 前缀误判为官方渠道。
     const events = [header(1, 'deepseek-v4-flash', 'deepseek-official'), message(2, 2_000, USAGE)]
-    const fold = foldSession(events, new Set(), undefined, tokenhubRoutes)
+    const fold = foldSession(events, new Set(), undefined, { 'deepseek-official': { baseURL: 'https://tokenhub.tencentmaas.com/v1' } })
     expect(fold.total.officialCalls).toBe(0)
     expect(fold.total.officialCost).toBe(0)
   })
@@ -1319,11 +1320,22 @@ describe('official channel by origin + route aliases (Tencent gateway)', () => {
     expect(fold.total.officialCalls).toBe(1)
   })
 
-  it('never guesses official for unknown routes (renamed/deleted config)', () => {
-    // 不在当前配置里的路由无法核实通道：不装确定，历史路由用 routeAliases 归位。
-    const events = [header(1, 'deepseek-v4-flash', 'deepseek-official'), message(2, 2_000, USAGE)]
+  it('counts the built-in official direct connection as official even without routes', () => {
+    // 内置官方直连不经 llm-pi-ai 路由，provider 名不在路由表（unknown）：按名兜底判
+    // 官方——按 unknown 一刀切会把官方直连用户的全量调用错杀进三方桶。
+    const events = [header(1, 'deepseek-v4-flash', 'deepseek'), message(2, 2_000, USAGE)]
     const fold = foldSession(events, new Set(), undefined, {})
-    expect(fold.total.officialCalls).toBe(0)
+    expect(fold.total.officialCalls).toBe(1)
+  })
+
+  it('unknown deepseek-prefixed residuals fall back to names, correctable via routeAliases', () => {
+    // 改名/删除配置的残留撞 deepseek 前缀：按名兜底后会计官方——用 routeAliases
+    // 显式归位到真实通道后判定随之纠正（残留场景的精确出口）。
+    const events = [header(1, 'deepseek-v4-flash', 'deepseek-official'), message(2, 2_000, USAGE)]
+    const residual = foldSession(events, new Set(), undefined, {})
+    expect(residual.total.officialCalls).toBe(1)
+    const corrected = foldSession(events, new Set(), undefined, tokenhubRoutes, 0.02, 0, { 'deepseek-official': 'tencent' })
+    expect(corrected.total.officialCalls).toBe(0)
   })
 
   it('routeAliases relocate renamed routes into their current site bucket', () => {

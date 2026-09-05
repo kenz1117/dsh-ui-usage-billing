@@ -59,8 +59,10 @@ export const OFFICIAL_DEEPSEEK_ORIGIN = 'https://api.deepseek.com'
  * 官方渠道判定（通道优先）：显式 `officialProviderIds` 配置最优先；否则看站点归组——
  * 有 baseURL 的路由只有 origin 为 DeepSeek 官方域才算官方（修复：名为 `deepseek-*`
  * 的中转/网关路由曾被按 id 前缀误判为官方，腾讯网关的 DeepSeek 全被计成官方渠道）；
- * 直连路由（配置在册、无 baseURL）退回按 provider id 前缀判定；**不在当前配置里的
- * 未知路由一律不算官方**（无法核实通道，不装确定——历史路由用 `routeAliases` 归位）。
+ * 直连路由（配置在册、无 baseURL）与路由表查不到的未知名都退回按 provider id
+ * 前缀判定——宿主内置的官方直连不经 llm-pi-ai 路由，其 provider 名不在路由表中，
+ * 按 unknown 一刀切会把它错杀成三方（回归修复）；配置外的同名网关残留可用
+ * `routeAliases` 显式归位到真实通道。
  */
 export function officialChannelOf(
   provider: string,
@@ -69,8 +71,7 @@ export function officialChannelOf(
 ): boolean {
   if (officialProviderIds !== undefined) return officialProviderIds.has(provider)
   if (ref.kind === 'site') return ref.origin === OFFICIAL_DEEPSEEK_ORIGIN
-  if (ref.kind === 'direct') return isOfficialProvider(provider)
-  return false
+  return isOfficialProvider(provider)
 }
 
 /**
@@ -127,6 +128,10 @@ export function siteRefOf(provider: string, routes: Readonly<Record<string, Prov
     if (view.baseURL !== undefined) return { kind: 'site', origin: siteOriginOf(view.baseURL), provider }
     return { kind: 'direct', provider }
   }
+  // 路由表查不到：内置官方直连（`deepseek` / `deepseek-*` 形态，不经 llm-pi-ai
+  // 网关）按 direct 归位——unknown 一刀切会把官方直连的费用堆进「未知路由」组、
+  // 且不算官方渠道。其余配置外名称保留 unknown（无法核实通道）。
+  if (isOfficialProvider(provider)) return { kind: 'direct', provider }
   return { kind: 'unknown', provider }
 }
 
@@ -620,7 +625,10 @@ export interface UsageLedgerDocument {
 // 8：通道感知归属（腾讯云网关修复）——模型 id 归一化（日期后缀/组织前缀/短 id）、
 // 官方渠道改按 baseURL origin 判定、订阅豁免集合加入 tencent-token-plan。旧版本
 // 折叠的账本行语义已过时，bump 后日志仍在的会话全量重折，日志已删的行标记 stale 保留。
-export const FOLD_VERSION = 8
+// 9：未知路由（不在 llm-pi-ai 配置里的 provider 名）按名兜底判官方——宿主内置官方
+// 直连不经路由表（provider 名 deepseek-official 不在任何配置里），v8 的 unknown 一刀切
+// 把官方直连全量错杀进三方桶。v8 折叠的账本行同样过时，bump 触发全量重折。
+export const FOLD_VERSION = 9
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
