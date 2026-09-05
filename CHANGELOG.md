@@ -6,7 +6,7 @@
 
 ## 预览线（1.0.x，适配 DSH 0.1.2 系）
 
-### 未发布
+### v1.0.29（2026-09-05）
 
 - 新增：提供商（通道）优先分组——计费区块按调用实际发生的 llm 入口分组（腾讯云 TokenHub / 腾讯云 Token Plan / DeepSeek 官方 / 直连·路由名 / 未知路由），模型品牌保留为行内徽标 + 副标；订阅卡与余额按通道挂接，官方判定改为按通道 origin（`api.deepseek.com`）而非路由名
 - 新增：腾讯云 Token Plan 订阅额度适配器（`tencent-token-plan` 路由 + 云 API 密钥对 `<SecretId>:<SecretKey>`；TC3 管控面 `DescribeTokenPlanList → DescribeTokenPlan` 链路抽到 `src/tc3.ts`，与余额面板共用）；仅剩余与总额度都可解析时产出百分比窗口，绝不猜总额度
