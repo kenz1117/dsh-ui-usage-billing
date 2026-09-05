@@ -6,12 +6,22 @@
 
 ## 预览线（1.0.x，适配 DSH 0.1.2 系）
 
+### 未发布
+
+- 新增：提供商（通道）优先分组——计费区块按调用实际发生的 llm 入口分组（腾讯云 TokenHub / 腾讯云 Token Plan / DeepSeek 官方 / 直连·路由名 / 未知路由），模型品牌保留为行内徽标 + 副标；订阅卡与余额按通道挂接，官方判定改为按通道 origin（`api.deepseek.com`）而非路由名
+- 新增：腾讯云 Token Plan 订阅额度适配器（`tencent-token-plan` 路由 + 云 API 密钥对 `<SecretId>:<SecretKey>`；TC3 管控面 `DescribeTokenPlanList → DescribeTokenPlan` 链路抽到 `src/tc3.ts`，与余额面板共用）；仅剩余与总额度都可解析时产出百分比窗口，绝不猜总额度
+- 新增：订阅通道模型行显示「订阅包含 ≈目录价预估」，Token Plan 的逐模型开销可估
+- 新增：`routeAliases` 配置——改名/删除的历史路由按别名归位（站点/订阅/官方判定同步生效）；`modelKeyAliases` 配置——目录外模型 id 手动绑定计费键
+- 修复：模型 id 归一化覆盖日期后缀（`deepseek-v4-flash-202605`）、组织前缀（`deepseek/deepseek-v4-flash`）与 TokenHub 短 id（`hy3`）等形态；目录键本身含数字段（`mistral-large-2512`）不受影响
+- 修复：名为 `deepseek-*` 的中转/网关路由曾被按路由名误判为官方渠道（腾讯网关的 DeepSeek 全算官方流量）
+- 修复：订阅识别两套口径不一致——订阅卡已识别 `tencent-token-plan` 而聚合豁免未包含，现加入默认豁免集合
+- 折叠算法版本 8：上述归属语义变化触发历史日志一次性全量重折（价格仍按事件时刻口径，不重算历史价格）；已删除会话的历史行保留并标记 stale
+
 ### v1.0.29-alpha.1（2026-09-05，npm `alpha`）
 
 - 兼容 DSH 0.1.3-alpha.1 的 SessionHandle 持久化模型：宿主 0.1.3 起读取改为 `open(id,'read') → handle.read(offset)`、`list` 返回快照行（`readFrom`/`locate` 消失），注入点按结构探测把两种宿主形状收敛为聚合层的 0.1.2 面貌；revision 令牌经 `stampOf` 暴露，增量折叠在 0.1.3 上照常生效
 - 声明 `0.1.3-alpha.1` 兼容（宿主 npm 尚未发布该版本，真机验证待其上 npm 后补做）
 - 对 0.1.2 系宿主行为零变化（探测直通）；session format v2 的逻辑事件对折叠面天然兼容（`assistant/chunk` 嵌入 message、新增 `assistant/attempt` 由既有运行时收窄安全跳过）
-
 ### v1.0.28（2026-09-05）
 
 - 修复：峰谷倒计时未跳过周末全天空闲——周五深夜（工作日 18:00 后）把周六 09:00 伪边界当「转峰」时刻，与跨零点后显示的周一 09:00 矛盾（issue #33）。下一切换点统一定义为档位真正变化的最近边界，由含周末全谷规则的 `tierAt` 驱动扫描；峰谷切换预告（`upcomingTierSwitch`）同步修正，周末不再误报预告
