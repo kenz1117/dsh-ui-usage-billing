@@ -6,6 +6,10 @@
 
 ## 预览线（1.0.x，适配 DSH 0.1.2 系）
 
+### v1.0.31（2026-09-05）
+
+- 修复：侧栏计费卡「漂到侧栏中部」（issue #36）——`dsh-cpa-status` / `dsh-mcp-connector` 会用全局 `!important` 把 `footerActions` 容器改成纵向 flex，1.0.26 起计费卡的 `flex-basis: 180px` 在纵向布局下语义变成 180px 高度，卡片被拉高脱离底部。尺寸语义改为 `width: 100%`（两个方向下都表示占满可用宽度，高度恒由内容决定）；与刚性兄弟胶囊横向共存时的收缩保护（96px 地板 + 容器查询分档降级，issue #32）保持不变
+
 ### v1.0.30（2026-09-05）
 
 - 修复：官方直连费用被错归「未知路由」（v1.0.29 回归，issue #34 后续）——宿主内置官方直连不经 llm-pi-ai 路由表，provider 名 `deepseek-official` 不在任何配置里，v1.0.29 的「未知路由一律不算官方」把它整体错杀进三方桶。现对 `deepseek-*` 形态的配置外路由按名兜底归位 `direct` 并计官方渠道；前端同显示名通道合并（`direct:deepseek` 与 `direct:deepseek-official` 同显「DeepSeek 官方」）

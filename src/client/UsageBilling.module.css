@@ -167,19 +167,21 @@
 }
 
 /* 触发卡外壳：hover 速览卡的定位上下文。
-   footerActions 槽位容器是横向 flex 行（无 gap 无 wrap）：作为 flex item 需允许
-   收缩（flex:1 1 auto）并放 opener min-width:0，否则 width:100% 会把同槽位的其他
-   插件按钮挤出侧栏边界（实测共存插件卡被压重叠）。
+   footerActions 槽位容器是横向 flex 行（宿主无 wrap 规则）；部分兄弟插件
+   （dsh-cpa-status / dsh-mcp-connector）会用全局 !important 把容器改成
+   column，flex-basis 在 column 下语义变成高度——1.0.26 起的 `flex: 1 1 180px`
+   曾把卡片纵向拉到 180px 高（issue #36 的「漂到侧栏中部」）。因此尺寸语义
+   一律用 width:100%（两个方向下都表示占满可用宽度，高度恒由内容决定）：
+   独占/纵向时满宽；row 共存时 width 作为 basis 参与收缩，兄弟胶囊
+   flex-shrink:0 不可缩，卡片被收到的宽度由 96px 地板 + 容器查询分档降级
+   兜底（issue #32），核心「当月金额」始终可读且不溢出。
    container-type/name: 以卡片自身实际分配到的宽度为容器，做分档响应式降级——侧边栏
-   变窄或兄弟图标增多导致卡片可用宽度不足时，逐级隐藏次要信息，核心「当月金额」始终
-   可见，且不会溢出卡片/挤压兄弟。 */
+   变窄或兄弟图标增多导致卡片可用宽度不足时，逐级隐藏次要信息。 */
 .triggerWrap {
   position: relative;
   display: block;
-  /* footer 横向 flex 行（宿主无 wrap 规则）里的公民策略：独占一行时 grow 满宽
-     保持卡片观感；与他插件并列时按 180px 基准公平分配，96px 地板保证
-     「icon + 当月金额」永远可读，不再被兄弟胶囊挤成「¥ 1..」（issue #32）。 */
-  flex: 1 1 180px;
+  flex: 1 1 auto;
+  width: 100%;
   min-width: 96px;
   max-width: 100%;
   container-type: inline-size;
