@@ -216,12 +216,19 @@
   }
 }
 
-/* hover 速览卡：实底浮层，悬停触发卡时向上浮现；不抢点击。 */
+/* hover 速览卡：实底浮层，悬停触发卡时向上浮现；不抢点击。
+   弹层经 React portal 挂到 body（issue #37）：触发卡的 container-type 使其成为
+   fixed 后代的包含块（坐标被容器二次偏移），且侧栏 overflow:hidden 会几何裁剪
+   absolute 弹层；挂 body 后既相对视口定位，也脱离侧栏的裁剪上下文。 */
 .triggerPop {
-  position: absolute;
-  bottom: calc(100% + 8px);
+  position: fixed;
   left: 0;
-  right: 0;
+  top: 0;
+  /* 自带 box-sizing 重置：宿主的全局 border-box 重置作用域不覆盖 portal 到
+     body 的弹层，缺省 content-box 会把内联 width 当内容宽，再加上 padding 与
+     border（26px）导致弹层实际宽度超出触发卡（issue #37）。子元素一并重置，
+     避免网格/行元素在 content-box 下同样溢出。 */
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -235,13 +242,23 @@
   -webkit-backdrop-filter: blur(14px) saturate(1.3);
   box-shadow: 0 12px 32px rgb(0 0 0 / 0.16), inset 0 1px 0 color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent);
   opacity: 0;
-  transform: translateY(4px);
+  /* visibility 与 opacity 成对：即使外部样式（冲突插件的全局 !important）把
+     opacity/transform 拉回可见，visibility:hidden 仍保证弹层不渲染、不挡视线；
+     两条 transition 让显隐时序与 opacity 一致（隐藏延迟到淡出结束，显示立即生效）。 */
+  visibility: hidden;
+  transform: translateY(calc(-100% + 4px));
   pointer-events: none;
-  transition: opacity 160ms ease, transform 160ms ease;
-  z-index: 10;
+  transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 160ms;
+  /* 与 peakCard 同层（挂 body 后需压过宿主内容层）。 */
+  z-index: 2000;
 }
 
 /* 弹层顶部金色流光饰条（与订阅卡同一设计语言）。 */
+.triggerPop,
+.triggerPop * {
+  box-sizing: border-box;
+}
+
 .triggerPop::before {
   content: '';
   position: absolute;
@@ -255,10 +272,14 @@
   opacity: 0.9;
   pointer-events: none;
 }
-.triggerWrap:hover .triggerPop,
-.triggerWrap:focus-within .triggerPop {
+/* 显隐由 React hover/focus 态驱动（.triggerPopShown，issue #37）：
+   fixed 定位下弹层坐标与显隐都走 JS/CSS 类，不再依赖 :hover 后代选择器。 */
+.triggerPopShown {
   opacity: 1;
-  transform: translateY(0);
+  visibility: visible;
+  /* 显示时 visibility 立即生效（无延迟），否则首帧不可见。 */
+  transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 0s;
+  transform: translateY(-100%);
 }
 
 /* 设计 pop-card 内容：标题行 / 3 列指标网格 / 主力消耗模型行 */
