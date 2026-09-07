@@ -106,6 +106,16 @@ export declare function lastSevenDays(byDay: Record<string, {
     date: string;
     cost: number;
 }[];
+/**
+ * 本自然周（周一起算）到 `today` 的累计值（issue #39）：标签「本周」的语义是
+ * 自然周，近 7 天滚动窗口会在周一把上周用量卷进来（周一时它与当月几乎相等，
+ * 用户误解为统计错误）。周一 = `getDay() === 1`；`pick` 决定日行取哪个维度。
+ * @param byDay - 按日聚合表（key = `YYYY-MM-DD` 本地时区）。
+ * @param today - 今天的本地日期戳。
+ * @param pick - 日行取值（缺省取 cost；token 视角传 input+output 合计）。
+ * @returns 本周一到今天的合计；`today` 本身不在表里（无调用）时为 0。
+ */
+export declare function sinceMondayOf<T>(byDay: Record<string, T>, today: string, pick?: (row: T) => number): number;
 /** 会话明细行（与服务端 SessionUsageRow 同形；旧快照可能缺失整个 bySession）。 */
 interface SessionBillingRow {
     id: string;
