@@ -1819,6 +1819,36 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 12.5px;
+  /* 固定列宽布局（issue #37）：每个厂商组的子表是独立 table，auto 布局按各组
+     内容分配列宽会让「调用/输入/输出」等列位跨组漂移；fixed + 统一列宽让
+     所有组的表格纵向对齐成同一张网格。列宽由表头 nth-child 定义。 */
+  table-layout: fixed;
+}
+
+/* 列宽分配（modelTableHead 的 6 列）：模型列弹性收纳长名，数字列右对齐。
+   fixed 布局以首行单元格宽度为准，表头 nth-child 即全表列宽。 */
+.modelTable th:nth-child(1) {
+  width: 30%;
+}
+
+.modelTable th:nth-child(2) {
+  width: 12%;
+}
+
+.modelTable th:nth-child(3) {
+  width: 14%;
+}
+
+.modelTable th:nth-child(4) {
+  width: 14%;
+}
+
+.modelTable th:nth-child(5) {
+  width: 15%;
+}
+
+.modelTable th:nth-child(6) {
+  width: 15%;
 }
 
 .modelTable th,
