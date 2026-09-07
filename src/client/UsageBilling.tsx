@@ -10,7 +10,7 @@
  * never fabricated samples.
  */
 
-import { useCallback, useEffect, useMemo, useState, Fragment } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import clsx from 'clsx'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -993,6 +993,28 @@ function UsageBillingTrigger(
     return () => clearInterval(timer)
   }, [floatPrefs.mode, targetSubs.length])
 
+  // 速览卡 fixed 定位（issue #37）：桌面壳/宿主的侧栏容器可能 overflow:hidden，
+  // absolute 弹层向上弹出会被几何裁剪（z-index 救不了裁剪）。改为 hover 时用
+  // 触发卡的 viewport rect 把弹层 fixed 到其上方，彻底脱离侧栏的裁剪上下文。
+  const wrapRef = useRef<HTMLSpanElement>(null)
+  const [popOpen, setPopOpen] = useState(false)
+  const [popPos, setPopPos] = useState<{ left: number; top: number; width: number }>({ left: 0, top: 0, width: 0 })
+  const updatePopPos = useCallback(() => {
+    const rect = wrapRef.current?.getBoundingClientRect()
+    if (rect !== undefined) setPopPos({ left: rect.left, top: rect.top - 8, width: rect.width })
+  }, [])
+  useEffect(() => {
+    if (!popOpen) return
+    // 侧栏内部滚动（capture 捕获非 window 的滚动容器）与窗口缩放都会移动触发卡。
+    const onScroll = (): void => updatePopPos()
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onScroll)
+    return () => {
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onScroll)
+    }
+  }, [popOpen, updatePopPos])
+
   // 计费 icon：圆角矩 + 细线描边，窄栏与宽栏共用。
   const cardIcon = (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
@@ -1023,7 +1045,14 @@ function UsageBillingTrigger(
   const sparkHeights = sparkValues.map(v => sparkMax > 0 ? 4 + (v / sparkMax) * 12 : 4)
 
   return (
-    <span className={css.triggerWrap}>
+    <span
+      ref={wrapRef}
+      className={css.triggerWrap}
+      onMouseEnter={() => { updatePopPos(); setPopOpen(true) }}
+      onMouseLeave={() => setPopOpen(false)}
+      onFocusCapture={() => { updatePopPos(); setPopOpen(true) }}
+      onBlurCapture={() => setPopOpen(false)}
+    >
       <button
         type="button"
         className={css.trigger}
@@ -1065,8 +1094,14 @@ function UsageBillingTrigger(
         </span>
       </button>
       {/* hover 速览：参考图风格「数据卡」——标题 + 更新时间 + 两列指标网格 + 底部主力消耗/额度提醒。
-          纯 CSS 悬停呈现；「展开详情」按钮可点，其余不抢点击。 */}
-      <span className={clsx(css.triggerPop, floatPrefs.mode === 'subscription' && css.triggerPopSubscription)} data-testid="billing-trigger-pop" aria-hidden="true">
+          fixed 定位（issue #37）：脱离侧栏 overflow 裁剪；显隐由 React hover 态驱动，
+          位置在 hover 进入与滚动/缩放时按触发卡 rect 重算。 */}
+      <span
+        className={clsx(css.triggerPop, popOpen && css.triggerPopShown, floatPrefs.mode === 'subscription' && css.triggerPopSubscription)}
+        style={{ left: `${popPos.left}px`, top: `${popPos.top}px`, width: `${popPos.width}px` }}
+        data-testid="billing-trigger-pop"
+        aria-hidden={!popOpen}
+      >
         {floatPrefs.mode === 'subscription' ? (
           <>
             {targetSubs.length === 0 ? (

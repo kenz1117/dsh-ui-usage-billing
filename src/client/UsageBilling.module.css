@@ -227,10 +227,13 @@
 
 /* hover 速览卡：实底浮层，悬停触发卡时向上浮现；不抢点击。 */
 .triggerPop {
-  position: absolute;
-  bottom: calc(100% + 8px);
+  /* fixed 定位（issue #37）：桌面壳/宿主侧栏容器可能 overflow:hidden，absolute
+     弹层向上弹出会被几何裁剪（z-index 无法对抗裁剪）。fixed 脱离侧栏的裁剪
+     上下文，坐标由 JS 按触发卡的 viewport rect 注入（left/top 内联样式），
+     translateY(-100%) 让弹层底边对齐注入点（触发卡顶部上方 8px）。 */
+  position: fixed;
   left: 0;
-  right: 0;
+  top: 0;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -248,7 +251,7 @@
      opacity/transform 拉回可见，visibility:hidden 仍保证弹层不渲染、不挡视线；
      两条 transition 让显隐时序与 opacity 一致（隐藏延迟到淡出结束，显示立即生效）。 */
   visibility: hidden;
-  transform: translateY(4px);
+  transform: translateY(calc(-100% + 4px));
   pointer-events: none;
   transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 160ms;
   z-index: 10;
@@ -269,21 +272,14 @@
   pointer-events: none;
 }
 
-.triggerWrap:hover .triggerPop,
-.triggerWrap:focus-within .triggerPop {
+/* 显隐由 React hover/focus 态驱动（.triggerPopShown，issue #37）：
+   fixed 定位下弹层坐标与显隐都走 JS/CSS 类，不再依赖 :hover 后代选择器。 */
+.triggerPopShown {
   opacity: 1;
   visibility: visible;
   /* 显示时 visibility 立即生效（无延迟），否则首帧不可见。 */
   transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 0s;
-  transform: translateY(0);
-}
-
-/* 速览卡向上弹出会进入侧栏会话列表的视觉区域：hover/聚焦时抬升卡片自身的
-   层叠（triggerWrap 的 container-type 已使其成为包含块，抬升它即可带动弹层），
-   防止滚动列表/兄弟浮层盖住速览卡（issue #37，桌面壳 v2.0.5）。 */
-.triggerWrap:hover,
-.triggerWrap:focus-within {
-  z-index: 30;
+  transform: translateY(-100%);
 }
 
 /* 设计 pop-card 内容：标题行 / 3 列指标网格 / 主力消耗模型行 */
