@@ -409,6 +409,33 @@ export function lastSevenDays(byDay: Record<string, { cost: number }>): readonly
   return out
 }
 
+/**
+ * 本自然周（周一起算）到 `today` 的累计值（issue #39）：标签「本周」的语义是
+ * 自然周，近 7 天滚动窗口会在周一把上周用量卷进来（周一时它与当月几乎相等，
+ * 用户误解为统计错误）。周一 = `getDay() === 1`；`pick` 决定日行取哪个维度。
+ * @param byDay - 按日聚合表（key = `YYYY-MM-DD` 本地时区）。
+ * @param today - 今天的本地日期戳。
+ * @param pick - 日行取值（缺省取 cost；token 视角传 input+output 合计）。
+ * @returns 本周一到今天的合计；`today` 本身不在表里（无调用）时为 0。
+ */
+export function sinceMondayOf<T>(
+  byDay: Record<string, T>,
+  today: string,
+  pick: (row: T) => number = (row) => (row as unknown as { cost: number }).cost,
+): number {
+  const now = new Date(`${today}T00:00:00`)
+  // getDay(): 0=周日 … 6=周六；周一起算 → 偏移 = (day + 6) % 7 天。
+  const offsetDays = (now.getDay() + 6) % 7
+  let sum = 0
+  for (let back = 0; back <= offsetDays; back += 1) {
+    const day = new Date(now)
+    day.setDate(day.getDate() - back)
+    const row = byDay[localDayStamp(day.getTime())]
+    if (row !== undefined) sum += pick(row)
+  }
+  return sum
+}
+
 /** Resolve one provider's dot state: green when live, red when failed, gray when unknown. */
 function providerDot(health: ModelHealth, provider: string): string | undefined {
   if (!health.checked) return css.healthIdle
@@ -3555,7 +3582,9 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     .reduce((sum, [, day]) => sum + day.cost, 0)
   const todayCost = stats.byDay[today]?.cost ?? 0
   // 触发卡 hover 速览：本周累计 + 近 7 天迷你柱。
-  const weekCost = lastSevenDays(stats.byDay).reduce((sum, d) => sum + d.cost, 0)
+  // 「本周」按自然周（周一起算，与标签语义一致，issue #39）：周一时它 ≈ 当日，
+  // 不再是「近 7 天」把上周用量卷进来、与当月几乎相等的错位。
+  const weekCost = sinceMondayOf(stats.byDay, today)
   // 近 7 天柱状数据（费用 + 当日 token 合并一份，供 trigger 按视角取列）。
   // token 口径与悬浮窗「总 Token」一致：input + output（缓存读单列，不并入）。
   const last7 = useMemo(
@@ -3565,7 +3594,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     }),
     [stats.byDay],
   )
-  // tokens 视角的主副行数字：当月/今日/本周 累计 token。
+  // tokens 视角的主副行数字：当月/今日/本周 累计 token（本周 = 自然周，issue #39）。
   const monthTokens = Object.entries(stats.byDay)
     .filter(([date]) => date.startsWith(today.slice(0, 7)))
     .reduce((sum, [, day]) => sum + day.input + day.output, 0)
@@ -3573,7 +3602,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     const row = stats.byDay[today]
     return row === undefined ? 0 : row.input + row.output
   })()
-  const weekTokens = last7.reduce((sum, day) => sum + day.tokens, 0)
+  const weekTokens = sinceMondayOf(stats.byDay, today, (row) => row.input + row.output)
 
   // 预算偏好：开关与金额经框架 store 读取；用户金额优先，宿主 monthlyBudget
   //（stats.budget）兜底为默认值。
