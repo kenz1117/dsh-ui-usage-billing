@@ -27,7 +27,6 @@ export type UsageBillingKey =
   | 'budgetSummary'
   | 'sessions'
   | 'sessionTitle'
-  | 'project'
   | 'lastActive'
   | 'sessionOverflow'
   | 'budgetTierBody'
@@ -129,8 +128,6 @@ export type UsageBillingKey =
   | 'rounds'
   | 'roundsHint'
   | 'anomaly'
-  | 'workspaces'
-  | 'workspacesHint'
   | 'workspaceSubtotal'
   | 'model'
   | 'thModel'
@@ -206,7 +203,6 @@ export type UsageBillingKey =
   | 'activeDays'
   | 'streakDays'
   | 'subscriptionAutoDetect'
-  | 'pluginVersion'
   | 'pluginAuthor'
   | 'pluginRepository'
   | 'pluginNpm'
@@ -290,7 +286,6 @@ export const zh: Record<UsageBillingKey, string> = {
   'budgetSummary': '本月已用 {used} / {total}；达到 80% 时提醒，达到 100% 时红色脉冲警示',
   'sessions': '会话明细',
   'sessionTitle': '标题',
-  'project': '项目',
   'lastActive': '最后活跃',
   'sessionOverflow': '仅显示花费前 {limit} 个，共 {total} 个会话',
   'budgetTierBody': '本月花费 {cost} 已达预算 {budget} 的 {pct}%',
@@ -391,8 +386,6 @@ export const zh: Record<UsageBillingKey, string> = {
   'rounds': '每轮费用',
   'roundsHint': '最近 {count} 轮 · 柱顶为金额 · 底色为峰谷时段',
   'anomaly': '成本突增',
-  'workspaces': '工作区统计',
-  'workspacesHint': '点击行下钻项目成本前 5 会话',
   'workspaceSubtotal': '小计',
   'model': '模型',
   'thModel': '模型名称',
@@ -469,7 +462,6 @@ export const zh: Record<UsageBillingKey, string> = {
   'activeDays': '活跃天数',
   'streakDays': '连续使用',
   'subscriptionAutoDetect': '自动识别',
-  'pluginVersion': '版本',
   'pluginAuthor': '作者',
   'pluginRepository': '仓库',
   'pluginNpm': 'npm',
@@ -552,7 +544,6 @@ export const en: Record<UsageBillingKey, string> = {
   'budgetSummary': 'Used {used} / {total} this month; warn at 80%, pulse red at 100%',
   'sessions': 'Sessions',
   'sessionTitle': 'Title',
-  'project': 'Project',
   'lastActive': 'Last active',
   'sessionOverflow': 'Top {limit} of {total} sessions by cost',
   'budgetTierBody': 'This month {cost} reached {pct}% of the budget {budget}',
@@ -653,8 +644,6 @@ export const en: Record<UsageBillingKey, string> = {
   'rounds': 'Cost per turn',
   'roundsHint': 'Last {count} rounds · bar tops show amount · fill = peak/off-peak',
   'anomaly': 'Cost spike',
-  'workspaces': 'Workspaces',
-  'workspacesHint': 'Click a row to drill into its top-5 sessions',
   'workspaceSubtotal': 'Subtotal',
   'model': 'Model',
   'thModel': 'Model name',
@@ -731,7 +720,6 @@ export const en: Record<UsageBillingKey, string> = {
   'activeDays': 'Active days',
   'streakDays': 'Streak',
   'subscriptionAutoDetect': 'Auto',
-  'pluginVersion': 'Version',
   'pluginAuthor': 'Author',
   'pluginRepository': 'Repository',
   'pluginNpm': 'npm',
