@@ -69,11 +69,19 @@ export declare function siteOriginOf(baseURL: string): string;
  * 把一个 provider 路由归类为站点引用。判定顺序（与路由在 provider 配置里的状态一致）：
  * - 路由存在于当前配置且配了 baseURL → 中转站 `site`（按 origin 归组，同站多 key 合并）；
  * - 路由存在于当前配置但无 baseURL → 厂商直连 `direct`；
- * - 路由不在当前配置里 → `unknown`（改过名 / 删除过，是「读不到」而非「直连」）。
+ * - 路由不在当前配置里：内置官方直连（`deepseek` / `deepseek-*` 形态，不经 llm-pi-ai
+ *   网关）按 `direct` 归位——unknown 一刀切会把官方直连的费用堆进「未知路由」组、
+ *   且不算官方渠道（回归修复）；订阅豁免命中的通道（显式 `subscriptionProviders`
+ *   配置或判定函数）同样按 `direct` 归位——订阅管理类插件注册的通道不经路由表，
+ *   unknown 桶既掩盖归属又按 token 误计费（issue #37 的 grok build）；其余配置外
+ *   名称保留 unknown（无法核实通道）。
  * @param provider - 会话日志里的 provider 路由名（request/header 的 `config.provider`）。
  * @param routes - 当前 provider 路由视图（来自 llm-pi-ai providers）。
+ * @param opts - `subscription`：该调用是否已被订阅豁免判定命中。
  */
-export declare function siteRefOf(provider: string, routes: Readonly<Record<string, ProviderRouteView>>): SiteRef;
+export declare function siteRefOf(provider: string, routes: Readonly<Record<string, ProviderRouteView>>, opts?: {
+    subscription?: boolean;
+}): SiteRef;
 /** 站点桶的稳定 key：`site:<origin>` 与 `direct:<provider>` 分开，`unknown` 单一桶。 */
 export declare function siteBucketKey(ref: SiteRef): string;
 /** Aggregation tuning options. */
@@ -437,6 +445,11 @@ export interface UsageLedgerSession {
      * 旧算法行（加载边界由迁移统一回填为 1）。
      */
     foldVersion?: number;
+    /**
+     * 折叠该行时的聚合配置指纹（{@link configFingerprint}）。缺失 = 1.0.32 及
+     * 更早写入的行（配置不参与复用判定）；与当前指纹不一致的行不复用、全量重折。
+     */
+    fingerprint?: string;
     fold: SerializedSessionFold;
 }
 /** On-disk durable usage ledger. Versioned independently from the dashboard document. */
@@ -528,6 +541,13 @@ export interface UsageAggregator {
     /** Aggregate current usage, reusing cached per-session folds when their logs are untouched. */
     aggregate(): Promise<UsageStatsDocument>;
 }
+/**
+ * 聚合配置指纹：影响折叠语义的全部配置（订阅豁免、官方名单、路由别名、搜索估值）
+ * 的稳定序列化。账本行的复用判定携带该指纹——用户改配置后（如为 grok build 加
+ * 订阅豁免），历史账本行立即失效并全量重折，配置变更即时生效（issue #37）。
+ * 判定函数无法序列化，统一记为 `fn`（任何函数形态互视为同一指纹）。
+ */
+export declare function configFingerprint(subscriptionMatcher: SubscriptionMatcher, officialProviderIds: ReadonlySet<string> | undefined, routeAliases: Readonly<Record<string, string>>, searchEstimate: number): string;
 /**
  * Create the incremental usage aggregator.
  * @param persistence - the session persistence service.

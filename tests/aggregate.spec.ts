@@ -14,8 +14,9 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import {
-  aggregateUsage, createUsageAggregator, dayStamp, foldSession, foldUsage, emptyUsage, workspaceNameOf, hostTimeZone,
-  siteBucketKey, siteOriginOf, siteRefOf, runLedgerMigrations, FOLD_VERSION, foldSearchCall, DEFAULT_SUBSCRIPTION_PROVIDERS,
+  aggregateUsage, createUsageAggregator, configFingerprint, dayStamp, foldSession, foldUsage, emptyUsage, workspaceNameOf, hostTimeZone,
+  siteBucketKey, siteOriginOf, siteRefOf, runLedgerMigrations, FOLD_VERSION, foldSearchCall, DEFAULT_SEARCH_CALL_ESTIMATE_CNY,
+  DEFAULT_SUBSCRIPTION_PROVIDERS,
   type LedgerMigration, type UsageLedgerDocument, type UsageLedgerSession,
   AGGREGATE_TTL_MS, SESSION_ROW_LIMIT, type UsagePersistence,
 } from '../src/aggregate.ts'
@@ -144,6 +145,23 @@ describe('byDayModelsSite (issue #16)', () => {
     const siteCell = fold.byDayModelsSite.get(day)?.get('flash')?.get('direct:deepseek-official')
     expect(siteCell?.calls).toBe(1)
     expect(siteCell?.cacheMiss).toBe(120)
+  })
+
+  it('homes subscription-exempted providers outside the route table to direct (issue #37)', () => {
+    // grok build 这类订阅管理插件注册的通道不经 llm-pi-ai 路由表：
+    // 订阅豁免命中 → direct 桶（且不按 token 计费）；未命中 → 保持 unknown。
+    const events: SessionEvent[] = [header(1, 'grok-4.6', 'grok-build'), message(2, 2_000, USAGE)]
+    const day = dayStamp(2_000)
+
+    const exempted = foldSession(events, new Set(['grok-build']))
+    const directCell = exempted.byDayModelsSite.get(day)?.get('grok-4.6')?.get('direct:grok-build')
+    expect(directCell?.calls).toBe(1)
+    // 订阅豁免：不计费，也不进 DeepSeek 官方统计。
+    expect(directCell?.cost).toBe(0)
+    expect(directCell?.officialCalls).toBe(0)
+
+    const notExempted = foldSession(events, new Set())
+    expect(notExempted.byDayModelsSite.get(day)?.get('grok-4.6')?.get('unknown')?.calls).toBe(1)
   })
 })
 
@@ -1019,11 +1037,12 @@ describe('createUsageAggregator (incremental cache)', () => {
       id: 'a',
       stamp: `${String(info.mtimeMs)}:${String(info.size)}`,
       foldVersion: FOLD_VERSION,
+      fingerprint: configFingerprint(new Set(DEFAULT_SUBSCRIPTION_PROVIDERS), undefined, {}, DEFAULT_SEARCH_CALL_ESTIMATE_CNY),
       fold: (() => { const row = legacyFold(); row.total.calls = 7; return row })(),
     }])
     const aggregator = createUsageAggregator(persistence, { ledger: store.store })
     const stats = await aggregator.aggregate()
-    // 日志未被触碰：账本行（同 stamp、同算法版本）直接复用，零读取。
+    // 日志未被触碰：账本行（同 stamp、同算法版本、同配置指纹）直接复用，零读取。
     expect(reads.a ?? 0).toBe(0)
     expect(stats.total.calls).toBe(7)
 
@@ -1267,7 +1286,12 @@ describe('ledger foldVersion / stale confidence', () => {
   })
 
   it('treats current-version rows as trusted (no stale marker, no notice count)', async () => {
-    const { store, saved, current } = fakeLedgerStore([{ id: 'fresh-session', foldVersion: FOLD_VERSION, fold: legacyFold() }])
+    const { store, saved, current } = fakeLedgerStore([{
+      id: 'fresh-session',
+      foldVersion: FOLD_VERSION,
+      fingerprint: configFingerprint(new Set(DEFAULT_SUBSCRIPTION_PROVIDERS), undefined, {}, DEFAULT_SEARCH_CALL_ESTIMATE_CNY),
+      fold: legacyFold(),
+    }])
     const stats = await aggregateUsage(fakePersistence({}), { ledger: store })
 
     expect(stats.total.calls).toBe(2)

@@ -118,20 +118,28 @@ export function siteOriginOf(baseURL: string): string {
  * 把一个 provider 路由归类为站点引用。判定顺序（与路由在 provider 配置里的状态一致）：
  * - 路由存在于当前配置且配了 baseURL → 中转站 `site`（按 origin 归组，同站多 key 合并）；
  * - 路由存在于当前配置但无 baseURL → 厂商直连 `direct`；
- * - 路由不在当前配置里 → `unknown`（改过名 / 删除过，是「读不到」而非「直连」）。
+ * - 路由不在当前配置里：内置官方直连（`deepseek` / `deepseek-*` 形态，不经 llm-pi-ai
+ *   网关）按 `direct` 归位——unknown 一刀切会把官方直连的费用堆进「未知路由」组、
+ *   且不算官方渠道（回归修复）；订阅豁免命中的通道（显式 `subscriptionProviders`
+ *   配置或判定函数）同样按 `direct` 归位——订阅管理类插件注册的通道不经路由表，
+ *   unknown 桶既掩盖归属又按 token 误计费（issue #37 的 grok build）；其余配置外
+ *   名称保留 unknown（无法核实通道）。
  * @param provider - 会话日志里的 provider 路由名（request/header 的 `config.provider`）。
  * @param routes - 当前 provider 路由视图（来自 llm-pi-ai providers）。
+ * @param opts - `subscription`：该调用是否已被订阅豁免判定命中。
  */
-export function siteRefOf(provider: string, routes: Readonly<Record<string, ProviderRouteView>>): SiteRef {
+export function siteRefOf(
+  provider: string,
+  routes: Readonly<Record<string, ProviderRouteView>>,
+  opts: { subscription?: boolean } = {},
+): SiteRef {
   const view = routes[provider]
   if (view !== undefined) {
     if (view.baseURL !== undefined) return { kind: 'site', origin: siteOriginOf(view.baseURL), provider }
     return { kind: 'direct', provider }
   }
-  // 路由表查不到：内置官方直连（`deepseek` / `deepseek-*` 形态，不经 llm-pi-ai
-  // 网关）按 direct 归位——unknown 一刀切会把官方直连的费用堆进「未知路由」组、
-  // 且不算官方渠道。其余配置外名称保留 unknown（无法核实通道）。
   if (isOfficialProvider(provider)) return { kind: 'direct', provider }
+  if (opts.subscription === true) return { kind: 'direct', provider }
   return { kind: 'unknown', provider }
 }
 
@@ -598,6 +606,11 @@ export interface UsageLedgerSession {
    * 旧算法行（加载边界由迁移统一回填为 1）。
    */
   foldVersion?: number
+  /**
+   * 折叠该行时的聚合配置指纹（{@link configFingerprint}）。缺失 = 1.0.32 及
+   * 更早写入的行（配置不参与复用判定）；与当前指纹不一致的行不复用、全量重折。
+   */
+  fingerprint?: string
   fold: SerializedSessionFold
 }
 
@@ -985,8 +998,9 @@ function foldInto(
       key = resolveCatalogKey(model)
       // 订阅套餐 provider 的调用即使撞名计费表也一律免费。
       subscription = isSubscriptionCall(subscriptionProviders, provider)
-      // 官方直连（DeepSeek 官方）vs 第三方中转/代理；有 baseURL 的路由按 origin 判定。
-      const siteRef = siteRefOf(provider, routes)
+      // 官方直连（DeepSeek 官方）vs 第三方中转/代理；有 baseURL 的路由按 origin 判定，
+      // 订阅豁免命中的配置外通道归位 direct（issue #37）。
+      const siteRef = siteRefOf(provider, routes, { subscription })
       official = officialChannelOf(provider, siteRef, officialProviderIds)
       // 中转站归组：按当前路由映射到站点/直连/未知路由。
       siteBucket = siteBucketKey(siteRef)
@@ -1058,7 +1072,8 @@ function foldInto(
       const provider = routeAliases[source.provider] ?? source.provider
       key = resolveCatalogKey(source.model)
       subscription = isSubscriptionCall(subscriptionProviders, provider)
-      const siteRef = siteRefOf(provider, routes)
+      // 订阅豁免命中的配置外通道归位 direct，与 header 口径一致（issue #37）。
+      const siteRef = siteRefOf(provider, routes, { subscription })
       official = officialChannelOf(provider, siteRef, officialProviderIds)
       siteBucket = siteBucketKey(siteRef)
     }
@@ -1260,6 +1275,30 @@ export interface UsageAggregator {
 }
 
 /**
+ * 聚合配置指纹：影响折叠语义的全部配置（订阅豁免、官方名单、路由别名、搜索估值）
+ * 的稳定序列化。账本行的复用判定携带该指纹——用户改配置后（如为 grok build 加
+ * 订阅豁免），历史账本行立即失效并全量重折，配置变更即时生效（issue #37）。
+ * 判定函数无法序列化，统一记为 `fn`（任何函数形态互视为同一指纹）。
+ */
+export function configFingerprint(
+  subscriptionMatcher: SubscriptionMatcher,
+  officialProviderIds: ReadonlySet<string> | undefined,
+  routeAliases: Readonly<Record<string, string>>,
+  searchEstimate: number,
+): string {
+  const subs = typeof subscriptionMatcher === 'function'
+    ? 'fn'
+    : [...subscriptionMatcher].sort().join(',')
+  const officials = officialProviderIds === undefined
+    ? ''
+    : [...officialProviderIds].sort().join(',')
+  const aliases = Object.keys(routeAliases).sort()
+    .map(key => `${key}=${routeAliases[key]}`)
+    .join(',')
+  return [subs, officials, aliases, String(searchEstimate)].join('|')
+}
+
+/**
  * Create the incremental usage aggregator.
  * @param persistence - the session persistence service.
  * @param options - aggregation tuning (e.g. subscription-plan providers).
@@ -1293,6 +1332,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
   const routesOf = (): Readonly<Record<string, ProviderRouteView>> => options.resolveRoutes?.() ?? {}
   // 联网搜索请求的单次费用估算（issue #15）；0 = 关闭估算（调用仍计数，不计费）。
   const searchEstimate = options.searchCallEstimateCny ?? DEFAULT_SEARCH_CALL_ESTIMATE_CNY
+  // 配置指纹：进账本行的复用判定（配置变化 → 历史行失效重折，issue #37）。
+  const foldFingerprint = configFingerprint(subscriptionMatcher, officialProviderIds, routeAliases, searchEstimate)
   // 全量重折的分片大小：每片折叠后让出事件循环，超大会话不再连续阻塞宿主 RPC（issue #30）。
   const FOLD_CHUNK_EVENTS = 8000
 
@@ -1304,6 +1345,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       ...(cwd === undefined ? {} : { cwd }),
       ...(stamp === null ? {} : { stamp }),
       foldVersion: FOLD_VERSION,
+      fingerprint: foldFingerprint,
       fold: serializeFold(fold),
     }
     const row = ledger.get(id)
@@ -1313,6 +1355,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       || row.stamp !== entry.stamp
       || row.cwd !== entry.cwd
       || row.foldVersion !== entry.foldVersion
+      || row.fingerprint !== entry.fingerprint
       || (stamp === null && JSON.stringify(row.fold) !== JSON.stringify(entry.fold))
     if (changed) {
       ledger.set(id, entry)
@@ -1403,8 +1446,11 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           // 重启首折快路径：账本行的失效键与当前日志完全一致（同算法版本）时
           // 零读取复用——几十个历史会话的重启不再各自全量解压一遍。
           const ledgerRow = ledger.get(id)
+          // 复用双键：日志 stamp 未动 **且** 聚合配置指纹一致——用户改配置
+          //（订阅豁免/路由别名/官方名单/搜索估值）后历史行立即失效重折（issue #37）。
           if (ledgerRow !== undefined && ledgerRow.stamp !== undefined && stamp !== null
-            && ledgerRow.stamp === stamp && (ledgerRow.foldVersion ?? 1) === FOLD_VERSION) {
+            && ledgerRow.stamp === stamp && (ledgerRow.foldVersion ?? 1) === FOLD_VERSION
+            && ledgerRow.fingerprint === foldFingerprint) {
             const fold = deserializeFold(ledgerRow.fold)
             // 不带 machine：下次日志变化时走全量重折（状态机不可跨进程恢复，保守正确）。
             cache.set(id, { stamp, fold })
@@ -1491,7 +1537,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           if (included.has(entry.id)) continue
           try {
             // 缺失 foldVersion（迁移前的异常路径）按 v1 处理：保守标注旧算法。
-            const stale = (entry.foldVersion ?? 1) < FOLD_VERSION
+            // 配置指纹不一致的行同样标 stale：其归属按旧配置算，与当前口径有偏差。
+            const stale = (entry.foldVersion ?? 1) < FOLD_VERSION || entry.fingerprint !== foldFingerprint
             folds.push({
               id: entry.id,
               ...(entry.cwd === undefined ? {} : { cwd: entry.cwd }),
