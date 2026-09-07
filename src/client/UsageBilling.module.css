@@ -2683,11 +2683,14 @@
   align-items: center;
   gap: 10px;
   flex: none;
+  /* 表格状对齐（issue #37）：费用 / 订阅套数 / 余额三个槽固定列宽，缺席的槽由
+     模板渲染空占位保持列位——各组之间同名槽的右端位置一致，金额纵向成列。 */
 }
 
 .providerGroupBadge {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   padding: 1px 8px;
   border-radius: 999px;
   font-size: 11px;
@@ -2695,6 +2698,8 @@
   font-weight: 500;
   color: var(--dsw-static-green-500);
   background: var(--dsw-alias-bg-layer-2);
+  /* 固定槽宽：缺席时由空占位保持列位。 */
+  min-width: 64px;
 }
 
 .providerGroupBalance {
@@ -2706,6 +2711,9 @@
   color: var(--dsw-alias-label-secondary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  /* 固定槽宽 + 右贴：余额金额跨组纵向对齐。 */
+  min-width: 118px;
+  justify-content: flex-end;
 }
 
 /* 厂商费用合计（issue #34）：付费者视角的一级信息，金额用主色强调，
@@ -2719,6 +2727,9 @@
   color: var(--dsw-alias-label-secondary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  /* 固定槽宽 + 右贴：费用金额跨组纵向对齐（issue #37）。 */
+  min-width: 118px;
+  justify-content: flex-end;
 }
 
 .providerGroupCostLabel {
@@ -2728,6 +2739,8 @@
 .providerGroupCostValue {
   color: var(--dsw-alias-label-primary);
   font-weight: 600;
+  min-width: 56px;
+  text-align: right;
 }
 
 .providerGroupBalanceLabel {

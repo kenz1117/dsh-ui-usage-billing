@@ -896,9 +896,14 @@ interface ProviderBillingGroup {
   dot: string | undefined
 }
 
-/** 厂商组费用合计（实际优先、估算兜底；订阅内调用不计费）——付费者视角的一级信息（issue #34）。 */
+/**
+ * 厂商组费用合计（实际优先；订阅豁免行不计入）——付费者视角的一级信息（issue #34）。
+ * 订阅豁免行无 actual，其 estimated 是「按量等价」而非支出：计入组头会渲染出
+ * 「已豁免还要花钱」的误导（issue #37 的 grok 组头部 ¥383.6），预估语义保留在
+ * 模型行的订阅卡（「套餐内预估开销」）。
+ */
 const providerCostOf = (group: ProviderBillingGroup): number =>
-  group.models.reduce((sum, m) => sum + (m.actual ?? m.estimated), 0)
+  group.models.reduce((sum, m) => sum + (m.actual ?? (m.plan === true ? 0 : m.estimated)), 0)
 
 /**
  * Sidebar footer trigger: compact pill in wide mode, icon in rail mode.
@@ -2839,16 +2844,22 @@ function BillingDashboard({
                               <span className={css.providerGroupCostLabel}>{t('cost')}</span>
                               <span className={css.providerGroupCostValue}>{money(providerCostOf(group))}</span>
                             </span>
-                            {group.subscriptions.length > 0 && (
+                            {group.subscriptions.length > 0 ? (
                               <span className={css.providerGroupBadge} data-testid="billing-provider-sub-count">
                                 {group.subscriptions.length} 套餐
                               </span>
+                            ) : (
+                              /* 空占位：保持三槽（费用/套餐/余额）的表格状列位（issue #37）。 */
+                              <span className={css.providerGroupBadge} aria-hidden="true" />
                             )}
-                            {!hideBalanceForGroup(group) && group.balance !== undefined && (
+                            {!hideBalanceForGroup(group) && group.balance !== undefined ? (
                               <span className={css.providerGroupBalance} data-testid="billing-provider-balance">
                                 <span className={css.providerGroupBalanceLabel}>{t('balance')}</span>
                                 {renderBalance(group.balance)}
                               </span>
+                            ) : (
+                              /* 空占位：同上，无余额的组保持余额列位。 */
+                              <span className={css.providerGroupBalance} aria-hidden="true" />
                             )}
                           </span>
                         </div>
