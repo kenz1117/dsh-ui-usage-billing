@@ -41,6 +41,9 @@ export const DEFAULT_SUBSCRIPTION_PROVIDERS: readonly string[] = [
   'xiaomi-token-plan-cn',
   'xiaomi-token-plan-sgp',
   'tencent-token-plan',
+  // 订阅管理插件（dsh-plugin-subscrip）注册的订阅直连：provider 名即官方订阅，
+  // 不经路由表——不豁免会落 unknown 桶并按 token 误计费（issue #37 的 grok build）。
+  'grok',
 ]
 
 /**

@@ -278,6 +278,14 @@
   transform: translateY(0);
 }
 
+/* 速览卡向上弹出会进入侧栏会话列表的视觉区域：hover/聚焦时抬升卡片自身的
+   层叠（triggerWrap 的 container-type 已使其成为包含块，抬升它即可带动弹层），
+   防止滚动列表/兄弟浮层盖住速览卡（issue #37，桌面壳 v2.0.5）。 */
+.triggerWrap:hover,
+.triggerWrap:focus-within {
+  z-index: 30;
+}
+
 /* 设计 pop-card 内容：标题行 / 3 列指标网格 / 主力消耗模型行 */
 .popHead {
   display: flex;

@@ -90,12 +90,15 @@ const SUBSCRIPTION_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   'minimax-cn': 'MiniMax Token Plan（国内）',
   'openrouter': 'OpenRouter',
   'tencent-token-plan': '腾讯云 Token Plan',
+  // 订阅管理类插件（dsh-plugin-subscrip）注册的订阅直连通道：不经 llm-pi-ai
+  // 路由表，provider id 即官方订阅名（issue #37，Grok = X Premium 订阅）。
+  'grok': 'Grok（X Premium）',
 }
 
 /** 订阅类 provider id 判定：带 coding / agent-plan / token-plan 后缀，或已知订阅通道。 */
 const SUBSCRIPTION_ID_RE = new RegExp(
   '(?:^|-)(?:coding|agent[-_]?plan|token[-_]?plan)(?:$|-|_)|' +
-    '^(?:opencode|opencode-go|kimi-coding|zai-coding|minimax|minimax-cn|minimax-token-plan|minimax-token-plan-cn|openrouter)',
+    '^(?:opencode|opencode-go|kimi-coding|zai-coding|minimax|minimax-cn|minimax-token-plan|minimax-token-plan-cn|openrouter|grok)',
   'i',
 )
 
