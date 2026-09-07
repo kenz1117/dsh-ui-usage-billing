@@ -11,7 +11,7 @@
  * 走 unconfigured 路径）；webserver 与被测插件均为真实组装。
  */
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -81,6 +81,21 @@ const corruptPersistenceDouble = {
   },
 }
 
+/** 慢持久化替身：list 延迟 3 秒，模拟重度用户（成千上万条会话）全量折叠
+ *  远慢于路由响应预算的场景；readFrom 与正常替身一致。 */
+const slowPersistenceDouble = {
+  name: 'test-billing-persistence',
+  apply(ctx: Context): void {
+    ctx.provide('sessionPersistence', {
+      list: async () => {
+        await new Promise(resolve => setTimeout(resolve, 3_000))
+        return [{ id: 's1' as SessionId }]
+      },
+      readFrom: async () => ({ meta: { id: 's1' as SessionId }, events: EVENTS }),
+    } as unknown as SessionPersistence)
+  },
+}
+
 /** credentials 能力替身：任何引用都解析不到（余额走 unconfigured，不触网）。 */
 const credentialsDouble = {
   name: 'test-billing-credentials',
@@ -114,8 +129,9 @@ async function loadComposition(): Promise<Context> {
 }
 
 /** 参数化组装：默认用正常 persistence；`corrupt` 时注入 readFrom 抛错的替身，
- *  `statsPath` 写入配置指向回退快照文件（聚合失败时走该文件）。 */
-async function loadCompositionWith(options: { corrupt?: boolean; statsPath?: string } = {}): Promise<Context> {
+ *  `slow` 时注入 list 延迟 3 秒的替身；`statsPath` 写入配置指向回退快照文件
+ * （聚合失败/超预算时走该文件）。 */
+async function loadCompositionWith(options: { corrupt?: boolean; slow?: boolean; statsPath?: string } = {}): Promise<Context> {
   root = await mkdtemp(join(tmpdir(), 'dsh-usage-billing-'))
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
@@ -145,7 +161,7 @@ async function loadCompositionWith(options: { corrupt?: boolean; statsPath?: str
   context.loader.builtins.include = Include
   const modules = new Map<string, unknown>([
     ['@deepseek-ai/dsh-host-webserver', HttpServer],
-    ['virtual:test-billing-persistence', options.corrupt ? corruptPersistenceDouble : persistenceDouble],
+    ['virtual:test-billing-persistence', options.slow ? slowPersistenceDouble : options.corrupt ? corruptPersistenceDouble : persistenceDouble],
     ['virtual:test-billing-credentials', credentialsDouble],
     ['virtual:test-billing-settings', settingsDouble],
     ['@kenz1117/dsh-ui-usage-billing', UsageBilling],
@@ -259,6 +275,40 @@ describe('usage-billing real Loader composition', () => {
     expect(doc.source).toBe('session-logs')
     expect(doc.total.calls).toBe(42)
     expect(doc.total.cost).toBe(0)
+    await rm(snapshotDir, { recursive: true, force: true })
+  })
+
+  it('serves the recent snapshot while a slow first fold keeps running in the background', { timeout: 60_000 }, async () => {
+    // stale-while-revalidate（重度用户启动卡顿修复）：全量折叠要 3 秒（远超
+    // 1.5s 响应预算）时，路由必须快速回最近快照而不是把请求（和宿主单进程的
+    // 事件循环）挂在折叠上；后台折叠完成后快照刷新，后续请求拿到实时数据。
+    const snapshotDir = await mkdtemp(join(tmpdir(), 'dsh-usage-billing-snap-'))
+    const statsFile = join(snapshotDir, 'usage-stats.snapshot.json')
+    await writeFile(statsFile, JSON.stringify({
+      version: 3,
+      source: 'session-logs',
+      total: { calls: 42, input: 1, output: 1, cacheHit: 0, cacheMiss: 1, cost: 0 },
+      byModel: {}, byDay: {}, byDayModels: {}, bySession: [],
+    }))
+    const loaded = await loadCompositionWith({ slow: true, statsPath: statsFile })
+    const port = loaded.webServer.port
+
+    const startedAt = Date.now()
+    const stats = await getJson(port, '/api/billing/usage-stats')
+    const elapsed = Date.now() - startedAt
+    expect(stats.status).toBe(200)
+    // 快速返回（预算 1.5s，留足 CI 抖动余量但严格小于慢折叠的 3s）且内容是快照。
+    expect(elapsed).toBeLessThan(2_800)
+    expect((stats.json as { total: { calls: number } }).total.calls).toBe(42)
+
+    // 后台折叠完成后：持久化快照被刷新为真实聚合值，后续请求拿到实时数据。
+    const liveSnapshotPath = join(root!, 'usage-stats.json')
+    await vi.waitFor(async () => {
+      const doc = JSON.parse(await readFile(liveSnapshotPath, 'utf8')) as { total?: { calls?: number } }
+      expect(doc.total?.calls).toBe(2)
+    }, { timeout: 15_000, interval: 200 })
+    const fresh = await getJson(port, '/api/billing/usage-stats')
+    expect((fresh.json as { total: { calls: number } }).total.calls).toBe(2)
     await rm(snapshotDir, { recursive: true, force: true })
   })
 })

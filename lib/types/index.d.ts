@@ -3,11 +3,14 @@
  *
  * Serves `/api/billing/usage-stats`: real usage aggregated from every
  * persisted session log (see `aggregate.ts`) — the browser dashboard reads it
- * instead of showing an empty snapshot. When `sessionPersistence` is
- * unavailable (or aggregation fails), the configured `statsPath` /
- * `DSH_USAGE_STATS` / conventional JSON file is served as a fallback, and a
- * missing file answers `{ error }` so the dashboard shows zeros, never
- * fabricated samples.
+ * instead of showing an empty snapshot. Aggregation is stale-while-revalidate:
+ * requests get a short wait budget and fall back to the freshest persisted
+ * snapshot while a slow full fold keeps running in the background (a heavy
+ * user's first fold takes minutes and must not starve the single-process
+ * host's RPC). When `sessionPersistence` is unavailable (or aggregation
+ * fails), the configured `statsPath` / `DSH_USAGE_STATS` / conventional JSON
+ * file is served as a fallback, and a missing file answers `{ error }` so the
+ * dashboard shows zeros, never fabricated samples.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';

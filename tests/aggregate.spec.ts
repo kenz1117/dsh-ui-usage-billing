@@ -17,7 +17,7 @@ import {
   aggregateUsage, createUsageAggregator, dayStamp, foldSession, foldUsage, emptyUsage, workspaceNameOf, hostTimeZone,
   siteBucketKey, siteOriginOf, siteRefOf, runLedgerMigrations, FOLD_VERSION, LEDGER_MIGRATIONS, foldSearchCall,
   type LedgerMigration, type UsageLedgerDocument, type UsageLedgerSession,
-  AGGREGATE_TTL_MS, SESSION_ROW_LIMIT, type UsagePersistence,
+  AGGREGATE_TTL_MS, LEDGER_SAVE_INTERVAL_MS, SESSION_ROW_LIMIT, type UsagePersistence,
 } from '../src/aggregate.ts'
 
 /** Minimal `request/header` event recording the active model and provider. */
@@ -1029,6 +1029,148 @@ describe('createUsageAggregator (incremental cache)', () => {
     const refolded = await aggregator.aggregate()
     expect(reads.a).toBe(1)
     expect(refolded.total.calls).toBe(2)
+  })
+
+  it('shares one in-flight aggregation across concurrent callers', async () => {
+    // in-flight 去重：usage-stats / balance / usage_stats 工具并发触发时只跑
+    // 一次折叠（list 只被调一次），避免多倍全量重读压垮宿主事件循环。
+    let listCalls = 0
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const persistence = {
+      list: async () => {
+        listCalls += 1
+        await gate
+        return [{ id: 'a' }]
+      },
+      readFrom: async (id: SessionId) => ({
+        meta: { id },
+        events: [header(1, 'deepseek-v4-flash'), message(2, 1_000, USAGE)],
+      }),
+    } as unknown as UsagePersistence
+    const aggregator = createUsageAggregator(persistence)
+
+    const first = aggregator.aggregate()
+    const second = aggregator.aggregate()
+    release()
+    const [docA, docB] = await Promise.all([first, second])
+    expect(listCalls).toBe(1)
+    expect(docA).toBe(docB)
+    expect(docA.total.calls).toBe(1)
+  })
+
+  it('negative-caches unreadable sessions by stamp until the log changes', async () => {
+    vi.useFakeTimers()
+    // 坏会话（如新版宿主写入的未知事件格式）按 id+stamp 负缓存：stamp 不变
+    // 不再重读重压；stamp 变化（日志被重写/追加）后自动重试一次。
+    // 稳定线的 stamp 只能走 locate+stat（0.1.3 的 revision 注入是预览线能力），
+    // 故用真实文件让 mtime+size 生效。
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-usage-agg-'))
+    const badPath = join(dir, 'bad.jsonl')
+    await writeFile(badPath, 'bad')
+    let reads = 0
+    const persistence = {
+      list: async () => [{ id: 'bad' }],
+      locate: () => ({ path: badPath }),
+      readFrom: async () => {
+        reads += 1
+        throw new Error('unknown event type')
+      },
+    } as unknown as UsagePersistence
+    const aggregator = createUsageAggregator(persistence)
+
+    await aggregator.aggregate()
+    expect(reads).toBe(1)
+
+    // stamp 未变：下轮聚合直接跳过，不重读。
+    vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
+    await aggregator.aggregate()
+    expect(reads).toBe(1)
+
+    // stamp 变化（重写后 size 变）：负缓存失效，重试一次（仍失败则按新 stamp 重新入缓存）。
+    await writeFile(badPath, 'bad-rewritten')
+    vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
+    await aggregator.aggregate()
+    expect(reads).toBe(2)
+    vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
+    await aggregator.aggregate()
+    expect(reads).toBe(2)
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('keeps ledger-reused rows out of the LRU so the active session stays incremental', async () => {
+    vi.useFakeTimers()
+    // 重度用户回归：账本行（h1~h3）若占用 LRU 名额，会把活跃会话的增量状态机
+    // 挤出上限为 2 的缓存，使其每轮退化为全量重折。账本行应直接从 durable 行
+    // 复用，活跃会话保持增量。
+    const logs: Record<string, SessionEvent[]> = {
+      active: firstBatch(),
+      h1: firstBatch(),
+      h2: firstBatch(),
+      h3: firstBatch(),
+    }
+    const { persistence: inner, paths } = await fileBackedPersistence(logs)
+    const fromSeqs: Record<string, number[]> = {}
+    const persistence = {
+      ...inner,
+      readFrom: async (id: SessionId, fromSeq: number) => {
+        ;(fromSeqs[String(id)] ??= []).push(fromSeq)
+        return inner.readFrom(id, fromSeq)
+      },
+    } as unknown as UsagePersistence
+    const ledgerRows: UsageLedgerSession[] = []
+    for (const id of ['h1', 'h2', 'h3']) {
+      const info = await stat(paths[id]!)
+      ledgerRows.push({ id, stamp: `${String(info.mtimeMs)}:${String(info.size)}`, foldVersion: FOLD_VERSION, fold: legacyFold() })
+    }
+    const store = fakeLedgerStore(ledgerRows)
+    const aggregator = createUsageAggregator(persistence, { ledger: store.store, maxCacheSessions: 2 })
+
+    await aggregator.aggregate()
+    // 活跃会话全量首折；账本行零读取复用。
+    expect(fromSeqs['active']).toEqual([0])
+    expect(fromSeqs['h1'] ?? []).toEqual([])
+
+    // 活跃会话追加一段：必须走增量（fromSeq = 7），而不是全量重读。
+    logs['active'] = [...firstBatch(), ...appendedBatch(7)]
+    await writeFile(paths['active']!, 'appended')
+    vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
+    await aggregator.aggregate()
+    expect(fromSeqs['active']).toEqual([0, 7])
+    expect(fromSeqs['h1'] ?? []).toEqual([])
+  })
+
+  it('throttles ledger saves and persists pending changes on flush', async () => {
+    vi.useFakeTimers()
+    const logs: Record<string, SessionEvent[]> = {
+      a: [header(1, 'deepseek-v4-flash'), message(2, 1_000, USAGE)],
+    }
+    const { persistence, paths } = await fileBackedPersistence(logs)
+    const store = fakeLedgerStore([])
+    const aggregator = createUsageAggregator(persistence, { ledger: store.store })
+
+    // 首次保存不受节流（冷启动折叠成果立即落盘）。
+    await aggregator.aggregate()
+    expect(store.saved).toHaveLength(1)
+
+    // 节流窗口内的变更不落盘（写放大治理：全量序列化是 O(会话数)）。
+    logs['a'] = [...logs['a']!, message(3, 2_000, USAGE)]
+    await writeFile(paths['a']!, 'changed')
+    vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
+    await aggregator.aggregate()
+    expect(store.saved).toHaveLength(1)
+
+    // flush 无视节流，把窗口内的改动落盘（插件卸载路径）。
+    await aggregator.flush()
+    expect(store.saved).toHaveLength(2)
+    expect(store.current().sessions[0]?.fold.total.calls).toBe(2)
+
+    // 节流窗口过后，常规聚合恢复落盘。
+    logs['a'] = [...logs['a']!, message(4, 3_000, USAGE)]
+    await writeFile(paths['a']!, 'changed-again')
+    vi.advanceTimersByTime(LEDGER_SAVE_INTERVAL_MS + AGGREGATE_TTL_MS + 1000)
+    await aggregator.aggregate()
+    expect(store.saved).toHaveLength(3)
   })
 })
 
