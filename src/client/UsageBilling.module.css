@@ -225,15 +225,19 @@
   }
 }
 
-/* hover 速览卡：实底浮层，悬停触发卡时向上浮现；不抢点击。 */
+/* hover 速览卡：实底浮层，悬停触发卡时向上浮现；不抢点击。
+   弹层经 React portal 挂到 body（issue #37）：触发卡的 container-type 使其成为
+   fixed 后代的包含块（坐标被容器二次偏移），且侧栏 overflow:hidden 会几何裁剪
+   absolute 弹层；挂 body 后既相对视口定位，也脱离侧栏的裁剪上下文。 */
 .triggerPop {
-  /* fixed 定位（issue #37）：桌面壳/宿主侧栏容器可能 overflow:hidden，absolute
-     弹层向上弹出会被几何裁剪（z-index 无法对抗裁剪）。fixed 脱离侧栏的裁剪
-     上下文，坐标由 JS 按触发卡的 viewport rect 注入（left/top 内联样式），
-     translateY(-100%) 让弹层底边对齐注入点（触发卡顶部上方 8px）。 */
   position: fixed;
   left: 0;
   top: 0;
+  /* 自带 box-sizing 重置：宿主的全局 border-box 重置作用域不覆盖 portal 到
+     body 的弹层，缺省 content-box 会把内联 width 当内容宽，再加上 padding 与
+     border（26px）导致弹层实际宽度超出触发卡（issue #37）。子元素一并重置，
+     避免网格/行元素在 content-box 下同样溢出。 */
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -254,10 +258,16 @@
   transform: translateY(calc(-100% + 4px));
   pointer-events: none;
   transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 160ms;
-  z-index: 10;
+  /* 与 peakCard 同层（挂 body 后需压过宿主内容层）。 */
+  z-index: 2000;
 }
 
 /* 弹层顶部金色流光饰条（与订阅卡同一设计语言）。 */
+.triggerPop,
+.triggerPop * {
+  box-sizing: border-box;
+}
+
 .triggerPop::before {
   content: '';
   position: absolute;

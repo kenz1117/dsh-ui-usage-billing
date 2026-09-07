@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react'
+import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -999,6 +1000,18 @@ function UsageBillingTrigger(
   const wrapRef = useRef<HTMLSpanElement>(null)
   const [popOpen, setPopOpen] = useState(false)
   const [popPos, setPopPos] = useState<{ left: number; top: number; width: number }>({ left: 0, top: 0, width: 0 })
+  // hover 桥接：弹层 portal 到 body 后不再是触发卡的 DOM 后代，鼠标从触发卡
+  // 移向弹层会先触发触发卡的 mouseleave；延迟 120ms 关闭，期间进入弹层即取消。
+  const popCloseTimer = useRef<number | undefined>(undefined)
+  const openPop = useCallback(() => {
+    window.clearTimeout(popCloseTimer.current)
+    setPopOpen(true)
+  }, [])
+  const schedulePopClose = useCallback(() => {
+    window.clearTimeout(popCloseTimer.current)
+    popCloseTimer.current = window.setTimeout(() => setPopOpen(false), 120)
+  }, [])
+  useEffect(() => () => window.clearTimeout(popCloseTimer.current), [])
   const updatePopPos = useCallback(() => {
     const rect = wrapRef.current?.getBoundingClientRect()
     if (rect !== undefined) setPopPos({ left: rect.left, top: rect.top - 8, width: rect.width })
@@ -1048,9 +1061,9 @@ function UsageBillingTrigger(
     <span
       ref={wrapRef}
       className={css.triggerWrap}
-      onMouseEnter={() => { updatePopPos(); setPopOpen(true) }}
-      onMouseLeave={() => setPopOpen(false)}
-      onFocusCapture={() => { updatePopPos(); setPopOpen(true) }}
+      onMouseEnter={() => { updatePopPos(); openPop() }}
+      onMouseLeave={schedulePopClose}
+      onFocusCapture={() => { updatePopPos(); openPop() }}
       onBlurCapture={() => setPopOpen(false)}
     >
       <button
@@ -1094,13 +1107,19 @@ function UsageBillingTrigger(
         </span>
       </button>
       {/* hover 速览：参考图风格「数据卡」——标题 + 更新时间 + 两列指标网格 + 底部主力消耗/额度提醒。
-          fixed 定位（issue #37）：脱离侧栏 overflow 裁剪；显隐由 React hover 态驱动，
-          位置在 hover 进入与滚动/缩放时按触发卡 rect 重算。 */}
+          portal 到 body（issue #37）：触发卡的 container-type 使其成为 fixed 后代的
+          包含块，弹层坐标会被容器二次偏移（位置/宽度错乱的根源）；挂 body 后真正
+          相对视口定位，同时脱离侧栏 overflow 裁剪。显隐由 React hover 态驱动，位置
+          在 hover 进入与滚动/缩放时按触发卡 rect 重算；弹层自带 mouseenter/mouseleave
+          与触发卡互为 hover 桥接（120ms 关闭延迟见 schedulePopClose）。 */}
+      {createPortal(
       <span
         className={clsx(css.triggerPop, popOpen && css.triggerPopShown, floatPrefs.mode === 'subscription' && css.triggerPopSubscription)}
         style={{ left: `${popPos.left}px`, top: `${popPos.top}px`, width: `${popPos.width}px` }}
         data-testid="billing-trigger-pop"
         aria-hidden={!popOpen}
+        onMouseEnter={openPop}
+        onMouseLeave={schedulePopClose}
       >
         {floatPrefs.mode === 'subscription' ? (
           <>
@@ -1224,7 +1243,9 @@ function UsageBillingTrigger(
             </span>
           </>
         )}
-      </span>
+      </span>,
+      document.body,
+      )}
     </span>
   )
 }
