@@ -3,11 +3,14 @@
  *
  * Serves `/api/billing/usage-stats`: real usage aggregated from every
  * persisted session log (see `aggregate.ts`) — the browser dashboard reads it
- * instead of showing an empty snapshot. When `sessionPersistence` is
- * unavailable (or aggregation fails), the configured `statsPath` /
- * `DSH_USAGE_STATS` / conventional JSON file is served as a fallback, and a
- * missing file answers `{ error }` so the dashboard shows zeros, never
- * fabricated samples.
+ * instead of showing an empty snapshot. Aggregation is stale-while-revalidate:
+ * requests get a short wait budget and fall back to the freshest persisted
+ * snapshot while a slow full fold keeps running in the background (a heavy
+ * user's first fold takes minutes and must not starve the single-process
+ * host's RPC). When `sessionPersistence` is unavailable (or aggregation
+ * fails), the configured `statsPath` / `DSH_USAGE_STATS` / conventional JSON
+ * file is served as a fallback, and a missing file answers `{ error }` so the
+ * dashboard shows zeros, never fabricated samples.
  */
 
 import { mkdir, readFile } from 'node:fs/promises'
@@ -200,6 +203,11 @@ const PACKAGE_VERSION = (createRequire(import.meta.url)('../package.json') as { 
 
 /** 统计快照的落盘节流（毫秒）：前端 30 秒轮询，快照最多每 30 秒写一次。 */
 const SNAPSHOT_INTERVAL_MS = 30_000
+
+/** usage-stats 响应的等待预算（毫秒）：聚合在此预算内完成就回实时数据，
+ *  超预算立即回最近快照（stale-while-revalidate），后台折叠继续跑。
+ *  轻量用户暖缓存下的聚合是毫秒级，预算几乎不会触发。 */
+const RESPONSE_BUDGET_MS = 1500
 
 /** 鉴权失败告警冷却（毫秒）：同一 provider 在窗口内只提示一次，避免 30 秒轮询刷屏。 */
 const AUTH_WARN_COOLDOWN_MS = 30 * 60 * 1000
@@ -563,6 +571,9 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     ...(config.searchCallEstimateCny === undefined ? {} : { searchCallEstimateCny: config.searchCallEstimateCny }),
     ledger: ledgerStore,
   })
+  // 插件卸载时把落盘节流窗口内的账本改动 flush 掉（fire-and-forget：
+  // disposer 不能阻塞关闭流程，等不起进行中的长折叠）。
+  ctx.effect(() => () => { void aggregator.flush() }, 'usage-billing: ledger flush on dispose')
   const candidates = [
     config.statsPath,
     process.env.DSH_USAGE_STATS,
@@ -1003,34 +1014,46 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       handler: async (req, res) => {
         if (!guardLoopback(req, res)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+        // 宿主配置（月度预算 / 余额告警阈值）与插件版本不是聚合产物：在响应边界
+        // 注入，实时与快照两条路径一致。
+        const decorate = (doc: Record<string, unknown>): Record<string, unknown> => ({
+          ...doc,
+          pluginVersion: PACKAGE_VERSION,
+          ...(config.monthlyBudget === undefined ? {} : { budget: config.monthlyBudget }),
+          ...(config.lowBalanceThreshold === undefined ? {} : { lowBalanceThreshold: config.lowBalanceThreshold }),
+        })
+        // stale-while-revalidate：聚合是全量扫描（重度用户上万条会话的冷启动折叠
+        // 以分钟计），HTTP 请求绝不全程等它——只给 RESPONSE_BUDGET_MS 的等待预算，
+        // 超预算立即回最近一次快照；后台折叠完成后快照随之刷新（挂在聚合 promise
+        // 上，与响应路径解耦）。宿主是单进程，慢响应期间事件循环被折叠占住，
+        // 会话/模型列表 RPC 会一起饿死（用户反馈的启动卡顿）。
+        const aggregating = aggregator.aggregate()
+        void aggregating.then(
+          stats => { persistSnapshot(decorate(stats as unknown as Record<string, unknown>)) },
+          () => { /* 失败路径由下方快照兜底，此处只抑制未处理拒绝 */ },
+        )
+        let fresh: Record<string, unknown> | undefined
         try {
-          const stats = await aggregator.aggregate()
-          // 宿主配置（月度预算 / 余额告警阈值）不是聚合产物：在响应边界
-          // 注入，两条路径一致。
-          const injected: Record<string, number> = {
-            ...(config.monthlyBudget === undefined ? {} : { budget: config.monthlyBudget }),
-            ...(config.lowBalanceThreshold === undefined ? {} : { lowBalanceThreshold: config.lowBalanceThreshold }),
-          }
-          const payload = { ...stats, pluginVersion: PACKAGE_VERSION, ...injected }
-          // 快照落盘（节流 30 秒）：聚合失败路径的回退文件因此始终保持新鲜。
-          persistSnapshot(payload as unknown as Record<string, unknown>)
-          res.end(JSON.stringify(payload))
-          return
+          fresh = await Promise.race([
+            aggregating.then(stats => stats as unknown as Record<string, unknown>),
+            new Promise<undefined>(resolve => { setTimeout(() => { resolve(undefined) }, RESPONSE_BUDGET_MS).unref() }),
+          ])
         } catch (error) {
           // Persistence read failed; fall through to the JSON-file candidates.
           // 记录异常尾部（含已折叠会话数），避免「只能靠猜」——聚合失败时用户
           // 至少能从日志看到原因（单会话损坏已在 aggregate 内跳过并告警）。
           console.error('[usage-billing] usage-stats aggregate failed, falling back to snapshot:', error)
         }
+        if (fresh !== undefined) {
+          res.end(JSON.stringify(decorate(fresh)))
+          return
+        }
         for (const candidate of candidates) {
           const doc = await readSnapshot(candidate)
           // Accept only parseable JSON so a stale or partial file never
           // reaches the dashboard as if it were real.
           if (doc === null) continue
-          if (config.monthlyBudget !== undefined) doc['budget'] = config.monthlyBudget
-          if (config.lowBalanceThreshold !== undefined) doc['lowBalanceThreshold'] = config.lowBalanceThreshold
-          doc['pluginVersion'] = PACKAGE_VERSION
-          res.end(JSON.stringify(doc))
+          res.end(JSON.stringify(decorate(doc)))
           return
         }
         res.end(JSON.stringify({ error: 'usage stats unavailable' }))

@@ -358,6 +358,10 @@ export declare const SESSION_ROW_LIMIT = 100;
 export declare const TURN_ROW_LIMIT = 200;
 /** 聚合文档的短 TTL（毫秒）：合并密集轮询，TTL 内直接复用上次的合并结果。 */
 export declare const AGGREGATE_TTL_MS = 5000;
+/** 账本落盘节流间隔（毫秒）：保存是 O(会话数) 的全量序列化+原子重写，重度用户
+ *  上万会话时单次即秒级 CPU，每轮聚合都写会周期性白占宿主事件循环。首次保存
+ *  不受节流（冷启动全量折叠的成果要立即落盘），节流窗口内的改动由 flush 兜底。 */
+export declare const LEDGER_SAVE_INTERVAL_MS = 60000;
 /** TTFT 尖峰阈值（毫秒）：超过计为一次尖峰样本，用于定位服务端抖动。 */
 export declare const PERF_SPIKE_MS = 10000;
 /** 单步性能样本（foldSession 的折叠产物；跨会话合并时按模型/小时再聚合）。 */
@@ -535,11 +539,17 @@ export declare function foldSession(events: readonly {
 /**
  * 增量聚合器：按会话缓存折叠结果，用日志文件的 mtime+size 作失效键——
  * 日志没动的会话直接复用，只有写过的会话重新折叠；整份文档另有短 TTL
- * 合并密集轮询。缓存活在内存里（进程重启后首次全量折叠一次）。
+ * 合并密集轮询。带增量状态机的活跃会话由有界 LRU 承载（进程内有效）；
+ * 无状态机的账本行不占 LRU 名额，直接从 durable 账本反序列化复用，
+ * 进程重启后日志未动的会话零读取。
  */
 export interface UsageAggregator {
-    /** Aggregate current usage, reusing cached per-session folds when their logs are untouched. */
+    /** Aggregate current usage, reusing cached per-session folds when their logs are untouched.
+     *  并发调用共享同一次进行中的折叠（in-flight 去重），不会多倍全量重读。 */
     aggregate(): Promise<UsageStatsDocument>;
+    /** 立刻落盘未保存的账本改动（无视节流），供插件卸载时调用；
+     *  进行中的聚合先等完再存，折叠失败仍保存已成功部分。 */
+    flush(): Promise<void>;
 }
 /**
  * 聚合配置指纹：影响折叠语义的全部配置（订阅豁免、官方名单、路由别名、搜索估值）

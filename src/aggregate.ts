@@ -505,6 +505,11 @@ export const TURN_ROW_LIMIT = 200
 /** 聚合文档的短 TTL（毫秒）：合并密集轮询，TTL 内直接复用上次的合并结果。 */
 export const AGGREGATE_TTL_MS = 5000
 
+/** 账本落盘节流间隔（毫秒）：保存是 O(会话数) 的全量序列化+原子重写，重度用户
+ *  上万会话时单次即秒级 CPU，每轮聚合都写会周期性白占宿主事件循环。首次保存
+ *  不受节流（冷启动全量折叠的成果要立即落盘），节流窗口内的改动由 flush 兜底。 */
+export const LEDGER_SAVE_INTERVAL_MS = 60_000
+
 /** TTFT 尖峰阈值（毫秒）：超过计为一次尖峰样本，用于定位服务端抖动。 */
 export const PERF_SPIKE_MS = 10_000
 
@@ -1270,11 +1275,17 @@ interface PerfHourAccum {
 /**
  * 增量聚合器：按会话缓存折叠结果，用日志文件的 mtime+size 作失效键——
  * 日志没动的会话直接复用，只有写过的会话重新折叠；整份文档另有短 TTL
- * 合并密集轮询。缓存活在内存里（进程重启后首次全量折叠一次）。
+ * 合并密集轮询。带增量状态机的活跃会话由有界 LRU 承载（进程内有效）；
+ * 无状态机的账本行不占 LRU 名额，直接从 durable 账本反序列化复用，
+ * 进程重启后日志未动的会话零读取。
  */
 export interface UsageAggregator {
-  /** Aggregate current usage, reusing cached per-session folds when their logs are untouched. */
+  /** Aggregate current usage, reusing cached per-session folds when their logs are untouched.
+   *  并发调用共享同一次进行中的折叠（in-flight 去重），不会多倍全量重读。 */
   aggregate(): Promise<UsageStatsDocument>
+  /** 立刻落盘未保存的账本改动（无视节流），供插件卸载时调用；
+   *  进行中的聚合先等完再存，折叠失败仍保存已成功部分。 */
+  flush(): Promise<void>
 }
 
 /**
@@ -1327,6 +1338,13 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
   const ledger = new Map<string, UsageLedgerSession>()
   let ledgerLoaded = false
   let ledgerNeedsSave = false
+  let lastLedgerSaveAt = 0
+  // 不可读会话负缓存（id → 失败时的 stamp）：stamp 不变不再重读——新版宿主写出的
+  // 未知事件格式会在读取中途抛错，不缓存的话每轮聚合（前端 30s 轮询）都把该日志
+  // 重新解压解析一遍再失败；stamp 变化（日志被重写/追加）后自动重试一次。
+  const unreadable = new Map<string, string>()
+  // 并发聚合共享的进行中的折叠（usage-stats / balance / usage_stats 工具会同时触发）。
+  let inflight: Promise<UsageStatsDocument> | undefined
   // 加载边界跑迁移后留下的已应用 id；save 透传，避免每次重启都把迁移重跑一遍。
   let ledgerAppliedMigrations: string[] | undefined
   let lastDoc: UsageStatsDocument | undefined
@@ -1406,10 +1424,28 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
     }
   }
 
-  return {
-    async aggregate(): Promise<UsageStatsDocument> {
+  /** 落盘账本：force 无视节流（flush 用）；常规路径首次立即保存，之后按
+   *  LEDGER_SAVE_INTERVAL_MS 节流。失败仅告警——内存中的聚合值仍然正确。 */
+  const saveLedger = async (force: boolean): Promise<void> => {
+    if (options.ledger === undefined || !ledgerNeedsSave) return
+    if (!force && lastLedgerSaveAt !== 0 && Date.now() - lastLedgerSaveAt < LEDGER_SAVE_INTERVAL_MS) return
+    try {
+      await options.ledger.save({
+        version: 1,
+        updatedAt: Date.now(),
+        sessions: [...ledger.values()],
+        ...(ledgerAppliedMigrations === undefined ? {} : { appliedMigrations: ledgerAppliedMigrations }),
+      })
+      ledgerNeedsSave = false
+      lastLedgerSaveAt = Date.now()
+    } catch (error) {
+      // Keep serving the correct in-memory total; a later changed aggregation retries.
+      console.warn('[usage-billing] failed to persist durable usage ledger:', error)
+    }
+  }
+
+  const aggregateOnce = async (): Promise<UsageStatsDocument> => {
       const now = Date.now()
-      if (lastDoc !== undefined && now - lastAt < AGGREGATE_TTL_MS) return lastDoc
 
       await ensureLedgerLoaded()
 
@@ -1433,6 +1469,10 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         const id = String(meta.id)
         seen.add(id)
         const stamp = await stampOf(meta)
+        // 负缓存命中：该会话上次以同一 stamp 读取失败（如未知事件格式），本轮
+        // 直接跳过，不再重读重压；stamp 变化（日志被重写/追加）后自动重试。
+        // 不进 included：其陈旧账本行仍由下方的账本兜底段合并，不丢历史用量。
+        if (stamp !== null && unreadable.get(id) === stamp) continue
         const hit = cache.get(id)
         if (hit !== undefined && stamp !== null && hit.stamp === stamp) {
           // LRU touch：复用命中的会话移到缓存末尾，供上方上限清理优先淘汰最久未用。
@@ -1455,8 +1495,10 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
             && ledgerRow.stamp === stamp && (ledgerRow.foldVersion ?? 1) === FOLD_VERSION
             && ledgerRow.fingerprint === foldFingerprint) {
             const fold = deserializeFold(ledgerRow.fold)
-            // 不带 machine：下次日志变化时走全量重折（状态机不可跨进程恢复，保守正确）。
-            cache.set(id, { stamp, fold })
+            // 账本命中行不进 LRU：会话数超过上限时，它们每轮都会把活跃会话的
+            // 增量状态机（machine/lastSeq）挤出缓存，使活跃会话退化为每轮全量
+            // 重折（issue #30 的增量修复被抵消）。账本行本身就在 ledger map 里，
+            // 下轮反序列化即可复用，无需占用缓存名额。
             folds.push({ id, ...(cwd === undefined ? {} : { cwd }), fold })
             included.add(id)
             continue
@@ -1519,12 +1561,17 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           recordLedger(id, cwd, stamp, fold)
         } catch (error) {
           skipped.push(id)
+          // 记负缓存：stamp 不变期间不再重读该会话（下轮聚合直接跳过）。
+          if (stamp !== null) unreadable.set(id, stamp)
           console.warn('[usage-billing] skip unreadable session', id, error)
         }
       }
       // 已删除会话的缓存一并清除，避免内存随历史膨胀。
       for (const key of [...cache.keys()]) {
         if (!seen.has(key)) cache.delete(key)
+      }
+      for (const key of [...unreadable.keys()]) {
+        if (!seen.has(key)) unreadable.delete(key)
       }
       // P1-6 峰值内存治理：缓存会话数超过上限时，从最久未用的开始淘汰。
       while (cache.size > maxCacheSessions) {
@@ -1554,20 +1601,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
             console.warn('[usage-billing] skip invalid durable ledger session', entry.id, error)
           }
         }
-        if (ledgerNeedsSave) {
-          try {
-            await options.ledger.save({
-              version: 1,
-              updatedAt: now,
-              sessions: [...ledger.values()],
-              ...(ledgerAppliedMigrations === undefined ? {} : { appliedMigrations: ledgerAppliedMigrations }),
-            })
-            ledgerNeedsSave = false
-          } catch (error) {
-            // Keep serving the correct in-memory total; a later changed aggregation retries.
-            console.warn('[usage-billing] failed to persist durable usage ledger:', error)
-          }
-        }
+        // 写放大治理：全量序列化是 O(会话数)，按 LEDGER_SAVE_INTERVAL_MS 节流；
+        // 窗口内的改动由插件卸载时的 flush 兜底。
+        await saveLedger(false)
       }
       // 只读路径无坏会话时无需区分：stampOf 命中或新会话，失败均已在上面跳过。
       if (skipped.length > 0) {
@@ -1739,6 +1775,21 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       }
       lastAt = now
       return lastDoc
+  }
+
+  return {
+    aggregate(): Promise<UsageStatsDocument> {
+      const now = Date.now()
+      if (lastDoc !== undefined && now - lastAt < AGGREGATE_TTL_MS) return Promise.resolve(lastDoc)
+      // 并发去重：多个调用方（usage-stats / balance / usage_stats 工具）同时
+      // 触发聚合时共享同一次进行中的折叠，避免多倍全量重读压垮事件循环。
+      inflight ??= aggregateOnce().finally(() => { inflight = undefined })
+      return inflight
+    },
+    async flush(): Promise<void> {
+      // 等进行中的聚合落定（折叠失败也继续保存已成功部分），无视节流落盘。
+      if (inflight !== undefined) await inflight.catch(() => {})
+      await saveLedger(true)
     },
   }
 }
