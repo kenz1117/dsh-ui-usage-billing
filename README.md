@@ -102,18 +102,26 @@
 
 ## 🚀 快速开始
 
-在宿主 `cordis.patch.yml` 中加入：
+先确认宿主代际（`dsh --version`），再按代际选安装命令——**装错线会在市场侧被 `engines.dsh` 声明拦截**（v1.0.41 起声明生效）：
+
+- **DSH 0.1.2 系**（0.1.2-alpha.1 起，含 0.1.2-rc.1；`npm ls -g @deepseek-ai/dsh` 显示 0.1.2-*）：
+
+  ```sh
+  dsh plugin add npm:@kenz1117/dsh-ui-usage-billing@latest
+  ```
+
+- **DSH 0.1.0-rc.8 ~ 0.1.1-rc.2**（旧宿主）：
+
+  ```sh
+  dsh plugin add npm:@kenz1117/dsh-ui-usage-billing@stable
+  ```
+
+也可以在宿主 `cordis.patch.yml` 中手动加入：
 
 ```yaml
 - insert:
     - id: ui-usage-billing
       name: '@kenz1117/dsh-ui-usage-billing'
-```
-
-或通过包管理器安装：
-
-```sh
-npm install @kenz1117/dsh-ui-usage-billing
 ```
 
 启动宿主后，侧边栏设置上方即出现计费入口。无需额外配置；`sessionPersistence` 可用时自动聚合真实用量。

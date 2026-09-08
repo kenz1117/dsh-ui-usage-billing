@@ -6,6 +6,11 @@
 
 ## 预览线（1.0.x，适配 DSH 0.1.2 系）
 
+### v1.0.42（2026-09-08）
+
+- 新增：`engines.dsh` 兼容声明（`>=0.1.2-alpha.1`，与 `dsh.compatibility` 同步）——DSH Store 按 `engines.dsh` 或同版本线 peer 识别插件与宿主代际的匹配（市场此前读不到 `dsh.compatibility` 自有字段，无法拦截错线安装，issue #40）。注：v1.0.41 的 manifest 因构建事故缺失该字段，请使用 v1.0.42
+- 文档：README 快速开始改为按宿主代际分叉的安装命令（0.1.2 系装 `@latest`，0.1.0/0.1.1 系装 `@stable`），并修正安装方式为 `dsh plugin add`
+
 ### v1.0.40（2026-09-07）
 
 - 修复：启动 dsh 后会话/模型列表长时间不可用（10~20s 起步，重度用户更久）——`/api/billing/usage-stats` 此前把全量折叠跑在 HTTP 请求里，宿主是单进程单线程，折叠期间事件循环被占住，所有 RPC 一起饿死。现改为 stale-while-revalidate：请求最多等 1.5s，超预算立即回最近一次快照，折叠在后台继续，完成后快照自动刷新

@@ -102,18 +102,26 @@ Peer plugins (cost-meter, usage-stats, dsh-bill, …) each have their strengths;
 
 ## 🚀 Quick start
 
-Add to the host `cordis.patch.yml`:
+Check your host generation first (`dsh --version`), then pick the matching install command — **a mismatched line is rejected by the DSH Store via the `engines.dsh` declaration** (declared since v1.0.41):
+
+- **DSH 0.1.2-era** (0.1.2-alpha.1 and later, including 0.1.2-rc.1; `npm ls -g @deepseek-ai/dsh` shows 0.1.2-*):
+
+  ```sh
+  dsh plugin add npm:@kenz1117/dsh-ui-usage-billing@latest
+  ```
+
+- **DSH 0.1.0-rc.8 ~ 0.1.1-rc.2** (legacy hosts):
+
+  ```sh
+  dsh plugin add npm:@kenz1117/dsh-ui-usage-billing@stable
+  ```
+
+Alternatively, add it to the host `cordis.patch.yml` by hand:
 
 ```yaml
 - insert:
     - id: ui-usage-billing
       name: '@kenz1117/dsh-ui-usage-billing'
-```
-
-Or install via a package manager:
-
-```sh
-npm install @kenz1117/dsh-ui-usage-billing
 ```
 
 After the host starts, the billing entry appears above the sidebar Settings. No extra configuration is needed; when `sessionPersistence` is available it aggregates real usage automatically.
