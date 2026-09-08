@@ -20,6 +20,12 @@
 
 **标签策略：插件 `latest` 永远跟随宿主 `latest` 所在代际。** 宿主 latest 换代时，旧代际线退到 `stable` 标签继续维护，新代际线接管 `latest`。历史包袱：v1.0.26/v1.1.6 之前插件 `latest` 是稳定线（1.1.5），与宿主 latest（0.1.2-rc.1）错配，导致 issue #31（新用户默认组合必崩）。
 
+**发布操作规则（防 `latest` 回流，issue #40）：** npm `publish` 默认打 `latest` 标签，但只在新版本 semver 更高时才移动 `latest`——预览线（1.0.x）低于稳定线（1.1.x），裸 `npm publish` 会让 `latest` 滞留稳定线。因此：
+
+- 预览线发布一律 `npm publish --tag latest`，稳定线发布一律 `npm publish --tag stable`，**永不裸 `npm publish`**。
+- 每次发布后验证 `npm view @kenz1117/dsh-ui-usage-billing dist-tags`：`latest` 与 `stable` 必须分别指向刚发布的预览线/稳定线版本（npm CDN 有分钟级延迟，验证以 registry 直查为准）。
+- 市场与 `dsh plugin add` 对第三方插件固定安装 `latest`（dshmarket 仅对自身走 stable/beta/dev 渠道），`latest` 错配等于所有默认渠道一起错配。历史事故：2026-08-31 v1.1.0（数字更高）隐式抢占 `latest`，直至 09-07 v1.0.39 显式 `--tag latest` 才夺回；期间默认渠道把 0.1.2 宿主用户装到稳定线产物（依赖旧包名 `dsh-client-runtime`，加载失败），即 issue #40。
+
 ### 用户安装指引
 
 - 宿主 0.1.2 系（`npm view @deepseek-ai/dsh version` 显示 0.1.2-*）：`dsh plugin add npm:@kenz1117/dsh-ui-usage-billing`（latest 即预览线）
