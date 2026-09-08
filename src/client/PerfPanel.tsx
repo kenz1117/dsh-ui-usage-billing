@@ -120,6 +120,21 @@ function fmtTick(value: number): string {
   return value >= 100 ? String(Math.round(value)) : String(Number(value.toFixed(1)))
 }
 
+/**
+ * 表格用毫秒短格式（issue #41）：<10s 保持 `N ms`，<1min 转秒、更长转分钟——
+ * fixed 列宽下 `122141 ms` 这类长值会溢出列框叠进右列，缩写后稳定收纳。
+ */
+function fmtMsShort(ms: number): string {
+  if (ms < 10_000) return `${Math.round(ms)} ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`
+  return `${(ms / 60_000).toFixed(1)} min`
+}
+
+/** 生成速度短格式：千位以上 k 缩写（`27094.0` → `27.1k`），避免叠列。 */
+function fmtTps(tps: number): string {
+  return tps >= 1000 ? `${(tps / 1000).toFixed(1)}k` : tps.toFixed(1)
+}
+
 /** tooltip 数值格式：首字延时取整毫秒；生成速度保留 1 位小数并带单位。 */
 function fmtValue(value: number, metric: PerfMetric, t: (key: UsageBillingKey) => string): string {
   return metric === 'ttft' ? `${Math.round(value)} ms` : `${value.toFixed(1)} ${t('perfTpsUnit')}`
@@ -290,17 +305,17 @@ export function PerfPanel({
                   </span>
                 </td>
                 <td className={css.numCol}>{row.samples.toLocaleString()}</td>
-                <td className={css.numCol}>{row.ttftAvg.toFixed(0)} ms</td>
-                <td className={css.numCol}>{row.ttftP50.toFixed(0)} ms</td>
-                <td className={css.numCol}>{row.ttftP90.toFixed(0)} ms</td>
+                <td className={css.numCol}>{fmtMsShort(row.ttftAvg)}</td>
+                <td className={css.numCol}>{fmtMsShort(row.ttftP50)}</td>
+                <td className={css.numCol}>{fmtMsShort(row.ttftP90)}</td>
                 <td className={css.numCol}>
                   {/* 最大 TTFT；有尖峰时在数值后附计数提示服务端抖动。 */}
                   {row.ttftMax === undefined
                     ? <span className={css.na}>—</span>
-                    : <span>{row.ttftMax.toFixed(0)} ms{row.ttftSpikes !== undefined && row.ttftSpikes > 0 ? ` (${row.ttftSpikes}↑)` : ''}</span>}
+                    : <span>{fmtMsShort(row.ttftMax)}{row.ttftSpikes !== undefined && row.ttftSpikes > 0 ? ` (${row.ttftSpikes}↑)` : ''}</span>}
                 </td>
-                <td className={css.numCol}>{row.tpsAvg === undefined ? <span className={css.na}>—</span> : `${row.tpsAvg.toFixed(1)}`}</td>
-                <td className={css.numCol}>{row.latencyAvg.toFixed(0)} ms</td>
+                <td className={css.numCol}>{row.tpsAvg === undefined ? <span className={css.na}>—</span> : fmtTps(row.tpsAvg)}</td>
+                <td className={css.numCol}>{fmtMsShort(row.latencyAvg)}</td>
                 <td className={css.numCol}>{row.estimatedSamples > 0 ? row.estimatedSamples : <span className={css.na}>—</span>}</td>
               </tr>
             ))}

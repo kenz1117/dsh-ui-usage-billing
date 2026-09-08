@@ -1748,6 +1748,10 @@
 
 .modelTable {
   width: 100%;
+  /* 最小宽度（issue #41）：fixed 布局 + nowrap 下，窄容器会让长数值
+     （122141 ms / 426.8M）溢出列框叠进右列；min-width 让 tableScroll
+     出横向滚动而不是叠字。 */
+  min-width: 640px;
   border-collapse: collapse;
   font-size: 12.5px;
   /* 固定列宽布局（issue #37）：每个厂商组的子表是独立 table，auto 布局按各组
@@ -1756,30 +1760,12 @@
   table-layout: fixed;
 }
 
-/* 列宽分配（modelTableHead 的 6 列）：模型列弹性收纳长名，数字列右对齐。
-   fixed 布局以首行单元格宽度为准，表头 nth-child 即全表列宽。 */
+/* 列宽分配：首列（模型/工具/标题）定宽收纳长名，其余数字列均分剩余宽度
+   （issue #41 重定义——原 6 列定宽总和 100%，8/9 列的性能/Token 表后续列
+   宽被压成 0，内容全靠溢出叠压；首列定宽 + 其余 auto 在 6/8/9 列表下都
+   自洽，厂商组 6 列子表的数字列仍落在 12-15% 区间，跨组对齐保持）。 */
 .modelTable th:nth-child(1) {
-  width: 30%;
-}
-
-.modelTable th:nth-child(2) {
-  width: 12%;
-}
-
-.modelTable th:nth-child(3) {
-  width: 14%;
-}
-
-.modelTable th:nth-child(4) {
-  width: 14%;
-}
-
-.modelTable th:nth-child(5) {
-  width: 15%;
-}
-
-.modelTable th:nth-child(6) {
-  width: 15%;
+  width: 26%;
 }
 
 .modelTable th,
@@ -1792,6 +1778,28 @@
 
 .modelTable tbody tr:last-child td tbody tr:last-child td {
   border-bottom: 0;
+}
+
+/* 合并会话交互（issue #42）：一级行可点、默认收起；折叠箭头用伪元素绘制
+   （bundle 贴着 Store 256KiB 上限，省去独立指示符 span），展开时段明细缩进。 */
+.sessionGroupRow {
+  cursor: pointer;
+}
+
+.sessionGroupRow .modelName::before {
+  content: '›';
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 120ms ease;
+}
+
+.sessionGroupRow[aria-expanded='true'] .modelName::before {
+  transform: rotate(90deg);
+}
+
+.sessionChildRow td:first-child {
+  padding-left: 30px;
 }
 
 .modelTable thead th thead th {

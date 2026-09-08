@@ -255,6 +255,25 @@ export const PEAK_ERA_START_MS = Date.parse('2026-08-16T16:00:00Z')
 export const WEEKEND_OFFPEAK_START_MS = Date.parse('2026-08-22T16:00:00Z')
 
 /**
+ * flash 系调价分界（UTC 2026-09-10T04:00:00Z，即北京时间 2026-09-10 12:00）：
+ * 官方自此刻起 V4 Flash / V4 Flash Vision (Exp) 调价——谷档 1.5/0.05/4.5 →
+ * 1/0.02/4（峰 = 谷 × 2）。目录条目写现行（新）价；分界前的历史事件由
+ * {@link computeCostAt} 按 {@link FLASH_REPRICED_OFFPEAK} 回算旧价，与
+ * {@link PEAK_ERA_START_MS} 同一「按事件时刻分段适用规则」口径。
+ */
+export const FLASH_REPRICE_MS = Date.parse('2026-09-10T04:00:00Z')
+
+/**
+ * flash 系调价前的官方谷档价（CNY / 1M tokens）：{@link FLASH_REPRICE_MS}
+ * 之前的 flash / flash-vision-exp 事件按此回算（峰档 = 谷档 × 2）。
+ * 用户价 = 实付价，与 legacy 口径相同地跳过本表。
+ */
+const FLASH_REPRICED_OFFPEAK: Readonly<Record<string, PriceBand>> = {
+  flash: { input: 1.5, cacheHit: 0.05, output: 4.5 },
+  'flash-vision-exp': { input: 1.5, cacheHit: 0.05, output: 4.5 },
+}
+
+/**
  * DeepSeek V4 峰谷时代之前的官方基础价（CNY / 1M tokens）：官方中文定价页
  * 峰谷改版前的基础价档（缓存写沿用历史规则按命中价计）。键为内置目录键，
  * flash-vision-exp 与 flash 同价。仅当事件时刻早于 {@link PEAK_ERA_START_MS}
@@ -493,12 +512,14 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'DeepSeek V4 Flash',
     provider: 'DeepSeek',
     colorVar: 'dsw-static-blue-500',
+    // 2026-09-10 12:00（北京）起官方调价：谷 1.5/0.05/4.5 → 1/0.02/4（峰 = 谷 × 2）。
+    // 此处写现行价；分界前的历史事件由 computeCostAt 按 FLASH_REPRICE_MS 回算旧价。
     price: {
       currency: 'CNY',
-      input: 3,
-      cacheHit: 0.1,
-      output: 9,
-      offPeak: { input: 1.5, cacheHit: 0.05, output: 4.5 },
+      input: 2,
+      cacheHit: 0.04,
+      output: 8,
+      offPeak: { input: 1, cacheHit: 0.02, output: 4 },
     },
     peakHours: '09:00-12:00 / 14:00-18:00',
   },
@@ -507,12 +528,13 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'DeepSeek V4 Flash Vision (Exp)',
     provider: 'DeepSeek',
     colorVar: 'dsw-static-blue-500',
+    // 与 flash 同价、同步调价（2026-09-10 12:00 起），历史回算同 FLASH_REPRICE_MS。
     price: {
       currency: 'CNY',
-      input: 3,
-      cacheHit: 0.1,
-      output: 9,
-      offPeak: { input: 1.5, cacheHit: 0.05, output: 4.5 },
+      input: 2,
+      cacheHit: 0.04,
+      output: 8,
+      offPeak: { input: 1, cacheHit: 0.02, output: 4 },
     },
     peakHours: '09:00-12:00 / 14:00-18:00',
   },
@@ -1650,6 +1672,18 @@ export function computeCostAt(
     ? LEGACY_DEEPSEEK_BANDS[entry.key]
     : undefined
   if (legacy !== undefined) return priceBandCost(legacy, buckets, 'CNY')
+  // flash 系 2026-09-10 12:00 调价分界：分界前的事件按官方旧谷档价回算
+  // （峰档 = 谷档 × 2，档位判定沿用当时的分段规则）；用户价跳过本表。
+  const repriced = timeMs < FLASH_REPRICE_MS && entry.userPriced !== true
+    ? FLASH_REPRICED_OFFPEAK[entry.key]
+    : undefined
+  if (repriced !== undefined) {
+    const tier = timeMs < WEEKEND_OFFPEAK_START_MS ? tariffV1At(timeMs) : tierAt(timeMs)
+    const band = tier === 'peak'
+      ? { input: repriced.input * 2, cacheHit: repriced.cacheHit * 2, output: repriced.output * 2 }
+      : repriced
+    return priceBandCost(band, buckets, 'CNY')
+  }
   if (priced.price.offPeak === undefined) return priceBandCost(priced.price, buckets, priced.price.currency)
   // 档位判定按事件时刻分段适用规则：v1 窗口不豁免周末，分界起周末全谷。
   const tier = timeMs < WEEKEND_OFFPEAK_START_MS ? tariffV1At(timeMs) : tierAt(timeMs)

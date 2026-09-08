@@ -93,11 +93,11 @@ describe('computeCost', () => {
   const MILLION = 1_000_000
 
   it('prices domestic CNY models in yuan without any exchange-rate step', () => {
-    // DeepSeek 本身是人民币计价：¥3/1M 输入、¥0.1/1M 缓存命中。
+    // DeepSeek 本身是人民币计价：¥2/1M 输入、¥0.04/1M 缓存命中（2026-09-10 调价后）。
     const cost = computeCost(modelOf('flash'), {
       input: MILLION, cacheHit: 500_000, cacheMiss: 500_000, output: 0,
     }, 1) // peakShare=1：只看高峰档。
-    const expected = (500_000 * 3 + 500_000 * 0.1) / MILLION
+    const expected = (500_000 * 2 + 500_000 * 0.04) / MILLION
     expect(cost).toBeCloseTo(expected, 10)
   })
 
@@ -115,7 +115,7 @@ describe('computeCost', () => {
     const peakOnly = computeCost(modelOf('flash'), buckets, 1)
     const offOnly = computeCost(modelOf('flash'), buckets, 0)
     const half = computeCost(modelOf('flash'), buckets, 0.5)
-    expect(peakOnly).toBeCloseTo((1_000_000 * 0.1 + 1_000_000 * 9) / MILLION, 10)
+    expect(peakOnly).toBeCloseTo((1_000_000 * 0.04 + 1_000_000 * 8) / MILLION, 10)
     expect(offOnly).toBeLessThan(peakOnly) // 低谷档更便宜（官方减半）。
     expect(half).toBeCloseTo((peakOnly + offOnly) / 2, 10)
   })
@@ -131,11 +131,11 @@ describe('computeCost', () => {
     const buckets = { input: 2 * MILLION, cacheHit: MILLION, cacheMiss: MILLION, output: MILLION }
     const peakOnly = computeCost(modelOf('flash'), buckets, 1)
     const offOnly = computeCost(modelOf('flash'), buckets, 0)
-    // 高峰：缓存命中 ¥0.1、未命中 ¥3、输出 ¥9（每 1M）。
-    const expectedPeak = (MILLION * 0.1 + MILLION * 3 + MILLION * 9) / MILLION
+    // 高峰：缓存命中 ¥0.04、未命中 ¥2、输出 ¥8（每 1M，2026-09-10 调价后）。
+    const expectedPeak = (MILLION * 0.04 + MILLION * 2 + MILLION * 8) / MILLION
     expect(peakOnly).toBeCloseTo(expectedPeak, 10)
-    // 低谷：缓存命中 ¥0.05、未命中 ¥1.5、输出 ¥4.5（每 1M）。
-    const expectedOff = (MILLION * 0.05 + MILLION * 1.5 + MILLION * 4.5) / MILLION
+    // 低谷：缓存命中 ¥0.02、未命中 ¥1、输出 ¥4（每 1M）。
+    const expectedOff = (MILLION * 0.02 + MILLION * 1 + MILLION * 4) / MILLION
     expect(offOnly).toBeCloseTo(expectedOff, 10)
     // 各半混合：两个档位各贡献一半。
     expect(computeCost(modelOf('flash'), buckets, 0.5)).toBeCloseTo((expectedPeak + expectedOff) / 2, 10)
@@ -260,19 +260,50 @@ describe('peak/off-peak tier (P0-1)', () => {
 
 describe('computeCostAt (P0-1)', () => {
   const MILLION = 1_000_000
-  const at = (beijingHour: number): number => Date.UTC(2026, 7, 21, (beijingHour + 24 - 8) % 24)
   const buckets = { input: 2 * MILLION, cacheHit: MILLION, cacheMiss: MILLION, output: MILLION }
+  // 2026-09-10 12:00（北京）flash 系调价分界：分界前旧价（谷 1.5/0.05/4.5，
+  // 峰 = 谷 × 2 = 3/0.1/9），分界后新价（谷 1/0.02/4，峰 2/0.04/8）。
+  const preAt = (beijingHour: number): number => Date.UTC(2026, 8, 9, (beijingHour + 24 - 8) % 24) // 9-09 周三
+  const postAt = (beijingHour: number): number => Date.UTC(2026, 8, 11, (beijingHour + 24 - 8) % 24) // 9-11 周五
 
-  it('prices the peak band when the call falls in the peak window', () => {
-    // 高峰：缓存命中 ¥0.1、未命中 ¥3、输出 ¥9（每 1M）。
-    expect(computeCostAt(modelOf('flash'), buckets, at(10)))
+  it('prices the pre-reprice peak band with the old official rate', () => {
+    // 调价前高峰：缓存命中 ¥0.1、未命中 ¥3、输出 ¥9（每 1M）。
+    expect(computeCostAt(modelOf('flash'), buckets, preAt(10)))
       .toBeCloseTo((MILLION * 0.1 + MILLION * 3 + MILLION * 9) / MILLION, 10)
   })
 
-  it('prices the off-peak band outside the window', () => {
-    // 低谷：缓存命中 ¥0.05、未命中 ¥1.5、输出 ¥4.5（每 1M）。
-    expect(computeCostAt(modelOf('flash'), buckets, at(13)))
-      .toBeCloseTo((MILLION * 0.05 + MILLION * 1.5 + MILLION * 4.5) / MILLION, 10)
+  it('prices the post-reprice peak band with the new official rate', () => {
+    // 调价后高峰：缓存命中 ¥0.04、未命中 ¥2、输出 ¥8（每 1M）。
+    expect(computeCostAt(modelOf('flash'), buckets, postAt(10)))
+      .toBeCloseTo((MILLION * 0.04 + MILLION * 2 + MILLION * 8) / MILLION, 10)
+  })
+
+  it('prices the post-reprice off-peak band with the new official rate', () => {
+    // 调价后低谷：缓存命中 ¥0.02、未命中 ¥1、输出 ¥4（每 1M）。
+    expect(computeCostAt(modelOf('flash'), buckets, postAt(13)))
+      .toBeCloseTo((MILLION * 0.02 + MILLION * 1 + MILLION * 4) / MILLION, 10)
+  })
+
+  it('switches rates within the reprice day at the 12:00 boundary', () => {
+    // 分界当天（9-10 周四）：10:00 仍是旧峰价，14:00 已是新峰价——同一天跨分界。
+    const tenAm = Date.UTC(2026, 8, 10, 2) // 北京 10:00（分界前）
+    const twoPm = Date.UTC(2026, 8, 10, 6) // 北京 14:00（分界后）
+    expect(computeCostAt(modelOf('flash'), buckets, tenAm))
+      .toBeCloseTo((MILLION * 0.1 + MILLION * 3 + MILLION * 9) / MILLION, 10)
+    expect(computeCostAt(modelOf('flash'), buckets, twoPm))
+      .toBeCloseTo((MILLION * 0.04 + MILLION * 2 + MILLION * 8) / MILLION, 10)
+  })
+
+  it('reprices flash-vision-exp identically to flash', () => {
+    expect(computeCostAt(modelOf('flash-vision-exp'), buckets, postAt(13)))
+      .toBe(computeCostAt(modelOf('flash'), buckets, postAt(13)))
+  })
+
+  it('keeps user prices authoritative across the reprice boundary', () => {
+    // 用户价 = 实付价：分界前也不套内置旧价口径。
+    const priced = { ...modelOf('flash'), userPriced: true as const, price: { currency: 'CNY' as const, input: 9, cacheHit: 0.3, output: 27 } }
+    expect(computeCostAt(priced, buckets, preAt(10)))
+      .toBeCloseTo((MILLION * 0.3 + MILLION * 9 + MILLION * 27) / MILLION, 10)
   })
 
   it('falls back to the peak-share mix when the time is missing', () => {
@@ -280,7 +311,7 @@ describe('computeCostAt (P0-1)', () => {
   })
 
   it('prices flat models identically at any time', () => {
-    expect(computeCostAt(modelOf('glm'), buckets, at(10))).toBeCloseTo(computeCostAt(modelOf('glm'), buckets, at(13)), 10)
+    expect(computeCostAt(modelOf('glm'), buckets, preAt(10))).toBeCloseTo(computeCostAt(modelOf('glm'), buckets, postAt(13)), 10)
   })
 })
 
@@ -488,8 +519,8 @@ describe('time-limited promo (GLM-5.3-Flash)', () => {
     // DeepSeek V4 Flash 带 offPeak 分档：促销把主档与低谷档一起打折。
     const deepseekWithPromo = { ...modelOf('flash'), promo: { factor: 0.5, endsAtMs } }
     const priced = applyPromo(deepseekWithPromo, endsAtMs - 1000)
-    expect(priced.price.input).toBeCloseTo(1.5, 10) // 主档 ¥3 → ¥1.5
-    expect(priced.price.offPeak?.input).toBeCloseTo(0.75, 10) // 低谷 ¥1.5 → ¥0.75
+    expect(priced.price.input).toBeCloseTo(1, 10) // 主档 ¥2 → ¥1
+    expect(priced.price.offPeak?.input).toBeCloseTo(0.5, 10) // 低谷 ¥1 → ¥0.5
   })
 
   it('returns the entry untouched outside the window or with an invalid factor', () => {

@@ -153,6 +153,14 @@ export declare const PEAK_ERA_START_MS: number;
  * 档位判定按事件所在时段适用各自的规则，不得统一套现行规则重算历史。
  */
 export declare const WEEKEND_OFFPEAK_START_MS: number;
+/**
+ * flash 系调价分界（UTC 2026-09-10T04:00:00Z，即北京时间 2026-09-10 12:00）：
+ * 官方自此刻起 V4 Flash / V4 Flash Vision (Exp) 调价——谷档 1.5/0.05/4.5 →
+ * 1/0.02/4（峰 = 谷 × 2）。目录条目写现行（新）价；分界前的历史事件由
+ * {@link computeCostAt} 按 {@link FLASH_REPRICED_OFFPEAK} 回算旧价，与
+ * {@link PEAK_ERA_START_MS} 同一「按事件时刻分段适用规则」口径。
+ */
+export declare const FLASH_REPRICE_MS: number;
 /** 计费时段档位：高峰 / 空闲（官方 DeepSeek 刊例价：高峰 = 空闲 × 2）。 */
 export type PriceTierId = 'peak' | 'offPeak';
 /** 成本显示币种：人民币（国内模型直价）/ 美元（国外模型直价或换算显示）。 */

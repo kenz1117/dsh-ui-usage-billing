@@ -98,12 +98,6 @@ export const DASHBOARD_TABS: readonly { id: DashboardTab; labelKey: UsageBilling
   { id: 'settings', labelKey: 'tabSettings' },
 ]
 
-/** 项目名取 cwd 的末级目录；无 cwd 时由调用方回退为 em dash。 */
-function projectName(cwd: string | undefined): string | undefined {
-  if (cwd === undefined) return undefined
-  return cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd
-}
-
 /** 预算提醒档位（百分比）：跨档时桌面通知，每档每天最多一次。 */
 const BUDGET_ALERT_TIERS: readonly number[] = [50, 80, 100]
 
@@ -455,6 +449,46 @@ interface SessionBillingRow {
   calls: number
   cost: number
   lastActive: number
+  /** 展示层合并标记（issue #42）：同标题会话归并后的段数（>1 时行尾显示 ×N）。 */
+  mergedCount?: number
+  /** 合并组的段明细（展示层专用）：一级行默认收起，展开后逐段显示。合并函数需 push，故非 readonly。 */
+  children?: SessionBillingRow[]
+}
+
+/**
+ * 同标题会话合并（issue #42）：fork/resume 派生的多段会话共用同一标题但各自
+ * 成行，短 id 行形成大量不明信息——同标题归并为一行作为一级（calls/cost 求和、
+ * lastActive 取 max、任一子行 stale 即组 stale），各段明细收进 children 默认
+ * 收起、点击展开。无标题行保持独立：聚合层只有 fork 种子边界、没有 parent
+ * 指针，无法归并。费用倒序保持紧凑。
+ */
+function mergeSessionRows(rows: readonly SessionBillingRow[]): SessionBillingRow[] {
+  const merged = new Map<string, SessionBillingRow>()
+  const out: SessionBillingRow[] = []
+  for (const row of rows) {
+    if (row.title === undefined || row.title === '') {
+      out.push(row)
+      continue
+    }
+    const hit = merged.get(row.title)
+    if (hit === undefined) {
+      const copy: SessionBillingRow = { ...row, mergedCount: 1 }
+      merged.set(row.title, copy)
+      out.push(copy)
+      continue
+    }
+    // 首个成员的原始行收进 children（spread 在 children 赋值前，天然无嵌套；
+    // 副本带 mergedCount:1 无碍——二级行渲染只读 id/项目/数值列）。
+    if (hit.children === undefined) hit.children = [ { ...hit } ]
+    hit.children.push({ ...row })
+    hit.calls += row.calls
+    hit.cost += row.cost
+    hit.lastActive = Math.max(hit.lastActive, row.lastActive)
+    // exactOptionalPropertyTypes：stale 只在为真时写入（undefined 不落 key）。
+    if (row.stale === true) hit.stale = true
+    hit.mergedCount = (hit.mergedCount ?? 1) + 1
+  }
+  return out.sort((a, b) => b.cost - a.cost || b.lastActive - a.lastActive)
 }
 
 /** 订阅额度查询状态的文案（ok 时无需额外标注，返回空串）。 */
@@ -1604,24 +1638,16 @@ function BillingDashboard({
   // 余额详情弹窗：记录打开的厂商（按 provider 标识）；点击「约可撑 N 天」圆圈切换。
   const [balanceDetailFor, setBalanceDetailFor] = useState<string | undefined>()
 
-  // 会话明细按工作区分组：工作区行内联合计（费用/调用），组内列出会话。
-  // 与服务端 byWorkspace 同口径（projectName 对 cwd 末级目录归并）；顺序沿用 bySession 的费用倒序。
-  const sessionGroups = useMemo(() => {
-    const rows = stats.bySession ?? []
-    const map = new Map<string, SessionBillingRow[]>()
-    for (const row of rows) {
-      const name = projectName(row.cwd) ?? '—'
-      const list = map.get(name)
-      if (list === undefined) map.set(name, [row])
-      else list.push(row)
-    }
-    return [...map].map(([name, list]) => ({
-      name,
-      rows: list,
-      calls: list.reduce((n, r) => n + r.calls, 0),
-      cost: list.reduce((n, r) => n + r.cost, 0),
-    }))
-  }, [stats.bySession])
+  // 合并会话的展开状态（issue #42）：一级默认收起，点击主行切换。
+  const [expandedSessions, setExpandedSessions] = useState<ReadonlySet<string>>(new Set())
+  const toggleSession = useCallback((id: string) => {
+    setExpandedSessions(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
 
   // usage_stats 工具开关：经插件自带的 HTTP 接口读写（不依赖宿主浏览器设置白名单）。
@@ -3195,43 +3221,58 @@ function BillingDashboard({
                         </tr>
                       </thead>
                       <tbody>
-                        {sessionGroups.length === 0 && (
+                        {mergeSessionRows(stats.bySession ?? []).length === 0 && (
                           <tr>
                             <td colSpan={4} className={css.emptyRow}>{t('noData')}</td>
                           </tr>
                         )}
-                        {sessionGroups.map(group => (
-                          <Fragment key={group.name}>
-                            {/* 工作区组行：名称 + 该工作区的费用/调用内联合计。 */}
-                            <tr data-testid={`billing-session-group-${group.name}`}>
-                              <td>
-                                <span className={css.modelName}>{group.name}</span>
-                              </td>
-                              <td className={css.numCol}>{group.calls.toLocaleString()}</td>
-                              <td className={css.numCol}>{money(group.cost)}</td>
+                        {mergeSessionRows(stats.bySession ?? []).slice(0, SESSION_DISPLAY_LIMIT).map(row => {
+                          // 折叠态与数值列提取为局部闭包：一/二级行多处共用，收敛渲染重复。
+                          const isGroup = row.children !== undefined
+                          const open = isGroup && expandedSessions.has(row.id)
+                          const numCells = (r: SessionBillingRow) => (
+                            <>
+                              <td className={css.numCol}>{r.calls.toLocaleString()}</td>
+                              <td className={css.numCol}>{money(r.cost)}</td>
                               <td className={css.numCol}>
-                                <span className={css.modelProvider}>{t('workspaceSubtotal')}</span>
+                                {r.lastActive > 0 ? `${localDayStamp(r.lastActive)} ${formatClock(r.lastActive)}` : '—'}
                               </td>
-                            </tr>
-                            {group.rows.slice(0, SESSION_DISPLAY_LIMIT).map(row => (
-                              <tr key={row.id}>
+                            </>
+                          )
+                          return (
+                            <Fragment key={row.id}>
+                              <tr
+                                className={isGroup ? css.sessionGroupRow : undefined}
+                                aria-expanded={isGroup ? open : undefined}
+                                onClick={isGroup ? () => { toggleSession(row.id) } : undefined}
+                              >
                                 <td>
-                                  <span className={css.modelName}>{row.title ?? row.id.slice(0, 8)}</span>
+                                  {/* 无标题会话可读化（issue #42）：短 id 前补「未命名会话」提示。 */}
+                                  {/* 折叠箭头由 .sessionGroupRow .modelName::before 绘制（体积考量不放 span）。 */}
+                                  <span className={css.modelName}>
+                                    {row.title ?? `${t('sessionUntitled')} · ${row.id.slice(0, 8)}`}
+                                    {(row.mergedCount ?? 1) > 1 ? ` ×${row.mergedCount}` : ''}
+                                  </span>
                                   {row.stale === true && (
                                     <span className={clsx(css.ubTag, css.ubTagNeutral)} data-testid="billing-session-stale">
                                       {t('sessionStaleBadge')}
                                     </span>
                                   )}
                                 </td>
-                                <td className={css.numCol}>{row.calls.toLocaleString()}</td>
-                                <td className={css.numCol}>{money(row.cost)}</td>
-                                <td className={css.numCol}>
-                                  {row.lastActive > 0 ? `${localDayStamp(row.lastActive)} ${formatClock(row.lastActive)}` : '—'}
-                                </td>
+                                {numCells(row)}
                               </tr>
-                            ))}
-                          </Fragment>
-                        ))}
+                              {/* 二级段明细（issue #42）：默认收起，点击一级展开。 */}
+                              {open && row.children?.map(child => (
+                                <tr key={child.id} className={css.sessionChildRow}>
+                                  <td>
+                                    <span className={css.modelProvider}>{child.id.slice(0, 8)}</span>
+                                  </td>
+                                  {numCells(child)}
+                                </tr>
+                              ))}
+                            </Fragment>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
