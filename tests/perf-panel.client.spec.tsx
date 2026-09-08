@@ -55,4 +55,20 @@ describe('PerfPanel', () => {
     expect(screen.getByTestId('billing-perf-empty')).toBeTruthy()
     expect(screen.queryByTestId('billing-perf-table')).toBeNull()
   })
+
+  it('abbreviates oversized table values so fixed columns never overlap (issue #41)', () => {
+    cleanup()
+    render(renderPanel({
+      byModel: {
+        flash: { samples: 1119, ttftAvg: 25209, ttftP50: 23070, ttftP90: 23070, ttftMax: 122141, tpsAvg: 27094, latencyAvg: 42838, estimatedSamples: 0 },
+      },
+      byHour: {},
+    }))
+    // 长毫秒值转 s/min、生成速度转 k：fixed 列宽下不再溢出叠进右列。
+    const table = screen.getByTestId('billing-perf-table')
+    expect(table.textContent).toContain('2.0 min')
+    expect(table.textContent).toContain('42.8 s')
+    expect(table.textContent).toContain('27.1k')
+    expect(table.textContent).not.toContain('122141')
+  })
 })

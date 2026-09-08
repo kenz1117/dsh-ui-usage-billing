@@ -1564,6 +1564,18 @@
   font-size: 12.5px;
 }
 
+/* issue #41：模型/性能/Token 子表 fixed 布局 + 首列定宽 + 最小宽度——窄容器下
+   长数值（122141 ms / 426.8M）不再溢出单元格叠进右列，min-width 让 tableScroll
+   出横向滚动。pricingTable 不受影响（费率表单元格短）。 */
+.modelTable {
+  min-width: 640px;
+  table-layout: fixed;
+}
+
+.modelTable th:nth-child(1) {
+  width: 26%;
+}
+
 .modelTable th,
 .modelTable td,
 .pricingTable th,
@@ -1598,6 +1610,29 @@
 .pricingTable tbody tr:hover {
   background: transparent;
 }
+
+/* 合并会话交互（issue #42）：一级行可点、默认收起；折叠箭头用伪元素绘制
+   （bundle 贴着 Store 256KiB 上限，省去独立指示符 span），展开时段明细缩进。 */
+.sessionGroupRow {
+  cursor: pointer;
+}
+
+.sessionGroupRow .modelName::before {
+  content: '›';
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 120ms ease;
+}
+
+.sessionGroupRow[aria-expanded='true'] .modelName::before {
+  transform: rotate(90deg);
+}
+
+.sessionChildRow td:first-child {
+  padding-left: 30px;
+}
+
 .numCol {
   text-align: right;
   font-variant-numeric: tabular-nums;

@@ -126,6 +126,10 @@ interface SessionBillingRow {
     calls: number;
     cost: number;
     lastActive: number;
+    /** 展示层合并标记（issue #42）：同标题会话归并后的段数（>1 时行尾显示 ×N）。 */
+    mergedCount?: number;
+    /** 合并组的段明细（展示层专用）：一级行默认收起，展开后逐段显示。合并函数需 push，故非 readonly。 */
+    children?: SessionBillingRow[];
 }
 /** Usage stats structure from `.dsh-usage-stats.json`. */
 export interface UsageStats {

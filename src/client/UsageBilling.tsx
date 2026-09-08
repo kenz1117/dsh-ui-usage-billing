@@ -441,6 +441,46 @@ interface SessionBillingRow {
   calls: number
   cost: number
   lastActive: number
+  /** 展示层合并标记（issue #42）：同标题会话归并后的段数（>1 时行尾显示 ×N）。 */
+  mergedCount?: number
+  /** 合并组的段明细（展示层专用）：一级行默认收起，展开后逐段显示。合并函数需 push，故非 readonly。 */
+  children?: SessionBillingRow[]
+}
+
+/**
+ * 同标题会话合并（issue #42）：fork/resume 派生的多段会话共用同一标题但各自
+ * 成行，短 id 行形成大量不明信息——同标题归并为一行作为一级（calls/cost 求和、
+ * lastActive 取 max、任一子行 stale 即组 stale），各段明细收进 children 默认
+ * 收起、点击展开。无标题行保持独立：聚合层只有 fork 种子边界、没有 parent
+ * 指针，无法归并。费用倒序保持紧凑。
+ */
+function mergeSessionRows(rows: readonly SessionBillingRow[]): SessionBillingRow[] {
+  const merged = new Map<string, SessionBillingRow>()
+  const out: SessionBillingRow[] = []
+  for (const row of rows) {
+    if (row.title === undefined || row.title === '') {
+      out.push(row)
+      continue
+    }
+    const hit = merged.get(row.title)
+    if (hit === undefined) {
+      const copy: SessionBillingRow = { ...row, mergedCount: 1 }
+      merged.set(row.title, copy)
+      out.push(copy)
+      continue
+    }
+    // 首个成员的原始行收进 children（spread 在 children 赋值前，天然无嵌套；
+    // 副本带 mergedCount:1 无碍——二级行渲染只读 id/项目/数值列）。
+    if (hit.children === undefined) hit.children = [ { ...hit } ]
+    hit.children.push({ ...row })
+    hit.calls += row.calls
+    hit.cost += row.cost
+    hit.lastActive = Math.max(hit.lastActive, row.lastActive)
+    // exactOptionalPropertyTypes：stale 只在为真时写入（undefined 不落 key）。
+    if (row.stale === true) hit.stale = true
+    hit.mergedCount = (hit.mergedCount ?? 1) + 1
+  }
+  return out.sort((a, b) => b.cost - a.cost || b.lastActive - a.lastActive)
 }
 
 /** 订阅额度查询状态的文案（ok 时无需额外标注，返回空串）。 */
@@ -1512,6 +1552,16 @@ function BillingDashboard({
   const [balanceDetailFor, setBalanceDetailFor] = useState<string | undefined>()
   // 项目下钻：记录当前展开的项目名；点击项目行切换展开/收起。
   const [expandedProject, setExpandedProject] = useState<string | undefined>()
+  // 合并会话的展开状态（issue #42）：一级默认收起，点击主行切换。
+  const [expandedSessions, setExpandedSessions] = useState<ReadonlySet<string>>(new Set())
+  const toggleSession = useCallback((id: string) => {
+    setExpandedSessions(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
   // usage_stats 工具开关：经插件自带的 HTTP 接口读写（不依赖宿主浏览器设置白名单）。
   // 挂载时读一次当前值；点按乐观切换并回写，写失败回滚。工具注入是启动期决策，重启生效。
@@ -2993,7 +3043,7 @@ function BillingDashboard({
                               .slice(0, 5)
                               .map(s => (
                                 <div key={s.id} className={css.rowlineDrill}>
-                                  <span className={css.rowlineName}>{s.title ?? s.id.slice(0, 8)}</span>
+                                  <span className={css.rowlineName}>{s.title ?? `${t('sessionUntitled')} · ${s.id.slice(0, 8)}`}</span>
                                   <span className={css.rowlineRight}>
                                     <span className={css.num}>{money(s.cost)}</span>
                                     <span className={css.rowlineMuted}>{s.calls} {t('calls')}</span>
@@ -3045,26 +3095,56 @@ function BillingDashboard({
                             <td colSpan={5} className={css.emptyRow}>{t('noData')}</td>
                           </tr>
                         )}
-                        {stats.bySession.slice(0, SESSION_DISPLAY_LIMIT).map(row => (
-                          <tr key={row.id}>
-                            <td>
-                              <span className={css.modelName}>{row.title ?? row.id.slice(0, 8)}</span>
-                              {row.stale === true && (
-                                <span className={clsx(css.ubTag, css.ubTagNeutral)} data-testid="billing-session-stale">
-                                  {t('sessionStaleBadge')}
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              <span className={css.modelProvider}>{projectName(row.cwd) ?? '—'}</span>
-                            </td>
-                            <td className={css.numCol}>{row.calls.toLocaleString()}</td>
-                            <td className={css.numCol}>{money(row.cost)}</td>
-                            <td className={css.numCol}>
-                              {row.lastActive > 0 ? `${localDayStamp(row.lastActive)} ${formatClock(row.lastActive)}` : '—'}
-                            </td>
-                          </tr>
-                        ))}
+                        {mergeSessionRows(stats.bySession).slice(0, SESSION_DISPLAY_LIMIT).map(row => {
+                          // 折叠态与数值列提取为局部闭包：一/二级行多处共用，收敛渲染重复。
+                          const isGroup = row.children !== undefined
+                          const open = isGroup && expandedSessions.has(row.id)
+                          const numCells = (r: SessionBillingRow) => (
+                            <>
+                              <td>
+                                <span className={css.modelProvider}>{projectName(r.cwd) ?? '—'}</span>
+                              </td>
+                              <td className={css.numCol}>{r.calls.toLocaleString()}</td>
+                              <td className={css.numCol}>{money(r.cost)}</td>
+                              <td className={css.numCol}>
+                                {r.lastActive > 0 ? `${localDayStamp(r.lastActive)} ${formatClock(r.lastActive)}` : '—'}
+                              </td>
+                            </>
+                          )
+                          return (
+                            <Fragment key={row.id}>
+                              <tr
+                                className={isGroup ? css.sessionGroupRow : undefined}
+                                aria-expanded={isGroup ? open : undefined}
+                                onClick={isGroup ? () => { toggleSession(row.id) } : undefined}
+                              >
+                                <td>
+                                  {/* 无标题会话可读化（issue #42）：短 id 前补「未命名会话」提示。 */}
+                                  {/* 折叠箭头由 .sessionGroupRow .modelName::before 绘制（体积考量不放 span）。 */}
+                                  <span className={css.modelName}>
+                                    {row.title ?? `${t('sessionUntitled')} · ${row.id.slice(0, 8)}`}
+                                    {(row.mergedCount ?? 1) > 1 ? ` ×${row.mergedCount}` : ''}
+                                  </span>
+                                  {row.stale === true && (
+                                    <span className={clsx(css.ubTag, css.ubTagNeutral)} data-testid="billing-session-stale">
+                                      {t('sessionStaleBadge')}
+                                    </span>
+                                  )}
+                                </td>
+                                {numCells(row)}
+                              </tr>
+                              {/* 二级段明细（issue #42）：默认收起，点击一级展开。 */}
+                              {open && row.children?.map(child => (
+                                <tr key={child.id} className={css.sessionChildRow}>
+                                  <td>
+                                    <span className={css.modelProvider}>{child.id.slice(0, 8)}</span>
+                                  </td>
+                                  {numCells(child)}
+                                </tr>
+                              ))}
+                            </Fragment>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>

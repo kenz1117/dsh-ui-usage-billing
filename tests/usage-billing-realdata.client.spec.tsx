@@ -71,6 +71,7 @@ const REAL_STATS = {
   },
   bySession: [
     { id: 'sess-shop-1', title: '修复登录 bug', cwd: '/home/ken/shop-web', calls: 80, cost: 2.4, lastActive: Date.UTC(2026, 7, 16, 8, 0, 0) },
+    { id: 'sess-shop-2', title: '修复登录 bug', cwd: '/home/ken/shop-web', calls: 12, cost: 0.6, lastActive: Date.UTC(2026, 7, 16, 10, 0, 0) },
     { id: 'sess-api-2', cwd: '/home/ken/api-server', calls: 20, cost: 1.02, lastActive: Date.UTC(2026, 7, 15, 9, 30, 0) },
   ],
 }
@@ -169,12 +170,33 @@ describe('UsageBilling real-data surface', () => {
     // 会话明细在明细 Tab 内默认展开：切 Tab 后表格直接可见。
     fireEvent.click(await screen.findByTestId('billing-tab-providers'))
     const table = await screen.findByTestId('billing-sessions-table')
-    // 标题行按费用倒序；无标题会话回退为 id 前 8 位；项目取 cwd 末级目录。
+    // 标题行按费用倒序；无标题会话显示「未命名会话 · 短id」（issue #42 可读化）；
+    // 项目取 cwd 末级目录。同标题合并后 2 行（shop-web 组 1 行 + api 1 行）。
     expect(table.textContent).toContain('修复登录 bug')
     expect(table.textContent).toContain('shop-web')
     expect(table.textContent).toContain('api-server')
-    expect(table.textContent).toContain('sess-api')
+    expect(table.textContent).toContain('未命名会话 · sess-api')
     expect(table.querySelectorAll('tbody tr')).toHaveLength(2)
+  })
+
+  it('merges same-title sessions into a collapsible primary row (issue #42)', async () => {
+    const { container } = render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(container.querySelector('button')!)
+    fireEvent.click(await screen.findByTestId('billing-tab-providers'))
+    const table = await screen.findByTestId('billing-sessions-table')
+    // 一级行默认收起：同标题两段合并为一行「修复登录 bug ×2」（calls/cost 合计
+    // 80+12=92、2.4+0.6=3.0），子段不出现。
+    const primary = screen.getByText('修复登录 bug ×2').closest('tr')!
+    expect(primary.textContent).toContain('92')
+    expect(table.textContent).not.toContain('sess-shop-1')
+    // 点击一级行展开：逐段明细（短 id + 各段费用）出现，再点收起。
+    fireEvent.click(primary)
+    expect(table.textContent).toContain('sess-sho')
+    expect(table.textContent).toContain('¥2.40')
+    expect(primary.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(primary)
+    expect(table.textContent).not.toContain('sess-shop')
+    expect(primary.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('notifies once per tier per day as spend crosses budget tiers', async () => {

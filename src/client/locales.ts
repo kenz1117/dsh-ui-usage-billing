@@ -127,6 +127,7 @@ export type UsageBillingKey =
   | 'userPriceAdd'
   | 'userPriceRemove'
   | 'sessionStaleBadge'
+  | 'sessionUntitled'
   | 'heatmapLess'
   | 'heatmapMore'
   | 'currency'
@@ -343,7 +344,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'promoBadge': '限时折扣',
   'promoUntil': '促销价至 {date}，之后自动恢复刊例价',
   'promoOpenEnded': '厂商未公布截止时间，当前按折扣计价；公告截止后自动恢复刊例价',
-  'pricingTip': 'DeepSeek 模型自北京时间 2026-08-23（周日）00:00 起：工作日高峰 9-12 / 14-18（×2），周末（周六 / 周日）全天低谷价；双价单元格按峰 / 谷展示，费用按调用时刻计。',
+  'pricingTip': 'DeepSeek flash 系自 2026-09-10 12:00（北京）起谷档调价：未命中 ¥1 / 输出 ¥4 / 缓存命中 ¥0.02（峰 = 谷 × 2，原 1.5 / 4.5 / 0.05）；峰谷分时自 2026-08-23（周日）00:00 起：工作日高峰 9-12 / 14-18（×2），周末（周六 / 周日）全天低谷价。双价单元格按峰 / 谷展示，费用按调用时刻计。',
   'pricingUnit': '单位：人民币 / 每百万 Token',
   'pricingNotes': '计价说明',
   'ubPeak': '峰',
@@ -408,6 +409,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'userPriceAdd': '新增',
   'userPriceRemove': '删除',
   'sessionStaleBadge': '旧版统计',
+  'sessionUntitled': '未命名会话',
   'heatmapLess': '少',
   'heatmapMore': '多',
   'currency': '币种',
@@ -624,7 +626,7 @@ export const en: Record<UsageBillingKey, string> = {
   'promoBadge': 'Promo',
   'promoUntil': 'Promo price until {date}, then list price resumes automatically',
   'promoOpenEnded': 'End date not announced; billed at the discounted rate until further notice, then list price resumes',
-  'pricingTip': 'DeepSeek models: from 2026-08-23 (Sun) 00:00 Beijing, weekdays peak 9-12 / 14-18 (×2), weekends (Sat/Sun) all-day off-peak; cells show peak/off-peak price, billed at call time.',
+  'pricingTip': 'DeepSeek flash repricing from 2026-09-10 12:00 Beijing: off-peak is now ¥1 miss / ¥4 output / ¥0.02 cache-hit (peak = 2× off-peak; was 1.5 / 4.5 / 0.05); time-of-day billing since 2026-08-23 (Sun) 00:00: weekdays peak 9-12 / 14-18 (×2), weekends (Sat/Sun) all-day off-peak. Cells show peak/off-peak price, billed at call time.',
   'pricingUnit': 'Unit: CNY / per 1M tokens',
   'pricingNotes': 'Pricing notes',
   'ubPeak': 'Peak',
@@ -689,6 +691,7 @@ export const en: Record<UsageBillingKey, string> = {
   'userPriceAdd': 'Add',
   'userPriceRemove': 'Remove',
   'sessionStaleBadge': 'legacy',
+  'sessionUntitled': 'Untitled session',
   'heatmapLess': 'Less',
   'heatmapMore': 'More',
   'currency': 'Currency',
