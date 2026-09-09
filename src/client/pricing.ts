@@ -265,12 +265,17 @@ export const FLASH_REPRICE_MS = Date.parse('2026-09-10T04:00:00Z')
 
 /**
  * flash 系调价前的官方谷档价（CNY / 1M tokens）：{@link FLASH_REPRICE_MS}
- * 之前的 flash / flash-vision-exp 事件按此回算（峰档 = 谷档 × 2）。
+ * 之前的 flash / flash-vision-exp 事件按此回算（峰档 = 谷档 × 2）。pro 的
+ * 同表条目是 V4 Pro 峰谷时代刊例（谷 4.5/0.15/13.5）：官方公告自
+ * {@link FLASH_REPRICE_MS} 起 V4 Pro 请求全部路由至 V4.1 Flash 并按其单价
+ * 计费（V4.1 Pro 上线前），故分界前回算 V4 Pro 刊例、分界后走目录的 Flash 价。
  * 用户价 = 实付价，与 legacy 口径相同地跳过本表。
  */
+const FLASH_PRE_REPRICE_BAND: PriceBand = { input: 1.5, cacheHit: 0.05, output: 4.5 }
 const FLASH_REPRICED_OFFPEAK: Readonly<Record<string, PriceBand>> = {
-  flash: { input: 1.5, cacheHit: 0.05, output: 4.5 },
-  'flash-vision-exp': { input: 1.5, cacheHit: 0.05, output: 4.5 },
+  flash: FLASH_PRE_REPRICE_BAND,
+  'flash-vision-exp': FLASH_PRE_REPRICE_BAND,
+  pro: { input: 4.5, cacheHit: 0.15, output: 13.5 },
 }
 
 /**
@@ -504,6 +509,9 @@ export interface ModelEntry {
  * splits peak (09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate
  * from 2026-08-17, and Gemini's Flex tier discounts spare-capacity traffic.
  */
+/** DeepSeek 官方高峰时段说明（峰谷分时计费目录条目共用）。 */
+const DEEPSEEK_PEAK_HOURS = '09:00-12:00 / 14:00-18:00'
+
 export const MODEL_CATALOG: readonly ModelEntry[] = [
   // DeepSeek — V4 peak/off-peak rates (cloud.tencent.com TokenHub 2026-08-14),
   // RMB per 1M tokens: peak / off-peak (50%).
@@ -521,7 +529,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
       output: 8,
       offPeak: { input: 1, cacheHit: 0.02, output: 4 },
     },
-    peakHours: '09:00-12:00 / 14:00-18:00',
+    peakHours: DEEPSEEK_PEAK_HOURS,
   },
   {
     key: 'flash-vision-exp',
@@ -536,21 +544,24 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
       output: 8,
       offPeak: { input: 1, cacheHit: 0.02, output: 4 },
     },
-    peakHours: '09:00-12:00 / 14:00-18:00',
+    peakHours: DEEPSEEK_PEAK_HOURS,
   },
   {
     key: 'pro',
     name: 'DeepSeek V4 Pro',
     provider: 'DeepSeek',
     colorVar: 'dsw-static-deepseek-500',
+    // 2026-09-10 12:00 起官方把 V4 Pro 请求路由至 V4.1 Flash 并按其单价计费
+    // （V4.1 Pro 上线前），故此处写 V4.1 Flash 现行价；V4 Pro 刊例（峰
+    // 9/0.3/27、谷 4.5/0.15/13.5）保留在 FLASH_REPRICED_OFFPEAK 供分界前回算。
     price: {
       currency: 'CNY',
-      input: 9,
-      cacheHit: 0.3,
-      output: 27,
-      offPeak: { input: 4.5, cacheHit: 0.15, output: 13.5 },
+      input: 2,
+      cacheHit: 0.04,
+      output: 8,
+      offPeak: { input: 1, cacheHit: 0.02, output: 4 },
     },
-    peakHours: '09:00-12:00 / 14:00-18:00',
+    peakHours: DEEPSEEK_PEAK_HOURS,
   },
   // 智谱 GLM (OpenAI-compatible, 腾讯云 TokenHub 官方价 2026-08-14).
   {
@@ -1198,6 +1209,8 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
 export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'deepseek-v4-flash': 'flash',
   'deepseek-v4-flash-vision-exp': 'flash-vision-exp',
+  // V4.1 Flash 正式版 id（官方公告 2026-09-10 前后发布）：计费同 flash 系时间线。
+  'deepseek-v4.1-flash': 'flash',
   'deepseek-v4-pro': 'pro',
   'glm-5.2': 'glm',
   // 智谱 GLM 其余按量变体：独立目录键（点/横杠/大小写变体归一）。

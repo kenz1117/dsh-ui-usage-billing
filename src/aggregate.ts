@@ -653,7 +653,12 @@ export interface UsageLedgerDocument {
 // 把官方直连全量错杀进三方桶。v8 折叠的账本行同样过时，bump 触发全量重折。
 // 10：账本行开始持久化会话标题（serializeFold 白名单此前漏了 title），v9 行重启复用
 // 后会话明细只剩 id 前缀；bump 让存量账本行全量重折补回标题。
-export const FOLD_VERSION = 11
+// 11：flash 系 2026-09-10 12:00 调价（目录写新价 + FLASH_REPRICE_MS 前回算旧价），
+// v10 及更早的账本行按调价前目录价折算，bump 全量重折对齐时间线计价。
+// 12：官方公告自同一分界起 V4 Pro 请求路由至 V4.1 Flash 按 Flash 单价计费
+// （V4.1 Pro 上线前）——pro 目录价改写为 Flash 价、V4 Pro 刊例进 FLASH_REPRICED_OFFPEAK
+// 回算，v11 及更早的行把 pro 全部按 V4 Pro 刊例折算（分界后高估数倍），bump 全量重折。
+export const FOLD_VERSION = 12
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
