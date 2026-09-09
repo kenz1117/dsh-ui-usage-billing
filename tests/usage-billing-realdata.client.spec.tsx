@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ComponentProps } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { bindSnapshotSelector } from './bind-snapshot-selector'
-import { UsageBilling } from '../src/client/UsageBilling.tsx'
+import { UsageBilling, notifiedKeys } from '../src/client/UsageBilling.tsx'
 import { createBillingBudgetStore } from '../src/client/budget-store.ts'
 import { zh } from '../src/client/locales.ts'
 
@@ -19,7 +19,11 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-beforeEach(() => { localStorage.clear() })
+beforeEach(() => {
+  localStorage.clear()
+  // 跨实例提醒认领的进程内 Set 是模块级状态：清掉前序用例的同键拦截（issue #44）。
+  notifiedKeys.clear()
+})
 
 const t = (key: string): string => (zh as Record<string, string>)[key] ?? key
 
@@ -341,8 +345,9 @@ describe('UsageBilling real-data surface', () => {
   })
 
   it('notifies once when any balance drops below the threshold', async () => {
-    // 类型化 stub：通知选项可从 mock 调用参数安全读取。
-    const notify = vi.fn((_title: string, _options?: { body?: string }) => {})
+    // 类型化 stub：实现用普通 function（vitest 对箭头实现的 mock 不可 new，
+    // 组件里 new Notification 会抛 TypeError 并触发认领链的兜底重发）。
+    const notify = vi.fn(function mockNotification(this: unknown, _title: string, _options?: { body?: string }) {})
     vi.stubGlobal('Notification', Object.assign(notify, {
       permission: 'granted',
       requestPermission: async () => 'granted',
@@ -362,7 +367,9 @@ describe('UsageBilling real-data surface', () => {
         ? { source: 'builtin' }
         : url.includes('/api/billing/balance')
           ? { balances: [{ provider: 'deepseek', displayName: 'DeepSeek', currency: 'CNY', totalBalance: 5, isAvailable: true }] }
-          : dynamicStats
+          : url.includes('/api/billing/notify-claim')
+            ? { claimed: true }
+            : dynamicStats
       return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
     }))
     const { container } = render(<UsageBilling {...makeProps()} />)

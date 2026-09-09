@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { recostWithUserPrices, lastSevenDays, sinceMondayOf, type UsageStats } from '../src/client/UsageBilling.tsx'
 import { applyUserPrices, getUserPrices, normalizeOriginInput, originsMatch } from '../src/client/pricing.ts'
 
-/** 最小可用统计文档：day×model 一格 + 同日聚合。 */
+/** 最小可用统计文档：day×model 一格 + 同日聚合 + 未计价模型提示列表。 */
 function statsFixture(): UsageStats {
   return {
     total: { calls: 2, input: 200, output: 100, cacheHit: 100, cacheMiss: 100, cost: 0.001, reasoning: 0 },
@@ -25,6 +25,7 @@ function statsFixture(): UsageStats {
         mystery: { calls: 1, input: 100, output: 50, cacheHit: 50, cacheMiss: 50, cost: 0 },
       },
     },
+    unpricedModels: ['mystery', 'other-unknown'],
   }
 }
 
@@ -43,6 +44,8 @@ describe('recostWithUserPrices', () => {
       expect(recosted.byModel['mystery']?.cost).toBeCloseTo(410 / 1_000_000, 12)
       expect(recosted.byModel['flash']?.cost).toBe(0.0006)
       expect(recosted.total.cost).toBeCloseTo(0.0006 + 410 / 1_000_000, 12)
+      // 已配价的 mystery 不再计入「未计价」提示（issue #43），其余保留。
+      expect(recosted.unpricedModels).toEqual(['other-unknown'])
     } finally {
       applyUserPrices([])
     }

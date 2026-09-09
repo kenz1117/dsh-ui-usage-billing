@@ -364,7 +364,36 @@ export function recostWithUserPrices(stats: UsageStats): UsageStats {
       const cost = modelCost.get(key)
       return [key, cost === undefined ? cell : { ...cell, cost }]
     })),
+    // 已配用户价（默认价或来源价）的模型已被显示重估（issue #43），不再计入「未计价」提示。
+    unpricedModels: (stats.unpricedModels ?? []).filter(key =>
+      !userPriceOf(key) && !userOriginPriceEntryOf(key)),
   }
+}
+
+/** 浏览器通知可用且已授权；三处提醒发送前的同一前置判断。 */
+function notifyAllowed(): boolean {
+  return typeof Notification !== 'undefined' && Notification.permission === 'granted'
+}
+
+/**
+ * 跨实例提醒认领后发系统通知（issue #44）：多实例（CLI + 桌面等）合法共存，
+ * 各自轮询会重复弹通知。两级去重——进程内 Set 挡同进程的并发/重渲染（trigger
+ * 与仪表盘是两个组件实例，effect 同周期并发时本地 store 标记读到的还是旧值）；
+ * 跨进程走宿主认领端点（先到先得），另一实例刚发过则跳过。端点不可达（旧版本/
+ * 网络故障）时放行，退化为原有 per-客户端去重。通知构造失败（平台限制）静默。
+ * Set 导出供测试重置（模块级状态会跨用例泄漏）。
+ */
+export const notifiedKeys = new Set<string>()
+function notifyAcrossInstances(key: string, send: () => void): void {
+  if (notifiedKeys.has(key)) return
+  notifiedKeys.add(key)
+  void fetch('/api/billing/notify-claim', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ key }),
+  }).then(response => response.json() as Promise<{ claimed?: boolean }>)
+    .then(doc => { if (doc.claimed !== false) send() })
+    .catch(() => send())
 }
 
 /** 近 7 天费用序列（含今天，缺日补 0）：触发卡 hover 速览的迷你柱数据源。
@@ -3744,23 +3773,19 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   useEffect(() => {
     if (!budgetEnabled || effectiveBudget <= 0) return
     const pct = (monthCost / effectiveBudget) * 100
-    const day = localDayStamp()
-    const crossed = BUDGET_ALERT_TIERS.filter(tier => pct >= tier && tierAlertDays?.[String(tier)] !== day)
+    const crossed = BUDGET_ALERT_TIERS.filter(tier => pct >= tier && tierAlertDays?.[String(tier)] !== today)
     if (crossed.length === 0) return
     const top = crossed[crossed.length - 1] ?? 100
-    actions.markTierAlerted(crossed, day)
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    actions.markTierAlerted(crossed, today)
+    if (!notifyAllowed()) return
     const body = t('budgetTierBody')
       .replace('{cost}', formatMoney(monthCost))
       .replace('{budget}', formatMoney(effectiveBudget))
       .replace('{pct}', String(top))
     // 通知发送失败（部分平台限制）不影响标记：当天不再重试，避免轮询轰炸。
-    try {
-      new Notification(t('budget'), { body })
-    } catch {
-      // 平台拒绝构造通知：静默跳过，进度条分档变色兜底。
-    }
-  }, [budgetEnabled, effectiveBudget, monthCost, tierAlertDays, actions, t])
+    // 认领失败 = 另一实例刚发过同档提醒，本实例跳过（issue #44）。
+    notifyAcrossInstances(`budget:${top}:${today}`, () => { new Notification(t('budget'), { body }) })
+  }, [budgetEnabled, effectiveBudget, monthCost, tierAlertDays, today, actions, t])
 
   // 峰/谷切换前提醒（增强版）：距进入下一档不足提前量且该切换点未提醒过时，
   // 弹可视化浮层 +（可选的）系统通知。`lastTierSwitchAt` 去重跨重启生效，
@@ -3770,18 +3795,13 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     if (upcoming === null) return
     actions.markTierSwitchAlerted(upcoming.atMs)
     setPeakHit(upcoming)
-    if (!peakConfig.webNotify) return
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    if (!peakConfig.webNotify || !notifyAllowed()) return
     const minutes = Math.max(1, Math.round((upcoming.atMs - nowMs) / 60_000))
-    const title = upcoming.entering === 'peak' ? t('peakAlertTitlePeak') : t('peakAlertTitleOff')
-    const body = upcoming.entering === 'peak'
-      ? t('tierAlertEnterPeak').replace('{minutes}', String(minutes))
-      : t('tierAlertEnterOff').replace('{minutes}', String(minutes))
-    try {
-      new Notification(title, { body })
-    } catch {
-      // 平台拒绝构造通知：静默跳过，浮层始终可见。
-    }
+    const title = t(upcoming.entering === 'peak' ? 'peakAlertTitlePeak' : 'peakAlertTitleOff')
+    const body = t(upcoming.entering === 'peak' ? 'tierAlertEnterPeak' : 'tierAlertEnterOff')
+      .replace('{minutes}', String(minutes))
+    // 认领失败 = 另一实例刚发过同一切换点提醒，本实例跳过（issue #44）。
+    notifyAcrossInstances(`peak:${upcoming.atMs}`, () => { new Notification(title, { body }) })
   }, [nowMs, lastTierSwitchAt, peakConfig, actions, t])
 
   // 余额不足告警：任一提供方余额低于阈值（折算人民币）时每天提醒一次；
@@ -3805,21 +3825,17 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   }, [balances, stats.lowBalanceThreshold, stats.byDay, today])
   useEffect(() => {
     if (lowBalanceRow === undefined) return
-    const day = localDayStamp()
-    if (lastBalanceAlertDay === day) return
-    actions.markBalanceAlerted(day)
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    if (lastBalanceAlertDay === today) return
+    actions.markBalanceAlerted(today)
+    if (!notifyAllowed()) return
     const body = t('balanceLowBody')
       .replace('{name}', lowBalanceRow.name)
       .replace('{balance}', formatMoney(lowBalanceRow.cny))
       .replace('{days}', lowBalanceRow.days === undefined ? '—' : String(lowBalanceRow.days))
     // 通知发送失败（部分平台限制）不影响标记：当天不再重试，避免轮询轰炸。
-    try {
-      new Notification(t('balance'), { body })
-    } catch {
-      // 平台拒绝构造通知：静默跳过。
-    }
-  }, [lowBalanceRow, lastBalanceAlertDay, actions, t])
+    // 认领失败 = 另一实例刚发过当日余额提醒，本实例跳过（issue #44）。
+    notifyAcrossInstances(`balance:${today}`, () => { new Notification(t('balance'), { body }) })
+  }, [lowBalanceRow, lastBalanceAlertDay, today, actions, t])
 
   // hover 速览「主力直联/订阅消耗」：本月按厂商聚合消耗，区分按量（直联）与订阅，
   // 并附余额/配额状态——余额仅按量厂商有意义，配额仅订阅厂商有意义。
