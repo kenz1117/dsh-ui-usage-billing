@@ -1622,7 +1622,6 @@
   display: inline-block;
   margin-right: 6px;
   color: var(--dsw-alias-label-tertiary);
-  transition: transform 120ms ease;
 }
 
 .sessionGroupRow[aria-expanded='true'] .modelName::before {

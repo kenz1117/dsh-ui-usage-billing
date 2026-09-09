@@ -84,6 +84,15 @@ export declare function projectMonthCost(byDay: Record<string, {
  * @returns 重估后的文档；无用户价或缺 byDayModels 时原样返回。
  */
 export declare function recostWithUserPrices(stats: UsageStats): UsageStats;
+/**
+ * 跨实例提醒认领后发系统通知（issue #44）：多实例（CLI + 桌面等）合法共存，
+ * 各自轮询会重复弹通知。两级去重——进程内 Set 挡同进程的并发/重渲染（trigger
+ * 与仪表盘是两个组件实例，effect 同周期并发时本地 store 标记读到的还是旧值）；
+ * 跨进程走宿主认领端点（先到先得），另一实例刚发过则跳过。端点不可达（旧版本/
+ * 网络故障）时放行，退化为原有 per-客户端去重。通知构造失败（平台限制）静默。
+ * Set 导出供测试重置（模块级状态会跨用例泄漏）。
+ */
+export declare const notifiedKeys: Set<string>;
 /** 近 7 天费用序列（含今天，缺日补 0）：触发卡 hover 速览的迷你柱数据源。
  * 导出供测试：纯函数（日期取本地时区）。 */
 export declare function activeDaysOf(byDay: Record<string, {

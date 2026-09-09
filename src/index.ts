@@ -512,7 +512,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     const now = Date.now()
     if (now - lastSnapshotAt < SNAPSHOT_INTERVAL_MS) return
     lastSnapshotAt = now
-    const payload = JSON.stringify({ ...doc, _writer: { pid: process.pid, at: now } })
+    const payload = JSON.stringify(doc)
     // P0-3 崩溃恢复：写入前先把当前的上一版快照备份为 `.bak`。主文件一旦损坏
     //（旧版本非原子写入 / 磁盘写坏），聚合失败路径的 fallback 会用 `.bak` 重建。
     void (async () => {
@@ -542,21 +542,77 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     return null
   }
 
-  // 多实例心跳锁（P1-5）：快照每次写入都会刷新 `_writer`（pid + at）作为心跳。
-  // 启动时若读到的快照新鲜（60 秒内）且写入者不是本进程 → 另一实例在跑，
-  // 双实例会造成余额/预算提醒重复，提示一次即可。
-  void (async () => {
-    try {
-      const text = await readFile(snapshotPath, 'utf8')
-      const doc = JSON.parse(text) as { _writer?: { pid?: number; at?: number } }
-      const writer = doc._writer
-      if (writer?.pid !== undefined && writer.pid !== process.pid && writer.at !== undefined && Date.now() - writer.at < 60_000) {
-        console.warn(`[usage-billing] 检测到另一实例（pid ${writer.pid}）正在提供用量统计，双实例可能导致提醒重复。`)
-      }
-    } catch {
-      // 无快照或快照损坏：首次运行 / 旧版本的常态，静默跳过。
-    }
-  })()
+  // 跨实例提醒认领（issue #44）：多实例（CLI + 桌面等）合法共存，各自轮询会重复
+  // 发桌面通知——此前用快照 pid 心跳警告「另一实例」，误报频繁且不解决重复本身，
+  // 现改为提醒先到先得：客户端发通知前 POST 认领，键已存在（另一实例刚发过）→
+  // claimed:false 跳过。认领表持久在统计目录旁（原子写），跨实例、跨重启生效；
+  // 键自带日期戳/切换点粒度，无需过期，超上限裁掉最旧的键。两实例同毫秒认领同一
+  // 键的窗口极窄，最坏退化为一重复弹，与文件锁的残留误判相比是更好的取舍。
+  const notifyClaimsPath = `${snapshotPath}.notify-claims.json`
+  const notifyClaims: { loaded: boolean; keys: string[] } = { loaded: false, keys: [] }
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'exact',
+      path: '/api/billing/notify-claim',
+      handler: async (req, res) => {
+        if (!guardLoopback(req, res)) return
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'content-type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'method not allowed' }))
+          return
+        }
+        // 跨站写保护与 usage-tool 同口径：Origin 必须回环 + Content-Type 必须 JSON。
+        if (!isLoopbackOrigin(req.headers.origin)
+          || !(req.headers['content-type'] ?? '').toLowerCase().includes('application/json')) {
+          res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'forbidden: loopback only' }))
+          return
+        }
+        try {
+          // body 只承载一个认领键，2 KiB 上限已足够，防坏/恶意 body 拖住 handler。
+          let body = ''
+          for await (const chunk of req) {
+            body += String(chunk)
+            if (body.length > 2048) {
+              res.end(JSON.stringify({ error: 'body too large' }))
+              return
+            }
+          }
+          const parsed = JSON.parse(body === '' ? '{}' : body) as { key?: unknown }
+          if (typeof parsed.key !== 'string' || parsed.key === '' || parsed.key.length > 200) {
+            res.writeHead(400, { 'content-type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ error: 'invalid key' }))
+            return
+          }
+          if (!notifyClaims.loaded) {
+            notifyClaims.loaded = true
+            try {
+              const stored = JSON.parse(await readFile(notifyClaimsPath, 'utf8')) as { keys?: unknown }
+              if (Array.isArray(stored.keys)) notifyClaims.keys = stored.keys.filter((k): k is string => typeof k === 'string')
+            } catch {
+              // 首次运行或文件损坏：从空表开始（去重退化为进程内，下次认领重建文件）。
+            }
+          }
+          if (notifyClaims.keys.includes(parsed.key)) {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ claimed: false }))
+            return
+          }
+          notifyClaims.keys.push(parsed.key)
+          if (notifyClaims.keys.length > 400) notifyClaims.keys = notifyClaims.keys.slice(-200)
+          // 认领表写失败不阻塞通知：去重退化为进程内，多实例下该键可能重复一次。
+          void writeFileAtomic(notifyClaimsPath, JSON.stringify({ keys: notifyClaims.keys }), { mode: 0o600, dirMode: 0o700 })
+            .catch(() => {})
+          res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ claimed: true }))
+        } catch {
+          res.writeHead(400, { 'content-type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'invalid' }))
+        }
+      },
+    }),
+    'usage-billing: notify-claim route',
+  )
 
   // usage_stats 动态工具（默认关闭）：模型可主动查询用量费用（今天 / 本月 / 当前会话 / 累计）。
   // 该工具占用每次请求的上下文，而 coding 场景多在仪表盘看用量，属可关的打扰项。

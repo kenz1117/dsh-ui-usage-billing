@@ -192,6 +192,20 @@ async function getJson(port: number, path: string): Promise<{ status: number; js
   }
 }
 
+/** POST one notify-claim key（issue #44 认领契约）；returns status and the parsed JSON body. */
+async function postClaim(port: number, key: string): Promise<{ status: number; json: { claimed?: boolean } | undefined }> {
+  const response = await fetch(`http://127.0.0.1:${String(port)}/api/billing/notify-claim`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: `http://127.0.0.1:${String(port)}` },
+    body: JSON.stringify({ key }),
+  })
+  try {
+    return { status: response.status, json: JSON.parse(await response.text()) as { claimed?: boolean } }
+  } catch {
+    return { status: response.status, json: undefined }
+  }
+}
+
 describe('usage-billing real Loader composition', () => {
   it('serves aggregated usage, injected budget, degraded pricing, and releases routes on disposal', { timeout: 60_000 }, async () => {
     const loaded = await loadComposition()
@@ -253,6 +267,22 @@ describe('usage-billing real Loader composition', () => {
     expect((await getJson(port, '/api/billing/usage-stats')).status).toBe(404)
     expect((await getJson(port, '/api/billing/pricing')).status).toBe(404)
     expect((await getJson(port, '/api/billing/balance')).status).toBe(404)
+    expect((await getJson(port, '/api/billing/notify-claim')).status).toBe(404)
+  })
+
+  it('claims notification keys first-come-first-served across instances (issue #44)', { timeout: 60_000 }, async () => {
+    const loaded = await loadCompositionWith({})
+    const port = loaded.webServer.port
+    // 首个实例认领成功；另一实例认领同键 → claimed:false（桌面通知去重的端点契约）。
+    const first = await postClaim(port, 'budget:80:2026-09-09')
+    expect(first.status).toBe(200)
+    expect(first.json?.claimed).toBe(true)
+    const second = await postClaim(port, 'budget:80:2026-09-09')
+    expect(second.status).toBe(200)
+    expect(second.json?.claimed).toBe(false)
+    // 新键独立放行；GET 是读方法，认领端点只收 POST。
+    expect((await postClaim(port, 'balance:2026-09-09')).json?.claimed).toBe(true)
+    expect((await getJson(port, '/api/billing/notify-claim')).status).toBe(405)
   })
 
   it('falls back to the recent snapshot when the aggregation fails entirely', { timeout: 60_000 }, async () => {
