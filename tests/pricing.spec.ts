@@ -298,6 +298,25 @@ describe('computeCostAt (P0-1)', () => {
       .toBe(computeCostAt(modelOf('flash'), buckets, postAt(13)))
   })
 
+  it('prices V4 Pro at the V4 Pro list rate before the boundary (official routing to V4.1 Flash after)', () => {
+    // 官方公告：2026-09-10 12:00 起 V4 Pro 请求路由至 V4.1 Flash 按 Flash 价计费。
+    // 分界前高峰按 V4 Pro 刊例（缓存命中 ¥0.3、未命中 ¥9、输出 ¥27）。
+    expect(computeCostAt(modelOf('pro'), buckets, preAt(10)))
+      .toBeCloseTo((MILLION * 0.3 + MILLION * 9 + MILLION * 27) / MILLION, 10)
+  })
+
+  it('prices V4 Pro at the V4.1 Flash rate after the boundary', () => {
+    // 分界后：V4 Pro 与 flash 同价（谷 0.02/1/4、峰 0.04/2/8）。
+    expect(computeCostAt(modelOf('pro'), buckets, postAt(13)))
+      .toBe(computeCostAt(modelOf('flash'), buckets, postAt(13)))
+    expect(computeCostAt(modelOf('pro'), buckets, postAt(10)))
+      .toBe(computeCostAt(modelOf('flash'), buckets, postAt(10)))
+  })
+
+  it('resolves the upcoming V4.1 Flash id to the flash catalog key', () => {
+    expect(modelOf('deepseek-v4.1-flash').key).toBe('flash')
+  })
+
   it('keeps user prices authoritative across the reprice boundary', () => {
     // 用户价 = 实付价：分界前也不套内置旧价口径。
     const priced = { ...modelOf('flash'), userPriced: true as const, price: { currency: 'CNY' as const, input: 9, cacheHit: 0.3, output: 27 } }

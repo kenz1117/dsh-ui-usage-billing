@@ -571,8 +571,12 @@ export interface UsageLedgerDocument {
  * `session/end-seed`，resume 续写后继续对话时把本会话历史段误判为种子丢弃，
  * 会话费用只剩最近一段，issue #29）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
+ * 8：官方公告自 2026-09-10 12:00（北京）起 V4 Pro 请求路由至 V4.1 Flash 按 Flash
+ * 单价计费（V4.1 Pro 上线前）——pro 目录价改写为 Flash 价、V4 Pro 刊例（峰
+ * 9/0.3/27、谷 4.5/0.15/13.5）进 FLASH_REPRICED_OFFPEAK 供分界前回算；v7 及更早
+ * 的行把分界后的 pro 全部按 V4 Pro 刊例折算（高估数倍），bump 全量重折对齐时间线。
  */
-export const FOLD_VERSION = 7
+export const FOLD_VERSION = 8
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。

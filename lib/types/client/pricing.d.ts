@@ -265,21 +265,6 @@ export interface ModelEntry {
     /** 该条目当前按用户自定义单价计价（设置面板可维护）；费率表标注「自定义」。 */
     userPriced?: boolean;
 }
-/**
- * Built-in catalog of current mainstream models as of 2026-08-16, priced from
- * each provider's official price page. Domestic providers are OpenAI-API
- * compatible and publish RMB prices directly; overseas providers publish USD
- * and convert through the exchange rate at estimate time. Retired models
- * (GPT-4o family, Gemini 2.x, GLM-4.x-lite, older Qwen) are deliberately
- * absent, as are Anthropic Claude models (their native API is not
- * OpenAI-compatible, so the harness cannot drive them directly). DeepSeek
- * keys match the harness stats file so real usage prices from the catalog;
- * unknown keys fall back to `other`.
- *
- * Time-of-day billing (peak/off-peak) is now real: DeepSeek V4 officially
- * splits peak (09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate
- * from 2026-08-17, and Gemini's Flex tier discounts spare-capacity traffic.
- */
 export declare const MODEL_CATALOG: readonly ModelEntry[];
 /**
  * 真实 provider model id → 计费目录键（`MODEL_CATALOG[].key`）的映射。未知 id
