@@ -80,10 +80,43 @@ export function TokenPanel(props: {
   stats: UsageStats
   trendDays: 7 | 30
   onTrendDays: (d: 7 | 30) => void
+  models?: readonly TrendSeriesModel[]
+  /** 金额格式化（跟随仪表盘币种切换）：费用构成区块展示用。 */
+  money: (cny: number) => string
   t: (key: UsageBillingKey) => string
 }): React.ReactNode {
   const { stats, trendDays, onTrendDays, t } = props
+  const money = props.money
+  const brandModels = props.models ?? []
   const { byDay, byModel, total } = stats
+
+  // 悬停的日期索引（null = 未悬停）：与 TrendChart 一致的十字线 + 明细 tooltip。
+  const [hover, setHover] = useState<number | null>(null)
+  // 每日 token 视角（默认按结构 = 历史行为）。
+  const [view, setView] = useState<TokenView>('structure')
+  // 聚焦的模型 key（null = 无）。仅按模型视角生效；切换视角即清除。
+  const [focus, setFocus] = useState<string | null>(null)
+  // 旧快照无按日 × 模型明细：隐藏视角切换，仅保留结构视角（既有降级先例）。
+  const modelViewAvailable = stats.byDayModels !== undefined
+
+  // 切换视角：按模型 → 按结构（或反向）都清除聚焦（结构视角没有模型维度）。
+  const switchView = (next: TokenView): void => {
+    setView(next)
+    setFocus(null)
+  }
+
+  // 费用构成（估算）：角色归因三段（用户输入 / 助手输出 / 工具结果）——自账单页迁入。
+  const roleRows = useMemo(() => {
+    const role = stats.byRole
+    if (role === undefined) return []
+    const total = role.user + role.assistant + role.tool
+    if (total <= 0) return []
+    return [
+      { label: t('roleUser'), value: role.user, seg: css.shareSegUser },
+      { label: t('roleAssistant'), value: role.assistant, seg: css.shareSegAssistant },
+      { label: t('roleTool'), value: role.tool, seg: css.shareSegTool },
+    ].map(row => ({ ...row, pct: (row.value / total) * 100 }))
+  }, [stats.byRole, t])
 
   // 每日 token 窗口（缺日补 0）。
   const days: DailyBucket[] = useMemo(() => {
@@ -369,6 +402,33 @@ export function TokenPanel(props: {
                 ))}
               </tbody>
             </table>
+          </div>
+        </section>
+      )}
+
+      {/* 费用构成（估算，自账单页迁入）：输出成本实测计价，输入成本按 user/tool
+      消息文本长度占比摊分（日志无角色级 token 实测，标注估算口径）。 */}
+      {roleRows.length > 0 && (
+        <section className={css.panel} data-testid="billing-panel-roles">
+          <div className={css.panelHead}>
+            <h3 className={css.panelTitle}>{t('roleCost')}</h3>
+            <span className={css.panelHint}>{t('roleHint')}</span>
+          </div>
+          <div className={css.shareTrack} data-testid="billing-role-track">
+            {roleRows.map(row => (
+              <div key={row.label} className={clsx(css.shareSeg, row.seg)} style={{ width: `${row.pct}%` }} />
+            ))}
+          </div>
+          <div className={css.shareLegend}>
+            {roleRows.map(row => (
+              <span key={row.label} className={css.shareItem}>
+                <span className={clsx(css.shareDot, row.seg)} />
+                {row.label}
+                <span className={css.shareValue}>
+                  {money(row.value)} · {row.pct.toFixed(1)}%
+                </span>
+              </span>
+            ))}
           </div>
         </section>
       )}

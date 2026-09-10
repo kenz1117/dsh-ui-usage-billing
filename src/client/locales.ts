@@ -200,10 +200,6 @@ export type UsageBillingKey =
   | 'triggerMonth'
   | 'subscriptionIncluded'
   | 'free'
-  | 'official'
-  | 'thirdParty'
-  | 'officialCost'
-  | 'thirdPartyCost'
   | 'perfSamples'
   | 'perfTtft'
   | 'perfP50'
@@ -344,7 +340,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'promoBadge': '限时折扣',
   'promoUntil': '促销价至 {date}，之后自动恢复刊例价',
   'promoOpenEnded': '厂商未公布截止时间，当前按折扣计价；公告截止后自动恢复刊例价',
-  'pricingTip': 'DeepSeek 自 2026-09-10 12:00（北京）起：flash 系谷档调价为未命中 ¥1 / 输出 ¥4 / 缓存命中 ¥0.02（峰 = 谷 × 2，原 1.5 / 4.5 / 0.05）；V4 Pro 的请求同期起路由至 V4.1 Flash 并按 Flash 单价计费（V4.1 Pro 上线前）。峰谷分时自 2026-08-23（周日）00:00：工作日高峰 9-12 / 14-18（×2），周末全天低谷价。双价单元格按峰 / 谷展示，费用按调用时刻计。',
+  'pricingTip': 'DeepSeek 自 2026-09-10 12:00（北京）起：flash 系谷档调价为未命中 ¥1 / 输出 ¥4 / 缓存命中 ¥0.02（峰 = 谷 × 2）；V4 Pro 的请求同期起路由至 V4.1 Flash 并按 Flash 单价计费（V4.1 Pro 上线前）。峰谷分时自 2026-08-23 起：工作日高峰 9-12 / 14-18（×2），周末全天低谷价。双价单元格按峰 / 谷展示，费用按调用时刻计。',
   'pricingUnit': '单位：人民币 / 每百万 Token',
   'pricingNotes': '计价说明',
   'ubPeak': '峰',
@@ -483,10 +479,6 @@ export const zh: Record<UsageBillingKey, string> = {
   'triggerMonthTokens': '当月 Token',
   'subscriptionIncluded': '订阅包含',
   'free': '免费',
-  'official': '官方',
-  'thirdParty': '三方',
-  'officialCost': '官方费用',
-  'thirdPartyCost': '三方费用',
   'perfSamples': '样本',
   'perfTtft': '首字延时',
   'perfP50': 'P50',
@@ -626,7 +618,7 @@ export const en: Record<UsageBillingKey, string> = {
   'promoBadge': 'Promo',
   'promoUntil': 'Promo price until {date}, then list price resumes automatically',
   'promoOpenEnded': 'End date not announced; billed at the discounted rate until further notice, then list price resumes',
-  'pricingTip': 'DeepSeek from 2026-09-10 12:00 Beijing: flash off-peak now ¥1 miss / ¥4 output / ¥0.02 cache-hit (peak = 2×; was 1.5 / 4.5 / 0.05); V4 Pro requests route to V4.1 Flash at Flash rates until V4.1 Pro ships. Weekday peak 9-12 / 14-18 (×2), weekends all-day off-peak; billed at call time.',
+  'pricingTip': 'DeepSeek from 2026-09-10 12:00 Beijing: flash off-peak now ¥1 miss / ¥4 output / ¥0.02 cache-hit (peak = 2×); V4 Pro requests route to V4.1 Flash at Flash rates until V4.1 Pro ships. Weekday peak 9-12 / 14-18 (×2), weekends all-day off-peak; billed at call time.',
   'pricingUnit': 'Unit: CNY / per 1M tokens',
   'pricingNotes': 'Pricing notes',
   'ubPeak': 'Peak',
@@ -765,10 +757,6 @@ export const en: Record<UsageBillingKey, string> = {
   'triggerMonthTokens': 'Monthly tokens',
   'subscriptionIncluded': 'Included',
   'free': 'Free',
-  'official': 'Official',
-  'thirdParty': 'Third-party',
-  'officialCost': 'Official cost',
-  'thirdPartyCost': 'Third-party cost',
   'perfSamples': 'Samples',
   'perfTtft': 'TTFT',
   'perfP50': 'P50',

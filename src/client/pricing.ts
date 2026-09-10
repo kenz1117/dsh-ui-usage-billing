@@ -436,6 +436,7 @@ export interface ModelEntry {
  */
 /** DeepSeek 官方高峰时段说明（峰谷分时计费目录条目共用）。 */
 const DEEPSEEK_PEAK_HOURS = '09:00-12:00 / 14:00-18:00'
+const GEMINI_PEAK_HOURS = 'Standard / Flex'
 
 export const MODEL_CATALOG: readonly ModelEntry[] = [
   // DeepSeek — V4 peak/off-peak rates (cloud.tencent.com TokenHub 2026-08-14),
@@ -855,7 +856,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
       output: 12,
       offPeak: { input: 1, cacheHit: 0.1, output: 6 },
     },
-    peakHours: 'Standard / Flex',
+    peakHours: GEMINI_PEAK_HOURS,
     tierSemantics: 'latency',
   },
   {
@@ -870,7 +871,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
       output: 7.5,
       offPeak: { input: 0.75, cacheHit: 0.075, output: 3.75 },
     },
-    peakHours: 'Standard / Flex',
+    peakHours: GEMINI_PEAK_HOURS,
     tierSemantics: 'latency',
   },
   // xAI — current Grok family (docs.x.ai 2026-08).
@@ -1136,6 +1137,9 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'deepseek-v4-flash-vision-exp': 'flash-vision-exp',
   // V4.1 Flash 正式版 id（官方公告 2026-09-10 前后发布）：计费同 flash 系时间线。
   'deepseek-v4.1-flash': 'flash',
+  // V4.1 Flash 限时内测端点（expires-on-0910，09-10 过期）：内测价 = flash 同价，
+  // 收录它让存量账单的内测用量按 flash 时间线正确归并计费（issue #40 反馈）。
+  'deepseek-v4.1-flash-expires-on-0910': 'flash',
   'deepseek-v4-pro': 'pro',
   'glm-5.2': 'glm',
   // 智谱 GLM 其余按量变体：独立目录键（点/横杠/大小写变体归一）。
