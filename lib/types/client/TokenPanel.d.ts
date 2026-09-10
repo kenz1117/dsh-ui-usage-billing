@@ -7,6 +7,7 @@
  *  4. 工具调用排行（byTool 计次；token 无法按工具归因）。
  */
 import type { UsageBillingKey } from './locales.ts';
+import type { TrendSeriesModel } from './TrendChart.tsx';
 import type { UsageStats } from './UsageBilling.tsx';
 /**
  * Token 洞察面板。
@@ -18,6 +19,9 @@ export declare function TokenPanel(props: {
     stats: UsageStats;
     trendDays: 7 | 30;
     onTrendDays: (d: 7 | 30) => void;
+    models?: readonly TrendSeriesModel[];
+    /** 金额格式化（跟随仪表盘币种切换）：费用构成区块展示用。 */
+    money: (cny: number) => string;
     t: (key: UsageBillingKey) => string;
 }): React.ReactNode;
 //# sourceMappingURL=TokenPanel.d.ts.map

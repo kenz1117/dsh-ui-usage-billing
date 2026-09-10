@@ -106,13 +106,13 @@
 - **DSH 0.1.0-rc.8 ~ 0.1.1-rc.2**（本线适配的宿主）：
 
   ```sh
-  dsh plugin add npm:@kenz1117/dsh-ui-usage-billing@stable
+  dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@stable
   ```
 
 - **DSH 0.1.2 系宿主**（0.1.2-alpha.1 起）：本线不适配，请装预览线 `@latest`：
 
   ```sh
-  dsh plugin add npm:@kenz1117/dsh-ui-usage-billing@latest
+  dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@latest
   ```
 
 也可以在宿主 `cordis.patch.yml` 中手动加入：

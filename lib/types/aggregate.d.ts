@@ -431,8 +431,11 @@ export interface UsageLedgerDocument {
  * 单价计费（V4.1 Pro 上线前）——pro 目录价改写为 Flash 价、V4 Pro 刊例（峰
  * 9/0.3/27、谷 4.5/0.15/13.5）进 FLASH_REPRICED_OFFPEAK 供分界前回算；v7 及更早
  * 的行把分界后的 pro 全部按 V4 Pro 刊例折算（高估数倍），bump 全量重折对齐时间线。
+ * 9：V4.1 Flash 内测端点 id（expires-on-0910）收录进别名表——此前该 id 落目录兜底
+ * 条目（Custom），费用按 0 计且把「主力消耗模型余额」挤成「未配置」（issue #40
+ * 反馈）；bump 让存量账单的内测用量按 flash 时间线重折归并。
  */
-export declare const FOLD_VERSION = 8;
+export declare const FOLD_VERSION = 9;
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
  * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并

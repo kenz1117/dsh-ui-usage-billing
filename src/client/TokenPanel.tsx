@@ -7,11 +7,12 @@
  *  4. 工具调用排行（byTool 计次；token 无法按工具归因）。
  */
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import clsx from 'clsx'
 import css from './UsageBilling.module.css'
 import type { UsageBillingKey } from './locales.ts'
 import { formatTokens, modelOf } from './pricing.ts'
+import type { TrendSeriesModel } from './TrendChart.tsx'
 import type { UsageStats } from './UsageBilling.tsx'
 
 /** 本地时区 `YYYY-MM-DD`（与服务端 dayStamp 一致）。 */
