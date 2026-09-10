@@ -117,9 +117,12 @@ export function TokenPanel(props: {
   trendDays: 7 | 30
   onTrendDays: (d: 7 | 30) => void
   models?: readonly TrendSeriesModel[]
+  /** 金额格式化（跟随仪表盘币种切换）：费用构成区块展示用。 */
+  money: (cny: number) => string
   t: (key: UsageBillingKey) => string
 }): React.ReactNode {
   const { stats, trendDays, onTrendDays, t } = props
+  const money = props.money
   const brandModels = props.models ?? []
   const { byDay, byModel, total } = stats
 
@@ -137,6 +140,19 @@ export function TokenPanel(props: {
     setView(next)
     setFocus(null)
   }
+
+  // 费用构成（估算）：角色归因三段（用户输入 / 助手输出 / 工具结果）——自账单页迁入。
+  const roleRows = useMemo(() => {
+    const role = stats.byRole
+    if (role === undefined) return []
+    const total = role.user + role.assistant + role.tool
+    if (total <= 0) return []
+    return [
+      { label: t('roleUser'), value: role.user, seg: css.shareSegUser },
+      { label: t('roleAssistant'), value: role.assistant, seg: css.shareSegAssistant },
+      { label: t('roleTool'), value: role.tool, seg: css.shareSegTool },
+    ].map(row => ({ ...row, pct: (row.value / total) * 100 }))
+  }, [stats.byRole, t])
 
   // 每日 token 窗口（缺日补 0）。
   const days: DailyBucket[] = useMemo(() => {
@@ -641,6 +657,33 @@ export function TokenPanel(props: {
                 ))}
               </tbody>
             </table>
+          </div>
+        </section>
+      )}
+
+      {/* 费用构成（估算，自账单页迁入）：输出成本实测计价，输入成本按 user/tool
+      消息文本长度占比摊分（日志无角色级 token 实测，标注估算口径）。 */}
+      {roleRows.length > 0 && (
+        <section className={css.panel} data-testid="billing-panel-roles">
+          <div className={css.panelHead}>
+            <h3 className={css.panelTitle}>{t('roleCost')}</h3>
+            <span className={css.panelHint}>{t('roleHint')}</span>
+          </div>
+          <div className={css.shareTrack} data-testid="billing-role-track">
+            {roleRows.map(row => (
+              <div key={row.label} className={clsx(css.shareSeg, row.seg)} style={{ width: `${row.pct}%` }} />
+            ))}
+          </div>
+          <div className={css.shareLegend}>
+            {roleRows.map(row => (
+              <span key={row.label} className={css.shareItem}>
+                <span className={clsx(css.shareDot, row.seg)} />
+                {row.label}
+                <span className={css.shareValue}>
+                  {money(row.value)} · {row.pct.toFixed(1)}%
+                </span>
+              </span>
+            ))}
           </div>
         </section>
       )}

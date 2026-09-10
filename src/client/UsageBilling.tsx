@@ -998,8 +998,6 @@ const providerCostOf = (group: ProviderBillingGroup): number =>
 
 /**
  * Sidebar footer trigger: compact pill in wide mode, icon in rail mode.
- * ZINE 模式下入口由主题插件的贴纸层承担，本触发器由 CSS
- * （body[data-zine-mode] 选择器）隐藏，组件本身无 zine 分支。
  * @param props - framework props plus `wide` column state.
  */
 function UsageBillingTrigger(
@@ -1725,19 +1723,6 @@ function BillingDashboard({
   // 仅峰谷分档模型受影响；保守按峰时费用的一半计（与官方 2x 刊例一致）。
   const offPeakSavings = peakShare.peak / 2
 
-  // 费用构成（估算）：角色归因三段（用户输入 / 助手输出 / 工具结果）。
-  const roleRows = useMemo(() => {
-    const role = stats.byRole
-    if (role === undefined) return []
-    const total = role.user + role.assistant + role.tool
-    if (total <= 0) return []
-    return [
-      { label: t('roleUser'), value: role.user, seg: css.shareSegUser },
-      { label: t('roleAssistant'), value: role.assistant, seg: css.shareSegAssistant },
-      { label: t('roleTool'), value: role.tool, seg: css.shareSegTool },
-    ].map(row => ({ ...row, pct: (row.value / total) * 100 }))
-  }, [stats.byRole, t])
-
   // A1: 日均消耗（最近 7 天）——余额列据此估算可用天数；无消耗记录时 0（不显示天数）。
   const dailyBurn = dailyBurnRate(byDay, localDayStamp())
 
@@ -1931,23 +1916,6 @@ function BillingDashboard({
       })),
     [byModel],
   )
-
-  // 官方 vs 三方汇总：官方 = DeepSeek 官方直连（officialCost/officialCalls），
-  // 三方 = 总量 - 官方。仅当任一模型实际发生官方/三方费用时展示。
-  const bucketSummary = useMemo(() => {
-    let officialCost = 0
-    let officialCalls = 0
-    let thirdCalls = 0
-    for (const row of modelRows) {
-      const official = row.officialCost
-      if (official > 0) officialCost += official
-      officialCalls += row.officialCalls
-      thirdCalls += Math.max(0, row.calls - row.officialCalls)
-    }
-    const thirdCost = Math.max(0, (modelRows.reduce((sum, r) => sum + (r.actual ?? 0), 0)) - officialCost)
-    if (officialCost <= 0 && thirdCost <= 0 && officialCalls <= 0 && thirdCalls <= 0) return undefined
-    return { officialCost, officialCalls, thirdCost, thirdCalls }
-  }, [modelRows])
 
   // 按厂商聚合：模型用量与订阅额度都归并到同一厂商组，余额只在厂商头部显示一次。
   // 厂商组同时容纳非订阅按量模型（无订阅额度也成组）与订阅套餐（无用量也成组）。
@@ -3168,55 +3136,6 @@ function BillingDashboard({
                   {t('exportJson')}
                 </button>
               </div>
-              {/* 费用构成（估算）：输出成本实测计价，输入成本按 user/tool 消息
-              文本长度占比摊分（日志无角色级 token 实测，标注估算口径）。 */}
-              {roleRows.length > 0 && (
-                <section className={css.panel} data-testid="billing-panel-roles">
-                  <div className={css.panelHead}>
-                    <h3 className={css.panelTitle}>
-                      {t('roleCost')}
-                    </h3>
-                    <span className={css.panelHint}>
-                      {t('roleHint')}
-                    </span>
-                  </div>
-                  <div className={css.shareTrack} data-testid="billing-role-track">
-                    {roleRows.map(row => (
-                      <div key={row.label} className={clsx(css.shareSeg, row.seg)} style={{ width: `${row.pct}%` }} />
-                    ))}
-                  </div>
-                  <div className={css.shareLegend}>
-                    {roleRows.map(row => (
-                      <span key={row.label} className={css.shareItem}>
-                        <span className={clsx(css.shareDot, row.seg)} />
-                        {row.label}
-                        <span className={css.shareValue}>
-                          {money(row.value)} · {row.pct.toFixed(1)}%
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                </section>
-              )}
-              {/* 官方 vs 三方汇总：设计 stat-card 两列——label + 大数 + 调用/占比。 */}
-              {bucketSummary !== undefined && (() => {
-                const totalCost = bucketSummary.officialCost + bucketSummary.thirdCost
-                const officialPct = totalCost > 0 ? (bucketSummary.officialCost / totalCost) * 100 : 0
-                return (
-                  <div className={css.ubStatGrid} data-testid="billing-panel-buckets">
-                    <div className={css.ubStatCard}>
-                      <span className={css.ubStatLabel}>{t('official')}（=DeepSeek 直连）</span>
-                      <span className={css.ubStatValue}>{money(bucketSummary.officialCost)}</span>
-                      <span className={css.ubStatDetail}>{bucketSummary.officialCalls} {t('calls')} · {officialPct.toFixed(1)}%</span>
-                    </div>
-                    <div className={css.ubStatCard}>
-                      <span className={css.ubStatLabel}>{t('thirdParty')}（中转）</span>
-                      <span className={css.ubStatValue}>{money(bucketSummary.thirdCost)}</span>
-                      <span className={css.ubStatDetail}>{bucketSummary.thirdCalls} {t('calls')} · {(100 - officialPct).toFixed(1)}%</span>
-                    </div>
-                  </div>
-                )
-              })()}
               {/* 会话明细：按工作区分组——组行内联合计（费用/调用），组内列出会话，
                   吸收原「工作区统计」卡片（下钻交互由平铺分组替代）。 */}
               {stats.bySession !== undefined && (
@@ -3313,7 +3232,7 @@ function BillingDashboard({
           {tab === 'token' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-token">
               {/* Token 洞察：独立于费用的 token 统计（每日堆叠[结构/模型双视角] / 模型占比 / 结构 KPI / 导出）。 */}
-              <TokenPanel stats={stats} trendDays={trendDays} onTrendDays={setTrendDays} models={chartModels} t={t} />
+              <TokenPanel stats={stats} trendDays={trendDays} onTrendDays={setTrendDays} models={chartModels} money={money} t={t} />
               {/* 性能：按模型 TTFT/P50/P90/生成速度/总延迟 + 按小时曲线（并入「用量」分区）。 */}
               {stats.perf !== undefined && (
                 <section className={css.panel} data-testid="billing-panel-perf">
@@ -3807,16 +3726,16 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   // 余额不足告警：任一提供方余额低于阈值（折算人民币）时每天提醒一次；
   // 与预算开关无关——余额是硬性约束，无论是否开启预算都要提醒。
   const lastBalanceAlertDay = useStore(s => s.lastBalanceAlertDay)
+  const lowThreshold = stats.lowBalanceThreshold ?? DEFAULT_LOW_BALANCE_THRESHOLD
   const lowBalanceRow = useMemo(() => {
     if (balances.length === 0) return undefined
-    const threshold = stats.lowBalanceThreshold ?? DEFAULT_LOW_BALANCE_THRESHOLD
     const burn = dailyBurnRate(stats.byDay, today)
     const rate = getRateInfo().rate
     for (const balance of balances) {
       if (balance.totalBalance === undefined || balance.error !== undefined) continue
       // USD 余额按当前汇率折成人民币，与阈值同口径。
       const cny = balance.currency === 'USD' ? balance.totalBalance * rate : balance.totalBalance
-      if (cny >= threshold) continue
+      if (cny >= lowThreshold) continue
       // 天数仅在有消耗记录时提供；刚用或未用（无历史）时以金额告警为主。
       const days = burn > 0 ? Math.floor(cny / burn) : undefined
       return { name: balance.displayName, cny, days }
@@ -3846,7 +3765,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       if (!date.startsWith(prefix)) continue
       for (const [modelKey, usage] of Object.entries(models)) {
         if (usage.cost <= 0) continue
-        const provider = modelOf(modelKey).provider ?? '其他'
+        const provider = modelOf(modelKey).provider
         const isPlan = stats.byModel?.[modelKey]?.plan === true
         const cur = vendor.get(provider) ?? { cost: 0, plan: isPlan }
         cur.cost += usage.cost
@@ -3855,11 +3774,32 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
         vendor.set(provider, cur)
       }
     }
-    const directEntry = [...vendor.entries()].filter(([, v]) => !v.plan).sort((a, b) => b[1].cost - a[1].cost)[0]
-    const subEntry = [...vendor.entries()].filter(([, v]) => v.plan).sort((a, b) => b[1].cost - a[1].cost)[0]
-    const balanceStatus = (name: string): { text: string; low: boolean } => {
+    // 直联/订阅各取费用最高的渠道：单次遍历同时找两个最大值（稳定并列语义同 sort[0]）。
+    let directEntry: [string, { cost: number; plan: boolean }] | undefined
+    let subEntry: [string, { cost: number; plan: boolean }] | undefined
+    for (const entry of vendor) {
+      const top = entry[1].plan ? subEntry : directEntry
+      if (top === undefined || entry[1].cost > top[1].cost) {
+        if (entry[1].plan) subEntry = entry
+        else directEntry = entry
+      }
+    }
+    // 目录兜底条目（Custom/其他）不是真实渠道：用户给未收录模型配价后它可能成为
+    // 主力（issue #40 反馈），按名查余额必然「未配置」。单渠道用户把唯一配置成功
+    // 的渠道余额借过来显示（所有流量实际都走它）；多渠道时归属不明，隐藏该行
+    // 而不是显示误导性的「未配置」。
+    const balanceStatus = (name: string): { text: string; low: boolean } | undefined => {
       const bal = balances.find(b => normalizeProvider(b.provider) === normalizeProvider(name))
       if (bal === undefined || bal.totalBalance === undefined) {
+        // 目录兜底条目（Custom）不是真实渠道：单渠道用户把唯一配置成功的渠道余额
+        // 借过来显示（所有流量实际都走它）；多渠道时归属不明，隐藏该行而不是显示
+        // 误导性的「未配置」（issue #40 反馈）。
+        if (name === 'Custom') {
+          const configured = balances.filter(b => b.totalBalance !== undefined && b.error === undefined)
+          const only = configured[0]
+          if (only !== undefined && configured.length === 1) return balanceStatus(only.provider)
+          return undefined
+        }
         // 无余额/异常时给出状态文案（未配置 / 密钥无效 / 查询失败），而非空。
         const text = bal?.error === 'unauthorized'
           ? t('balanceUnauthorized')
@@ -3871,7 +3811,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       const amount = bal.currency === 'USD' ? `$${bal.totalBalance.toFixed(2)}` : formatMoney(bal.totalBalance)
       const rate = getRateInfo().rate
       const cny = bal.currency === 'USD' ? bal.totalBalance * rate : bal.totalBalance
-      return { text: amount, low: cny < (stats.lowBalanceThreshold ?? DEFAULT_LOW_BALANCE_THRESHOLD) }
+      return { text: amount, low: cny < lowThreshold }
     }
     const quotaStatus = (name: string): { text: string; low: boolean } => {
       const q = quotas.find(qq => qq.displayName === name || subscriptionVendorOf(qq.provider) === name)
@@ -3884,8 +3824,11 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
         low: lowest < 20,
       }
     }
+    const directStatus = directEntry === undefined ? undefined : balanceStatus(directEntry[0])
     return {
-      direct: directEntry === undefined ? undefined : { name: directEntry[0], ...balanceStatus(directEntry[0]) },
+      direct: directEntry === undefined || directStatus === undefined
+        ? undefined
+        : { name: directEntry[0], ...directStatus },
       sub: subEntry === undefined ? undefined : { name: subEntry[0], ...quotaStatus(subEntry[0]) },
     }
   }, [stats.byDayModels, stats.byModel, stats.lowBalanceThreshold, balances, quotas, today])
@@ -3916,7 +3859,6 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
 
   return (
     <>
-      {/* zine 模式下触发器由 CSS（body[data-zine-mode]）隐藏，入口交给主题贴纸层。 */}
       <UsageBillingTrigger
         {...props}
         t={t}

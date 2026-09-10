@@ -318,6 +318,11 @@ describe('computeCostAt (P0-1)', () => {
     expect(modelOf('deepseek-v4.1-flash').key).toBe('flash')
   })
 
+  it('resolves the expired V4.1 Flash beta id to the flash catalog key', () => {
+    // 内测端点（09-10 过期）的存量用量按 flash 时间线正确归并计费（issue #40 反馈）。
+    expect(modelOf('deepseek-v4.1-flash-expires-on-0910').key).toBe('flash')
+  })
+
   it('keeps user prices authoritative across the reprice boundary', () => {
     // 用户价 = 实付价：分界前也不套内置旧价口径。
     const priced = { ...modelOf('flash'), userPriced: true as const, price: { currency: 'CNY' as const, input: 9, cacheHit: 0.3, output: 27 } }
