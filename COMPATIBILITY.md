@@ -16,15 +16,15 @@
 
 | 线 | 分支 | 版本号 | npm 标签 | 服务宿主 | package.json 声明 |
 |---|---|---|---|---|---|
-| 预览线 | `main` | `1.0.x` | `latest`（v1.0.26 起）+ `alpha` | 0.1.2 系 | `dsh: >=0.1.2-alpha.1` + `dshReleases` 逐版本 |
+| 预览线 | `main` | `1.2.x`（v1.2.0 起） | `latest`（v1.0.26 起）+ `alpha` | 0.1.2 系 | `dsh: >=0.1.2-alpha.1` + `dshReleases` 逐版本 |
 | 稳定线 | `compat/stable-dsh` | `1.1.x` | `stable`（v1.1.6 起） | 0.1.1 系 | `dsh: >=0.1.0-rc.8 <0.1.1-0 \|\| >=0.1.1-rc.1 <0.1.2-0` + `dshReleases` 三版本 |
 
-**标签策略：插件 `latest` 永远跟随宿主 `latest` 所在代际。** 宿主 latest 换代时，旧代际线退到 `stable` 标签继续维护，新代际线接管 `latest`。历史包袱：v1.0.26/v1.1.6 之前插件 `latest` 是稳定线（1.1.5），与宿主 latest（0.1.2-rc.1）错配，导致 issue #31（新用户默认组合必崩）。
+**标签策略：插件 `latest` 永远跟随宿主 `latest` 所在代际。** 宿主 latest 换代时，旧代际线退到 `stable` 标签继续维护，新代际线接管 `latest`。历史包袱一：v1.0.26/v1.1.6 之前插件 `latest` 是稳定线（1.1.5），与宿主 latest（0.1.2-rc.1）错配，导致 issue #31（新用户默认组合必崩）。历史包袱二：预览线 1.0.x 曾**低于**稳定线 1.1.x（版本号倒挂），pnpm 的 `minimumReleaseAge` 冷静期把刚发布的 latest 跳过后会回退到旧稳定线（issue #40 有实测：`@latest` 实际装到 1.1.11，0.1.2 宿主直接崩）——**自 v1.2.0 起预览线采用 1.2.x 序列，恒高于稳定线**，倒挂根除；过渡期宿主 profile 里的逐版本 `minimumReleaseAgeExclude` 不再需要（可改为包级豁免）。
 
 ### 用户安装指引
 
-- 宿主 0.1.2 系（`npm view @deepseek-ai/dsh version` 显示 0.1.2-*）：`dsh plugin add npm:@kenz1117/dsh-ui-usage-billing`（latest 即预览线）
-- 宿主 0.1.1 系（0.1.0-rc.8 ~ 0.1.1-rc.2）：`dsh plugin add npm:@kenz1117/dsh-ui-usage-billing@stable`
+- 宿主 0.1.2 系（`npm view @deepseek-ai/dsh version` 显示 0.1.2-*）：`dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@latest`（latest 即预览线；`--profile` 必填，建议钉具体版本号避开发布冷静期）
+- 宿主 0.1.1 系（0.1.0-rc.8 ~ 0.1.1-rc.2）：`dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@stable`
 - 不确定宿主代际：先跑 `dsh --version` 或看 `npm ls -g @deepseek-ai/dsh`
 
 ## 监控与校验机制
@@ -52,4 +52,4 @@
 
 ## English summary
 
-This file is the single source of truth for plugin↔host compatibility. The host `@deepseek-ai/dsh` ships two generations: 0.1.1-era (rc.8 ~ 0.1.1-rc.2) and 0.1.2-era (npm `latest` since 0.1.2-rc.1). The plugin maintains two release lines: preview (`main`, 1.0.x, npm `latest` from v1.0.26) serving 0.1.2 hosts, and stable (`compat/stable-dsh`, 1.1.x, npm `stable` from v1.1.6) serving 0.1.1 hosts. Policy: the plugin's `latest` tag always follows the host generation that owns the host's `latest` tag. `scripts/check-compat.mjs` validates both lines' compatibility matrices against npm registry metadata (per-version declaration required for every in-range host release and every dist-tag target); the `watch-dsh-releases` GitHub Actions workflow runs it daily and files a `compat-drift` issue on drift. SemVer pitfalls: use `<X.Y.Z-0` to exclude a whole prerelease generation, and union ranges to cover prereleases across patch tuples. Release rule (issue #40): always publish the preview line with an explicit `--tag latest` and the stable line with `--tag stable` — npm never moves `latest` to a lower semver, so a bare publish of 1.0.x leaves `latest` on the 1.1.x line while the marketplace and `dsh plugin add` install `latest` by default; verify dist-tags after every publish. `0.1.2-alpha.1` was unpublished from npm by upstream; the matrix keeps it for existing installs (warning-level only).
+This file is the single source of truth for plugin↔host compatibility. The host `@deepseek-ai/dsh` ships two generations: 0.1.1-era (rc.8 ~ 0.1.1-rc.2) and 0.1.2-era (npm `latest` since 0.1.2-rc.1). The plugin maintains two release lines: preview (`main`, 1.2.x since v1.2.0 — kept strictly above the stable line to kill the version inversion that let pnpm`s `minimumReleaseAge` cooldown fall back to the old stable line, see issue #40; npm `latest` from v1.0.26) serving 0.1.2 hosts, and stable (`compat/stable-dsh`, 1.1.x, npm `stable` from v1.1.6) serving 0.1.1 hosts. Policy: the plugin's `latest` tag always follows the host generation that owns the host's `latest` tag. `scripts/check-compat.mjs` validates both lines' compatibility matrices against npm registry metadata (per-version declaration required for every in-range host release and every dist-tag target); the `watch-dsh-releases` GitHub Actions workflow runs it daily and files a `compat-drift` issue on drift. SemVer pitfalls: use `<X.Y.Z-0` to exclude a whole prerelease generation, and union ranges to cover prereleases across patch tuples. Release rule (issue #40): always publish the preview line with an explicit `--tag latest` and the stable line with `--tag stable` — npm never moves `latest` to a lower semver, so a bare publish of 1.0.x leaves `latest` on the 1.1.x line while the marketplace and `dsh plugin add` install `latest` by default; verify dist-tags after every publish. `0.1.2-alpha.1` was unpublished from npm by upstream; the matrix keeps it for existing installs (warning-level only).

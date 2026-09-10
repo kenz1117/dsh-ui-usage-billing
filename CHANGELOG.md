@@ -2,9 +2,17 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前为双线发布：**预览线 1.0.x**（npm `latest` + `alpha`，适配 DSH 0.1.2 系；宿主 `latest` 自 0.1.2-rc.1 起指向 0.1.2 系，插件 `latest` 自 v1.0.26 起跟随移交预览线）与**稳定线 1.1.x**（npm `stable`，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2，维护于 `compat/stable-dsh` 分支）。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前为双线发布：**预览线 1.2.x**（npm `latest` + `alpha`，适配 DSH 0.1.2 系；宿主 `latest` 自 0.1.2-rc.1 起指向 0.1.2 系，插件 `latest` 自 v1.0.26 起跟随移交预览线，自 v1.2.0 起采用 1.2.x 序列以消除与稳定线的版本号倒挂）与**稳定线 1.1.x**（npm `stable`，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2，维护于 `compat/stable-dsh` 分支）。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
-## 预览线（1.0.x，适配 DSH 0.1.2 系）
+## 预览线（1.2.x，适配 DSH 0.1.2 系）
+
+> **版本序列说明**：自 v1.2.0 起预览线采用 1.2.x 序列，恒高于稳定线 1.1.x——消除此前 1.0.x < 1.1.x 的版本号倒挂（pnpm `minimumReleaseAge` 冷静期会把刚发布的 latest 跳过、回退到旧稳定线，issue #40 有实测案例）。安装建议钉具体版本号。
+
+### v1.2.0（2026-09-10）
+
+- 修复：给未收录模型配置自定义价后，「主力消耗模型余额」被兜底 provider（Custom/其他）挤成「未配置」（issue #40 反馈）——单渠道用户现在显示唯一配置成功渠道的余额；多渠道时归属不明则隐藏该行而非误导
+- 新增：V4.1 Flash 限时内测端点 id（`deepseek-v4.1-flash-expires-on-0910`）收录进别名表——存量账单的内测用量按 flash 时间线正确归并计费；FOLD_VERSION 12 → 13
+- 文档：README 安装命令补 `--profile`（缺失会报 `required option`），并建议钉具体版本号安装
 
 ### v1.0.44（2026-09-10）
 

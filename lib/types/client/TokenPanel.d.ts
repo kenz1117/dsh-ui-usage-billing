@@ -67,6 +67,8 @@ export declare function TokenPanel(props: {
     trendDays: 7 | 30;
     onTrendDays: (d: 7 | 30) => void;
     models?: readonly TrendSeriesModel[];
+    /** 金额格式化（跟随仪表盘币种切换）：费用构成区块展示用。 */
+    money: (cny: number) => string;
     t: (key: UsageBillingKey) => string;
 }): React.ReactNode;
 export {};

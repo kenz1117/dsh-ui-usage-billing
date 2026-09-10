@@ -79,9 +79,9 @@ pnpm dsh --profile web --port 3080
 
 ```bash
 # 独立仓库内操作
-git add ... && git commit -m "release: 1.0.x ..."
-git push origin main && git tag v1.0.x && git push origin v1.0.x
-gh release create v1.0.x ...
+git add ... && git commit -m "release: 1.2.x ..."
+git push origin main && git tag v1.2.x && git push origin v1.2.x
+gh release create v1.2.x ...
 
 # npm 发布：官方源 + 本机代理（127.0.0.1:7897）+ .npmrc 里的官方 token
 HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=http://127.0.0.1:7897 \
