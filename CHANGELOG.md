@@ -2,11 +2,17 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前为双线发布：**预览线 1.2.x**（npm `latest` + `alpha`，适配 DSH 0.1.2 系；宿主 `latest` 自 0.1.2-rc.1 起指向 0.1.2 系，插件 `latest` 自 v1.0.26 起跟随移交预览线，自 v1.2.0 起采用 1.2.x 序列以消除与稳定线的版本号倒挂）与**稳定线 1.1.x**（npm `stable`，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2，维护于 `compat/stable-dsh` 分支）。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前为双线发布：**预览线 1.2.x**（npm `latest` + `alpha`，适配 DSH 0.1.2 ~ 0.1.5 系；宿主 `latest` 现指向 0.1.5-rc.1，插件 `latest` 自 v1.0.26 起跟随宿主 latest 代际，自 v1.2.0 起采用 1.2.x 序列以消除与稳定线的版本号倒挂）与**稳定线 1.1.x**（npm `stable`，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2，维护于 `compat/stable-dsh` 分支）。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
-## 预览线（1.2.x，适配 DSH 0.1.2 系）
+## 预览线（1.2.x，适配 DSH 0.1.2 ~ 0.1.5 系）
 
 > **版本序列说明**：自 v1.2.0 起预览线采用 1.2.x 序列，恒高于稳定线 1.1.x——消除此前 1.0.x < 1.1.x 的版本号倒挂（pnpm `minimumReleaseAge` 冷静期会把刚发布的 latest 跳过、回退到旧稳定线，issue #40 有实测案例）。安装建议钉具体版本号。
+
+### v1.2.1（2026-09-10）
+
+- 适配：宿主 0.1.5 系（`latest` 已指向 0.1.5-rc.1）——`dshReleases` 补 0.1.3-alpha.2 / 0.1.5-alpha.1 / 0.1.5-alpha.2 / 0.1.5-rc.1 逐版本声明；宿主 0.1.5-rc.1 真机验证通过（插件加载、用量聚合、历史会话回读）
+- 修复：SessionHandle 适配层对 `handle.read` 返回形状的假定——0.1.3-alpha.2 起宿主返回 `SessionHandleReadResult`（`{eventState, events}` 包装）而非裸事件数组，原实现下聚合会静默失败（会话读取全部跳过、统计归零）；现按返回形状探测收窄，0.1.3-alpha.1（裸数组）与 0.1.3-alpha.2+/0.1.5（包装）双形状通吃
+- 改进：聚合层持久化面（`UsagePersistence`）改为本地结构声明，不再 `Pick` 自宿主包类型——同一份 bundle 类型检查对所有宿主代际成立，devDeps 后续升级不再被卡
 
 ### v1.2.0（2026-09-10）
 

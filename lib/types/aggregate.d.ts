@@ -10,8 +10,8 @@
  * zero while their tokens still count. Pure functions only: the persistence
  * handle is injected, so the fold is unit-testable without a host.
  */
-import type { SessionId } from '@deepseek-ai/dsh-session/types';
-import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence';
+import { SessionLogOffset } from '@deepseek-ai/dsh-session/types';
+import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types';
 import type { TokenUsage } from '@deepseek-ai/dsh-llm';
 import { MODEL_KEY_ALIASES, resolveCatalogKey } from './client/pricing.ts';
 export { MODEL_KEY_ALIASES, resolveCatalogKey };
@@ -187,17 +187,30 @@ export declare function hostTimeZone(now?: Date): {
 export declare const UNKNOWN_WORKSPACE_NAME = "\u2014";
 /** 工作区名：取 cwd 的末级目录名；无 cwd 时返回 {@link UNKNOWN_WORKSPACE_NAME}。 */
 export declare function workspaceNameOf(cwd: string | undefined): string;
+/** readFrom 返回的后缀切片：与宿主 0.1.2 的 SessionEventSuffix 同构，本地结构声明。 */
+export interface UsageEventSuffix {
+    readonly meta: SessionHeader;
+    readonly inheritedEventCount: SessionLogOffset;
+    readonly fromSeq: SessionLogOffset;
+    readonly events: readonly SessionEvent[];
+}
 /**
- * The persistence surface the aggregate reads: enough of
- * `SessionPersistence` to list sessions and read each log once. Two
- * optional invalidation-stamp sources, checked in order:
- * `stampOf` (host 0.1.3+: the persistence revision token, exposed by the
- * host-shape adapter) then `locate` (host 0.1.2: artifact mtime + size).
- * Neither present means every round re-folds.
+ * The persistence surface the aggregate reads: enough of the host
+ * `SessionPersistence` to list sessions and read each log once. Declared
+ * structurally (not via `Pick` off a host package) so the same bundle type
+ * checks against every host generation. Two optional invalidation-stamp
+ * sources, checked in order: `stampOf` (host 0.1.3+: the persistence
+ * revision token, exposed by the host-shape adapter) then `locate` (host
+ * 0.1.2: artifact mtime + size). Neither present means every round re-folds.
  */
-export type UsagePersistence = Pick<SessionPersistence, 'list' | 'readFrom'> & Partial<Pick<SessionPersistence, 'locate'>> & Partial<{
-    stampOf(id: SessionId): Promise<string | null>;
-}>;
+export interface UsagePersistence {
+    list(): Promise<readonly SessionHeader[]>;
+    readFrom(id: SessionId, fromSeq: SessionLogOffset): Promise<UsageEventSuffix>;
+    locate?(meta: SessionHeader): {
+        path: string;
+    } | undefined;
+    stampOf?(id: SessionId): Promise<string | null>;
+}
 /** The usage-stats document served to the billing dashboard. */
 export interface UsageStatsDocument {
     version: number;

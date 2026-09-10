@@ -31,7 +31,7 @@ describe('adaptSessionPersistence', () => {
     await expect(adapted.stampOf?.(SessionId('ghost'))).resolves.toBeNull()
   })
 
-  it('routes readFrom through open/read and disposes the handle', async () => {
+  it.each(['wrapped', 'bare'] as const)('routes readFrom through open/read and disposes the handle (%s read)', async readShape => {
     const { persistence, opened, disposed } = fakeHost013({
       s1: {
         header: { version: 0 } as SessionHeader,
@@ -41,7 +41,7 @@ describe('adaptSessionPersistence', () => {
         ] as unknown as SessionEvent[],
         revision: 'r1',
       },
-    })
+    }, readShape)
     const adapted = adaptSessionPersistence(persistence)
     const suffix = await adapted.readFrom(SessionId('s1'), SessionLogOffset(5))
     // 读取经 open('read') 完成，handle 用后即弃。
@@ -53,8 +53,16 @@ describe('adaptSessionPersistence', () => {
   })
 })
 
-/** 0.1.3 宿主 persistence double：记录 open/dispose 轨迹供断言。 */
-function fakeHost013(logs: Record<string, { header: SessionHeader; events: SessionEvent[]; revision: string }>) {
+/**
+ * 0.1.3 宿主 persistence double：记录 open/dispose 轨迹供断言。
+ * readShape='wrapped' 是 0.1.3-alpha.2+/0.1.5 的现行形状（handle.read 返回
+ * SessionHandleReadResult 包装）；'bare' 是 0.1.3-alpha.1 的裸事件数组，
+ * 适配层需两种通吃。
+ */
+function fakeHost013(
+  logs: Record<string, { header: SessionHeader; events: SessionEvent[]; revision: string }>,
+  readShape: 'wrapped' | 'bare' = 'wrapped',
+) {
   const opened: string[] = []
   const disposed: string[] = []
   return {
@@ -69,7 +77,10 @@ function fakeHost013(logs: Record<string, { header: SessionHeader; events: Sessi
         return {
           header: { ...session.header, id: SessionId(id) },
           inheritedEventCount: 4,
-          read: async (offset = 0) => session.events.filter(event => event.seq >= offset),
+          read: async (offset = 0) => {
+            const events = session.events.filter(event => event.seq >= offset)
+            return readShape === 'wrapped' ? { eventState: 'owned', events } : events
+          },
           [Symbol.asyncDispose]: async () => { disposed.push(id) },
         }
       },

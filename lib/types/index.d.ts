@@ -126,7 +126,8 @@ export declare function resolveSubscriptionKeys(settings: SettingsProvider, cred
  * 宿主 persistence 形状适配。宿主 0.1.3 起 SessionPersistence 改为
  * SessionHandle 模型（open(id,'read') 后经 handle.read(offset) 读，fork 边界
  * 挂在 handle.inheritedEventCount，list 返回 {header, revision} 快照行，
- * 0.1.2 的 readFrom/locate 消失）。这里按结构探测把两种宿主形状都收敛为
+ * 0.1.2 的 readFrom/locate 消失；handle.read 自 0.1.3-alpha.2 起返回
+ * {eventState, events} 包装）。这里按结构探测把两种宿主形状都收敛为
  * 聚合层期望的 0.1.2 面貌：0.1.2 直接带 readFrom 的原样直通；0.1.3 的
  * 读取转为 open → handle.read，revision 令牌经 stampOf 暴露给增量缓存。
  * 候选时刻的运行时对象是宿主注入的外部形状，结构断言即 durable 收窄点。

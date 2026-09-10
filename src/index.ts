@@ -451,11 +451,16 @@ async function readOpenCodeToken(): Promise<string> {
   return ''
 }
 
+/** 宿主 0.1.3-alpha.2+ 的 handle.read 切片包装（0.1.3-alpha.1 返回裸事件数组）。 */
+interface HostReadSlice013 {
+  readonly events: readonly SessionEvent[]
+}
+
 /** 宿主 0.1.3+ 的 SessionHandle 最小读取面（结构化声明，类型不依赖 0.1.3 包）。 */
 interface HostPersistenceHandle013 {
   readonly header: SessionHeader
   readonly inheritedEventCount: number
-  read(offset?: number, length?: number): Promise<readonly SessionEvent[]>
+  read(offset?: number, length?: number): Promise<readonly SessionEvent[] | HostReadSlice013>
   [Symbol.asyncDispose]?: () => Promise<void>
 }
 
@@ -469,7 +474,8 @@ interface HostPersistence013 {
  * 宿主 persistence 形状适配。宿主 0.1.3 起 SessionPersistence 改为
  * SessionHandle 模型（open(id,'read') 后经 handle.read(offset) 读，fork 边界
  * 挂在 handle.inheritedEventCount，list 返回 {header, revision} 快照行，
- * 0.1.2 的 readFrom/locate 消失）。这里按结构探测把两种宿主形状都收敛为
+ * 0.1.2 的 readFrom/locate 消失；handle.read 自 0.1.3-alpha.2 起返回
+ * {eventState, events} 包装）。这里按结构探测把两种宿主形状都收敛为
  * 聚合层期望的 0.1.2 面貌：0.1.2 直接带 readFrom 的原样直通；0.1.3 的
  * 读取转为 open → handle.read，revision 令牌经 stampOf 暴露给增量缓存。
  * 候选时刻的运行时对象是宿主注入的外部形状，结构断言即 durable 收窄点。
@@ -493,7 +499,13 @@ export function adaptSessionPersistence(raw: unknown): UsagePersistence {
     readFrom: async (id, fromSeq) => {
       const handle = await host.open(id, 'read')
       try {
-        const events = await handle.read(fromSeq)
+        const slice = await handle.read(fromSeq)
+        // 0.1.3-alpha.1 返回裸事件数组；0.1.3-alpha.2 起包一层
+        // SessionHandleReadResult（{eventState, events}）——按形状收窄。
+        // Array.isArray 不收窄 readonly 数组联合，分支内显式断言。
+        const events = Array.isArray(slice)
+          ? (slice as readonly SessionEvent[])
+          : (slice as HostReadSlice013).events
         return {
           meta: handle.header,
           fromSeq: SessionLogOffset(fromSeq),
