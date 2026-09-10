@@ -25,14 +25,19 @@ jobs:
           ref: compat/stable-dsh
           path: compat-line
       - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: node scripts/check-compat.mjs --peer compat-line/package.json --report drift-report.md
+      - id: compat
+        run: node scripts/check-compat.mjs --peer compat-line/package.json --report drift-report.md
       - name: 漂移时开/更新 issue
-        if: failure()
+        # 仅在「校验脚本判定漂移」时开 issue；pnpm 安装等基础设施故障
+        # （compat 步骤根本没跑，outcome 为 skipped）不触发，避免误报噪音。
+        if: steps.compat.outcome == 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
