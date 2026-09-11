@@ -260,16 +260,26 @@ export const WEEKEND_OFFPEAK_START_MS = Date.parse('2026-08-22T16:00:00Z')
  * 1/0.02/4（峰 = 谷 × 2）。目录条目写现行（新）价；分界前的历史事件由
  * {@link computeCostAt} 按 {@link FLASH_REPRICED_OFFPEAK} 回算旧价，与
  * {@link PEAK_ERA_START_MS} 同一「按事件时刻分段适用规则」口径。
+ * pro 例外：V4 Pro 的路由计费分界是 {@link PRO_OFFLINE_MS}（官方把原定
+ * 09-10 的路由时点推迟到 09-14 12:00），不在本分界切换。
  */
 export const FLASH_REPRICE_MS = Date.parse('2026-09-10T04:00:00Z')
 
 /**
+ * V4 Pro 下线路由分界（UTC 2026-09-14T04:00:00Z，即北京时间 2026-09-14
+ * 12:00）：官方价目页注释明确，此后至 V4.1 Pro 上线前，`deepseek-v4-pro`
+ * 的请求全部路由至 V4.1 Flash 并按其单价计费——此前的请求仍按 V4 Pro
+ * 峰谷刊例计费（官方原定 09-10 路由，后推迟到 09-14）。
+ */
+export const PRO_OFFLINE_MS = Date.parse('2026-09-14T04:00:00Z')
+
+/**
  * flash 系调价前的官方谷档价（CNY / 1M tokens）：{@link FLASH_REPRICE_MS}
  * 之前的 flash / flash-vision-exp 事件按此回算（峰档 = 谷档 × 2）。pro 的
- * 同表条目是 V4 Pro 峰谷时代刊例（谷 4.5/0.15/13.5）：官方公告自
- * {@link FLASH_REPRICE_MS} 起 V4 Pro 请求全部路由至 V4.1 Flash 并按其单价
- * 计费（V4.1 Pro 上线前），故分界前回算 V4 Pro 刊例、分界后走目录的 Flash 价。
- * 用户价 = 实付价，与 legacy 口径相同地跳过本表。
+ * 同表条目是 V4 Pro 峰谷时代刊例（谷 4.5/0.15/13.5）：官方自
+ * {@link PRO_OFFLINE_MS} 起（原定 09-10，后推迟）把 V4 Pro 请求全部路由至
+ * V4.1 Flash 并按其单价计费（V4.1 Pro 上线前），故分界前回算 V4 Pro 刊例、
+ * 分界后走目录的 Flash 价。用户价 = 实付价，与 legacy 口径相同地跳过本表。
  */
 const FLASH_PRE_REPRICE_BAND: PriceBand = { input: 1.5, cacheHit: 0.05, output: 4.5 }
 const FLASH_REPRICED_OFFPEAK: Readonly<Record<string, PriceBand>> = {
@@ -552,9 +562,10 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'DeepSeek V4 Pro',
     provider: 'DeepSeek',
     colorVar: 'dsw-static-deepseek-500',
-    // 2026-09-10 12:00 起官方把 V4 Pro 请求路由至 V4.1 Flash 并按其单价计费
-    // （V4.1 Pro 上线前），故此处写 V4.1 Flash 现行价；V4 Pro 刊例（峰
-    // 9/0.3/27、谷 4.5/0.15/13.5）保留在 FLASH_REPRICED_OFFPEAK 供分界前回算。
+    // 2026-09-14 12:00（北京）起官方把 V4 Pro 请求路由至 V4.1 Flash 并按其
+    // 单价计费（V4.1 Pro 上线前；原定 09-10 后推迟），故此处写 V4.1 Flash
+    // 现行价；V4 Pro 刊例（峰 9/0.3/27、谷 4.5/0.15/13.5）保留在
+    // FLASH_REPRICED_OFFPEAK 供 PRO_OFFLINE_MS 分界前回算。
     price: {
       currency: 'CNY',
       input: 2,
@@ -1215,6 +1226,9 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   // V4.1 Flash 限时内测端点（expires-on-0910，09-10 过期）：内测价 = flash 同价，
   // 收录它让存量账单的内测用量按 flash 时间线正确归并计费（issue #40 反馈）。
   'deepseek-v4.1-flash-expires-on-0910': 'flash',
+  // 官方价目页 09-10 更新后的新规范名 deepseek-flash（模型版本 V4.1-Flash，
+  // 含图像理解——vision 并入 flash 主线）：计费同 flash 时间线。
+  'deepseek-flash': 'flash',
   'deepseek-v4-pro': 'pro',
   'glm-5.2': 'glm',
   // 智谱 GLM 其余按量变体：独立目录键（点/横杠/大小写变体归一）。
@@ -1691,7 +1705,10 @@ export function computeCostAt(
   if (legacy !== undefined) return priceBandCost(legacy, buckets, 'CNY')
   // flash 系 2026-09-10 12:00 调价分界：分界前的事件按官方旧谷档价回算
   // （峰档 = 谷档 × 2，档位判定沿用当时的分段规则）；用户价跳过本表。
-  const repriced = timeMs < FLASH_REPRICE_MS && entry.userPriced !== true
+  // pro 例外：路由计费分界是 PRO_OFFLINE_MS（09-14 12:00，官方推迟）——
+  // 09-10 ~ 09-14 之间 V4 Pro 请求仍按 V4 Pro 刊例计费。
+  const repriceBoundary = entry.key === 'pro' ? PRO_OFFLINE_MS : FLASH_REPRICE_MS
+  const repriced = timeMs < repriceBoundary && entry.userPriced !== true
     ? FLASH_REPRICED_OFFPEAK[entry.key]
     : undefined
   if (repriced !== undefined) {

@@ -672,7 +672,11 @@ export interface UsageLedgerDocument {
 // 13：V4.1 Flash 内测端点 id（expires-on-0910）收录进别名表——此前该 id 落目录兜底
 // 条目（Custom/其他），费用按 0 计且把「主力消耗模型余额」挤成「未配置」（issue #40
 // 反馈）；bump 让存量账单的内测用量按 flash 时间线重折归并。
-export const FOLD_VERSION = 13
+// 14：官方把 V4 Pro 路由时点从 09-10 12:00 推迟到 09-14 12:00（价目页注释 (2)），
+// pro 的回算分界改用 PRO_OFFLINE_MS——09-10 ~ 09-14 之间 V4 Pro 请求仍按 V4 Pro
+// 刊例计费（v12/v13 行按 Flash 价折算，低估）；bump 全量重折。同时收录官方新规范名
+// deepseek-flash → flash。
+export const FOLD_VERSION = 14
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。

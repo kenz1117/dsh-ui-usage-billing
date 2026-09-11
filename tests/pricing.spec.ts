@@ -299,19 +299,35 @@ describe('computeCostAt (P0-1)', () => {
       .toBe(computeCostAt(modelOf('flash'), buckets, postAt(13)))
   })
 
-  it('prices V4 Pro at the V4 Pro list rate before the boundary (official routing to V4.1 Flash after)', () => {
-    // 官方公告：2026-09-10 12:00 起 V4 Pro 请求路由至 V4.1 Flash 按 Flash 价计费。
-    // 分界前高峰按 V4 Pro 刊例（缓存命中 ¥0.3、未命中 ¥9、输出 ¥27）。
+  it('prices V4 Pro at the V4 Pro list rate before the routing boundary', () => {
+    // 官方价目页注释 (2)：2026-09-14 12:00（北京，原定 09-10 后推迟）起 V4 Pro
+    // 请求才路由至 V4.1 Flash 按 Flash 价计费。分界前高峰按 V4 Pro 刊例
+    // （缓存命中 ¥0.3、未命中 ¥9、输出 ¥27）。
     expect(computeCostAt(modelOf('pro'), buckets, preAt(10)))
       .toBeCloseTo((MILLION * 0.3 + MILLION * 9 + MILLION * 27) / MILLION, 10)
   })
 
-  it('prices V4 Pro at the V4.1 Flash rate after the boundary', () => {
-    // 分界后：V4 Pro 与 flash 同价（谷 0.02/1/4、峰 0.04/2/8）。
-    expect(computeCostAt(modelOf('pro'), buckets, postAt(13)))
-      .toBe(computeCostAt(modelOf('flash'), buckets, postAt(13)))
+  it('keeps V4 Pro at its list rate during the deferred routing window (09-10 ~ 09-14)', () => {
+    // 官方把路由时点从 09-10 推迟到 09-14 12:00：窗口内 pro 仍按 V4 Pro 刊例
+    // 计费——高峰 0.3/9/27、空闲 0.15/4.5/13.5（v12 曾把这段错按 Flash 价折算）。
     expect(computeCostAt(modelOf('pro'), buckets, postAt(10)))
-      .toBe(computeCostAt(modelOf('flash'), buckets, postAt(10)))
+      .toBeCloseTo((MILLION * 0.3 + MILLION * 9 + MILLION * 27) / MILLION, 10)
+    expect(computeCostAt(modelOf('pro'), buckets, postAt(13)))
+      .toBeCloseTo((MILLION * 0.15 + MILLION * 4.5 + MILLION * 13.5) / MILLION, 10)
+  })
+
+  it('routes V4 Pro to the V4.1 Flash rate after the 09-14 offline boundary', () => {
+    // 09-14 12:00（北京）后：V4 Pro 与 flash 同价（谷 0.02/1/4、峰 0.04/2/8）。
+    const afterAt = (beijingHour: number): number => Date.UTC(2026, 8, 15, (beijingHour + 24 - 8) % 24) // 9-15 周二
+    expect(computeCostAt(modelOf('pro'), buckets, afterAt(13)))
+      .toBe(computeCostAt(modelOf('flash'), buckets, afterAt(13)))
+    expect(computeCostAt(modelOf('pro'), buckets, afterAt(10)))
+      .toBe(computeCostAt(modelOf('flash'), buckets, afterAt(10)))
+  })
+
+  it('resolves the official deepseek-flash id to the flash catalog key', () => {
+    // 官方价目页 09-10 更新的新规范名（模型版本 V4.1-Flash，vision 并入主线）。
+    expect(modelOf('deepseek-flash').key).toBe('flash')
   })
 
   it('resolves the upcoming V4.1 Flash id to the flash catalog key', () => {
