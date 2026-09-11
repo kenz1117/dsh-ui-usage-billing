@@ -233,6 +233,11 @@
   position: fixed;
   left: 0;
   top: 0;
+  /* 尺寸固定（issue #45）：等于宿主默认侧栏下的计费卡宽——ui-layout columns.ts
+     契约冻结 SIDEBAR_DEFAULT 280 − SidebarRoot 根内联 padding 12×2 = 256。
+     侧栏被其他插件挤压时计费卡收窄自适应，悬浮卡保持此宽不跟随；用户拖宽
+     侧栏时也以此默认宽为准。宿主契约变更时随发版同步。 */
+  width: 256px;
   /* 自带 box-sizing 重置：宿主的全局 border-box 重置作用域不覆盖 portal 到
      body 的弹层，缺省 content-box 会把内联 width 当内容宽，再加上 padding 与
      border（26px）导致弹层实际宽度超出触发卡（issue #37）。子元素一并重置，

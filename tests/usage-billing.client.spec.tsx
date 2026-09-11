@@ -6,7 +6,7 @@
  * footer trigger disappears" symptom).
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ComponentProps } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { bindSnapshotSelector } from './bind-snapshot-selector'
@@ -70,37 +70,15 @@ describe('UsageBilling surface', () => {
     expect(screen.queryByText('概览')).toBeNull()
   })
 
-  it('widths the hover quick-view to the trigger card in a normal sidebar', () => {
+  it('keeps the hover quick-view width fixed regardless of the trigger card (issue #45)', () => {
+    // 悬浮卡尺寸固定（CSS 层 = 宿主默认侧栏下的计费卡宽），JS 不再按触发卡
+    // rect 内联设置宽度——侧栏被其他插件挤压、用户拖宽侧栏都不影响悬浮卡。
     const { container } = render(<UsageBilling {...makeProps()} />)
     const trigger = container.querySelector('button')!
-    // updatePopPos 读的是触发卡外层 wrapper（wrapRef）的 rect，mock 它。
-    const wrap = trigger.parentElement!
-    vi.spyOn(wrap, 'getBoundingClientRect').mockReturnValue({
-      width: 420, height: 60, left: 16, top: 600, right: 436, bottom: 660, x: 16, y: 600, toJSON: () => {},
-    } as DOMRect)
     fireEvent.mouseEnter(trigger)
     const pop = document.body.querySelector('[data-testid="billing-trigger-pop"]') as HTMLElement
     expect(pop).not.toBeNull()
-    expect(pop.style.width).toBe('420px')
-  })
-
-  it('keeps the hover quick-view width while the trigger card is squeezed (issue #45)', () => {
-    // 侧栏被其他插件抢占挤压：计费卡收窄自适应（120），悬浮卡锁定为
-    // 会话内见过的最大计费卡宽（此前正常 hover 时的 420），不再跟随变窄。
-    const { container } = render(<UsageBilling {...makeProps()} />)
-    const trigger = container.querySelector('button')!
-    const wrap = trigger.parentElement!
-    const rect = { height: 60, left: 16, top: 600, right: 436, bottom: 660, x: 16, y: 600, toJSON: () => {} }
-    vi.spyOn(wrap, 'getBoundingClientRect')
-      .mockReturnValue({ ...rect, width: 420 } as DOMRect)
-    fireEvent.mouseEnter(trigger)
-    fireEvent.mouseLeave(trigger)
-    // 计费卡被挤压：rect 变窄后再次 hover，悬浮卡保持原宽。
-    vi.mocked(wrap.getBoundingClientRect).mockReturnValue({ ...rect, width: 120 } as DOMRect)
-    fireEvent.mouseEnter(trigger)
-    const pop = document.body.querySelector('[data-testid="billing-trigger-pop"]') as HTMLElement
-    expect(pop).not.toBeNull()
-    expect(pop.style.width).toBe('420px')
+    expect(pop.style.width).toBe('')
   })
 
   it('switches the trigger card main metric between cost and token usage from the settings tab', async () => {

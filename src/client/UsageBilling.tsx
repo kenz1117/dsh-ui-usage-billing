@@ -1059,11 +1059,8 @@ function UsageBillingTrigger(
   // absolute 弹层向上弹出会被几何裁剪（z-index 救不了裁剪）。改为 hover 时用
   // 触发卡的 viewport rect 把弹层 fixed 到其上方，彻底脱离侧栏的裁剪上下文。
   const wrapRef = useRef<HTMLSpanElement>(null)
-  // 悬浮卡宽度记忆（issue #45）：会话内见过的最大触发卡宽——计费卡被挤压
-  // 收窄时悬浮卡保持原宽不变。
-  const popMaxWidth = useRef(0)
   const [popOpen, setPopOpen] = useState(false)
-  const [popPos, setPopPos] = useState<{ left: number; top: number; width: number }>({ left: 0, top: 0, width: 0 })
+  const [popPos, setPopPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 })
   // hover 桥接：弹层 portal 到 body 后不再是触发卡的 DOM 后代，鼠标从触发卡
   // 移向弹层会先触发触发卡的 mouseleave；延迟 120ms 关闭，期间进入弹层即取消。
   const popCloseTimer = useRef<number | undefined>(undefined)
@@ -1078,13 +1075,9 @@ function UsageBillingTrigger(
   useEffect(() => () => window.clearTimeout(popCloseTimer.current), [])
   const updatePopPos = useCallback(() => {
     const rect = wrapRef.current?.getBoundingClientRect()
-    if (rect !== undefined) {
-      // 宽度锁定为会话内见过的最大触发卡宽（issue #45）：侧栏被其他插件挤压
-      // 时计费卡自动收窄自适应，悬浮卡保持原宽不变（内容不再挤坏），也绝不
-      // 比见过的最宽计费卡更宽。
-      popMaxWidth.current = Math.max(popMaxWidth.current, rect.width)
-      setPopPos({ left: rect.left, top: rect.top - 8, width: popMaxWidth.current })
-    }
+    // 宽度不在此设置：悬浮卡尺寸固定（CSS .triggerPop），不随触发卡状态变化
+    // （issue #45：侧栏被其他插件挤压时计费卡收窄自适应，悬浮卡保持默认宽）。
+    if (rect !== undefined) setPopPos({ left: rect.left, top: rect.top - 8 })
   }, [])
   useEffect(() => {
     if (!popOpen) return
@@ -1185,7 +1178,7 @@ function UsageBillingTrigger(
       {createPortal(
       <span
         className={clsx(css.triggerPop, popOpen && css.triggerPopShown, floatPrefs.mode === 'subscription' && css.triggerPopSubscription)}
-        style={{ left: `${popPos.left}px`, top: `${popPos.top}px`, width: `${popPos.width}px` }}
+        style={{ left: `${popPos.left}px`, top: `${popPos.top}px` }}
         data-testid="billing-trigger-pop"
         aria-hidden={!popOpen}
         onMouseEnter={openPop}
