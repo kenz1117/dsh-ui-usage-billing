@@ -2,7 +2,7 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前为双线发布：**预览线 1.2.x**（npm `latest` + `alpha`，适配 DSH 0.1.2 ~ 0.1.5 系；宿主 `latest` 现指向 0.1.5-rc.1，插件 `latest` 自 v1.0.26 起跟随宿主 latest 代际，自 v1.2.0 起采用 1.2.x 序列以消除与稳定线的版本号倒挂）与**稳定线 1.1.x**（npm `stable`，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2，维护于 `compat/stable-dsh` 分支）。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前为双线发布：**预览线 1.2.x**（npm `latest` + `alpha`，适配 DSH 0.1.2 ~ 0.1.5 系；宿主 `latest` 现指向 0.1.5-rc.1，插件 `latest` 自 v1.0.26 起跟随宿主 latest 代际，自 v1.2.0 起采用 1.2.x 序列以消除与稳定线的版本号倒挂）与**稳定线 1.1.x**（npm `stable`，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2，维护于 `compat/stable-dsh` 分支；**自 2026-09-11 起冻结**，终版 v1.1.17，不再接收变更）。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ## 预览线（1.2.x，适配 DSH 0.1.2 ~ 0.1.5 系）
 

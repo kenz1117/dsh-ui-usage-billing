@@ -4,19 +4,19 @@
 
 ## 双线发布策略（最重要）
 
-插件同时服务两代 DSH 宿主，按宿主代际分两条发布线，**版本大号区分**：
+插件服务两代 DSH 宿主，按宿主代际分线，**版本大号区分**。稳定线已冻结，**当前只有预览线是活线**：
 
 | 线 | 宿主范围 | 版本号 | npm tag | 兼容矩阵声明 |
 |---|---|---|---|---|
-| **稳定线**（旧代际维护） | 0.1.0-rc.8 ~ 0.1.1-rc.2（官方正式版） | `1.1.x` | `stable` | rc 三件套精确 compatible + `dsh` 区间（`<0.1.2-0` 封顶） |
-| **预览线**（主战场） | 0.1.2-alpha.1 ~ 最新预览版（当前 rc.1） | `1.2.x`（v1.2.0 起，消除与稳定线的版本号倒挂） | `latest` + `alpha` | `0.1.2-*` 逐个声明 + `dsh: >=0.1.2-alpha.1` |
+| **稳定线**（已冻结，终版 v1.1.17） | 0.1.0-rc.8 ~ 0.1.1-rc.2 | `1.1.x` | `stable`（永久指向 v1.1.17） | rc 三件套精确 compatible + `dsh` 区间（`<0.1.2-0` 封顶） |
+| **预览线**（唯一活线） | 0.1.2-alpha.1 ~ 最新预览版（当前 0.1.5-rc.2） | `1.2.x`（v1.2.0 起，消除与稳定线的版本号倒挂） | `latest` + `alpha` | `0.1.2-*` 起逐个声明 + `dsh: >=0.1.2-alpha.1` |
 
-**标签策略：插件 `latest` 永远跟随宿主 `latest` 所在代际**（宿主 latest 自 0.1.2-rc.1 起为 0.1.2 系，故插件 latest 自 v1.0.26 起移交预览线，稳定线退到 `stable` tag）。兼容状态与区间写法的完整事实源见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+**标签策略：插件 `latest` 永远跟随宿主 `latest` 所在代际**（宿主 latest 现为 0.1.5 系，插件 latest 自 v1.0.26 起在预览线）。**稳定线自 2026-09-11 起冻结**：不再接收任何变更（含缺陷修复），`stable` 标签永久保留指向终版 v1.1.17——删标签会让存量用户的安装命令直接失败；正式 EOL（移除旧代际安装指引）待宿主发布首个非预发布版本时执行。冻结依据与触发条件见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 原则：
 
-- **正式版宿主 100% 兼容优先**；预览宿主 API 随 alpha 迭代漂移（例：alpha.2 移除了 `settingsNamespace`），适配跟随但**不作稳定承诺**。
-- 两条线的平台依赖面不同：稳定线用 `dsh-client-runtime`/`connection`，预览线用 `remote`/`store`。功能回移（backport）时先甄别是否依赖 0.1.2 专属模块面。
+- **宿主兼容以实测为准**；宿主 API 随预览版迭代漂移（例：alpha.2 移除了 `settingsNamespace`），适配跟随但**不作稳定承诺**。
+- 两条线的平台依赖面不同：稳定线用 `dsh-client-runtime`/`connection`，预览线用 `remote`/`store`。稳定线已冻结，**不再向其回移任何功能或修复**；差异对照仅供参考。
 - **不假声明兼容**：v1.0.12~v1.0.15 曾矩阵错报导致用户宿主崩溃（issue #25），这个错误不可重犯。兼容矩阵必须与代码实际依赖一致。
 
 ## 宿主版本升级适配流程（SOP）
@@ -37,16 +37,16 @@
 
 ## 发布纪律
 
-- **一个发布节点 = 双线一对版本同时发**（alpha + latest 同一时间、tag 与 GitHub release 一起出），release note 用双线对照表，不碎片化。
-- **攒批**：日常变更只进分支，攒到节点一起过双线；只有崩溃/账单错误/安全类紧急修复例外（也双线同步）。
-- GitHub release 的 alpha 线 tag 打 **Pre-release** 标记。
-- 发版前跑测试：本仓 `pnpm i && pnpm test`（两条分支都可独立跑：main 331+，compat 310+；compat 的 client 测试经 `vitest.config.ts` alias 用本地 store stub 顶替 registry 上装不到的 0.1.1 client-runtime）；真机验收用对应环境（见下表）。compat 线 cherry-pick 后跑 `pnpm test` + `bash build.sh` + 3090 验收。
-- **cherry-pick 跨线必须逐项核对三处红线**：① `package.json` 的 version（各线独立）与 `dshReleases`（绝不能被对面线的声明覆盖——稳定线=rc 三件套、预览线=alpha 系，覆盖即重演 #25）；② `lib/client.js` / `lib/index.js` 构建产物（各线独立构建，冲突取 ours 后用对应 build 重建）；③ **cherry-pick 后必跑该线测试**——此前 compat 的测试文件里残留过冲突标记与失效断言（#26/#27 移植时留下），因 compat 无测试环境长期未被发现。
+- **发布只走预览线**（稳定线已冻结，不再发版）：一个发布节点 = 一次 `latest` 发布，tag 与 GitHub release 一起出，不碎片化。
+- **攒批**：日常变更只进分支，攒到节点一起发；只有崩溃/账单错误/安全类紧急修复例外。
+- GitHub release 的预发布版本按需打 **Pre-release** 标记。
+- 发版前跑测试：本仓 `pnpm i && pnpm test`（main 395+）；真机验收用对应环境（见下表）。`compat/stable-dsh` 已冻结，其测试基线（337+，client 测试经 `vitest.config.ts` alias 用本地 store stub 顶替 registry 上装不到的 0.1.1 client-runtime）仅供历史查阅，不再参与发布。
+- **（已停用，保留作历史教训）cherry-pick 跨线必须逐项核对三处红线**：① `package.json` 的 version（各线独立）与 `dshReleases`（绝不能被对面线的声明覆盖——稳定线=rc 三件套、预览线=alpha 系，覆盖即重演 #25）；② `lib/client.js` / `lib/index.js` 构建产物（各线独立构建，冲突取 ours 后用对应 build 重建）；③ **cherry-pick 后必跑该线测试**——此前 compat 的测试文件里残留过冲突标记与失效断言（#26/#27 移植时留下），因 compat 无测试环境长期未被发现。稳定线冻结后不再跨线移植。
 
 ## 分支与构建
 
 - `main`：预览线开发（0.1.2 面），发布走 npm `latest` + `alpha` tag。
-- `compat/stable-dsh`：稳定线（0.1.1 面，从 v1.0.11 分叉），发布走 npm `stable` tag。修复用 cherry-pick 同步两条线。
+- `compat/stable-dsh`：稳定线（0.1.1 面，从 v1.0.11 分叉），**已冻结于终版 v1.1.17**——仅供历史查阅与存量用户安装，不再接收变更，也不再跨线 cherry-pick。
 - main 构建：`./sync.sh`（含 256KiB Store 单文件体积门禁，>245KiB 警告）；compat 构建：`bash build.sh`（同门禁）。
 
 ## 本机测试环境（三套，端口/家目录全隔离）
