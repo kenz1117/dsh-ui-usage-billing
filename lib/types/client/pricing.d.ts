@@ -273,6 +273,11 @@ export interface ModelEntry {
     uncatalogued?: boolean;
     /** 该条目当前按用户自定义单价计价（设置面板可维护）；费率表标注「自定义」。 */
     userPriced?: boolean;
+    /**
+     * 厂商已下线的模型（请求由继任型号服务、按继任单价计）：不进费率表面板，
+     * 目录条目与历史回算保留——存量用量仍按原键计价与显示，删条目会破坏历史计算。
+     */
+    retired?: boolean;
 }
 export declare const MODEL_CATALOG: readonly ModelEntry[];
 /**
@@ -328,7 +333,9 @@ export declare function applyPromo(entry: ModelEntry, nowMs: number): ModelEntry
  * 会把费率表撑爆；它们只作为目录外模型的计价回退源（见 {@link livePriceOf} /
  * {@link modelOf}）。探活模型在此逐个对价：内置已有的跳过去重；目录外但
  * models.dev 有价的按归一化 id 复用其 USD 价；两者皆无的标 `uncatalogued`。
- * 内置条目按 nowMs 折算限时促销（生效中的条目显示折后单价，过期自动恢复刊例价）。
+ * 内置条目按 nowMs 折算限时促销（生效中的条目显示折后单价，过期自动恢复刊例价），
+ * 应用路由分界期的现行价覆盖（V4 Pro 见 {@link applyRoutingDisplay}），并滤除
+ * 已下线条目（retired：官方下线的型号不进面板，目录与历史回算保留）。
  * @param nowMs - 促销判定时刻；缺省当前时刻。
  */
 export declare function catalogEntries(nowMs?: number): readonly ModelEntry[];

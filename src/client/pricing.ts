@@ -427,6 +427,11 @@ export interface ModelEntry {
   uncatalogued?: boolean
   /** 该条目当前按用户自定义单价计价（设置面板可维护）；费率表标注「自定义」。 */
   userPriced?: boolean
+  /**
+   * 厂商已下线的模型（请求由继任型号服务、按继任单价计）：不进费率表面板，
+   * 目录条目与历史回算保留——存量用量仍按原键计价与显示，删条目会破坏历史计算。
+   */
+  retired?: boolean
 }
 
 /**
@@ -453,11 +458,13 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
   // RMB per 1M tokens: peak / off-peak (50%).
   {
     key: 'flash',
-    name: 'DeepSeek V4 Flash',
+    name: 'DeepSeek V4.1 Flash',
     provider: 'DeepSeek',
     colorVar: 'dsw-static-blue-500',
     // 2026-09-10 12:00（北京）起官方调价：谷 1.5/0.05/4.5 → 1/0.02/4（峰 = 谷 × 2）。
     // 此处写现行价；分界前的历史事件由 computeCostAt 按 FLASH_REPRICE_MS 回算旧价。
+    // 型号名对齐官方价目页现行版本：旧 V4 Flash / Vision (Exp) 已下线，flash 流量
+    // 全部由 DeepSeek-V4.1-Flash 服务（价目页新规范名 deepseek-flash，图像理解并入）。
     price: {
       currency: 'CNY',
       input: 2,
@@ -472,7 +479,10 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'DeepSeek V4 Flash Vision (Exp)',
     provider: 'DeepSeek',
     colorVar: 'dsw-static-blue-500',
-    // 与 flash 同价、同步调价（2026-09-10 12:00 起），历史回算同 FLASH_REPRICE_MS。
+    // 官方已下线（价目页注释：旧名仍可调用，请求由 V4.1 Flash 服务并按 Flash
+    // 价计）；与 flash 同价、同步调价（2026-09-10 12:00 起），历史回算同
+    // FLASH_REPRICE_MS。retired = 不进费率表面板，目录与历史回算保留。
+    retired: true,
     price: {
       currency: 'CNY',
       input: 2,
@@ -1405,16 +1415,45 @@ export function applyPromo(entry: ModelEntry, nowMs: number): ModelEntry {
 }
 
 /**
+ * 费率表与计价层的「现行价」口径同步：目录价写长期现行价，但 V4 Pro 在
+ * {@link PRO_OFFLINE_MS} 路由分界前实际按 V4 Pro 峰谷刊例计费（官方把路由
+ * 时点从 09-10 推迟到 09-14 12:00），显示层同步覆盖，避免「表显 Flash 价、
+ * 账按刊例计」的不一致。其余条目原样返回。
+ */
+function applyRoutingDisplay(entry: ModelEntry, atMs: number): ModelEntry {
+  if (entry.key !== 'pro' || atMs >= PRO_OFFLINE_MS) return entry
+  const listBand = FLASH_REPRICED_OFFPEAK.pro
+  // 表内 pro 条目与目录键同步维护；缺失视为无覆盖（防御性，正常不触发）。
+  if (listBand === undefined) return entry
+  return {
+    ...entry,
+    price: {
+      currency: 'CNY',
+      input: listBand.input * 2,
+      cacheHit: listBand.cacheHit * 2,
+      output: listBand.output * 2,
+      offPeak: { ...listBand },
+    },
+  }
+}
+
+/**
  * 费率表渲染的完整目录：内置 + 探活命中的模型（无价标记未收录）。
  * models.dev 补充条目**不**整表渲染——那是数百网关厂商的全量模型清单（数千行），
  * 会把费率表撑爆；它们只作为目录外模型的计价回退源（见 {@link livePriceOf} /
  * {@link modelOf}）。探活模型在此逐个对价：内置已有的跳过去重；目录外但
  * models.dev 有价的按归一化 id 复用其 USD 价；两者皆无的标 `uncatalogued`。
- * 内置条目按 nowMs 折算限时促销（生效中的条目显示折后单价，过期自动恢复刊例价）。
+ * 内置条目按 nowMs 折算限时促销（生效中的条目显示折后单价，过期自动恢复刊例价），
+ * 应用路由分界期的现行价覆盖（V4 Pro 见 {@link applyRoutingDisplay}），并滤除
+ * 已下线条目（retired：官方下线的型号不进面板，目录与历史回算保留）。
  * @param nowMs - 促销判定时刻；缺省当前时刻。
  */
 export function catalogEntries(nowMs: number = Date.now()): readonly ModelEntry[] {
-  const entries: ModelEntry[] = [...MODEL_CATALOG.map(entry => applyPromo(entry, nowMs))]
+  const entries: ModelEntry[] = [
+    ...MODEL_CATALOG
+      .filter(entry => entry.retired !== true)
+      .map(entry => applyRoutingDisplay(applyPromo(entry, nowMs), nowMs)),
+  ]
   const known = new Set<string>(entries.map(entry => entry.key.toLowerCase()))
   const knownCanon = new Set<string>(entries.map(entry => canonModelId(entry.key)))
   for (const model of liveCatalogModels ?? []) {
