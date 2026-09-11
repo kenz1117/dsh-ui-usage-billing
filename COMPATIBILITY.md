@@ -9,7 +9,7 @@
 | 0.1.0/0.1.1 系（旧） | 0.1.0-rc.8 ~ 0.1.1-rc.2 | （无，已从 latest 退位） | client bundle 提供 `dsh-client-runtime` / `connection` |
 | 0.1.2 系 | 0.1.2-alpha.1 ~ 0.1.2-rc.1 | （已从 latest 退位） | client bundle 改为 `remote` / `store`；移除 `settingsNamespace` |
 | 0.1.3 系 | 0.1.3-alpha.1 ~ 0.1.3-alpha.2 | （无独立标签，alpha 波动） | SessionPersistence 改 SessionHandle 模型（`open`/`read`，`readFrom`/`locate` 消失）；session format v2 |
-| 0.1.5 系（现行 latest） | 0.1.5-alpha.1 ~ 0.1.5-rc.1 | `latest` / `next`（rc.1 起）、`alpha` | SessionHandle 面与 0.1.3-alpha.2 一致；`handle.read` 返回 `SessionHandleReadResult`（`{eventState, events}` 包装，0.1.3-alpha.1 为裸数组） |
+| 0.1.5 系（现行 latest） | 0.1.5-alpha.1 ~ 0.1.5-rc.2 | `latest` / `next`（rc.2 起）、`alpha` | SessionHandle 面与 0.1.3-alpha.2 一致；`handle.read` 返回 `SessionHandleReadResult`（`{eventState, events}` 包装，0.1.3-alpha.1 为裸数组）；rc.2 相对 rc.1 仅追加代码文件图标 artwork 与构建元数据，对插件零影响 |
 
 关键事实：宿主 `latest` 现指向 0.1.5-rc.1（0.1.2 系为上一代）——新用户默认装到的就是新代际。预览线 `dsh` 区间（`>=0.1.2-alpha.1`，无上界）天然覆盖 0.1.3/0.1.5，插件 v1.0.29-alpha.1 起适配 SessionHandle 持久化新面（注入点结构探测，双宿主形状通吃）；v1.2.1 起适配 `handle.read` 的包装返回形状。2026-09-10 已在宿主 0.1.5-rc.1 + 插件本地构建上真机验证（插件加载、`/api/billing/usage-stats` 聚合、历史会话回读全部正常）。0.1.3→0.1.5 无新增宿主面破坏（逐包类型面比对确认）。
 
