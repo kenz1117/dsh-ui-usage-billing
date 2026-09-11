@@ -261,7 +261,11 @@ function clientConfig(id: string, entry: string): UserConfig {
           minify: true,
         })
         const classMap: Record<string, string> = {}
-        for (const [local, exp] of Object.entries(cssExports ?? {})) classMap[local] = exp.name
+        // 本地修改点：lightningcss 的 exports 映射由 Rust HashMap 投影而来，迭代顺序
+        // 随进程变化；直接遍历会让 classMap 的键顺序每次构建都不同（产物长度相同、
+        // 内容随机重排，client.js 因此次次产生噪声 diff）。按键排序固定输出，产物可复现。
+        const sortedExports = Object.entries(cssExports ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        for (const [local, exp] of sortedExports) classMap[local] = exp.name
         // One <style data-plugin> per module file; idempotent under re-evaluation.
         return [
           `const css = ${JSON.stringify(code.toString())};`,
