@@ -81,6 +81,10 @@ const W = 680
 const H = 200
 const PAD = { top: 14, right: 18, bottom: 22, left: 46 }
 
+/** tooltip 半宽估算（px）：结构/模型两视角的三、四行 nowrap 数字卡约 160px 宽，
+ * 用于按列宽推算两端多少根柱处于「居中会溢出容器」的安全区外（issue #45）。 */
+const TOOLTIP_HALF_PX = 80
+
 const MISS_COLOR = 'var(--dsw-static-blue-500)'
 // 缓存命中段：用青色系与输入（蓝）区分；`--dsw-static-cyan-500` 在宿主主题里不存在，
 // 改用自定义青绿色（#14b8a6）保证可读性。
@@ -304,7 +308,7 @@ export function TokenPanel(props: {
     const indices: number[] = []
     for (let i = 0; i < n; i += step) indices.push(i)
     if (n > 0 && indices[indices.length - 1] !== n - 1) indices.push(n - 1)
-    return { n, plotW, plotH, max, y, barW, inner, indices }
+    return { n, plotW, plotH, max, y, barW, inner, indices, groupW }
   }, [days, modelDays, view])
 
   // 导出：按日 token CSV（结构口径，保持不变）+ 全量 JSON（含按日 × 模型明细）。
@@ -328,6 +332,14 @@ export function TokenPanel(props: {
   // 悬停日的明细（tooltip 数据源）；未悬停或索引越界时不显示。
   const activeDay = hover === null ? undefined : days[hover]
   const activeModelDay = hover === null ? undefined : modelDays[hover]
+  // tooltip 水平钳制（issue #45）：锚点 translate(-50%) 居中时，两端柱位会把
+  // 半张卡推出滚动容器被裁——当日往往最高且在最右，最容易触发。按列宽估算
+  // 半卡覆盖的列数，安全区外的柱位向容器内翻转（右缘左对齐 / 左缘右对齐）。
+  const edgeCols = chart === null ? 0 : Math.ceil(TOOLTIP_HALF_PX / Math.max(chart.groupW, 1))
+  const tooltipAlign = hover === null || chart === null ? undefined
+    : hover >= chart.n - edgeCols ? css.chartTooltipAlignRight
+    : hover < edgeCols ? css.chartTooltipAlignLeft
+    : undefined
 
   return (
     <div className={css.tokenPanel} data-testid="billing-token-panel">
@@ -479,7 +491,7 @@ export function TokenPanel(props: {
             {/* 悬停 tooltip：按结构给三桶精确值；按模型给当日逐模型 命中/未命中/输出 明细（数字不缩写）。 */}
             {hover !== null && view === 'structure' && activeDay !== undefined && (
               <div
-                className={css.chartTooltip}
+                className={clsx(css.chartTooltip, tooltipAlign)}
                 data-testid="billing-token-tooltip"
                 style={{
                   left: `${(chart.inner(hover) / W) * 100}%`,
@@ -515,7 +527,7 @@ export function TokenPanel(props: {
             )}
             {hover !== null && view === 'model' && activeModelDay !== undefined && (
               <div
-                className={css.chartTooltip}
+                className={clsx(css.chartTooltip, tooltipAlign)}
                 data-testid="billing-token-tooltip"
                 style={{
                   left: `${(chart.inner(hover) / W) * 100}%`,

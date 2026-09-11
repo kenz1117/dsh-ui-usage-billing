@@ -1177,7 +1177,7 @@ function UsageBillingTrigger(
           与触发卡互为 hover 桥接（120ms 关闭延迟见 schedulePopClose）。 */}
       {createPortal(
       <span
-        className={clsx(css.triggerPop, popOpen && css.triggerPopShown, floatPrefs.mode === 'subscription' && css.triggerPopSubscription)}
+        className={clsx(css.triggerPop, popOpen && css.triggerPopShown)}
         style={{ left: `${popPos.left}px`, top: `${popPos.top}px` }}
         data-testid="billing-trigger-pop"
         aria-hidden={!popOpen}

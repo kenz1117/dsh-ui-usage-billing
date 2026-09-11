@@ -1276,6 +1276,17 @@
   white-space: nowrap;
 }
 
+/* 两端柱位的 tooltip 向容器内翻转（issue #45）：锚点居中时半张卡会推出
+   滚动容器被裁（当日往往最高且在最右，最容易触发）。右缘柱左对齐锚点、
+   左缘柱右对齐锚点，对齐类由 TokenPanel 按列宽估算的边缘列数决定。 */
+.chartTooltipAlignRight {
+  transform: translate(calc(-100% - 8px), calc(-100% - 10px));
+}
+
+.chartTooltipAlignLeft {
+  transform: translate(8px, calc(-100% - 10px));
+}
+
 .chartTooltipDate {
   font-size: 11px;
   font-weight: 600;
@@ -2791,13 +2802,10 @@
 }
 
 /* ── 模型用量悬浮窗（左下角 hover 浮窗）─────────────────────────────── */
-/* 订阅卡模式：与综合模式一致，宽度贴合下方触发卡（left/right:0），随卡片宽度收缩。
-   订阅卡内部用收敛规则（见下），窄宽下进度条弹性、标签与重置时间可换行，不被裁切。 */
-.triggerPopSubscription {
-  left: 0;
-  right: 0;
-  width: auto;
-}
+/* 订阅模式与综合模式共用 .triggerPop 的固定宽度（issue #45）——此前的
+   .triggerPopSubscription（left/right:0 + width:auto）在 JS 内联 width 移除后
+   会把 fixed 弹层左右钉死成横跨视口，已删；订阅卡内部收敛规则（见下）不变，
+   窄宽下进度条弹性、标签与重置时间可换行，不被裁切。 */
 
 /* 浮窗内订阅信息：轻量直排（无卡片壳），直接融入浮窗，与综合模式协调。 */
 .floatSub {
