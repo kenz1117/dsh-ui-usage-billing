@@ -55,7 +55,7 @@ describe('canonModelId / resolveCatalogKey', () => {
 
 describe('modelOf', () => {
   it('resolves a known stats key to its catalog entry', () => {
-    expect(modelOf('flash').name).toBe('DeepSeek V4 Flash')
+    expect(modelOf('flash').name).toBe('DeepSeek V4.1 Flash')
     expect(modelOf('gemini-pro').provider).toBe('Google')
   })
 
@@ -178,7 +178,7 @@ describe('live pricing overrides', () => {
   it('keeps the built-in catalog when no live data applies', () => {
     applyLivePricing({ source: 'builtin' })
     expect(modelOf('flash').price.currency).toBe('CNY')
-    expect(modelOf('flash').name).toBe('DeepSeek V4 Flash')
+    expect(modelOf('flash').name).toBe('DeepSeek V4.1 Flash')
     expect(modelOf('gemini-pro').price.currency).toBe('USD')
   })
 
@@ -328,6 +328,26 @@ describe('computeCostAt (P0-1)', () => {
   it('resolves the official deepseek-flash id to the flash catalog key', () => {
     // 官方价目页 09-10 更新的新规范名（模型版本 V4.1-Flash，vision 并入主线）。
     expect(modelOf('deepseek-flash').key).toBe('flash')
+  })
+
+  it('hides retired models from the catalog table but keeps them priced', () => {
+    // 官方已下线的 Vision (Exp) 不进费率表面板（用户可见面只留现行型号）；
+    // 目录条目与历史回算保留——存量用量仍按原键计价。
+    expect(catalogEntries().some(entry => entry.key === 'flash-vision-exp')).toBe(false)
+    expect(modelOf('flash-vision-exp').key).toBe('flash-vision-exp')
+  })
+
+  it('shows V4 Pro at its list rates during the routing window (display = billing)', () => {
+    // 费率表显示与计费同口径：09-14 12:00 前显示 V4 Pro 刊例（谷 4.5/0.15/13.5）。
+    const windowMs = Date.UTC(2026, 8, 12, 4) // 北京 09-12 12:00（路由窗口内）
+    const pro = catalogEntries(windowMs).find(entry => entry.key === 'pro')
+    expect(pro?.price.offPeak).toMatchObject({ input: 4.5, cacheHit: 0.15, output: 13.5 })
+    expect(pro?.price.input).toBe(9)
+    // 分界后回到目录的 Flash 价（谷 1/0.02/4、峰 2）。
+    const afterMs = Date.UTC(2026, 8, 15, 4) // 北京 09-15 12:00（分界后）
+    const proAfter = catalogEntries(afterMs).find(entry => entry.key === 'pro')
+    expect(proAfter?.price.offPeak).toMatchObject({ input: 1, cacheHit: 0.02, output: 4 })
+    expect(proAfter?.price.input).toBe(2)
   })
 
   it('resolves the upcoming V4.1 Flash id to the flash catalog key', () => {

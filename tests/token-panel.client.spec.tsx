@@ -190,7 +190,7 @@ describe('TokenPanel', () => {
     render(<TokenPanel stats={stats} trendDays={7} onTrendDays={() => {}} models={brandModels} t={t} />)
     // 结构视角下点「模型 Token」表第二行（pro，总量 280 < flash 1200）→ 直接切到按模型并聚焦 pro。
     const rows = screen.getAllByTestId('billing-token-model')
-    expect((rows[0] as HTMLElement).textContent).toContain('DeepSeek V4 Flash')
+    expect((rows[0] as HTMLElement).textContent).toContain('DeepSeek V4.1 Flash')
     fireEvent.click(rows[1])
     expect(screen.getByTestId('billing-token-view-model').getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByTestId('billing-token-legend-pro').getAttribute('aria-pressed')).toBe('true')
