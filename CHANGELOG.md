@@ -2,9 +2,9 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前为双线发布：**预览线 1.0.x**（npm `latest` + `alpha`，适配 DSH 0.1.2 系；宿主 `latest` 自 0.1.2-rc.1 起指向 0.1.2 系，插件 `latest` 自 v1.0.26 起跟随移交预览线）与**稳定线 1.1.x**（npm `stable`，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2，维护于 `compat/stable-dsh` 分支）。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前为双线发布：**预览线 1.2.x**（npm `latest` + `alpha`，适配 DSH 0.1.2 ~ 0.1.5 系；宿主 `latest` 现指向 0.1.5-rc.1，自 v1.2.0 起采用 1.2.x 序列以消除与稳定线的版本号倒挂）与**稳定线 1.1.x**（npm `stable`，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2，维护于 `compat/stable-dsh` 分支）。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
-## 预览线（1.0.x，适配 DSH 0.1.2 系）
+## 预览线（1.2.x，适配 DSH 0.1.2 ~ 0.1.5 系）
 
 ### 未发布（v1.0.26）
 
@@ -103,6 +103,19 @@
 - GLM 家族目录 + models.dev 自动抓价
 
 ## 稳定线（1.1.x，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2）
+
+### v1.1.15（2026-09-10）
+
+- 修复：V4 Pro 路由计费分界从 09-10 12:00 修正为 **09-14 12:00**（官方价目页注释明确「北京时间 2026-09-14 12:00 之后至 V4.1 Pro 上线前，`deepseek-v4-pro` 的请求全部路由到 V4.1 Flash 并按 V4.1 Flash 价格计费」；09-10 邮件公告的时点被官方推迟）——09-10 ~ 09-14 之间 V4 Pro 请求仍按 V4 Pro 刊例计费（谷 4.5/0.15/13.5、峰×2），v1.1.13 起该段被错按 Flash 价折算（低估）；FOLD_VERSION 9 → 10，存量账本行全量重折修正
+- 新增：官方价目页新规范模型名 `deepseek-flash`（模型版本 DeepSeek-V4.1-Flash，图像理解并入主线）收录进别名表，计费同 flash 时间线
+- 说明：旧模型名 `deepseek-v4-flash` / `deepseek-v4-flash-vision-exp` 官方已下线（仍可调用、由 V4.1 Flash 服务并按 Flash 价计）——与目录现行价一致，历史回算条目全部保留，历史账单不受影响
+
+### v1.1.14（2026-09-10）
+
+- 修复：给未收录模型配置自定义价后，「主力消耗模型余额」被兜底 provider（Custom/其他）挤成「未配置」（issue #40 反馈）——单渠道用户现在显示唯一配置成功渠道的余额；多渠道时归属不明则隐藏该行而非误导
+- 新增：V4.1 Flash 限时内测端点 id（`deepseek-v4.1-flash-expires-on-0910`）收录进别名表——存量账单的内测用量按 flash 时间线正确归并计费；FOLD_VERSION 8 → 9
+- 优化：客户端 bundle 瘦身（zine 主题覆盖段移除、官方/三方统计卡下线、费用构成迁至用量页），为后续改动腾出余量
+- 文档：README 安装命令补 `--profile`（缺失会报 `required option`），并建议钉具体版本号安装
 
 ### v1.1.13（2026-09-10）
 

@@ -117,8 +117,17 @@ export declare const WEEKEND_OFFPEAK_START_MS: number;
  * 1/0.02/4（峰 = 谷 × 2）。目录条目写现行（新）价；分界前的历史事件由
  * {@link computeCostAt} 按 {@link FLASH_REPRICED_OFFPEAK} 回算旧价，与
  * {@link PEAK_ERA_START_MS} 同一「按事件时刻分段适用规则」口径。
+ * pro 例外：V4 Pro 的路由计费分界是 {@link PRO_OFFLINE_MS}（官方把原定
+ * 09-10 的路由时点推迟到 09-14 12:00），不在本分界切换。
  */
 export declare const FLASH_REPRICE_MS: number;
+/**
+ * V4 Pro 下线路由分界（UTC 2026-09-14T04:00:00Z，即北京时间 2026-09-14
+ * 12:00）：官方价目页注释明确，此后至 V4.1 Pro 上线前，`deepseek-v4-pro`
+ * 的请求全部路由至 V4.1 Flash 并按其单价计费——此前的请求仍按 V4 Pro
+ * 峰谷刊例计费（官方原定 09-10 路由，后推迟到 09-14）。
+ */
+export declare const PRO_OFFLINE_MS: number;
 /** 计费时段档位：高峰 / 空闲（官方 DeepSeek 刊例价：高峰 = 空闲 × 2）。 */
 export type PriceTierId = 'peak' | 'offPeak';
 /** 成本显示币种：人民币（国内模型直价）/ 美元（国外模型直价或换算显示）。 */
