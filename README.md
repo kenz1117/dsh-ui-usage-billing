@@ -42,7 +42,7 @@
 
 同类插件（cost-meter、usage-stats、dsh-bill 等）各有所长，本插件的定位差异如下：
 
-- **价格来源是活的** — models.dev 实时目录 + 内置 24 厂商 76 款模型目录 + 设置面板自定义单价（可按中转站来源绑定同模型不同价），新模型无需等待手填价表。
+- **价格来源是活的** — models.dev 实时目录 + 内置 24 厂商 77 款模型目录 + 设置面板自定义单价（可按中转站来源绑定同模型不同价），新模型无需等待手填价表。
 - **历史永不重算** — 费用按事件发生时刻的价格计价，并按官方变更节点分段（8-17 前基础价 → 峰谷 v1 → 8-23 起周末全谷）；安装前的历史用量从既有会话日志自动回填，价格调整不回写旧账。
 - **不止「花了多少」，还答「花在哪」** — 输入按缓存命中/未命中分桶（含 reasoning）、官方/三方分桶、按工作区/会话/中转站下钻、每轮成本突增归因；还有同类少有的性能面板（各模型 TTFT 均值/P50/P90 与生成速度）。
 - **订阅与余额闭环** — 7 家官方余额 + Coding Plan 额度 + 中转站余额与滚动额度窗口 + 自声明端点 + 官方余额变动与本地账本的交叉对账。
@@ -165,7 +165,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 
 **自定义单价（设置 Tab，issue #16）**：结构化条目表（模型 + 可选来源 + 输入/缓存命中/输出 + 币种），不再手编 JSON。来源（中转站域名）留空 = 该模型默认价；填入中转站域名（如 `https://api.my-relay.com`）= 仅该来源的同名模型用此价（同名模型可同时存在默认价与多个来源价，互不覆盖）。显示层按「模型 × 来源」精确匹配重算，命中不到来源时回落该模型默认价，再无则用内置目录价。
 
-### 支持模型（2026-09 主流阵容，OpenAI 兼容系列，共 76 款）
+### 支持模型（2026-09 主流阵容，OpenAI 兼容系列，共 77 款）
 
 完整目录见费率 Tab 及源码 `src/client/pricing.ts` 的 `MODEL_CATALOG`，此处每厂商仅列代表型号。
 
@@ -183,7 +183,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | Anthropic | Claude Opus 4.6、Claude Sonnet 4.6（等 5 款）    |
 | Mistral AI | Mistral Large 3、Mistral Small 4（等 3 款）     |
 | Cohere    | Command A、Command R（等 2 款）                 |
-| OpenAI   | GPT-5.6 Sol / Terra / Luna（等 3 款）           |
+| OpenAI   | GPT-6 Astra、GPT-5.6 Sol / Terra / Luna（等 4 款） |
 | Google   | Gemini 3.1 Pro、Gemini 3.6 Flash（等 2 款）      |
 | xAI      | Grok 4.6（等 2 款）                             |
 | Meta     | Llama 4 Maverick（等 2 款）                     |

@@ -913,7 +913,17 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'dsw-static-neutral-bluish-500',
     price: { currency: 'CNY', input: 5, cacheHit: 0.5, output: 9 },
   },
-  // OpenAI — GPT-5.6 family (developers.openai.com/api/docs/pricing 2026-08).
+  // OpenAI — GPT-6 / GPT-5.6 family (developers.openai.com/api/docs/pricing 2026-09).
+  {
+    key: 'gpt-6-astra',
+    name: 'GPT-6 Astra',
+    provider: 'OpenAI',
+    colorVar: 'dsw-static-green-500',
+    // 标准档（输入 ≤272K）：缓存输入 $1 / 输入 $10 / 输出 $50。官方另有超长上下文
+    // 加价（单请求输入 >272K 时整笔输入 ×2、输出 ×1.5）与 Fast 模式 ×2、Batch ×0.5，
+    // 目录只记标准档，费率表按刊例展示。
+    price: { currency: 'USD', input: 10, cacheHit: 1, output: 50 },
+  },
   {
     key: 'gpt-5.6-sol',
     name: 'GPT-5.6 Sol',
@@ -1349,6 +1359,9 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'minimax-m2-7': 'minimax-m2.7',
   'minimax-m2-7-highspeed': 'minimax-m2.7-highspeed',
   'minimax-m2-7-high-speed': 'minimax-m2.7-highspeed',
+  // OpenAI GPT-6 Astra：官方 id 为 `gpt-6-astra`（2026-09-03 发布），短名形态一并归一。
+  'gpt-6': 'gpt-6-astra',
+  'gpt-6-astra': 'gpt-6-astra',
 }
 
 /**

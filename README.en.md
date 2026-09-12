@@ -43,7 +43,7 @@
 
 Peer plugins (cost-meter, usage-stats, dsh-bill, …) each have their strengths; this plugin's positioning:
 
-- **Live pricing sources** — a real-time models.dev catalog + a built-in catalog of 76 models across 24 vendors + user-defined prices in the settings panel (bindable per relay origin); new models don't wait for a hand-edited price table.
+- **Live pricing sources** — a real-time models.dev catalog + a built-in catalog of 77 models across 24 vendors + user-defined prices in the settings panel (bindable per relay origin); new models don't wait for a hand-edited price table.
 - **History is never recomputed** — every call is priced at its own moment, segmented by official change boundaries (base price before 08-17 → peak/off-peak v1 → weekend all-day off-peak from 08-23); pre-install history is backfilled from existing session logs, and later price changes never rewrite old bills.
 - **Not just "how much" but "on what"** — input split by cache hit/miss (including reasoning), official vs third-party buckets, drill-down by workspace/session/relay site, per-turn cost-spike attribution; plus a performance panel few peers offer (per-model TTFT mean/P50/P90 and generation speed).
 - **Subscription & balance loop** — 7 official provider balances + Coding Plan quotas + relay-station balances and rolling quota windows + self-declared endpoints + cross-reconciliation between official balance deltas and the local ledger.
@@ -179,7 +179,7 @@ cost (CNY) = (missInput × p_input + cacheHit × p_cacheHit + output × p_output
 | iFlytek   | Spark 4.0 Ultra (plan-based)¹                                                                |
 | SenseTime | SenseNova 6.5 (beta)¹                                                                        |
 | Baichuan  | Baichuan M3-Plus                                                                            |
-| OpenAI    | GPT-5.6 Sol / Terra / Luna                                                                  |
+| OpenAI    | GPT-6 Astra, GPT-5.6 Sol / Terra / Luna                                                     |
 | Google    | Gemini 3.1 Pro, 3.6 Flash (Standard / Flex two-band, Flex = −50%)                            |
 | xAI       | Grok 4.6, Grok 4.3                                                                          |
 | Meta      | Llama 4 Maverick, Scout                                                                     |

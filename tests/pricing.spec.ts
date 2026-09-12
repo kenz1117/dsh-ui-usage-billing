@@ -366,6 +366,17 @@ describe('computeCostAt (P0-1)', () => {
     expect(entry.price).toMatchObject({ input: 6.5, cacheHit: 1.3, output: 27 })
   })
 
+  it('recognizes GPT-6 Astra and prices it at the official USD standard rates', () => {
+    // 官方 2026-09-03 发布，id `gpt-6-astra`；目录记标准档（输入 ≤272K）的刊例价。
+    for (const id of ['gpt-6-astra', 'gpt-6']) {
+      expect(resolveCatalogKey(id)).toBe('gpt-6-astra')
+    }
+    const entry = modelOf('gpt-6-astra')
+    expect(entry.name).toBe('GPT-6 Astra')
+    expect(entry.estimated).toBeUndefined()
+    expect(entry.price).toMatchObject({ currency: 'USD', input: 10, cacheHit: 1, output: 50 })
+  })
+
   it('resolves the expired V4.1 Flash beta id to the flash catalog key', () => {
     // 内测端点（09-10 过期）的存量用量按 flash 时间线正确归并计费（issue #40 反馈）。
     expect(modelOf('deepseek-v4.1-flash-expires-on-0910').key).toBe('flash')
