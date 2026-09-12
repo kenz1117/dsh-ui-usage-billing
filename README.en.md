@@ -43,7 +43,7 @@
 
 Peer plugins (cost-meter, usage-stats, dsh-bill, …) each have their strengths; this plugin's positioning:
 
-- **Live pricing sources** — a real-time models.dev catalog + a built-in catalog of 73 models across 24 vendors + user-defined prices in the settings panel (bindable per relay origin); new models don't wait for a hand-edited price table.
+- **Live pricing sources** — a real-time models.dev catalog + a built-in catalog of 76 models across 24 vendors + user-defined prices in the settings panel (bindable per relay origin); new models don't wait for a hand-edited price table.
 - **History is never recomputed** — every call is priced at its own moment, segmented by official change boundaries (base price before 08-17 → peak/off-peak v1 → weekend all-day off-peak from 08-23); pre-install history is backfilled from existing session logs, and later price changes never rewrite old bills.
 - **Not just "how much" but "on what"** — input split by cache hit/miss (including reasoning), official vs third-party buckets, drill-down by workspace/session/relay site, per-turn cost-spike attribution; plus a performance panel few peers offer (per-model TTFT mean/P50/P90 and generation speed).
 - **Subscription & balance loop** — 7 official provider balances + Coding Plan quotas + relay-station balances and rolling quota windows + self-declared endpoints + cross-reconciliation between official balance deltas and the local ledger.
@@ -165,11 +165,11 @@ cost (CNY) = (missInput × p_input + cacheHit × p_cacheHit + output × p_output
 
 | Provider  | Models                                                                                       |
 | -------- | ------------------------------------------------------------------------------------------- |
-| DeepSeek | V4 Flash, V4 Flash Vision (Exp), V4 Pro (priced per official change boundary: base tier → peak/off-peak v1 → weekend off-peak) |
+| DeepSeek | V4.1 Flash, V4 Pro (priced per official change boundary: base tier → peak/off-peak v1 → weekend off-peak) |
 | Zhipu AI  | GLM-5.3, GLM-5.2, GLM-5.1, GLM-5-Turbo, GLM-4.7, GLM-4.6, GLM-4.5-Air, GLM-5V-Turbo                                       |
 | Aliyun    | Qwen3.8 Max, Qwen3.7-Max, Qwen3.5-Plus, Qwen3.5-Flash                                        |
 | Doubao    | Seed-2.0 Pro, Seed-2.0 Mini, Seed-1.6                                                         |
-| Moonshot  | Kimi K3, K2.7 Code, K2.7 Code HighSpeed, K2.6                                                 |
+| Moonshot  | Kimi K3, K2.7 Code, K2.7 Code HighSpeed, K2.6, K2.8 Preview                                  |
 | Xiaomi    | MiMo V2.5 (exempt when billed via a token-plan subscription channel)¹                         |
 | MiniMax   | MiniMax-M3, MiniMax-M2.7, MiniMax-M2.7-highspeed                                            |
 | Baidu     | ERNIE-5.1                                                                                   |

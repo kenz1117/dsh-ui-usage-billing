@@ -354,6 +354,18 @@ describe('computeCostAt (P0-1)', () => {
     expect(modelOf('deepseek-v4.1-flash').key).toBe('flash')
   })
 
+  it('recognizes Kimi K2.8 Preview id variants as one catalog entry', () => {
+    // 会员侧预览模型（开放平台未上架），日志里的 id 形态因通道而异；按 K2.7 Code
+    // 同价估算并标 estimated，费率表据此提示而非误当正式定价。
+    for (const id of ['kimi-k2.8-preview', 'kimi-k2.8', 'kimi-k2-8-preview', 'k2.8-preview', 'k2.8']) {
+      expect(resolveCatalogKey(id)).toBe('kimi-k2.8-preview')
+    }
+    const entry = modelOf('k2.8')
+    expect(entry.name).toBe('Kimi K2.8 Preview')
+    expect(entry.estimated).toBe(true)
+    expect(entry.price).toMatchObject({ input: 6.5, cacheHit: 1.3, output: 27 })
+  })
+
   it('resolves the expired V4.1 Flash beta id to the flash catalog key', () => {
     // 内测端点（09-10 过期）的存量用量按 flash 时间线正确归并计费（issue #40 反馈）。
     expect(modelOf('deepseek-v4.1-flash-expires-on-0910').key).toBe('flash')

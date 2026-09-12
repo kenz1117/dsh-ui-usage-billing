@@ -1174,6 +1174,16 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     estimated: true,
   },
   {
+    key: 'kimi-k2.8-preview',
+    name: 'Kimi K2.8 Preview',
+    provider: '月之暗面',
+    colorVar: 'dsw-static-cyan-400',
+    // 官方未公布按量单价：该型号是 kimi.com 会员侧的预览模型，开放平台未上架
+    // （官方文档索引只有 K3 / K2.7 Code / K2.6 / Moonshot V1）。按 K2.7 Code 同价估算。
+    price: { currency: 'CNY', input: 6.5, cacheHit: 1.3, output: 27 },
+    estimated: true,
+  },
+  {
     key: 'kimi-k2.6-fast',
     name: 'Kimi K2.6 Fast',
     provider: '月之暗面',
@@ -1320,6 +1330,13 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   // 月之暗面 Kimi：coding plan 通道的 model id 是短名 k3。
   'k3': 'kimi-k3',
   'kimi-k3': 'kimi-k3',
+  // Kimi K2.8 Preview：会员侧预览模型，日志里的 id 形态因通道而异，统一归一化。
+  'kimi-k2.8-preview': 'kimi-k2.8-preview',
+  'kimi-k2.8': 'kimi-k2.8-preview',
+  'kimi-k2-8-preview': 'kimi-k2.8-preview',
+  'kimi-k2-8': 'kimi-k2.8-preview',
+  'k2.8-preview': 'kimi-k2.8-preview',
+  'k2.8': 'kimi-k2.8-preview',
   // MiniMax：官方 OpenAI 兼容 id 为 `MiniMax-M3`（目录键 `minimax`）。日志里大小写/型号后缀
   // 各异，统一归一化到目录键，避免「厂商计费与订阅」把 MiniMax-M3 标成未收录。
   'minimax-m1': 'minimax',
