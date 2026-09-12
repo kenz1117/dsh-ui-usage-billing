@@ -676,7 +676,11 @@ export interface UsageLedgerDocument {
 // pro 的回算分界改用 PRO_OFFLINE_MS——09-10 ~ 09-14 之间 V4 Pro 请求仍按 V4 Pro
 // 刊例计费（v12/v13 行按 Flash 价折算，低估）；bump 全量重折。同时收录官方新规范名
 // deepseek-flash → flash。
-export const FOLD_VERSION = 14
+// 15：官方取消 09-14 的路由计划，公告「09-14 之后继续提供 V4 Pro，计费方式保持不变」
+// （价目页注释 (2) 改写）——pro 目录价由 Flash 价改回 V4 Pro 峰谷刊例，路由分界常量与
+// 显示层覆盖一并移除。v14 及更早的行把 09-14 之后的 pro 按 Flash 价折算（低估数倍），
+// bump 全量重折。
+export const FOLD_VERSION = 15
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。

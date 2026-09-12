@@ -299,30 +299,29 @@ describe('computeCostAt (P0-1)', () => {
       .toBe(computeCostAt(modelOf('flash'), buckets, postAt(13)))
   })
 
-  it('prices V4 Pro at the V4 Pro list rate before the routing boundary', () => {
-    // 官方价目页注释 (2)：2026-09-14 12:00（北京，原定 09-10 后推迟）起 V4 Pro
-    // 请求才路由至 V4.1 Flash 按 Flash 价计费。分界前高峰按 V4 Pro 刊例
-    // （缓存命中 ¥0.3、未命中 ¥9、输出 ¥27）。
+  it('prices V4 Pro at its own peak list rate', () => {
+    // 官方公告（价目页注释 (2)）取消 09-14 路由计划，pro 长期按 V4 Pro 刊例：
+    // 高峰缓存命中 ¥0.3、未命中 ¥9、输出 ¥27（每 1M）。
     expect(computeCostAt(modelOf('pro'), buckets, preAt(10)))
       .toBeCloseTo((MILLION * 0.3 + MILLION * 9 + MILLION * 27) / MILLION, 10)
   })
 
-  it('keeps V4 Pro at its list rate during the deferred routing window (09-10 ~ 09-14)', () => {
-    // 官方把路由时点从 09-10 推迟到 09-14 12:00：窗口内 pro 仍按 V4 Pro 刊例
-    // 计费——高峰 0.3/9/27、空闲 0.15/4.5/13.5（v12 曾把这段错按 Flash 价折算）。
-    expect(computeCostAt(modelOf('pro'), buckets, postAt(10)))
-      .toBeCloseTo((MILLION * 0.3 + MILLION * 9 + MILLION * 27) / MILLION, 10)
+  it('prices V4 Pro at its own off-peak list rate', () => {
+    // 空闲档 0.15/4.5/13.5（每 1M）；峰谷分时对 pro 照常生效。
     expect(computeCostAt(modelOf('pro'), buckets, postAt(13)))
       .toBeCloseTo((MILLION * 0.15 + MILLION * 4.5 + MILLION * 13.5) / MILLION, 10)
   })
 
-  it('routes V4 Pro to the V4.1 Flash rate after the 09-14 offline boundary', () => {
-    // 09-14 12:00（北京）后：V4 Pro 与 flash 同价（谷 0.02/1/4、峰 0.04/2/8）。
+  it('keeps V4 Pro at its own rates after the cancelled 09-14 routing date', () => {
+    // 「09-14 之后继续提供 V4 Pro，计费方式保持不变」——此后 pro 仍按 V4 Pro
+    // 刊例计费，不再与 flash 同价（v14 及更早把这段按 Flash 价折算，低估）。
     const afterAt = (beijingHour: number): number => Date.UTC(2026, 8, 15, (beijingHour + 24 - 8) % 24) // 9-15 周二
-    expect(computeCostAt(modelOf('pro'), buckets, afterAt(13)))
-      .toBe(computeCostAt(modelOf('flash'), buckets, afterAt(13)))
     expect(computeCostAt(modelOf('pro'), buckets, afterAt(10)))
-      .toBe(computeCostAt(modelOf('flash'), buckets, afterAt(10)))
+      .toBeCloseTo((MILLION * 0.3 + MILLION * 9 + MILLION * 27) / MILLION, 10)
+    expect(computeCostAt(modelOf('pro'), buckets, afterAt(13)))
+      .toBeCloseTo((MILLION * 0.15 + MILLION * 4.5 + MILLION * 13.5) / MILLION, 10)
+    expect(computeCostAt(modelOf('pro'), buckets, afterAt(13)))
+      .toBeGreaterThan(computeCostAt(modelOf('flash'), buckets, afterAt(13)))
   })
 
   it('resolves the official deepseek-flash id to the flash catalog key', () => {
@@ -337,17 +336,14 @@ describe('computeCostAt (P0-1)', () => {
     expect(modelOf('flash-vision-exp').key).toBe('flash-vision-exp')
   })
 
-  it('shows V4 Pro at its list rates during the routing window (display = billing)', () => {
-    // 费率表显示与计费同口径：09-14 12:00 前显示 V4 Pro 刊例（谷 4.5/0.15/13.5）。
-    const windowMs = Date.UTC(2026, 8, 12, 4) // 北京 09-12 12:00（路由窗口内）
-    const pro = catalogEntries(windowMs).find(entry => entry.key === 'pro')
-    expect(pro?.price.offPeak).toMatchObject({ input: 4.5, cacheHit: 0.15, output: 13.5 })
-    expect(pro?.price.input).toBe(9)
-    // 分界后回到目录的 Flash 价（谷 1/0.02/4、峰 2）。
-    const afterMs = Date.UTC(2026, 8, 15, 4) // 北京 09-15 12:00（分界后）
-    const proAfter = catalogEntries(afterMs).find(entry => entry.key === 'pro')
-    expect(proAfter?.price.offPeak).toMatchObject({ input: 1, cacheHit: 0.02, output: 4 })
-    expect(proAfter?.price.input).toBe(2)
+  it('shows V4 Pro at its list rates at any date (display = billing)', () => {
+    // 路由计划取消后显示层不再按时刻覆盖：任何时刻都是 V4 Pro 峰谷刊例
+    // （峰 9/0.3/27、谷 4.5/0.15/13.5），与计价同口径。
+    for (const atMs of [Date.UTC(2026, 8, 12, 4), Date.UTC(2026, 8, 15, 4)]) {
+      const pro = catalogEntries(atMs).find(entry => entry.key === 'pro')
+      expect(pro?.price).toMatchObject({ input: 9, cacheHit: 0.3, output: 27 })
+      expect(pro?.price.offPeak).toMatchObject({ input: 4.5, cacheHit: 0.15, output: 13.5 })
+    }
   })
 
   it('resolves the upcoming V4.1 Flash id to the flash catalog key', () => {

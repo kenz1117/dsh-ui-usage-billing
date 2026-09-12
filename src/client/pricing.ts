@@ -260,32 +260,19 @@ export const WEEKEND_OFFPEAK_START_MS = Date.parse('2026-08-22T16:00:00Z')
  * 1/0.02/4（峰 = 谷 × 2）。目录条目写现行（新）价；分界前的历史事件由
  * {@link computeCostAt} 按 {@link FLASH_REPRICED_OFFPEAK} 回算旧价，与
  * {@link PEAK_ERA_START_MS} 同一「按事件时刻分段适用规则」口径。
- * pro 例外：V4 Pro 的路由计费分界是 {@link PRO_OFFLINE_MS}（官方把原定
- * 09-10 的路由时点推迟到 09-14 12:00），不在本分界切换。
+ * V4 Pro 不在本分界内：官方取消了 09-14 的路由计划，pro 长期按刊例计费。
  */
 export const FLASH_REPRICE_MS = Date.parse('2026-09-10T04:00:00Z')
 
 /**
- * V4 Pro 下线路由分界（UTC 2026-09-14T04:00:00Z，即北京时间 2026-09-14
- * 12:00）：官方价目页注释明确，此后至 V4.1 Pro 上线前，`deepseek-v4-pro`
- * 的请求全部路由至 V4.1 Flash 并按其单价计费——此前的请求仍按 V4 Pro
- * 峰谷刊例计费（官方原定 09-10 路由，后推迟到 09-14）。
- */
-export const PRO_OFFLINE_MS = Date.parse('2026-09-14T04:00:00Z')
-
-/**
  * flash 系调价前的官方谷档价（CNY / 1M tokens）：{@link FLASH_REPRICE_MS}
- * 之前的 flash / flash-vision-exp 事件按此回算（峰档 = 谷档 × 2）。pro 的
- * 同表条目是 V4 Pro 峰谷时代刊例（谷 4.5/0.15/13.5）：官方自
- * {@link PRO_OFFLINE_MS} 起（原定 09-10，后推迟）把 V4 Pro 请求全部路由至
- * V4.1 Flash 并按其单价计费（V4.1 Pro 上线前），故分界前回算 V4 Pro 刊例、
- * 分界后走目录的 Flash 价。用户价 = 实付价，与 legacy 口径相同地跳过本表。
+ * 之前的 flash / flash-vision-exp 事件按此回算（峰档 = 谷档 × 2）。
+ * 用户价 = 实付价，与 legacy 口径相同地跳过本表。
  */
 const FLASH_PRE_REPRICE_BAND: PriceBand = { input: 1.5, cacheHit: 0.05, output: 4.5 }
 const FLASH_REPRICED_OFFPEAK: Readonly<Record<string, PriceBand>> = {
   flash: FLASH_PRE_REPRICE_BAND,
   'flash-vision-exp': FLASH_PRE_REPRICE_BAND,
-  pro: { input: 4.5, cacheHit: 0.15, output: 13.5 },
 }
 
 /**
@@ -578,16 +565,16 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'DeepSeek V4 Pro',
     provider: 'DeepSeek',
     colorVar: 'dsw-static-deepseek-500',
-    // 2026-09-14 12:00（北京）起官方把 V4 Pro 请求路由至 V4.1 Flash 并按其
-    // 单价计费（V4.1 Pro 上线前；原定 09-10 后推迟），故此处写 V4.1 Flash
-    // 现行价；V4 Pro 刊例（峰 9/0.3/27、谷 4.5/0.15/13.5）保留在
-    // FLASH_REPRICED_OFFPEAK 供 PRO_OFFLINE_MS 分界前回算。
+    // V4 Pro 峰谷刊例（谷 4.5 / 0.15 / 13.5，峰 = 谷 × 2）即长期现行价。官方原定
+    // 2026-09-14 12:00 起把 V4 Pro 请求路由至 V4.1 Flash 计费，随后公告改为
+    // 「09-14 之后继续提供 V4 Pro，计费方式保持不变」（价目页注释 (2)）——
+    // 路由分界取消，历史与未来事件同口径，不再需要运行时切换。
     price: {
       currency: 'CNY',
-      input: 2,
-      cacheHit: 0.04,
-      output: 8,
-      offPeak: { input: 1, cacheHit: 0.02, output: 4 },
+      input: 9,
+      cacheHit: 0.3,
+      output: 27,
+      offPeak: { input: 4.5, cacheHit: 0.15, output: 13.5 },
     },
     peakHours: DEEPSEEK_PEAK_HOURS,
   },
@@ -1591,44 +1578,20 @@ export function applyPromo(entry: ModelEntry, nowMs: number): ModelEntry {
 }
 
 /**
- * 费率表与计价层的「现行价」口径同步：目录价写长期现行价，但 V4 Pro 在
- * {@link PRO_OFFLINE_MS} 路由分界前实际按 V4 Pro 峰谷刊例计费（官方把路由
- * 时点从 09-10 推迟到 09-14 12:00），显示层同步覆盖，避免「表显 Flash 价、
- * 账按刊例计」的不一致。其余条目原样返回。
- */
-function applyRoutingDisplay(entry: ModelEntry, atMs: number): ModelEntry {
-  if (entry.key !== 'pro' || atMs >= PRO_OFFLINE_MS) return entry
-  const listBand = FLASH_REPRICED_OFFPEAK.pro
-  // 表内 pro 条目与目录键同步维护；缺失视为无覆盖（防御性，正常不触发）。
-  if (listBand === undefined) return entry
-  return {
-    ...entry,
-    price: {
-      currency: 'CNY',
-      input: listBand.input * 2,
-      cacheHit: listBand.cacheHit * 2,
-      output: listBand.output * 2,
-      offPeak: { ...listBand },
-    },
-  }
-}
-
-/**
  * 费率表渲染的完整目录：内置 + 探活命中的模型（无价标记未收录）。
  * models.dev 补充条目**不**整表渲染——那是数百网关厂商的全量模型清单（数千行），
  * 会把费率表撑爆；它们只作为目录外模型的计价回退源（见 {@link livePriceOf} /
  * {@link modelOf}）。探活模型在此逐个对价：内置已有的跳过去重；目录外但
  * models.dev 有价的按归一化 id 复用其 USD 价；两者皆无的标 `uncatalogued`。
  * 内置条目按 nowMs 折算限时促销（生效中的条目显示折后单价，过期自动恢复刊例价），
- * 应用路由分界期的现行价覆盖（V4 Pro 见 {@link applyRoutingDisplay}），并滤除
- * 已下线条目（retired：官方下线的型号不进面板，目录与历史回算保留）。
+ * 并滤除已下线条目（retired：官方下线的型号不进面板，目录与历史回算保留）。
  * @param nowMs - 促销判定时刻；缺省当前时刻。
  */
 export function catalogEntries(nowMs: number = Date.now()): readonly ModelEntry[] {
   const entries: ModelEntry[] = [
     ...MODEL_CATALOG
       .filter(entry => entry.retired !== true)
-      .map(entry => applyRoutingDisplay(applyPromo(entry, nowMs), nowMs)),
+      .map(entry => applyPromo(entry, nowMs)),
   ]
   const known = new Set<string>(entries.map(entry => entry.key.toLowerCase()))
   const knownCanon = new Set<string>(entries.map(entry => canonModelId(entry.key)))
@@ -1792,10 +1755,7 @@ export function computeCostAt(
   if (legacy !== undefined) return priceBandCost(legacy, buckets, 'CNY')
   // flash 系 2026-09-10 12:00 调价分界：分界前的事件按官方旧谷档价回算
   // （峰档 = 谷档 × 2，档位判定沿用当时的分段规则）；用户价跳过本表。
-  // pro 例外：路由计费分界是 PRO_OFFLINE_MS（09-14 12:00，官方推迟）——
-  // 09-10 ~ 09-14 之间 V4 Pro 请求仍按 V4 Pro 刊例计费。
-  const repriceBoundary = entry.key === 'pro' ? PRO_OFFLINE_MS : FLASH_REPRICE_MS
-  const repriced = timeMs < repriceBoundary && entry.userPriced !== true
+  const repriced = timeMs < FLASH_REPRICE_MS && entry.userPriced !== true
     ? FLASH_REPRICED_OFFPEAK[entry.key]
     : undefined
   if (repriced !== undefined) {
