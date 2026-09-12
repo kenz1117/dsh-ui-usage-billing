@@ -377,6 +377,18 @@ describe('computeCostAt (P0-1)', () => {
     expect(entry.price).toMatchObject({ currency: 'USD', input: 10, cacheHit: 1, output: 50 })
   })
 
+  it('folds GPT-5.6 Sol per-tier promo factors and restores list price after expiry', () => {
+    // 官方促销：缓存 $0.4 / 输入 $4 / 输出 $20——缓存与输入 0.8、输出 2/3。
+    // 三档折扣不同比，这正是单一 factor 盖不住、需要 factors 逐档覆盖的场景。
+    const during = catalogEntries(Date.UTC(2026, 9, 1)).find(item => item.key === 'gpt-5.6-sol')
+    expect(during?.price.input).toBeCloseTo(4)
+    expect(during?.price.cacheHit).toBeCloseTo(0.4)
+    expect(during?.price.output).toBeCloseTo(20)
+    // 到期（北京 2026-11-22 00:00）后恢复刊例价 $5 / $0.5 / $30。
+    const after = catalogEntries(Date.UTC(2026, 11, 1)).find(item => item.key === 'gpt-5.6-sol')
+    expect(after?.price).toMatchObject({ input: 5, cacheHit: 0.5, output: 30 })
+  })
+
   it('resolves the expired V4.1 Flash beta id to the flash catalog key', () => {
     // 内测端点（09-10 过期）的存量用量按 flash 时间线正确归并计费（issue #40 反馈）。
     expect(modelOf('deepseek-v4.1-flash-expires-on-0910').key).toBe('flash')

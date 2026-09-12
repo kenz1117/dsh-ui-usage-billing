@@ -438,6 +438,12 @@ export interface PricePromo {
   /** 折扣系数（0.5 = 五折）；仅 (0,1) 区间有效，非法值视为无促销。 */
   factor: number
   /**
+   * 分档折扣覆盖：厂商对不同档位给不同折扣时逐档指定（如 GPT-5.6 Sol 促销为
+   * 缓存 0.8 / 输入 0.8 / 输出 2/3）。缺省档位沿用 {@link factor}；单档取值
+   * 仅 (0,1) 区间有效，非法值回落 factor。
+   */
+  factors?: Partial<Record<'input' | 'cacheHit' | 'cacheMiss' | 'output', number>>
+  /**
    * 截止时刻（epoch ms）：该时刻及之后恢复刊例价。缺省表示厂商未公布截止日
    * 的长期活动（如「限时 5 折直至另行通知」），持续生效直至收到公告后补填。
    */
@@ -930,6 +936,14 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     provider: 'OpenAI',
     colorVar: 'dsw-static-green-500',
     price: { currency: 'USD', input: 5, cacheHit: 0.5, output: 30 },
+    // 官方促销（至少持续至 2026-11-21）：缓存输入 $0.4 / 输入 $4 / 输出 $20。
+    // 三档折扣并不同比（0.8 / 0.8 / 2/3），用 factors 逐档覆盖。
+    promo: {
+      factor: 0.8,
+      factors: { output: 2 / 3 },
+      endsAtMs: Date.UTC(2026, 10, 21, 16, 0, 0),
+      note: '限时促销至 2026-11-21',
+    },
   },
   {
     key: 'gpt-5.6-terra',
@@ -1547,8 +1561,9 @@ export function isPromoActive(promo: PricePromo, nowMs: number): boolean {
 }
 
 /**
- * 把限时促销折入条目单价：生效期内返回 price 主档与 offPeak 全部乘 factor 的
- * 副本，其余字段原样保留；不在促销期（过期/未开始/factor 非法）原样返回。
+ * 把限时促销折入条目单价：生效期内返回 price 主档与 offPeak 逐档乘折扣系数的
+ * 副本（某档在 promo.factors 有合法覆盖时用覆盖值，否则用 promo.factor），
+ * 其余字段原样保留；不在促销期（过期/未开始/factor 非法）原样返回。
  * 幂等由调用方保证——计价与费率表显示各自只折一次，勿对已折价副本重复应用。
  * @param entry - 目录条目（price 保持刊例价口径）。
  * @param nowMs - 判定时刻（epoch ms）。
@@ -1556,11 +1571,14 @@ export function isPromoActive(promo: PricePromo, nowMs: number): boolean {
 export function applyPromo(entry: ModelEntry, nowMs: number): ModelEntry {
   const { promo } = entry
   if (promo === undefined || !isPromoActive(promo, nowMs)) return entry
+  // 分档覆盖只在厂商逐档给不同折扣时填写；未填档位沿用 factor。
+  const factorOf = (field: 'input' | 'cacheHit' | 'cacheMiss' | 'output'): number =>
+    promo.factors?.[field] ?? promo.factor
   const scaled = (band: PriceBand): PriceBand => ({
-    input: band.input * promo.factor,
-    cacheHit: band.cacheHit * promo.factor,
-    ...(band.cacheMiss !== undefined ? { cacheMiss: band.cacheMiss * promo.factor } : {}),
-    output: band.output * promo.factor,
+    input: band.input * factorOf('input'),
+    cacheHit: band.cacheHit * factorOf('cacheHit'),
+    ...(band.cacheMiss !== undefined ? { cacheMiss: band.cacheMiss * factorOf('cacheMiss') } : {}),
+    output: band.output * factorOf('output'),
   })
   return {
     ...entry,
