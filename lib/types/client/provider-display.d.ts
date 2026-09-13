@@ -24,5 +24,11 @@ export declare function hasCjk(name: string): boolean;
  * @returns 未知路由桶返回 undefined（渲染层用 locale 文案兜底）。
  */
 export declare function channelDisplayName(siteKey: string, lang?: ProviderLang): string | undefined;
+/**
+ * 拆 direct 通道显示名的「直连 · X」前缀，返回路由名 X。
+ * @param displayName - channelDisplayName 的产物；官方直连（DeepSeek 官方）等非 direct 前缀名不匹配。
+ * @returns 非 direct 前缀名返回 undefined，调用方整名显示。
+ */
+export declare function directChannelRoute(displayName: string): string | undefined;
 export {};
 //# sourceMappingURL=provider-display.d.ts.map

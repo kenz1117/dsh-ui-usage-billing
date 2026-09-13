@@ -67,8 +67,8 @@ body {
 }
 
 .railButton svg {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
 }
 
 /* 预算临界脉冲：卡片边缘红色呼吸（功能性警示，非装饰发光）；超支加速。
@@ -181,21 +181,21 @@ body {
   }
 }
 
-/* 图标：裸放仪表（issue #47 反馈去方框），26×26 容器承载 24×24 仪表，颜色随
+/* 图标：裸放仪表（issue #47 反馈去方框），32×32 容器承载 30×30 仪表，颜色随
    临界态整体转红（.triggerBudgetHot 级联到 SVG currentColor）。 */
 .triggerIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   color: var(--ds-blue);
 }
 
 .triggerIcon svg {
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
 }
 
 /* 仪表指针：水位更新（30s 轮询）时平滑摆动到新角度（SVG CSS transform）。 */
@@ -1669,7 +1669,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 7px;
+  padding: 1px 5px;
   border: 1px solid var(--ds-border-strong);
   border-radius: 999px;
   font-size: 10px;
@@ -1735,7 +1735,7 @@ body {
 
 .ubTable th,
 .ubTable td {
-  padding: 10px 12px;
+  padding: 7px 9px;
   border-bottom: 1px solid var(--ds-border);
   text-align: left;
   color: var(--ds-t-1);
@@ -1743,27 +1743,31 @@ body {
 
 .ubTable tbody tr:last-child td { border-bottom: 0; }
 
-.ubTable thead th {
-  padding: 8px 12px;
+/* 表头整体居中（含挂 numCol 的数字列——双类右对齐规则 0,2,0 会压过
+   单容器规则 0,1,1，故 th.numCol 一并写出，0,2,1 压回居中）。 */
+.ubTable thead th,
+.ubTable thead th.numCol {
+  padding: 6px 9px;
   color: var(--ds-t-3);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-size: 11px;
   font-weight: 500;
+  text-align: center;
 }
 
 .ubModel {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
-/* 厂商字母徽章：模型名前的 18×18 品牌色块 + 首字母（内嵌 SVG 已移除以守住
+/* 厂商字母徽章：模型名前的 16×16 品牌色块 + 首字母（内嵌 SVG 已移除以守住
    client.js 体积门禁，徽章是唯一形态；背景色由内联 colorVar 提供）。 */
 .vendorLetter {
   flex: none;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1777,24 +1781,18 @@ body {
 .ubModelName {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   font-weight: 500;
   color: var(--ds-t-1);
-}
-
-.ubPricepair {
-  display: inline-flex;
-  gap: 6px;
-  flex-wrap: wrap;
 }
 
 .ubChipPeak,
 .ubChipOff {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 20px;
-  padding: 0 8px;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
   border-radius: 999px;
   font-size: 11px;
   line-height: 16px;
@@ -1886,7 +1884,7 @@ body {
 }
 
 .modelTable th,
-.modelTable td th td {
+.modelTable td {
   padding: 10px 12px;
   border-bottom: 1px solid var(--ds-border);
   text-align: left;
@@ -1894,7 +1892,7 @@ body {
   color: var(--ds-t-1);
 }
 
-.modelTable tbody tr:last-child td tbody tr:last-child td {
+.modelTable tbody tr:last-child td {
   border-bottom: 0;
 }
 
@@ -1919,7 +1917,7 @@ body {
   padding-left: 30px;
 }
 
-.modelTable thead th thead th {
+.modelTable thead th {
   padding: 8px 12px;
   font-size: 11px;
   font-weight: 500;
@@ -1929,11 +1927,11 @@ body {
   letter-spacing: 0.04em;
 }
 
-.modelTable tbody tr tbody tr {
+.modelTable tbody tr {
   transition: background-color 120ms ease;
 }
 
-.modelTable tbody tr:hover tbody tr:hover {
+.modelTable tbody tr:hover {
   background: transparent;
 }
 
@@ -1953,10 +1951,12 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* 数字列表头跟随右对齐（issue #49）：各表容器限定的 th 规则（如
-   .modelTable th，特异性 0,1,1）压过裸 .numCol（0,1,0），表头虽已挂
-   numCol 仍左对齐、与贴列尾的数字错位；thead 限定的选择器（0,1,2）压回。 */
-thead th.numCol {
+/* 数字列右对齐压过容器限定的左对齐（issue #50）：th/td 都有容器规则
+   （.modelTable th/.modelTable td/.ubTable th/.ubTable td，特异性 0,1,1）
+   压过裸 .numCol（0,1,0），数字列会翻回左对齐；双类选择器（0,2,0）恢复，
+   表头与数字右缘同用 12px 内边距，列内完全对齐。 */
+.modelTable .numCol,
+.ubTable .numCol {
   text-align: right;
 }
 
@@ -2307,6 +2307,7 @@ thead th.numCol {
 .providerGroupRecharge {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   padding: 1px 8px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--ds-c-1) 38%, transparent);
@@ -2317,6 +2318,14 @@ thead th.numCol {
   line-height: 16px;
   text-decoration: none;
   white-space: nowrap;
+  /* 固定按钮槽宽：无充值页的组渲染等宽空占位，费用槽不随按钮有无横移。 */
+  min-width: 48px;
+}
+
+/* 空占位：只保留列位，不渲染胶囊底。 */
+.providerGroupRecharge:empty {
+  background: none;
+  border-color: transparent;
 }
 
 .providerGroupRecharge:hover {
@@ -2537,13 +2546,17 @@ thead th.numCol {
   height: 6px;
   border-radius: 3px;
   background: var(--dsb-3);
+  /* 空轨道轮廓：1px 内描边不占布局——用量 0%（剩余 100%）时轨道仍可见。 */
+  box-shadow: inset 0 0 0 1px var(--ds-border);
   overflow: hidden;
 }
 
 .subscriptionFill {
   display: block;
-  height: 100%;
-  border-radius: 3px;
+  /* 缩进 1px 避免填充盖住描边，0% 与满格都保留完整轮廓。 */
+  height: calc(100% - 2px);
+  margin: 1px;
+  border-radius: 2px;
   background: var(--ds-blue);
   transition: width var(--ds-t-fast);
 }
@@ -2613,6 +2626,8 @@ thead th.numCol {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
+  /* 与组列表 10px 间距同节奏：此前无 margin，头部行高残留 ~2px 偶然缝隙（issue #50）。 */
+  margin-bottom: 10px;
 }
 
 .providerGroupTitle {
@@ -2620,6 +2635,32 @@ thead th.numCol {
   align-items: center;
   gap: 7px;
   min-width: 0;
+}
+
+/* 组头入口徽章（直连/中转/未知）：小号描边 chip，随 kind 换色——直连蓝、
+   中转青、未知灰；vendor 纯订阅/余额组无徽章。 */
+.kindBadge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--ds-c-1) 32%, transparent);
+  background: color-mix(in srgb, var(--ds-c-1) 10%, transparent);
+  color: var(--ds-c-1);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.kindBadgeRelay {
+  border-color: color-mix(in srgb, var(--ds-c-2) 32%, transparent);
+  background: color-mix(in srgb, var(--ds-c-2) 10%, transparent);
+  color: var(--ds-c-2);
+}
+
+.kindBadgeUnknown {
+  border-color: var(--ds-border);
+  background: color-mix(in srgb, var(--ds-t-3) 12%, transparent);
+  color: var(--ds-t-3);
 }
 
 .providerGroupName {
@@ -2634,8 +2675,8 @@ thead th.numCol {
   align-items: center;
   gap: 10px;
   flex: none;
-  /* 表格状对齐（issue #37）：费用 / 订阅套数 / 余额三个槽固定列宽，缺席的槽由
-     模板渲染空占位保持列位——各组之间同名槽的右端位置一致，金额纵向成列。 */
+  /* 表格状对齐（issue #37）：费用 / 余额两槽固定列宽——各组之间同名槽的右端位置一致，
+     金额纵向成列；套餐徽章已移至组名后，不再占用 meta 槽位。 */
 }
 
 .providerGroupBadge {
@@ -2650,8 +2691,6 @@ thead th.numCol {
   font-weight: 500;
   color: var(--ds-green);
   background: color-mix(in srgb, var(--ds-green) 12%, transparent);
-  /* 固定槽宽：缺席时由空占位保持列位。 */
-  min-width: 64px;
 }
 
 .providerGroupBalance {
@@ -3709,12 +3748,15 @@ thead th.numCol {
   height: 6px;
   border-radius: 3px;
   background: var(--dsb-3);
+  /* 与订阅进度条同款空轨道轮廓：用量 0% 时轨道仍可见。 */
+  box-shadow: inset 0 0 0 1px var(--ds-border);
   overflow: hidden;
 }
 
 .progFill {
-  height: 100%;
-  border-radius: 3px;
+  height: calc(100% - 2px);
+  margin: 1px;
+  border-radius: 2px;
   background: var(--ds-blue);
   transition: width var(--ds-t-fast);
 }

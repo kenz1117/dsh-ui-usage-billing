@@ -15,7 +15,7 @@ import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
-import { IconChevronDownOutline14, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutline14, Menu, Modal, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   type BillingCardPrefs,
@@ -55,7 +55,7 @@ import {
 import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
-import { localizeProviderName, channelDisplayName } from './provider-display.ts'
+import { localizeProviderName, channelDisplayName, directChannelRoute } from './provider-display.ts'
 import { tierInfoOf } from './plan-knowledge.ts'
 import { computePeakAlert, loadPeakAlertConfig, savePeakAlertConfig, type PeakAlertConfig, type PeakAlertHit } from './peak-alert.ts'
 import { PeakAlertBanner } from './PeakAlertBanner.tsx'
@@ -1135,6 +1135,9 @@ interface ModelRow {
   officialCost: number
 }
 
+/** 组的入口种类：组头徽章用（direct=直连路由、site=中转站点、unknown=未知入口、vendor=纯订阅/余额组）。 */
+type ProviderChannelKind = 'direct' | 'site' | 'unknown' | 'vendor'
+
 /**
  * 按厂商聚合的计费组：模型用量 + 订阅额度 + 厂商余额。
  * 余额与健康点只挂在厂商组头部（同厂商只显示一次），不再随每行重复。
@@ -1150,6 +1153,8 @@ interface ProviderBillingGroup {
   balance: ProviderBalance | undefined
   /** 健康点状态：按厂商名与 health 的在线/失效列表匹配。 */
   dot: string | undefined
+  /** 入口种类；纯订阅/余额组无入口为 vendor。 */
+  channelKind: ProviderChannelKind
 }
 
 /**
@@ -2200,15 +2205,26 @@ function BillingDashboard({
     }
     const channelNameOf = (siteKey: string): string => channelDisplayName(siteKey, lang) ?? t('channelUnknown')
     // 同显示名的桶合并为一组：direct:deepseek 与 direct:deepseek-official 都映射
-    // 「DeepSeek 官方」，按 siteKey 分列会渲染出两个同名组。
+    // 「DeepSeek 官方」，按 siteKey 分列会渲染出两个同名组；同名冲突时 kind 取
+    // 优先级高者（官方直连组由 direct 与 site 两桶合并而成，按 direct 显示徽章）。
     const mergedByChannel = new Map<string, ModelRow[]>()
+    const kindByChannel = new Map<string, ProviderChannelKind>()
+    const kindOfSiteKey = (siteKey: string): ProviderChannelKind =>
+      siteKey.startsWith('direct:') ? 'direct' : siteKey.startsWith('site:') ? 'site' : 'unknown'
+    const kindRank: Record<ProviderChannelKind, number> = { direct: 2, site: 1, unknown: 0, vendor: 0 }
     for (const [siteKey, rows] of modelsByChannel) {
       const name = channelNameOf(siteKey)
       const existing = mergedByChannel.get(name)
-      if (existing === undefined) mergedByChannel.set(name, [...rows])
+      if (existing === undefined) {
+        mergedByChannel.set(name, [...rows])
+        kindByChannel.set(name, kindOfSiteKey(siteKey))
+      }
       else {
         existing.push(...rows)
         existing.sort((a, b) => (b.actual ?? b.estimated) - (a.actual ?? a.estimated))
+        const prevKind = kindByChannel.get(name) ?? 'unknown'
+        const nextKind = kindOfSiteKey(siteKey)
+        if (kindRank[nextKind] > kindRank[prevKind]) kindByChannel.set(name, nextKind)
       }
     }
     // 订阅挂接：显示名命中通道名（腾讯云 Token Plan）优先；否则 direct:<provider id>
@@ -2240,6 +2256,7 @@ function BillingDashboard({
         balance: balanceForChannel(name),
         // 健康点取该通道费用最高模型的品牌健康（通道本身不做探活）。
         dot: providerDot(health, rows[0]?.provider ?? ''),
+        channelKind: kindByChannel.get(name) ?? 'unknown',
       })
     }
     for (const [groupKey, name] of subGroupNames) {
@@ -2250,6 +2267,7 @@ function BillingDashboard({
         subscriptions: subscriptionsByChannel.get(groupKey) ?? [],
         balance: balanceFor(name),
         dot: providerDot(health, name),
+        channelKind: 'vendor',
       })
     }
     // 纯余额组：自定义 Provider（custom: 前缀）或无对应模型/订阅的余额行，
@@ -2267,6 +2285,7 @@ function BillingDashboard({
           subscriptions: [],
           balance,
           dot: providerDot(health, balance.displayName),
+          channelKind: 'vendor',
         })
       }
     }
@@ -3237,11 +3256,46 @@ function BillingDashboard({
                   <div className={css.providerGroupList} data-testid="billing-provider-groups">
                     {providerGroups.map(group => (
                       <div key={group.name} className={css.providerGroup} data-testid="billing-provider-group">
-                        {/* 厂商组头部：厂商名 + 健康点 + 订阅套数 + 厂商余额（只显示一次）。 */}
+                        {/* 厂商组头部：健康点 + 入口种类徽章 + 厂商名 + 订阅套数；费用/余额在右侧固定槽。 */}
                         <div className={css.providerGroupHead}>
                           <span className={css.providerGroupTitle}>
                             <span className={clsx(css.healthDot, group.dot)} aria-hidden="true" />
-                            <span className={css.providerGroupName}>{providerName(group.name)}</span>
+                            {(() => {
+                              // 入口徽章：直连/中转/未知一眼可辨；vendor（纯订阅/余额组）无徽章。
+                              // 直连组拆「直连 · X」为徽章 + 路由名；官方直连等无前缀名整名显示。
+                              // 未知组徽章即文案，不再重复渲染「未知路由」名字。
+                              const displayName = providerName(group.name)
+                              const directRest = group.channelKind === 'direct' ? directChannelRoute(displayName) : undefined
+                              const badge = group.channelKind === 'direct' ? t('directTag')
+                                : group.channelKind === 'site' ? t('relayTag')
+                                  : group.channelKind === 'unknown' ? t('unknownTag')
+                                    : undefined
+                              return (
+                                <>
+                                  {badge !== undefined && (
+                                    <span
+                                      className={clsx(
+                                        css.kindBadge,
+                                        group.channelKind === 'direct' && css.kindBadgeDirect,
+                                        group.channelKind === 'site' && css.kindBadgeRelay,
+                                        group.channelKind === 'unknown' && css.kindBadgeUnknown,
+                                      )}
+                                      data-testid="billing-kind-badge"
+                                    >
+                                      {badge}
+                                    </span>
+                                  )}
+                                  {group.channelKind !== 'unknown' && (
+                                    <span className={css.providerGroupName}>{directRest ?? displayName}</span>
+                                  )}
+                                </>
+                              )
+                            })()}
+                            {group.subscriptions.length > 0 && (
+                              <span className={css.providerGroupBadge} data-testid="billing-provider-sub-count">
+                                {group.subscriptions.length} {t('planCountUnit')}
+                              </span>
+                            )}
                           </span>
                           <span className={css.providerGroupMeta}>
                             {/* 费用合计：付费者视角的一级信息（issue #34）——充值与余额都针对厂商。 */}
@@ -3249,14 +3303,7 @@ function BillingDashboard({
                               <span className={css.providerGroupCostLabel}>{t('cost')}</span>
                               <span className={css.providerGroupCostValue}>{money(providerCostOf(group))}</span>
                             </span>
-                            {group.subscriptions.length > 0 ? (
-                              <span className={css.providerGroupBadge} data-testid="billing-provider-sub-count">
-                                {group.subscriptions.length} 套餐
-                              </span>
-                            ) : (
-                              /* 空占位：保持三槽（费用/套餐/余额）的表格状列位（issue #37）。 */
-                              <span className={css.providerGroupBadge} aria-hidden="true" />
-                            )}
+                            {/* 套餐徽章已移至组名后：原 64px 保列位空槽一并移除，费用/余额随之右移让位标题行。 */}
                             {!hideBalanceForGroup(group) && group.balance !== undefined ? (
                               <span className={css.providerGroupBalance} data-testid="billing-provider-balance">
                                 <span className={css.providerGroupBalanceLabel}>{t('balance')}</span>
@@ -3269,7 +3316,7 @@ function BillingDashboard({
                             {/* 官方充值入口（issue #47 反馈）：与余额状态解耦——只要厂商收录了
                                 充值页就显示，余额未配置/查询失败/订阅型组（余额槽隐藏）同样可用；
                                 「未知路由」等无法判定厂商的分组不显示。 */}
-                            {rechargeUrlOf(group.name) !== undefined && (
+                            {rechargeUrlOf(group.name) !== undefined ? (
                               <a
                                 className={css.providerGroupRecharge}
                                 data-testid="billing-group-recharge"
@@ -3281,6 +3328,9 @@ function BillingDashboard({
                               >
                                 {t('recharge')}
                               </a>
+                            ) : (
+                              /* 空占位：无充值页的组保持按钮列位，费用槽不随按钮有无横移。 */
+                              <span className={css.providerGroupRecharge} aria-hidden="true" />
                             )}
                           </span>
                         </div>
@@ -3601,7 +3651,7 @@ function BillingDashboard({
                         <th className={css.numCol}>{t('thInputMiss')}</th>
                         <th className={css.numCol}>{t('thInputHit')}</th>
                         <th className={css.numCol}>{t('output')}</th>
-                        <th className={css.numCol}>{t('band')}</th>
+                        <th className={css.numCol} colSpan={2}>{t('band')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3622,18 +3672,26 @@ function BillingDashboard({
                                       {t('uncatalogued')}
                                     </span>
                                   )}
-                                  {/* 限时促销：生效期内在模型名后挂折扣徽章，悬停提示恢复时点；过期自动消失。 */}
+                                  {/* 限时促销：生效期内模型名后挂单字徽章（避免撑宽模型名称列）；
+                                      详情用宿主 Tooltip 自绘浮层——原生 title 在宿主 webview 里
+                                      不渲染悬停提示（用户只看到 help 问号光标），note 与恢复时点
+                                      一并进气泡；过期自动消失。 */}
                                   {entry.promo !== undefined && isPromoActive(entry.promo, Date.now()) && (
-                                    <span
-                                      className={css.ubTagPromo}
-                                      data-testid="billing-price-promo"
-                                      title={entry.promo.endsAtMs === undefined
-                                        // 无截止日的长期活动：提示待厂商公告，不显示具体日期。
-                                        ? t('promoOpenEnded')
-                                        : t('promoUntil', { date: new Date(entry.promo.endsAtMs).toLocaleDateString() })}
+                                    <Tooltip
+                                      label={[
+                                        entry.promo.note,
+                                        entry.promo.endsAtMs === undefined
+                                          // 无截止日的长期活动：提示待厂商公告，不显示具体日期。
+                                          ? t('promoOpenEnded')
+                                          : t('promoUntil', { date: new Date(entry.promo.endsAtMs).toLocaleDateString() }),
+                                      ].filter(Boolean).join(' · ')}
+                                      side="top"
+                                      maxWidth={280}
                                     >
-                                      {entry.promo.note ?? t('promoBadge')}
-                                    </span>
+                                      <span className={css.ubTagPromo} data-testid="billing-price-promo">
+                                        {t('promoBadge')}
+                                      </span>
+                                    </Tooltip>
                                   )}
                                 </span>
                               </span>
@@ -3647,29 +3705,33 @@ function BillingDashboard({
                             <td className={css.numCol}>
                               {hasPrice ? unitMoney(entry.price.output, entry.price.currency) : <span className={css.na}>—</span>}
                             </td>
-                            <td className={css.numCol}>
-                              {hasPrice && entry.price.offPeak !== undefined && entry.peakHours !== undefined
-                                ? (
-                                  <span className={css.ubPricepair}>
+                            {/* 时段拆两格：峰/谷各占一列，档位标签留在格内（峰/谷或 Standard/Flex）；
+                                无分档模型合并两格显示全天统一。 */}
+                            {hasPrice && entry.price.offPeak !== undefined && entry.peakHours !== undefined
+                              ? (
+                                <>
+                                  <td className={css.numCol}>
                                     <span className={css.ubChipPeak}>
                                       {/* 延迟档语义（Gemini Standard/Flex）与时段语义（峰谷）标签不同。 */}
                                       <span className={css.ubChipLabel}>{entry.tierSemantics === 'latency' ? t('ubStd') : t('ubPeak')}</span>
                                       <span className={css.num}>
-                                        {unitMoney(entry.price.input, entry.price.currency)} / {unitMoney(entry.price.output, entry.price.currency)}
+                                        {unitMoney(entry.price.input, entry.price.currency)}/{unitMoney(entry.price.output, entry.price.currency)}
                                       </span>
                                     </span>
+                                  </td>
+                                  <td className={css.numCol}>
                                     <span className={css.ubChipOff}>
                                       <span className={css.ubChipLabel}>{entry.tierSemantics === 'latency' ? 'Flex' : t('ubOff')}</span>
                                       <span className={css.num}>
                                         {unitMoney(entry.price.offPeak.input, entry.price.currency)} / {unitMoney(entry.price.offPeak.output, entry.price.currency)}
                                       </span>
                                     </span>
-                                  </span>
-                                )
-                                : hasPrice
-                                  ? <span className={css.flatTag}>{t('flat')}</span>
-                                  : <span className={css.na}>—</span>}
-                            </td>
+                                  </td>
+                                </>
+                              )
+                              : <td className={css.numCol} colSpan={2}>
+                                  {hasPrice ? <span className={css.flatTag}>{t('flat')}</span> : <span className={css.na}>—</span>}
+                                </td>}
                           </tr>
                           {/* 附加计价子行：Batch / 显式缓存等参考价，缩进挂在模型名下，不参与计费。 */}
                           {(entry.extraRows ?? []).map(row => (
@@ -3681,7 +3743,7 @@ function BillingDashboard({
                               <td className={css.numCol}>{row.input === undefined ? <span className={css.na}>—</span> : unitMoney(row.input, entry.price.currency)}</td>
                               <td className={css.numCol}><span className={css.na}>—</span></td>
                               <td className={css.numCol}>{row.output === undefined ? <span className={css.na}>—</span> : unitMoney(row.output, entry.price.currency)}</td>
-                              <td className={css.numCol}><span className={css.na}>—</span></td>
+                              <td className={css.numCol} colSpan={2}><span className={css.na}>—</span></td>
                             </tr>
                           ))}
                           </Fragment>

@@ -443,6 +443,8 @@ describe('UsageBilling real-data surface', () => {
     const groups = await screen.findAllByTestId('billing-provider-group')
     const xiaomi = groups.find(group => group.textContent?.includes('mi-mimo-2.5'))
     expect(xiaomi).toBeDefined()
+    // 直连组头：「直连」徽章 + 拆出的路由名（direct:xiaomi-token-plan-cn 无前缀直呼）。
+    expect(xiaomi!.querySelector('[data-testid="billing-kind-badge"]')?.textContent).toBe('直连')
     // 同一直连通道组：既有模型用量表（非订阅模型显示费用），又有订阅卡片。
     expect(xiaomi!.querySelector('[data-testid="billing-table-scroll"]')).not.toBeNull()
     expect(xiaomi!.querySelector('[data-testid="billing-subscription-card"]')).not.toBeNull()

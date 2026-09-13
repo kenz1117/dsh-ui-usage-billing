@@ -40,6 +40,10 @@ export type UsageBillingKey =
   | 'models'
   | 'providerBilling'
   | 'channelUnknown'
+  | 'directTag'
+  | 'relayTag'
+  | 'unknownTag'
+  | 'planCountUnit'
   | 'actual'
   | 'pricing'
   | 'input'
@@ -314,6 +318,10 @@ export const zh: Record<UsageBillingKey, string> = {
   'models': '模型计费明细',
   'providerBilling': '提供商计费与订阅',
   'channelUnknown': '未知路由',
+  'directTag': '直连',
+  'relayTag': '中转',
+  'unknownTag': '未知',
+  'planCountUnit': '套餐',
   'actual': '实际',
   'pricing': '模型单价表',
   'input': '输入',
@@ -331,10 +339,10 @@ export const zh: Record<UsageBillingKey, string> = {
   'todayRate': '今日汇率',
   'rateLive': '实时',
   'rateBuiltin': '内置',
-  'promoBadge': '限时折扣',
+  'promoBadge': '促',
   'promoUntil': '促销价至 {date}，之后自动恢复刊例价',
   'promoOpenEnded': '厂商未公布截止时间，当前按折扣计价；公告截止后自动恢复刊例价',
-  'pricingTip': 'DeepSeek 现行（2026-09-10 12:00 北京起）：flash 系谷档 未命中 ¥1 / 输出 ¥4 / 缓存命中 ¥0.02（峰 = 谷 × 2），现行型号为 V4.1 Flash（旧 V4 Flash / Vision (Exp) 已下线并入，价格与时间线不变）；V4 Pro 按峰谷刊例计费（谷 ¥4.5 / ¥0.15 / ¥13.5，峰 = 谷 × 2），官方已取消原定 09-14 路由至 V4.1 Flash 的计划，09-14 之后继续提供、计费方式保持不变。峰谷分时自 2026-08-23 起：工作日高峰 9-12 / 14-18（×2），周末全天低谷价。双价单元格按峰 / 谷展示，费用按调用时刻计。',
+  'pricingTip': 'DeepSeek 现行刊例：V4.1 Flash 谷档 未命中 ¥1 / 缓存命中 ¥0.02 / 输出 ¥4；V4 Pro 谷档 未命中 ¥4.5 / 缓存命中 ¥0.15 / 输出 ¥13.5；峰价均为谷价 × 2。工作日 9-12 / 14-18 为高峰价，其余时段（含周末全天）为低谷价；费用按调用时刻计。',
   'pricingUnit': '单位：人民币 / 每百万 Token',
   'pricingNotes': '计价说明',
   'ubPeak': '峰',
@@ -588,6 +596,10 @@ export const en: Record<UsageBillingKey, string> = {
   'models': 'Model billing',
   'providerBilling': 'Provider billing & subscriptions',
   'channelUnknown': 'Unknown routes',
+  'directTag': 'Direct',
+  'relayTag': 'Relay',
+  'unknownTag': 'Unknown',
+  'planCountUnit': 'plan(s)',
   'actual': 'Actual',
   'pricing': 'Model pricing',
   'input': 'Input',
@@ -608,7 +620,7 @@ export const en: Record<UsageBillingKey, string> = {
   'promoBadge': 'Promo',
   'promoUntil': 'Promo price until {date}, then list price resumes automatically',
   'promoOpenEnded': 'End date not announced; billed at the discounted rate until further notice, then list price resumes',
-  'pricingTip': 'DeepSeek current rates (from 2026-09-10 12:00 Beijing): flash family off-peak ¥1 miss / ¥4 output / ¥0.02 cache-hit (peak = 2×); the current model is V4.1 Flash (legacy V4 Flash / Vision (Exp) are retired and merged in, same prices and timeline). V4 Pro bills at its peak/off-peak list rates (off-peak ¥4.5 / ¥0.15 / ¥13.5, peak = 2×): the original plan to route V4 Pro to V4.1 Flash was cancelled, so it stays available beyond 2026-09-14 at unchanged billing. Weekday peak 9-12 / 14-18 (×2), weekends all-day off-peak; billed at call time.',
+  'pricingTip': 'DeepSeek list rates: V4.1 Flash off-peak ¥1 miss / ¥0.02 cache-hit / ¥4 output; V4 Pro off-peak ¥4.5 miss / ¥0.15 cache-hit / ¥13.5 output; peak = 2× off-peak. Weekday 9-12 / 14-18 bills at peak, all other times (weekends included) at off-peak; billed at call time.',
   'pricingUnit': 'Unit: CNY / per 1M tokens',
   'pricingNotes': 'Pricing notes',
   'ubPeak': 'Peak',

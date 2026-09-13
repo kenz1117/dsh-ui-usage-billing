@@ -96,7 +96,8 @@ describe('provider-first channel grouping', () => {
     }))
     const panel = await openProvidersTab()
     await waitFor(() => {
-      expect(panel.textContent).toContain(t('channelUnknown'))
+      // 未知入口组：组头渲染「未知」徽章，徽章即文案（不再重复「未知路由」名字）。
+      expect(panel.querySelector('[data-testid="billing-kind-badge"]')?.textContent).toBe(t('unknownTag'))
     })
   })
 })
@@ -139,6 +140,7 @@ describe('subscription channel shows catalog-price estimate (P3)', () => {
 
   it('shows the group-head recharge link on the plan channel even without balance data (issue #47 反馈)', async () => {
     // 订阅型组余额槽隐藏，充值入口与余额状态解耦：只要厂商收录了充值页就显示。
+    // site 桶（经中转站点）组头渲染「中转」徽章 + 品牌名整名。
     const panel = await openProvidersTab()
     await waitFor(() => {
       expect(panel.textContent).toContain('腾讯云 Token Plan')
@@ -146,6 +148,7 @@ describe('subscription channel shows catalog-price estimate (P3)', () => {
     const groups = screen.getAllByTestId('billing-provider-group')
     const plan = groups.find(group => group.textContent?.includes('腾讯云 Token Plan'))
     expect(plan).toBeDefined()
+    expect(plan!.querySelector('[data-testid="billing-kind-badge"]')?.textContent).toBe(t('relayTag'))
     const recharge = plan!.querySelector('[data-testid="billing-group-recharge"]') as HTMLAnchorElement | null
     expect(recharge).not.toBeNull()
     expect(recharge!.href).toBe('https://console.cloud.tencent.com/expense/recharge')

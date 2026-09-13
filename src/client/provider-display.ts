@@ -101,3 +101,18 @@ export function channelDisplayName(siteKey: string, lang: ProviderLang = 'zh'): 
   }
   return undefined
 }
+
+/** direct 桶显示名的前缀（中英）——与上面 direct 分支的拼装保持一致。 */
+const DIRECT_PREFIXES = ['直连 · ', 'Direct · '] as const
+
+/**
+ * 拆 direct 通道显示名的「直连 · X」前缀，返回路由名 X。
+ * @param displayName - channelDisplayName 的产物；官方直连（DeepSeek 官方）等非 direct 前缀名不匹配。
+ * @returns 非 direct 前缀名返回 undefined，调用方整名显示。
+ */
+export function directChannelRoute(displayName: string): string | undefined {
+  for (const prefix of DIRECT_PREFIXES) {
+    if (displayName.startsWith(prefix)) return displayName.slice(prefix.length)
+  }
+  return undefined
+}
