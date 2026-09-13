@@ -88,35 +88,35 @@ describe('lowQuotaChips', () => {
 })
 
 describe('loadLiveCostBarPrefs / saveLiveCostBarPrefs (平价消耗胶囊显隐与位置)', () => {
-  it('defaults to shown + below when the key is missing', () => {
-    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
+  it('defaults to shown + toolbar (inside the composer, issue #47) when the key is missing', () => {
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'toolbar' })
   })
 
-  it('round-trips an explicit hide through save + load', () => {
+  it('round-trips an explicit hide through save + load (legacy below stays intact)', () => {
     saveLiveCostBarPrefs({ show: false, position: 'below' })
     expect(loadLiveCostBarPrefs()).toEqual({ show: false, position: 'below' })
     saveLiveCostBarPrefs({ show: true, position: 'below' })
     expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
   })
 
-  it('round-trips the above/toolbar positions and rejects invalid values back to below', () => {
+  it('round-trips the below/above positions and rejects invalid values back to the default (toolbar)', () => {
     saveLiveCostBarPrefs({ show: true, position: 'above' })
     expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'above' })
-    saveLiveCostBarPrefs({ show: true, position: 'toolbar' })
-    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'toolbar' })
+    saveLiveCostBarPrefs({ show: true, position: 'below' })
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
     localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":true,"position":"sideways"}')
-    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'toolbar' })
     localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":true}')
-    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'toolbar' })
   })
 
   it('falls back to shown on corrupt JSON or non-boolean values (only explicit false hides)', () => {
     localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{broken json')
-    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'toolbar' })
     localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":"yes"}')
-    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'below' })
+    expect(loadLiveCostBarPrefs()).toEqual({ show: true, position: 'toolbar' })
     localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":false}')
-    expect(loadLiveCostBarPrefs()).toEqual({ show: false, position: 'below' })
+    expect(loadLiveCostBarPrefs()).toEqual({ show: false, position: 'toolbar' })
   })
 })
 
@@ -131,16 +131,18 @@ describe('LiveCostBar visibility gate (设置 Tab 开关跨树生效)', () => {
     view.unmount()
   })
 
-  it('renders the capsule by default and re-reads the pref on the broadcast CustomEvent (same document) and the storage event (cross tab)', async () => {
+  it('renders the capsule when positioned below and re-reads the pref on the broadcast CustomEvent (same document) and the storage event (cross tab)', async () => {
+    // 默认位置已是 toolbar（bar 让位给输入框内的 chip）；bar 形态在此用 below 位置验证显隐门控。
+    localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":true,"position":"below"}')
     const view = render(<LiveCostBar sessionId={sessionId} t={t} />)
-    // 默认显示：fee-bar 胶囊条在 dock 上常驻。
+    // 显示中：fee-bar 胶囊条在 dock 上常驻。
     expect(screen.getByTestId('billing-live-cost-bar')).toBeTruthy()
     // 设置 Tab 关闭：写 localStorage + 广播 CustomEvent → 胶囊条即时消失。
     localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":false}')
     await act(async () => { window.dispatchEvent(new Event(LIVE_COST_BAR_PREF_EVENT)) })
     expect(screen.queryByTestId('billing-live-cost-bar')).toBeNull()
     // 其它标签页同步：storage 事件也能驱动重读。
-    localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":true}')
+    localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, '{"show":true,"position":"below"}')
     await act(async () => { window.dispatchEvent(new StorageEvent('storage')) })
     expect(screen.getByTestId('billing-live-cost-bar')).toBeTruthy()
     view.unmount()

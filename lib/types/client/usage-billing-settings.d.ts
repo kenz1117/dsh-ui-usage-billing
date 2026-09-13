@@ -20,6 +20,8 @@ export interface UsageBillingSettings {
 export declare const DEFAULT_ENABLE_USAGE_STATS_TOOL = false;
 /** 模型用量悬浮窗的展示模式。 */
 export type FloatWindowMode = 'combined' | 'subscription';
+/** 悬浮窗「主数字」（指标网格首格）的口径（issue #47）。 */
+export type FloatPrimaryMetric = 'today' | 'week' | 'month' | 'balance';
 /**
  * 模型用量悬浮窗（左下角计费卡 hover 浮窗）的展示偏好。
  * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
@@ -29,8 +31,10 @@ export interface FloatWindowPrefs {
     mode: FloatWindowMode;
     /** `subscription` 模式下可切换展示的订阅通道 provider id 列表（每次显示一张）。 */
     targets: string[];
+    /** 主数字口径：今日 / 本周 / 本月 / 官方余额（默认今日——月累计对按量用户最不直观）。 */
+    primary: FloatPrimaryMetric;
 }
-/** 默认浮窗偏好：综合模式、无指定目标（向后兼容现有综合速览卡）。 */
+/** 默认浮窗偏好：综合模式、无指定目标、主数字为今日费用。 */
 export declare const DEFAULT_FLOAT_WINDOW_PREFS: FloatWindowPrefs;
 /** localStorage key（与 budget store 的 `dsh.ui-usage-billing.*` 命名空间一致）。 */
 export declare const FLOAT_WINDOW_STORAGE_KEY = "dsh.ui-usage-billing.float";
@@ -82,10 +86,10 @@ export declare function saveSiteListPrefs(prefs: SiteListPrefs): void;
 export interface LiveCostBarPrefs {
     /** 是否显示输入框下方的即时代费条胶囊（默认 true：保持历史行为）。 */
     show: boolean;
-    /** 胶囊位置：below = 输入框下方（默认）；above = 输入框上方；toolbar = 工具行模型选择前的内联 chip。 */
+    /** 胶囊位置：toolbar = 输入框内部工具行内联 chip（默认，issue #47）；below = 输入框下方；above = 输入框上方。 */
     position: 'below' | 'above' | 'toolbar';
 }
-/** 默认即时代费条偏好：显示在输入框下方（升级用户零感知）。 */
+/** 默认即时代费条偏好：显示在输入框内部（工具行内联 chip，issue #47 反馈「上方/下方」都打断输入视线）。 */
 export declare const DEFAULT_LIVE_COST_BAR_PREFS: LiveCostBarPrefs;
 /** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
 export declare const LIVE_COST_BAR_STORAGE_KEY = "dsh.ui-usage-billing.livecost";

@@ -1009,6 +1009,14 @@ body {
   text-overflow: ellipsis;
 }
 
+/* 平均成本 tile 内嵌的范围分段（issue #47）：压成两行紧凑排布。 */
+.kpiRangeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 4px;
+}
+
 /* ── Panels (chart / tables) ────────────────────────────────────────── */
 
 .panel {
@@ -2223,6 +2231,20 @@ body {
   align-items: center;
   gap: 6px;
 }
+
+/* 官方充值外链（issue #47）：余额旁描边小链接，与圆形徽标同高同基调。 */
+.balanceRecharge {
+  color: var(--ds-c-1);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px dashed color-mix(in srgb, var(--ds-c-1) 55%, transparent);
+}
+
+.balanceRecharge:hover { border-bottom-style: solid; }
+
+/* 余额主数字低值警示（issue #47 官方余额视角）：沿用语义红。 */
+.metricValueLow { color: var(--ds-red) !important; }
 
 /* 「约可撑 N 天」圆形徽标：点击弹出余额详情。 */
 .balanceDaysBadge {

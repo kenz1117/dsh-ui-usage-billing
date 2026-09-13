@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ComponentProps } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { bindSnapshotSelector } from './bind-snapshot-selector'
-import { UsageBilling, providerFromModelKey } from '../src/client/UsageBilling.tsx'
+import { UsageBilling, providerFromModelKey, rechargeUrlOf } from '../src/client/UsageBilling.tsx'
 import { createBillingBudgetStore } from '../src/client/budget-store.ts'
 import { zh } from '../src/client/locales.ts'
 
@@ -120,7 +120,7 @@ describe('UsageBilling surface', () => {
       // 关闭：状态翻转、localStorage 持久化、广播 CustomEvent（dock 侧即时显隐信号）。
       fireEvent.click(toggle)
       expect(toggle.getAttribute('aria-checked')).toBe('false')
-      expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.livecost')!)).toEqual({ show: false, position: 'below' })
+      expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.livecost')!)).toEqual({ show: false, position: 'toolbar' })
       expect(events).toEqual(['livecost'])
     } finally {
       window.removeEventListener('dsh.ui-usage-billing.livecost-pref', listener)
@@ -147,5 +147,24 @@ describe('providerFromModelKey (B5 model-id fallback)', () => {
   it('falls back to undefined for unknown ids', () => {
     expect(providerFromModelKey('totally-unknown-model-x')).toBeUndefined()
     expect(providerFromModelKey('')).toBeUndefined()
+  })
+})
+
+describe('rechargeUrlOf (issue #47 账单页官方充值入口)', () => {
+  it('maps the exact normalized provider to its official top-up page', () => {
+    expect(rechargeUrlOf('DeepSeek')).toBe('https://platform.deepseek.com/top_up')
+    expect(rechargeUrlOf('MiniMax')).toBe('https://platform.minimaxi.com/')
+    expect(rechargeUrlOf('月之暗面')).toBe('https://platform.moonshot.cn/')
+  })
+
+  it('matches alias prefixes so region variants reuse the vendor URL', () => {
+    // 归一化后带 region/产品后缀的名字走前缀命中，与该厂商主充值页一致。
+    expect(rechargeUrlOf('月之暗面 Kimi For Coding')).toBe('https://platform.moonshot.cn/')
+    expect(rechargeUrlOf('智谱 AI GLM')).toBe('https://open.bigmodel.cn/')
+  })
+
+  it('returns undefined for vendors without a known official top-up page', () => {
+    expect(rechargeUrlOf('某私有网关')).toBeUndefined()
+    expect(rechargeUrlOf('')).toBeUndefined()
   })
 })

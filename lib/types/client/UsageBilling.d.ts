@@ -63,6 +63,13 @@ export declare function providerFromModelKey(modelKey: string): string | undefin
 /** 仅供测试：暴露厂商映射表（subscriptionVendorOf 仍是唯一消费入口）。 */
 export declare const SUBSCRIPTION_VENDORS_FOR_TEST: Readonly<Record<string, string>>;
 /**
+ * 余额 provider → 官方充值页 URL。匹配顺序：归一化名精确/前缀命中 →
+ * 经 PROVIDER_ALIASES 反查（余额 provider 名多为中文显示名，归一化仍是中文，
+ * 需先命中 display 名再用其英文别名重试）。未收录返回 undefined。
+ * 导出供测试：纯函数，不依赖组件。
+ */
+export declare function rechargeUrlOf(provider: string): string | undefined;
+/**
  * 本月预计总花费：按本月已有记录的平均日消耗 × 本月天数外推；无本月记录时
  * 回退为最近 7 天日均 × 本月天数；无任何记录时返回 0（调用方不展示）。
  * 导出供测试：纯函数，不依赖组件。
@@ -125,6 +132,20 @@ export declare function lastSevenDays(byDay: Record<string, {
  * @returns 本周一到今天的合计；`today` 本身不在表里（无调用）时为 0。
  */
 export declare function sinceMondayOf<T>(byDay: Record<string, T>, today: string, pick?: (row: T) => number): number;
+/** 平均成本的统计范围（issue #47）；`all` = 全量累计，不进逐日求和。 */
+export type AvgCostRange = 'today' | '7d' | 'week' | 'month' | 'all';
+/**
+ * 按范围求和 byDay 的费用与调用数（issue #47）：今日 / 近 7 天（含今天）/
+ * 本周（周一起）/ 本月。日期戳字典序即时间序（与 dailyBurnRate 同口径）；
+ * 累计口径由调用方直接取 total（含搜索估值兜底），不走此函数。
+ */
+export declare function sumByDayRange(byDay: Record<string, {
+    cost: number;
+    calls: number;
+}>, today: string, range: Exclude<AvgCostRange, 'all'>): {
+    cost: number;
+    calls: number;
+};
 /** 会话明细行（与服务端 SessionUsageRow 同形；旧快照可能缺失整个 bySession）。 */
 interface SessionBillingRow {
     id: string;

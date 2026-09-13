@@ -15,6 +15,12 @@ export type UsageBillingKey =
   | 'inputTokens'
   | 'outputTokens'
   | 'avgCost'
+  | 'avgRange'
+  | 'avgRangeToday'
+  | 'avgRange7d'
+  | 'avgRangeWeek'
+  | 'avgRangeMonth'
+  | 'avgRangeAll'
   | 'trend'
   | 'trend7d'
   | 'trend30d'
@@ -65,6 +71,8 @@ export type UsageBillingKey =
   | 'noteBand'
   | 'noteSource'
   | 'balance'
+  | 'recharge'
+  | 'rechargeHint'
   | 'balanceUnconfigured'
   | 'balanceUnauthorized'
   | 'balanceUnreachable'
@@ -93,6 +101,11 @@ export type UsageBillingKey =
   | 'floatMode'
   | 'floatTargets'
   | 'floatWindowHint'
+  | 'floatPrimary'
+  | 'floatPrimaryToday'
+  | 'floatPrimaryWeek'
+  | 'floatPrimaryMonth'
+  | 'floatPrimaryBalance'
   | 'floatNoTargets'
   | 'floatNoTargetsHint'
   | 'cardDisplay'
@@ -272,6 +285,12 @@ export const zh: Record<UsageBillingKey, string> = {
   'inputTokens': '输入',
   'outputTokens': '输出',
   'avgCost': '平均成本',
+  'avgRange': '平均成本统计范围',
+  'avgRangeToday': '今日',
+  'avgRange7d': '近7天',
+  'avgRangeWeek': '本周',
+  'avgRangeMonth': '本月',
+  'avgRangeAll': '累计',
   'trend': '每日费用与调用趋势',
   'trend7d': '7 天',
   'trend30d': '30 天',
@@ -322,6 +341,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'noteBand': '高峰与空闲时段单价不同，空闲约半价。',
   'noteSource': '价格来自实时汇率 + 模型定价目录，未收录模型按 0 计并提示。',
   'balance': '余额',
+  'recharge': '充值',
+  'rechargeHint': '打开该厂商官方平台的充值页',
   'balanceUnconfigured': '未配置',
   'balanceUnauthorized': '密钥无效',
   'balanceUnreachable': '查询失败',
@@ -350,6 +371,11 @@ export const zh: Record<UsageBillingKey, string> = {
   'floatMode': '展示模式',
   'floatTargets': '订阅目标',
   'floatWindowHint': '悬浮在左下角计费卡上的用量速览；综合=当前样式，订阅卡=每次展示一张订阅额度卡（可切换）。',
+  'floatPrimary': '主数字',
+  'floatPrimaryToday': '今日',
+  'floatPrimaryWeek': '本周',
+  'floatPrimaryMonth': '本月',
+  'floatPrimaryBalance': '官方余额',
   'cardDisplay': '计费卡显示',
   'cardDisplayHint': '切换左下角计费卡的主指标：花费金额或 Token 消耗（副行与迷你柱同步切换，悬浮窗不受影响）。',
   'cardMetric': '主指标',
@@ -528,6 +554,12 @@ export const en: Record<UsageBillingKey, string> = {
   'inputTokens': 'Input',
   'outputTokens': 'Output',
   'avgCost': 'Avg cost',
+  'avgRange': 'Avg cost range',
+  'avgRangeToday': 'Today',
+  'avgRange7d': '7d',
+  'avgRangeWeek': 'Week',
+  'avgRangeMonth': 'Month',
+  'avgRangeAll': 'All',
   'trend': 'Daily cost & calls',
   'trend7d': '7D',
   'trend30d': '30D',
@@ -578,6 +610,8 @@ export const en: Record<UsageBillingKey, string> = {
   'noteBand': 'Peak and off-peak prices differ; off-peak is roughly half price.',
   'noteSource': 'Prices come from the live rate + model catalog; unlisted models count as 0 and are flagged.',
   'balance': 'Balance',
+  'recharge': 'Top up',
+  'rechargeHint': 'Open the vendor\'s official top-up page',
   'balanceUnconfigured': 'Not set',
   'balanceUnauthorized': 'Bad key',
   'balanceUnreachable': 'Unavailable',
@@ -606,6 +640,11 @@ export const en: Record<UsageBillingKey, string> = {
   'floatMode': 'Display mode',
   'floatTargets': 'Targets',
   'floatWindowHint': 'Usage summary floating on the footer card; Combined=current style, Subscription cards=one quota card at a time (switchable).',
+  'floatPrimary': 'Primary figure',
+  'floatPrimaryToday': 'Today',
+  'floatPrimaryWeek': 'Week',
+  'floatPrimaryMonth': 'Month',
+  'floatPrimaryBalance': 'Balance',
   'cardDisplay': 'Billing card display',
   'cardDisplayHint': 'Switch the main metric on the bottom-left billing card between cost and token usage (sub row and sparkline follow; the popover is unaffected).',
   'cardMetric': 'Main metric',

@@ -254,6 +254,72 @@ function subscriptionVendorOf(provider: string): string {
 const DEFAULT_LOW_BALANCE_THRESHOLD = 50
 
 /**
+ * 厂商官方充值页（issue #47）：账单 Tab 余额列「充值」外链的映射表。
+ * key 为归一化 provider id（前缀匹配，`minimax-cn` 命中 `minimax`）；
+ * 未收录厂商不渲染按钮（宁缺毋错链）。
+ */
+/** 多别名厂商共享的充值页常量（表内键去重引用，控制 bundle 体积）。 */
+const URL_MOONSHOT = 'https://platform.moonshot.cn/'
+const URL_ZHIPU = 'https://open.bigmodel.cn/'
+const URL_QWEN = 'https://bailian.console.aliyun.com/'
+const URL_DOUBAO = 'https://console.volcengine.com/ark'
+const URL_ANTHROPIC = 'https://console.anthropic.com/settings/billing'
+const URL_GOOGLE = 'https://console.cloud.google.com/billing'
+const URL_XAI = 'https://console.x.ai/'
+
+const RECHARGE_URLS: Readonly<Record<string, string>> = {
+  deepseek: 'https://platform.deepseek.com/top_up',
+  minimax: 'https://platform.minimaxi.com/',
+  moonshot: URL_MOONSHOT,
+  kimi: URL_MOONSHOT,
+  zhipu: URL_ZHIPU,
+  bigmodel: URL_ZHIPU,
+  qwen: URL_QWEN,
+  dashscope: URL_QWEN,
+  doubao: URL_DOUBAO,
+  volcengine: URL_DOUBAO,
+  ark: URL_DOUBAO,
+  openai: 'https://platform.openai.com/settings/organization/billing',
+  anthropic: URL_ANTHROPIC,
+  claude: URL_ANTHROPIC,
+  google: URL_GOOGLE,
+  gemini: URL_GOOGLE,
+  xai: URL_XAI,
+  grok: URL_XAI,
+  siliconflow: 'https://cloud.siliconflow.cn/account/charge',
+  hunyuan: 'https://console.cloud.tencent.com/hunyuan',
+  qianfan: 'https://console.bce.baidu.com/qianfan/overview',
+}
+
+/** 归一化名 → 充值页 URL：先精确命中，再前缀命中。 */
+function rechargeExactOrPrefix(key: string): string | undefined {
+  const exact = RECHARGE_URLS[key]
+  if (exact !== undefined) return exact
+  const prefixHit = Object.keys(RECHARGE_URLS).find(k => key.startsWith(k))
+  return prefixHit === undefined ? undefined : RECHARGE_URLS[prefixHit]
+}
+
+/**
+ * 余额 provider → 官方充值页 URL。匹配顺序：归一化名精确/前缀命中 →
+ * 经 PROVIDER_ALIASES 反查（余额 provider 名多为中文显示名，归一化仍是中文，
+ * 需先命中 display 名再用其英文别名重试）。未收录返回 undefined。
+ * 导出供测试：纯函数，不依赖组件。
+ */
+export function rechargeUrlOf(provider: string): string | undefined {
+  const key = normalizeProvider(provider)
+  const direct = rechargeExactOrPrefix(key)
+  if (direct !== undefined) return direct
+  for (const [display, aliases] of Object.entries(PROVIDER_ALIASES)) {
+    if (!providerNameHits(normalizeProvider(display), key)) continue
+    for (const alias of aliases) {
+      const url = rechargeExactOrPrefix(normalizeProvider(alias))
+      if (url !== undefined) return url
+    }
+  }
+  return undefined
+}
+
+/**
  * 日均消耗（元/天）：取最近 7 天（含今天）总花费 ÷ 有记录天数；无记录返回 0
  * （此时可用天数无法估算，调用方不显示天数提示）。日期戳字典序即时间序。
  */
@@ -458,6 +524,42 @@ export function sinceMondayOf<T>(
     if (row !== undefined) sum += pick(row)
   }
   return sum
+}
+
+/** 平均成本的统计范围（issue #47）；`all` = 全量累计，不进逐日求和。 */
+export type AvgCostRange = 'today' | '7d' | 'week' | 'month' | 'all'
+
+/**
+ * 按范围求和 byDay 的费用与调用数（issue #47）：今日 / 近 7 天（含今天）/
+ * 本周（周一起）/ 本月。日期戳字典序即时间序（与 dailyBurnRate 同口径）；
+ * 累计口径由调用方直接取 total（含搜索估值兜底），不走此函数。
+ */
+export function sumByDayRange(
+  byDay: Record<string, { cost: number; calls: number }>,
+  today: string,
+  range: Exclude<AvgCostRange, 'all'>,
+): { cost: number; calls: number } {
+  const now = new Date(`${today}T00:00:00`)
+  // 周一起算偏移（issue #39 口径）；近 7 天 = 今天往前 6 天。
+  const weekOffset = (now.getDay() + 6) % 7
+  const weekStart = new Date(now)
+  weekStart.setDate(weekStart.getDate() - weekOffset)
+  const weekStartStamp = localDayStamp(weekStart.getTime())
+  const days7Start = new Date(now)
+  days7Start.setDate(days7Start.getDate() - 6)
+  const range7Start = localDayStamp(days7Start.getTime())
+  let cost = 0
+  let calls = 0
+  for (const [date, row] of Object.entries(byDay)) {
+    const inRange = range === 'today' ? date === today
+      : range === '7d' ? date >= range7Start && date <= today
+      : range === 'week' ? date >= weekStartStamp && date <= today
+      : date.startsWith(today.slice(0, 7))
+    if (!inRange) continue
+    cost += row.cost
+    calls += row.calls
+  }
+  return { cost, calls }
 }
 
 /** Resolve one provider's dot state: green when live, red when failed, gray when unknown. */
@@ -1026,6 +1128,8 @@ function UsageBillingTrigger(
       direct: { name: string; text: string; low: boolean } | undefined
       sub: { name: string; text: string; low: boolean } | undefined
     }
+  /** hover 速览主数字（指标网格首格，口径跟随浮窗偏好，issue #47）。 */
+  primaryFigure: { label: string; value: string; low: boolean }
   /** hover 速览「数据卡」用量数值（累计）：总 Token / 输入 / 输出 / 缓存 / 调用。 */
   dash: {
     totalToken: number
@@ -1042,7 +1146,7 @@ function UsageBillingTrigger(
 ): React.ReactNode {
   const {
     wide, t, onOpen, monthCost, todayCost, weekCost, days, vendorStatus, dash,
-    floatPrefs, subscriptions, cardPrefs, monthTokens, todayTokens, weekTokens,
+    floatPrefs, subscriptions, cardPrefs, monthTokens, todayTokens, weekTokens, primaryFigure,
   } = props
 
   // 「指定订阅卡」浮窗：可用订阅列表 + 当前展示索引（每次一张，可前后切换）。
@@ -1253,8 +1357,10 @@ function UsageBillingTrigger(
             </span>
             <span className={css.metricGrid}>
               <span className={css.metricCell}>
-                <span className={css.metricLabel}>{t('monthCost')}</span>
-                <span className={clsx(css.metricValue, css.metricValuePrimary)}>{formatMoney(monthCost)}</span>
+                <span className={css.metricLabel}>{primaryFigure.label}</span>
+                <span className={clsx(css.metricValue, css.metricValuePrimary, primaryFigure.low && css.metricValueLow)}>
+                  {primaryFigure.value}
+                </span>
               </span>
               <span className={css.metricCell}>
                 <span className={css.metricLabel}>{t('tokenTotal')}</span>
@@ -1661,6 +1767,8 @@ function BillingDashboard({
   }, [])
   // 概览用量热力图范围：月（日历月）/ 年（GitHub 风格年度贡献图，含月份与周几标注）。
   const [heatmapRange, setHeatmapRange] = useState<'month' | 'year'>('month')
+  // 平均成本统计范围（issue #47）：弹窗级视图状态（与热力图月/年切换同模式，不持久化）。
+  const [avgRange, setAvgRange] = useState<AvgCostRange>('all')
 
   // 浮窗「指定订阅卡」的可选目标：只列已接入（查询成功且有额度数据）的订阅，
   // 避免内置 alias 造成的同名重复与未接入项。
@@ -1763,6 +1871,20 @@ function BillingDashboard({
     return (
       <span className={css.balanceCell}>
         <span>{amount}</span>
+        {/* 官方充值入口（issue #47）：按量余额旁直连厂商充值页；未收录厂商不显示。 */}
+        {rechargeUrlOf(balance.provider) !== undefined && (
+          <a
+            className={css.balanceRecharge}
+            data-testid="billing-balance-recharge"
+            href={rechargeUrlOf(balance.provider)}
+            target="_blank"
+            rel="noreferrer"
+            title={t('rechargeHint')}
+            aria-label={`${balance.displayName} ${t('recharge')}`}
+          >
+            {t('recharge')}
+          </a>
+        )}
         {days !== undefined && days >= 0 && (
           <button
             type="button"
@@ -2119,7 +2241,14 @@ function BillingDashboard({
   // Total: real stats value when present, otherwise the estimated sum.
   const estimatedTotal = modelRows.reduce((sum, row) => sum + row.estimated, 0)
   const displayTotal = total.cost > 0 ? total.cost : estimatedTotal
-  const avgPerCall = total.calls > 0 ? displayTotal / total.calls : 0
+
+  // 平均成本按所选范围聚合（issue #47）：累计沿用「实际优先」口径（含搜索估值
+  // 兜底），其余范围对 byDay 逐日求和（费用/调用），除零时回 0。
+  const avgRangeStats = useMemo((): { cost: number; calls: number } => {
+    if (avgRange === 'all') return { cost: displayTotal, calls: total.calls }
+    return sumByDayRange(byDay, localDayStamp(), avgRange)
+  }, [avgRange, displayTotal, total.calls, byDay])
+  const avgRangeAvg = avgRangeStats.calls > 0 ? avgRangeStats.cost / avgRangeStats.calls : 0
 
   // Trend-chart legend: model rows sort by cost desc, so the stack bottoms
   // with the most expensive model (visually stable baseline).
@@ -2378,10 +2507,30 @@ function BillingDashboard({
                     {t('inputTokens')} {formatTokens(total.input)} · {t('outputTokens')} {formatTokens(total.output)}
                   </span>
                 </div>
-                <div className={css.kpiTile}>
+                <div className={css.kpiTile} data-testid="billing-kpi-avg">
                   <span className={css.kpiLabel}>{t('avgCost')}</span>
-                  <span className={css.kpiValue}>{money(avgPerCall)}</span>
-                  <span className={css.kpiDetail}>{t('calls')} {total.calls.toLocaleString()}</span>
+                  <span className={css.kpiValue}>{money(avgRangeAvg)}</span>
+                  <span className={css.kpiDetail}>{t('calls')} {avgRangeStats.calls.toLocaleString()}</span>
+                  <span className={clsx(css.heatmapRangeSwitch, css.kpiRangeRow)} data-testid="billing-avg-range" role="group" aria-label={t('avgRange')}>
+                    {([
+                      ['today', 'avgRangeToday'],
+                      ['7d', 'avgRange7d'],
+                      ['week', 'avgRangeWeek'],
+                      ['month', 'avgRangeMonth'],
+                      ['all', 'avgRangeAll'],
+                    ] as const).map(([r, key]) => (
+                      <button
+                        key={r}
+                        type="button"
+                        className={clsx(css.heatmapRangeButton, avgRange === r && css.heatmapRangeButtonActive)}
+                        data-testid={`billing-avg-range-${r}`}
+                        aria-pressed={avgRange === r}
+                        onClick={() => { setAvgRange(r) }}
+                      >
+                        {t(key)}
+                      </button>
+                    ))}
+                  </span>
                 </div>
                 <div className={css.kpiTile}>
                   <span className={css.kpiLabel}>{t('calls')}</span>
@@ -2676,7 +2825,7 @@ function BillingDashboard({
                             type="button"
                             className={clsx(css.floatModeBtn, floatPrefs.mode === 'combined' && css.floatModeBtnOn)}
                             data-testid="billing-float-mode-combined"
-                            onClick={() => onFloatPrefs({ mode: 'combined', targets: floatPrefs.targets })}
+                            onClick={() => onFloatPrefs({ mode: 'combined', targets: floatPrefs.targets, primary: floatPrefs.primary })}
                           >
                             {t('floatModeCombined')}
                           </button>
@@ -2684,7 +2833,7 @@ function BillingDashboard({
                             type="button"
                             className={clsx(css.floatModeBtn, floatPrefs.mode === 'subscription' && css.floatModeBtnOn)}
                             data-testid="billing-float-mode-subscription"
-                            onClick={() => onFloatPrefs({ mode: 'subscription', targets: floatPrefs.targets })}
+                            onClick={() => onFloatPrefs({ mode: 'subscription', targets: floatPrefs.targets, primary: floatPrefs.primary })}
                           >
                             {t('floatModeSubscription')}
                           </button>
@@ -2704,6 +2853,7 @@ function BillingDashboard({
                                     data-testid={`billing-float-target-${option.id}`}
                                     onChange={() => onFloatPrefs({
                                       mode: 'subscription',
+                                      primary: floatPrefs.primary,
                                       targets: on
                                         ? floatPrefs.targets.filter(id => id !== option.id)
                                         : [...floatPrefs.targets, option.id],
@@ -2719,6 +2869,29 @@ function BillingDashboard({
                           </span>
                         </div>
                       )}
+                      {/* 主数字口径（issue #47）：悬浮窗指标网格首格，默认今日费用。 */}
+                      <div className={css.ctlRow}>
+                        <span className={css.ctlLabel}>{t('floatPrimary')}</span>
+                        <div className={css.ctlGroup} data-testid="billing-float-primary">
+                          {([
+                            ['today', 'floatPrimaryToday'],
+                            ['week', 'floatPrimaryWeek'],
+                            ['month', 'floatPrimaryMonth'],
+                            ['balance', 'floatPrimaryBalance'],
+                          ] as const).map(([m, key]) => (
+                            <button
+                              key={m}
+                              type="button"
+                              className={clsx(css.floatModeBtn, floatPrefs.primary === m && css.floatModeBtnOn)}
+                              data-testid={`billing-float-primary-${m}`}
+                              aria-pressed={floatPrefs.primary === m}
+                              onClick={() => onFloatPrefs({ mode: floatPrefs.mode, targets: floatPrefs.targets, primary: m })}
+                            >
+                              {t(key)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div className={css.setCell} data-testid="billing-card-setting">
@@ -3861,6 +4034,26 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     }
   }, [stats.byDayModels, stats.byModel, stats.lowBalanceThreshold, balances, quotas, today])
 
+  // hover 速览主数字（issue #47）：口径由浮窗偏好选择。余额视角优先官方 DeepSeek，
+  // 否则取第一个配置成功的渠道；全部不可用时回退今日费用（格子保持有意义）。
+  const primaryFigure = useMemo((): { label: string; value: string; low: boolean } => {
+    if (floatPrefs.primary === 'balance') {
+      const ok = balances.filter(b => b.totalBalance !== undefined && b.error === undefined)
+      const pick = ok.find(b => normalizeProvider(b.provider).includes('deepseek')) ?? ok[0]
+      if (pick !== undefined && pick.totalBalance !== undefined) {
+        const cny = pick.currency === 'USD' ? pick.totalBalance * getRateInfo().rate : pick.totalBalance
+        return {
+          label: pick.displayName,
+          value: pick.currency === 'USD' ? `$${pick.totalBalance.toFixed(2)}` : formatMoney(pick.totalBalance),
+          low: cny < lowThreshold,
+        }
+      }
+    }
+    if (floatPrefs.primary === 'week') return { label: t('weekCost'), value: formatMoney(weekCost), low: false }
+    if (floatPrefs.primary === 'month') return { label: t('monthCost'), value: formatMoney(monthCost), low: false }
+    return { label: t('todayCost'), value: formatMoney(todayCost), low: false }
+  }, [floatPrefs.primary, balances, lowThreshold, t, weekCost, monthCost, todayCost])
+
   // hover 速览「数据卡」数值：全量累计用量（参考图风格）。
   const dash = useMemo(() => {
     const total = stats.total
@@ -3897,6 +4090,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
         days={last7}
         vendorStatus={vendorStatus}
         dash={dash}
+        primaryFigure={primaryFigure}
         cardPrefs={cardPrefs}
         monthTokens={monthTokens}
         todayTokens={todayTokens}
