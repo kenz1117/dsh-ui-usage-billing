@@ -23,6 +23,7 @@ import {
   type LiveCostBarPrefs,
   LIVE_COST_BAR_PREF_EVENT,
   loadBillingCardPrefs,
+  loadKpiRange,
   type FloatWindowPrefs,
   loadFloatWindowPrefs,
   loadLiveCostBarPrefs,
@@ -30,6 +31,7 @@ import {
   loadUserPrices,
   saveBillingCardPrefs,
   saveFloatWindowPrefs,
+  saveKpiRange,
   saveLiveCostBarPrefs,
   saveSiteListPrefs,
   saveUserPrices,
@@ -39,7 +41,7 @@ import {
 import { TrendChart, type TrendMetric, type TrendPoint } from './TrendChart.tsx'
 import { PerfPanel, type ClientPerf } from './PerfPanel.tsx'
 import { PluginInfoCard } from './PluginInfoCard.tsx'
-import { TokenPanel } from './TokenPanel.tsx'
+import { TokenPanel, shortNumber } from './TokenPanel.tsx'
 import { RoundCostChart, type RoundChartRow } from './round-chart.tsx'
 import { UsageHeatmap, type HeatmapDay } from './heatmap.tsx'
 import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
@@ -55,7 +57,6 @@ import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
 import { localizeProviderName, channelDisplayName } from './provider-display.ts'
 import { tierInfoOf } from './plan-knowledge.ts'
-import { vendorLogoOf } from './vendor-logos.ts'
 import { computePeakAlert, loadPeakAlertConfig, savePeakAlertConfig, type PeakAlertConfig, type PeakAlertHit } from './peak-alert.ts'
 import { PeakAlertBanner } from './PeakAlertBanner.tsx'
 import css from './UsageBilling.module.css'
@@ -259,19 +260,21 @@ const DEFAULT_LOW_BALANCE_THRESHOLD = 50
  * 未收录厂商不渲染按钮（宁缺毋错链）。
  */
 /** 多别名厂商共享的充值页常量（表内键去重引用，控制 bundle 体积）。 */
-const URL_MOONSHOT = 'https://platform.moonshot.cn/'
-const URL_ZHIPU = 'https://open.bigmodel.cn/'
+const URL_KIMI = 'https://platform.kimi.com/console/pay'
+const URL_ZHIPU = 'https://open.bigmodel.cn/finance-center/finance/pay'
 const URL_QWEN = 'https://bailian.console.aliyun.com/'
 const URL_DOUBAO = 'https://console.volcengine.com/ark'
 const URL_ANTHROPIC = 'https://console.anthropic.com/settings/billing'
 const URL_GOOGLE = 'https://console.cloud.google.com/billing'
 const URL_XAI = 'https://console.x.ai/'
+const URL_XIAOMI = 'https://platform.xiaomimimo.com/console/balance'
+const URL_TENCENT_RECHARGE = 'https://console.cloud.tencent.com/expense/recharge'
 
 const RECHARGE_URLS: Readonly<Record<string, string>> = {
   deepseek: 'https://platform.deepseek.com/top_up',
-  minimax: 'https://platform.minimaxi.com/',
-  moonshot: URL_MOONSHOT,
-  kimi: URL_MOONSHOT,
+  minimax: 'https://platform.minimax.cn/console/recharge-records',
+  moonshot: URL_KIMI,
+  kimi: URL_KIMI,
   zhipu: URL_ZHIPU,
   bigmodel: URL_ZHIPU,
   qwen: URL_QWEN,
@@ -287,7 +290,16 @@ const RECHARGE_URLS: Readonly<Record<string, string>> = {
   xai: URL_XAI,
   grok: URL_XAI,
   siliconflow: 'https://cloud.siliconflow.cn/account/charge',
-  hunyuan: 'https://console.cloud.tencent.com/hunyuan',
+  hunyuan: URL_TENCENT_RECHARGE,
+  tencent: URL_TENCENT_RECHARGE,
+  /* 中文键：账单分组名是通道显示名（「腾讯云 Token Plan」「腾讯云 TokenHub」），
+     归一化保留中文，靠前缀命中「腾讯云」映射到腾讯云充值中心。 */
+  '腾讯云': URL_TENCENT_RECHARGE,
+  xiaomi: URL_XIAOMI,
+  mimo: URL_XIAOMI,
+  /* 'mi' 必须排在 'minimax' 之后：前缀命中按键序遍历，'minimax-cn' 要先被
+     'minimax' 摘走，不能落到更短的 'mi' 上。 */
+  mi: URL_XIAOMI,
   qianfan: 'https://console.bce.baidu.com/qianfan/overview',
 }
 
@@ -529,16 +541,42 @@ export function sinceMondayOf<T>(
 /** 平均成本的统计范围（issue #47）；`all` = 全量累计，不进逐日求和。 */
 export type AvgCostRange = 'today' | '7d' | 'week' | 'month' | 'all'
 
+/** 全局 KPI 按日聚合行的最小字段（byDay 行 = ModelUsage，结构兼容）。 */
+interface KpiDayRow {
+  cost: number
+  calls: number
+  input: number
+  output: number
+  cacheHit: number
+  cacheMiss: number
+  reasoning?: number
+}
+
+/** 全局 KPI 聚合结果：KPI 七卡按所选范围重算所需的全部字段。 */
+export interface KpiAgg {
+  cost: number
+  calls: number
+  input: number
+  output: number
+  cacheHit: number
+  cacheMiss: number
+  reasoning: number
+  /** 范围内总处理 Token（缓存读+缓存写+输出）最大的日期戳；窗口无数据时 undefined。 */
+  peakDay: string | undefined
+  /** 峰值日的总处理 Token 量；窗口无数据时 0。 */
+  peakTokens: number
+}
+
 /**
- * 按范围求和 byDay 的费用与调用数（issue #47）：今日 / 近 7 天（含今天）/
- * 本周（周一起）/ 本月。日期戳字典序即时间序（与 dailyBurnRate 同口径）；
- * 累计口径由调用方直接取 total（含搜索估值兜底），不走此函数。
+ * 按范围聚合 byDay（issue #47）：今日 / 近 7 天（含今天）/ 本周（周一起）/
+ * 本月。日期戳字典序即时间序（与 dailyBurnRate 同口径）；累计口径由调用方
+ * 直接取 total（含搜索估值兜底），不走此函数。
  */
 export function sumByDayRange(
-  byDay: Record<string, { cost: number; calls: number }>,
+  byDay: Record<string, KpiDayRow>,
   today: string,
   range: Exclude<AvgCostRange, 'all'>,
-): { cost: number; calls: number } {
+): KpiAgg {
   const now = new Date(`${today}T00:00:00`)
   // 周一起算偏移（issue #39 口径）；近 7 天 = 今天往前 6 天。
   const weekOffset = (now.getDay() + 6) % 7
@@ -550,6 +588,13 @@ export function sumByDayRange(
   const range7Start = localDayStamp(days7Start.getTime())
   let cost = 0
   let calls = 0
+  let input = 0
+  let output = 0
+  let cacheHit = 0
+  let cacheMiss = 0
+  let reasoning = 0
+  let peakDay: string | undefined
+  let peakTokens = 0
   for (const [date, row] of Object.entries(byDay)) {
     const inRange = range === 'today' ? date === today
       : range === '7d' ? date >= range7Start && date <= today
@@ -558,8 +603,19 @@ export function sumByDayRange(
     if (!inRange) continue
     cost += row.cost
     calls += row.calls
+    input += row.input
+    output += row.output
+    cacheHit += row.cacheHit
+    cacheMiss += row.cacheMiss
+    reasoning += row.reasoning ?? 0
+    // 峰值日 = 范围内总处理 Token（缓存读+缓存写+输出，与用量页峰值口径一致）最大的日。
+    const dayTokens = row.cacheMiss + row.cacheHit + row.output
+    if (dayTokens > peakTokens) {
+      peakTokens = dayTokens
+      peakDay = date
+    }
   }
-  return { cost, calls }
+  return { cost, calls, input, output, cacheHit, cacheMiss, reasoning, peakDay, peakTokens }
 }
 
 /** Resolve one provider's dot state: green when live, red when failed, gray when unknown. */
@@ -1128,25 +1184,25 @@ function UsageBillingTrigger(
       direct: { name: string; text: string; low: boolean } | undefined
       sub: { name: string; text: string; low: boolean } | undefined
     }
-  /** hover 速览主数字（指标网格首格，口径跟随浮窗偏好，issue #47）。 */
-  primaryFigure: { label: string; value: string; low: boolean }
-  /** hover 速览「数据卡」用量数值（累计）：总 Token / 输入 / 输出 / 缓存 / 调用。 */
+  /** hover 速览「数据卡」用量数值（累计）：输入 / 输出 / 缓存命中与未命中（算命中率用）。 */
   dash: {
-    totalToken: number
     input: number
     output: number
     cacheRead: number
+    cacheMiss: number
     calls: number
    }
   /** 模型用量悬浮窗偏好（模式 + 指定订阅卡目标）。 */
   floatPrefs: FloatWindowPrefs
   /** 订阅配额列表（「指定订阅卡」模式的数据来源）。 */
   subscriptions: readonly SubscriptionQuota[]
+  /** 预算临界态：≥80% 进入警示（指针变红 + 卡片边缘红色脉冲），≥100% 加速脉冲。 */
+  budgetPressure: 'none' | 'warn' | 'over'
   },
 ): React.ReactNode {
   const {
     wide, t, onOpen, monthCost, todayCost, weekCost, days, vendorStatus, dash,
-    floatPrefs, subscriptions, cardPrefs, monthTokens, todayTokens, weekTokens, primaryFigure,
+    floatPrefs, subscriptions, cardPrefs, monthTokens, todayTokens, weekTokens, budgetPressure,
   } = props
 
   // 「指定订阅卡」浮窗：可用订阅列表 + 当前展示索引（每次一张，可前后切换）。
@@ -1202,12 +1258,42 @@ function UsageBillingTrigger(
     }
   }, [popOpen, updatePopPos])
 
-  // 计费 icon：圆角矩 + 细线描边，窄栏与宽栏共用。
+  // 仪表指针水位：当日费用相对近 7 日均值（1.0 = 与日均持平，指针垂直；
+  // 越高越向右满摆）。无数据归零位。窄栏 rail 图标与宽栏卡面共用同一角度。
+  const gaugeAvg = days.length > 0 ? days.reduce((sum, d) => sum + d.cost, 0) / days.length : 0
+  const gaugeWater = gaugeAvg > 0 ? Math.max(0, Math.min(1, todayCost / gaugeAvg)) : 0
+  const gaugeAngle = -80 + gaugeWater * 160
+
+  // 计费 icon：40 viewBox 半圆仪表——低透明度全程轨道弧 + 水位进度弧（弧长随
+  // gaugeWater 伸缩）+ 五档主刻度与细分刻度 + 数据驱动指针。圆心 (20,29)、量程
+  // 半径 15、扫角 ±80°，弧长 = 15 × 160° ≈ 41.9。
   const cardIcon = (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-      <path d="M4 7h16v11H4z" />
-      <path d="M4 10h16" />
-      <path d="M8 14h3" />
+    <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeLinecap="round" aria-hidden="true">
+      {/* 全程轨道弧（量程 -80° → +80°） */}
+      <path d="M5.23 26.4A15 15 0 0 1 34.77 26.4" strokeWidth={3} opacity={0.16} />
+      {/* 进度弧：当日水位占量程比例，弧长随 30s 轮询平滑伸缩 */}
+      <path
+        d="M5.23 26.4A15 15 0 0 1 34.77 26.4"
+        strokeWidth={3}
+        strokeDasharray={`${(41.9 * gaugeWater).toFixed(2)} 41.9`}
+        className={css.triggerGaugeArc}
+      />
+      {/* 主刻度（五档） */}
+      <path d="M5.23 26.4 8.18 26.92M10.36 17.51 12.29 19.81M20 14v3M27.71 19.81 29.64 17.51M31.82 26.92 34.77 26.4" strokeWidth={1.6} opacity={0.7} />
+      {/* 细分刻度 */}
+      <path d="M7.01 21.5 8.31 22.25M14.87 14.91 15.38 16.31M24.62 16.31 25.13 14.91M31.69 22.25 32.99 21.5" strokeWidth={1.2} opacity={0.38} />
+      {/* 指针：角度随当日水位旋转；CSS transform + transition 让 30s 轮询更新时平滑摆动 */}
+      <line
+        x1="20"
+        y1="29"
+        x2="20"
+        y2="19.5"
+        strokeWidth={2}
+        className={css.triggerGaugeNeedle}
+        style={{ transform: `rotate(${gaugeAngle}deg)`, transformOrigin: '20px 29px' }}
+      />
+      {/* 中心轴点 */}
+      <circle cx="20" cy="29" r="1.5" fill="currentColor" stroke="none" />
     </svg>
   )
 
@@ -1215,10 +1301,14 @@ function UsageBillingTrigger(
     return (
       <button
         type="button"
-        className={css.railButton}
+        className={clsx(
+          css.railButton,
+          budgetPressure !== 'none' && css.triggerBudgetPulse,
+          budgetPressure === 'over' && css.triggerBudgetOver,
+        )}
         data-testid="billing-rail-button"
         onClick={onOpen}
-        title={`${t('title')} · ${formatMoney(monthCost)}`}
+        title={`${t('title')} · ${formatMoney(cardPrefs.span === 'day' ? todayCost : cardPrefs.span === 'week' ? weekCost : monthCost)}`}
       >
         {cardIcon}
       </button>
@@ -1242,32 +1332,45 @@ function UsageBillingTrigger(
     >
       <button
         type="button"
-        className={css.trigger}
+        className={clsx(
+          css.trigger,
+          budgetPressure !== 'none' && css.triggerBudgetPulse,
+          budgetPressure === 'over' && css.triggerBudgetOver,
+        )}
         data-testid="billing-trigger"
         onClick={onOpen}
-        title={`${t('title')} · ${formatMoney(monthCost)}`}
+        title={`${t('title')} · ${formatMoney(cardPrefs.span === 'day' ? todayCost : cardPrefs.span === 'week' ? weekCost : monthCost)}`}
       >
-        <span className={css.triggerIcon} data-testid="billing-trigger-icon">{cardIcon}</span>
-        {/* 设计 trigger-card：当月 = 标签 + ¥ + 数字(分离)，下方一行 今日/本周 副行。
-            tokens 视角：无币符，主副行均为 K/M/B 缩写（口径与悬浮窗总 Token 一致）。 */}
+        <span
+          className={clsx(css.triggerIcon, budgetPressure !== 'none' && css.triggerBudgetHot)}
+          data-testid="billing-trigger-icon"
+        >
+          {cardIcon}
+        </span>
+        {/* 设计 trigger-card：单值主数字（统计范围在设置里选：今日/本周/本月，默认今日），
+            副行删除（issue #47 反馈：只显示一个值）。tokens 视角：无币符，K/M/B 缩写。 */}
         <span className={css.triggerMain}>
           <span className={css.triggerPrimary}>
             <span className={css.triggerLabel}>
-              {tokenView ? t('triggerMonthTokens') : t('triggerMonth')}
+              {tokenView
+                ? (cardPrefs.span === 'day' ? t('triggerTodayTokens') : cardPrefs.span === 'week' ? t('triggerWeekTokens') : t('triggerMonthTokens'))
+                : (cardPrefs.span === 'day' ? t('triggerToday') : cardPrefs.span === 'week' ? t('weekCost') : t('triggerMonth'))}
             </span>
-            {tokenView ? (
-              <span className={css.triggerMetric} data-testid="billing-trigger-month-tokens">{formatTokens(monthTokens)}</span>
-            ) : (
-              <>
-                <span className={css.triggerYen} aria-hidden="true">{formatMoney(monthCost).charAt(0)}</span>
-                <span className={css.triggerMetric}>{formatMoney(monthCost).slice(1)}</span>
-              </>
-            )}
-          </span>
-          <span className={css.triggerSub} data-testid="billing-trigger-today">
-            {tokenView
-              ? `${t('triggerToday')} ${formatTokens(todayTokens)} · ${t('weekCost')} ${formatTokens(weekTokens)}`
-              : `${t('triggerToday')} ${formatMoney(todayCost)} · ${t('weekCost')} ${formatMoney(weekCost)}`}
+            {(() => {
+              const spanValue = cardPrefs.span === 'day'
+                ? (tokenView ? todayTokens : todayCost)
+                : cardPrefs.span === 'week'
+                  ? (tokenView ? weekTokens : weekCost)
+                  : (tokenView ? monthTokens : monthCost)
+              return tokenView ? (
+                <span className={css.triggerMetric} data-testid="billing-trigger-span-tokens">{formatTokens(spanValue)}</span>
+              ) : (
+                <>
+                  <span className={css.triggerYen} aria-hidden="true">{formatMoney(spanValue).charAt(0)}</span>
+                  <span className={css.triggerMetric} data-testid="billing-trigger-span-money">{formatMoney(spanValue).slice(1)}</span>
+                </>
+              )
+            })()}
           </span>
         </span>
         <span className={css.triggerSpark} data-testid="billing-trigger-spark" aria-hidden="true">
@@ -1351,20 +1454,23 @@ function UsageBillingTrigger(
           </>
         ) : (
           <>
-            {/* 设计 pop-card：顶部金流光条 ::before + 标题行 + 3 列指标网格 + 主力消耗模型行 */}
+            {/* 设计 pop-card：顶部金流光条 ::before + 标题行 + 两行三列网格（行1 日/周/月费用，
+                行2 输入/输出/缓存命中；issue #47 反馈：主数字格与调用格移除）+ 主力消耗模型行 */}
             <span className={css.popHead}>
               <span className={css.popTitle}>{t('popTitle')}</span>
             </span>
             <span className={css.metricGrid}>
               <span className={css.metricCell}>
-                <span className={css.metricLabel}>{primaryFigure.label}</span>
-                <span className={clsx(css.metricValue, css.metricValuePrimary, primaryFigure.low && css.metricValueLow)}>
-                  {primaryFigure.value}
-                </span>
+                <span className={css.metricLabel}>{t('floatPrimaryToday')}</span>
+                <span className={css.metricValue}>{formatMoney(todayCost)}</span>
               </span>
               <span className={css.metricCell}>
-                <span className={css.metricLabel}>{t('tokenTotal')}</span>
-                <span className={css.metricValue}>{formatTokens(dash.totalToken)}</span>
+                <span className={css.metricLabel}>{t('floatPrimaryWeek')}</span>
+                <span className={css.metricValue}>{formatMoney(weekCost)}</span>
+              </span>
+              <span className={css.metricCell}>
+                <span className={css.metricLabel}>{t('floatPrimaryMonth')}</span>
+                <span className={css.metricValue}>{formatMoney(monthCost)}</span>
               </span>
               <span className={css.metricCell}>
                 <span className={css.metricLabel}>{t('input')}</span>
@@ -1376,11 +1482,11 @@ function UsageBillingTrigger(
               </span>
               <span className={css.metricCell}>
                 <span className={css.metricLabel}>{t('cacheHit')}</span>
-                <span className={clsx(css.metricValue, css.metricValueSuccess)}>{formatTokens(dash.cacheRead)}</span>
-              </span>
-              <span className={css.metricCell}>
-                <span className={css.metricLabel}>{t('calls')}</span>
-                <span className={css.metricValue}>{dash.calls.toLocaleString()}</span>
+                <span className={clsx(css.metricValue, css.metricValueSuccess)}>
+                  {formatPercent(
+                    dash.cacheRead + dash.cacheMiss > 0 ? (dash.cacheRead / (dash.cacheRead + dash.cacheMiss)) * 100 : 0,
+                  )}
+                </span>
               </span>
             </span>
             <span className={css.popModel}>
@@ -1767,8 +1873,9 @@ function BillingDashboard({
   }, [])
   // 概览用量热力图范围：月（日历月）/ 年（GitHub 风格年度贡献图，含月份与周几标注）。
   const [heatmapRange, setHeatmapRange] = useState<'month' | 'year'>('month')
-  // 平均成本统计范围（issue #47）：弹窗级视图状态（与热力图月/年切换同模式，不持久化）。
-  const [avgRange, setAvgRange] = useState<AvgCostRange>('all')
+  // KPI 全局统计范围（issue #47 反馈）：控制概览 KPI 七卡（含平均成本）的统计口径，
+  // 默认累计；用户选择持久化到 localStorage，下次打开保持上次范围。
+  const [kpiRange, setKpiRange] = useState<AvgCostRange>(loadKpiRange)
 
   // 浮窗「指定订阅卡」的可选目标：只列已接入（查询成功且有额度数据）的订阅，
   // 避免内置 alias 造成的同名重复与未接入项。
@@ -1871,20 +1978,6 @@ function BillingDashboard({
     return (
       <span className={css.balanceCell}>
         <span>{amount}</span>
-        {/* 官方充值入口（issue #47）：按量余额旁直连厂商充值页；未收录厂商不显示。 */}
-        {rechargeUrlOf(balance.provider) !== undefined && (
-          <a
-            className={css.balanceRecharge}
-            data-testid="billing-balance-recharge"
-            href={rechargeUrlOf(balance.provider)}
-            target="_blank"
-            rel="noreferrer"
-            title={t('rechargeHint')}
-            aria-label={`${balance.displayName} ${t('recharge')}`}
-          >
-            {t('recharge')}
-          </a>
-        )}
         {days !== undefined && days >= 0 && (
           <button
             type="button"
@@ -1911,10 +2004,6 @@ function BillingDashboard({
     )
   }
 
-  const cacheHitRate = total.cacheHit + total.cacheMiss > 0
-    ? (total.cacheHit / (total.cacheHit + total.cacheMiss)) * 100
-    : 0
-
   // Latest date from the day series (real data when served, demo otherwise).
   const dates = Object.keys(byDay).sort()
   const today = localDayStamp()
@@ -1937,24 +2026,21 @@ function BillingDashboard({
     return usageProjected + subscription
   }, [byDay, monthPrefix, today, quotas])
 
-  // Hero 环形仪表盘：预算启用且有金额时显示「本月已用占预算」；否则回退为
-  // 「本月占本年累计」的装饰占比（始终有内容，视觉上是一个完整的仪表盘）。
+  // Hero 环形仪表盘：预算启用且有金额时显示「剩余预算」余量——弧 = 剩余比例
+  // （满环 = 预算未动，花得越多弧越短），中心 = 剩余金额（两位小数），超支转红；
+  // 未启用预算时圆环整体不渲染（issue #47 反馈）。
   const heroGauge = useMemo(() => {
-    const budgetPct = budgetEnabled && budgetAmount > 0 ? (monthCost / budgetAmount) * 100 : NaN
-    const pct = Number.isFinite(budgetPct)
-      ? Math.max(0, Math.min(100, budgetPct))
-      : yearCost > 0 ? Math.max(0, Math.min(100, (monthCost / yearCost) * 100)) : 0
+    if (!(budgetEnabled && budgetAmount > 0)) return null
+    const remain = budgetAmount - monthCost
     return {
-      pct,
-      // 超支（>=100% 或用预算口径）时环形转红。
-      over: Number.isFinite(budgetPct) && budgetPct >= 100,
-      // 有预算时中心标签显示「预算」，否则显示「本月」（注释与实现一致）。
-      label: Number.isFinite(budgetPct) ? t('budget') : t('monthCost'),
+      // 超支（余额耗尽）转红：弧空 + 中心数字变红。
+      over: remain <= 0,
+      // 弧画剩余比例：clamp 到 [0, 1]，超支时为 0（弧空）。
+      remainRatio: Math.max(0, Math.min(1, remain / budgetAmount)),
+      // 中心显示的剩余金额：超支按 0 计（负数余额由红色传达）。
+      remainCny: Math.max(0, remain),
     }
-  }, [budgetEnabled, budgetAmount, monthCost, yearCost, t])
-
-  // Hero 底部预算进度条：与环形仪表盘同口径（预算启用且 >0），仅在启用预算时展示。
-  const heroBudgetPct = budgetEnabled && budgetAmount > 0 ? (monthCost / budgetAmount) * 100 : 0
+  }, [budgetEnabled, budgetAmount, monthCost])
 
   // 最近 N 天窗口（含今天）：缺失的日期补零，图表固定为整段区间。
   const trendDates = useMemo(() => {
@@ -2242,13 +2328,33 @@ function BillingDashboard({
   const estimatedTotal = modelRows.reduce((sum, row) => sum + row.estimated, 0)
   const displayTotal = total.cost > 0 ? total.cost : estimatedTotal
 
-  // 平均成本按所选范围聚合（issue #47）：累计沿用「实际优先」口径（含搜索估值
-  // 兜底），其余范围对 byDay 逐日求和（费用/调用），除零时回 0。
-  const avgRangeStats = useMemo((): { cost: number; calls: number } => {
-    if (avgRange === 'all') return { cost: displayTotal, calls: total.calls }
-    return sumByDayRange(byDay, localDayStamp(), avgRange)
-  }, [avgRange, displayTotal, total.calls, byDay])
-  const avgRangeAvg = avgRangeStats.calls > 0 ? avgRangeStats.cost / avgRangeStats.calls : 0
+  // KPI 七卡按所选范围聚合（issue #47 反馈）：累计沿用「实际优先」口径（含搜索
+  // 估值兜底）与 total 全字段；其余范围对 byDay 逐日聚合，除零时比例回 0。
+  const kpiAgg = useMemo((): KpiAgg => {
+    if (kpiRange === 'all') {
+      let peakDay: string | undefined
+      let peakTokens = 0
+      for (const [date, row] of Object.entries(byDay)) {
+        const dayTokens = row.cacheMiss + row.cacheHit + row.output
+        if (dayTokens > peakTokens) {
+          peakTokens = dayTokens
+          peakDay = date
+        }
+      }
+      return {
+        cost: displayTotal,
+        calls: total.calls,
+        input: total.input,
+        output: total.output,
+        cacheHit: total.cacheHit,
+        cacheMiss: total.cacheMiss,
+        reasoning: total.reasoning ?? 0,
+        peakDay,
+        peakTokens,
+      }
+    }
+    return sumByDayRange(byDay, localDayStamp(), kpiRange)
+  }, [kpiRange, displayTotal, total, byDay])
 
   // Trend-chart legend: model rows sort by cost desc, so the stack bottoms
   // with the most expensive model (visually stable baseline).
@@ -2392,54 +2498,38 @@ function BillingDashboard({
                       {total.calls.toLocaleString()} {t('calls')}
                     </span>
                   </div>
-                  {/* 环形仪表盘：SVG stroke-dasharray 画弧，中心显示百分比与标签，
-                  超支转红（预算口径下）。无预算时按本月占本年装饰。 */}
-                  <div className={css.heroGauge} data-testid="billing-hero-gauge">
-                    <svg
-                      className={css.heroGaugeSvg}
-                      viewBox="0 0 120 120"
-                      aria-hidden="true"
-                    >
-                      <circle className={css.heroGaugeTrack} cx="60" cy="60" r="52" />
-                      <circle
-                        className={clsx(css.heroGaugeArc, heroGauge.over && css.heroGaugeArcOver)}
-                        cx="60"
-                        cy="60"
-                        r="52"
-                        style={{ strokeDasharray: `${(heroGauge.pct / 100) * 326.7} 326.7` }}
-                      />
-                    </svg>
-                    <span className={css.heroGaugeCenter}>
-                      <span className={clsx(css.heroGaugePct, heroGauge.over && css.heroGaugePctOver)}>
-                        {heroGauge.pct.toFixed(0)}%
-                      </span>
-                      <span className={css.heroGaugeLabel}>{heroGauge.label}</span>
-                    </span>
-                  </div>
-                </div>
-                {/* 预算进度条：设计 Hero 的底部预算行——标签 + 进度 + 「已用/总额 · 百分比」。
-                    与环形仪表盘同口径，仅在启用预算且金额 >0 时展示；环形仪表盘本身始终可见。 */}
-                {budgetEnabled && budgetAmount > 0 && (
-                  <div className={css.heroBudget} data-testid="billing-hero-budget">
-                    <span className={css.heroBudgetLabel}>{t('budget')}</span>
-                    <div
-                      className={css.heroBudgetTrack}
-                      role="progressbar"
-                      aria-valuenow={Math.min(heroBudgetPct, 100)}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-label={t('budget')}
-                    >
-                      <div
-                        className={clsx(css.heroBudgetFill, heroBudgetPct >= 100 && css.heroBudgetFillOver)}
-                        style={{ width: `${Math.min(heroBudgetPct, 100)}%` }}
-                      />
+                  {/* 环形余量仪表盘：SVG stroke-dasharray 画弧，弧 = 剩余预算比例
+                  （满环 = 预算未动），中心 = 剩余金额（两位小数），超支弧空转红。
+                  未启用预算时整个圆环不渲染（issue #47 反馈）。 */}
+                  {heroGauge !== null && (
+                    <div className={css.heroGauge} data-testid="billing-hero-gauge">
+                      <div className={css.heroGaugeDial}>
+                        <svg
+                          className={css.heroGaugeSvg}
+                          viewBox="0 0 120 120"
+                          aria-hidden="true"
+                        >
+                          <circle className={css.heroGaugeTrack} cx="60" cy="60" r="52" />
+                          <circle
+                            className={clsx(css.heroGaugeArc, heroGauge.over && css.heroGaugeArcOver)}
+                            cx="60"
+                            cy="60"
+                            r="52"
+                            style={{ strokeDasharray: `${heroGauge.remainRatio * 326.7} 326.7` }}
+                          />
+                        </svg>
+                        <span className={css.heroGaugeCenter}>
+                          <span className={clsx(css.heroGaugeRemain, heroGauge.over && css.heroGaugeRemainOver)}>
+                            {(currency === 'usd' ? '$' : '¥')}{(currency === 'usd' ? cnyToUsd(heroGauge.remainCny) : heroGauge.remainCny).toFixed(2)}
+                          </span>
+                          <span className={css.heroGaugeLabel}>{t('budgetRemain')}</span>
+                        </span>
+                      </div>
+                      {/* 已用 / 预算总额读数：原底部进度行的数值移到这里（不带百分比）。 */}
+                      <span className={css.heroGaugeSub}>{money(monthCost)} / {money(budgetAmount)}</span>
                     </div>
-                    <span className={css.heroBudgetValue}>
-                      {money(monthCost)} / {money(budgetAmount)} · {heroBudgetPct.toFixed(1)}%
-                    </span>
-                  </div>
-                )}
+                  )}
+                </div>
                 <div className={css.heroSide}>
                   <div className={css.heroSideItem}>
                     <span className={css.heroSideLabel}>
@@ -2491,27 +2581,13 @@ function BillingDashboard({
                 </div>
               )}
 
-              {/* KPI grid */}
-              <section className={css.kpiGrid} data-testid="billing-kpi-grid">
-                <div className={css.kpiTile} data-testid="billing-kpi-tile">
-                  <span className={css.kpiLabel}>{t('cacheHitRate')}</span>
-                  <span className={clsx(css.kpiValue, css.kpiGreen)}>{formatPercent(cacheHitRate)}</span>
-                  <span className={css.kpiDetail}>
-                    {formatTokens(total.cacheHit)} / {formatTokens(total.cacheHit + total.cacheMiss)}
-                  </span>
-                </div>
-                <div className={css.kpiTile}>
-                  <span className={css.kpiLabel}>{t('tokens')}</span>
-                  <span className={css.kpiValue}>{formatTokens(total.input + total.output)}</span>
-                  <span className={css.kpiDetail}>
-                    {t('inputTokens')} {formatTokens(total.input)} · {t('outputTokens')} {formatTokens(total.output)}
-                  </span>
-                </div>
-                <div className={css.kpiTile} data-testid="billing-kpi-avg">
-                  <span className={css.kpiLabel}>{t('avgCost')}</span>
-                  <span className={css.kpiValue}>{money(avgRangeAvg)}</span>
-                  <span className={css.kpiDetail}>{t('calls')} {avgRangeStats.calls.toLocaleString()}</span>
-                  <span className={clsx(css.heatmapRangeSwitch, css.kpiRangeRow)} data-testid="billing-avg-range" role="group" aria-label={t('avgRange')}>
+              {/* KPI 七卡 + 全局统计范围（issue #47 反馈）：概览与用量两处 KPI 合并到
+                  这里（缓存命中率/Token/平均成本/调用 + 思考占比/输入输出比/峰值日）；
+                  范围切换从平均成本单卡提升为全局口径，控制全部指标，默认累计。 */}
+              <div className={css.kpiZone}>
+                <div className={css.kpiZoneHead}>
+                  <span className={css.kpiZoneLabel}>{t('kpiRange')}</span>
+                  <div className={css.heatmapRangeSwitch} data-testid="billing-kpi-range" role="group" aria-label={t('kpiRange')}>
                     {([
                       ['today', 'avgRangeToday'],
                       ['7d', 'avgRange7d'],
@@ -2522,22 +2598,65 @@ function BillingDashboard({
                       <button
                         key={r}
                         type="button"
-                        className={clsx(css.heatmapRangeButton, avgRange === r && css.heatmapRangeButtonActive)}
-                        data-testid={`billing-avg-range-${r}`}
-                        aria-pressed={avgRange === r}
-                        onClick={() => { setAvgRange(r) }}
+                        className={clsx(css.heatmapRangeButton, kpiRange === r && css.heatmapRangeButtonActive)}
+                        data-testid={`billing-kpi-range-${r}`}
+                        aria-pressed={kpiRange === r}
+                        onClick={() => { setKpiRange(r); saveKpiRange(r) }}
                       >
                         {t(key)}
                       </button>
                     ))}
-                  </span>
+                  </div>
                 </div>
-                <div className={css.kpiTile}>
-                  <span className={css.kpiLabel}>{t('calls')}</span>
-                  <span className={css.kpiValue}>{total.calls.toLocaleString()}</span>
-                  <span className={css.kpiDetail}>{modelRows.length} {t('models')}</span>
-                </div>
-              </section>
+                <section className={css.kpiGrid} data-testid="billing-kpi-grid">
+                  <div className={css.kpiTile} data-testid="billing-kpi-tile">
+                    <span className={css.kpiLabel}>{t('cacheHitRate')}</span>
+                    <span className={clsx(css.kpiValue, css.kpiGreen)}>
+                      {formatPercent(kpiAgg.cacheHit + kpiAgg.cacheMiss > 0 ? (kpiAgg.cacheHit / (kpiAgg.cacheHit + kpiAgg.cacheMiss)) * 100 : 0)}
+                    </span>
+                    <span className={css.kpiDetail}>
+                      {formatTokens(kpiAgg.cacheHit)} / {formatTokens(kpiAgg.cacheHit + kpiAgg.cacheMiss)}
+                      {(total.cacheWrite ?? 0) > 0 ? ` · ${t('tokenCacheWrite')} ${formatTokens(total.cacheWrite ?? 0)}` : ''}
+                    </span>
+                  </div>
+                  <div className={css.kpiTile}>
+                    <span className={css.kpiLabel}>{t('tokens')}</span>
+                    <span className={css.kpiValue}>{formatTokens(kpiAgg.input + kpiAgg.output)}</span>
+                    <span className={css.kpiDetail}>
+                      {t('inputTokens')} {formatTokens(kpiAgg.input)} · {t('outputTokens')} {formatTokens(kpiAgg.output)}
+                    </span>
+                  </div>
+                  <div className={css.kpiTile} data-testid="billing-kpi-avg">
+                    <span className={css.kpiLabel}>{t('avgCost')}</span>
+                    <span className={css.kpiValue}>{money(kpiAgg.calls > 0 ? kpiAgg.cost / kpiAgg.calls : 0)}</span>
+                    <span className={css.kpiDetail}>{t('calls')} {kpiAgg.calls.toLocaleString()}</span>
+                  </div>
+                  <div className={css.kpiTile}>
+                    <span className={css.kpiLabel}>{t('calls')}</span>
+                    <span className={css.kpiValue}>{kpiAgg.calls.toLocaleString()}</span>
+                    <span className={css.kpiDetail}>{modelRows.length} {t('models')}</span>
+                  </div>
+                  <div className={css.kpiTile} data-testid="billing-kpi-think">
+                    <span className={css.kpiLabel}>{t('tokenReasoningShare')}</span>
+                    <span className={clsx(css.kpiValue, css.kpiGreen)}>
+                      {formatPercent(kpiAgg.output > 0 ? (kpiAgg.reasoning / kpiAgg.output) * 100 : 0)}
+                    </span>
+                    <span className={css.kpiDetail}>{formatTokens(kpiAgg.reasoning)}</span>
+                  </div>
+                  <div className={css.kpiTile} data-testid="billing-kpi-io">
+                    <span className={css.kpiLabel}>{t('tokenIo')}</span>
+                    <span className={css.kpiValue}>{(kpiAgg.output > 0 ? kpiAgg.input / kpiAgg.output : 0).toFixed(2)}</span>
+                    <span className={css.kpiDetail}>
+                      {formatTokens(kpiAgg.input)} / {formatTokens(kpiAgg.output)}
+                    </span>
+                  </div>
+                  <div className={css.kpiTile} data-testid="billing-kpi-peak">
+                    <span className={css.kpiLabel}>{t('tokenPeak')}</span>
+                    <span className={css.kpiValue}>{kpiAgg.peakTokens > 0 ? shortNumber(kpiAgg.peakTokens) : '—'}</span>
+                    <span className={css.kpiDetail}>{kpiAgg.peakDay ?? '—'}</span>
+                  </div>
+                </section>
+              </div>
 
               {/* 用量热力图：概览常驻区块（月历信息密度高，进入二级 Tab 后不再折叠）。
               头部带「活跃天数 / 连续使用」摘要与 月/年 范围切换。 */}
@@ -2825,7 +2944,7 @@ function BillingDashboard({
                             type="button"
                             className={clsx(css.floatModeBtn, floatPrefs.mode === 'combined' && css.floatModeBtnOn)}
                             data-testid="billing-float-mode-combined"
-                            onClick={() => onFloatPrefs({ mode: 'combined', targets: floatPrefs.targets, primary: floatPrefs.primary })}
+                            onClick={() => onFloatPrefs({ mode: 'combined', targets: floatPrefs.targets })}
                           >
                             {t('floatModeCombined')}
                           </button>
@@ -2833,7 +2952,7 @@ function BillingDashboard({
                             type="button"
                             className={clsx(css.floatModeBtn, floatPrefs.mode === 'subscription' && css.floatModeBtnOn)}
                             data-testid="billing-float-mode-subscription"
-                            onClick={() => onFloatPrefs({ mode: 'subscription', targets: floatPrefs.targets, primary: floatPrefs.primary })}
+                            onClick={() => onFloatPrefs({ mode: 'subscription', targets: floatPrefs.targets })}
                           >
                             {t('floatModeSubscription')}
                           </button>
@@ -2853,7 +2972,6 @@ function BillingDashboard({
                                     data-testid={`billing-float-target-${option.id}`}
                                     onChange={() => onFloatPrefs({
                                       mode: 'subscription',
-                                      primary: floatPrefs.primary,
                                       targets: on
                                         ? floatPrefs.targets.filter(id => id !== option.id)
                                         : [...floatPrefs.targets, option.id],
@@ -2869,29 +2987,6 @@ function BillingDashboard({
                           </span>
                         </div>
                       )}
-                      {/* 主数字口径（issue #47）：悬浮窗指标网格首格，默认今日费用。 */}
-                      <div className={css.ctlRow}>
-                        <span className={css.ctlLabel}>{t('floatPrimary')}</span>
-                        <div className={css.ctlGroup} data-testid="billing-float-primary">
-                          {([
-                            ['today', 'floatPrimaryToday'],
-                            ['week', 'floatPrimaryWeek'],
-                            ['month', 'floatPrimaryMonth'],
-                            ['balance', 'floatPrimaryBalance'],
-                          ] as const).map(([m, key]) => (
-                            <button
-                              key={m}
-                              type="button"
-                              className={clsx(css.floatModeBtn, floatPrefs.primary === m && css.floatModeBtnOn)}
-                              data-testid={`billing-float-primary-${m}`}
-                              aria-pressed={floatPrefs.primary === m}
-                              onClick={() => onFloatPrefs({ mode: floatPrefs.mode, targets: floatPrefs.targets, primary: m })}
-                            >
-                              {t(key)}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
                     </div>
                   </div>
                   <div className={css.setCell} data-testid="billing-card-setting">
@@ -2909,7 +3004,7 @@ function BillingDashboard({
                             type="button"
                             className={clsx(css.floatModeBtn, cardPrefs.metric === 'money' && css.floatModeBtnOn)}
                             data-testid="billing-card-money"
-                            onClick={() => onCardPrefs({ metric: 'money' })}
+                            onClick={() => onCardPrefs({ ...cardPrefs, metric: 'money' })}
                           >
                             {t('cardMetricMoney')}
                           </button>
@@ -2917,10 +3012,32 @@ function BillingDashboard({
                             type="button"
                             className={clsx(css.floatModeBtn, cardPrefs.metric === 'tokens' && css.floatModeBtnOn)}
                             data-testid="billing-card-tokens"
-                            onClick={() => onCardPrefs({ metric: 'tokens' })}
+                            onClick={() => onCardPrefs({ ...cardPrefs, metric: 'tokens' })}
                           >
                             {t('cardMetricTokens')}
                           </button>
+                        </div>
+                      </div>
+                      {/* 主数字统计范围（issue #47 反馈）：单值卡面显示日/周/月哪个数字，默认今日。 */}
+                      <div className={css.ctlRow}>
+                        <span className={css.ctlLabel}>{t('cardSpan')}</span>
+                        <div className={css.ctlGroup} data-testid="billing-card-span">
+                          {([
+                            ['day', 'cardSpanDay'],
+                            ['week', 'cardSpanWeek'],
+                            ['month', 'cardSpanMonth'],
+                          ] as const).map(([s, key]) => (
+                            <button
+                              key={s}
+                              type="button"
+                              className={clsx(css.floatModeBtn, cardPrefs.span === s && css.floatModeBtnOn)}
+                              data-testid={`billing-card-span-${s}`}
+                              aria-pressed={cardPrefs.span === s}
+                              onClick={() => onCardPrefs({ ...cardPrefs, span: s })}
+                            >
+                              {t(key)}
+                            </button>
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -3149,6 +3266,22 @@ function BillingDashboard({
                               /* 空占位：同上，无余额的组保持余额列位。 */
                               <span className={css.providerGroupBalance} aria-hidden="true" />
                             )}
+                            {/* 官方充值入口（issue #47 反馈）：与余额状态解耦——只要厂商收录了
+                                充值页就显示，余额未配置/查询失败/订阅型组（余额槽隐藏）同样可用；
+                                「未知路由」等无法判定厂商的分组不显示。 */}
+                            {rechargeUrlOf(group.name) !== undefined && (
+                              <a
+                                className={css.providerGroupRecharge}
+                                data-testid="billing-group-recharge"
+                                href={rechargeUrlOf(group.name)}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={t('rechargeHint')}
+                                aria-label={`${providerName(group.name)} ${t('recharge')}`}
+                              >
+                                {t('recharge')}
+                              </a>
+                            )}
                           </span>
                         </div>
                         {/* 模型用量子表：无余额列（余额已在厂商头部显示一次）。 */}
@@ -3168,7 +3301,14 @@ function BillingDashboard({
                                     <td className={css.numCol}>{formatPercent(row.cacheHitRate)}</td>
                                     <td className={css.numCol}>
                                       {row.plan
-                                        ? <span className={css.planTag}>{t('subscriptionIncluded')}{row.estimated > 0 ? ` ≈${money(row.estimated)}` : ''}</span>
+                                        ? (
+                                          /* 订阅包含胶囊：金额在前 + 「订阅」短标签在后（issue #47 反馈：
+                                              「订阅包含 ≈¥0.61」太长导致胶囊换行，改为紧凑单行）。 */
+                                          <span className={css.planTag}>
+                                            {row.estimated > 0 ? <span>≈{money(row.estimated)}</span> : null}
+                                            <span className={css.planTagBadge} data-testid="billing-plan-badge">{t('subscriptionTag')}</span>
+                                          </span>
+                                        )
                                         : row.actual !== undefined
                                           ? (() => {
                                             const official = row.officialCost
@@ -3590,15 +3730,11 @@ function BillingDashboard({
 }
 
 /**
- * VendorLogo: 模型名前显示厂商 logo（内嵌 SVG data URI，来自 models.dev）。
- * 未收录 logo 的厂商（字节豆包/文心/讯飞/商汤/百川/零一/面壁/小红书 等）回退为
- * 品牌色字母徽章，保证所有厂商都有可辨识标记，且不引入外部素材/版权风险。
+ * VendorLogo: 模型名前显示品牌色字母徽章（vendor-logos 内嵌 SVG 已移除——
+ * client.js 逼近 DSH Store 256KiB 单文件上限，字母徽章零体积且有色彩辨识度；
+ * colorVar 来自图表色板，同一厂商在各面板颜色一致）。
  */
 function VendorLogo({ provider, colorVar }: { provider: string; colorVar?: string }): React.ReactNode {
-  const logo = vendorLogoOf(provider)
-  if (logo !== undefined) {
-    return <img className={css.vendorLogo} src={logo} alt="" aria-hidden="true" />
-  }
   return (
     <span
       className={css.vendorLetter}
@@ -3877,6 +4013,11 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     setPeakPreview({ entering: tierAt(Date.now()) === 'peak' ? 'offPeak' : 'peak', atMs: Date.now() + 3 * 60_000 })
   }, [])
   const effectiveBudget = budgetAmount > 0 ? budgetAmount : (stats.budget ?? 0)
+  // 预算临界态：与设置页进度条同阈值分档（≥80% 警示 / ≥100% 超支），驱动触发卡
+  // 指针变红与卡片边缘红色脉冲。未启用预算或无金额时恒为 none。
+  const budgetPressure: 'none' | 'warn' | 'over' = budgetEnabled && effectiveBudget > 0
+    ? (monthCost / effectiveBudget >= 1 ? 'over' : monthCost / effectiveBudget >= 0.8 ? 'warn' : 'none')
+    : 'none'
   const toggleBudget = useCallback(() => {
     const next = !budgetEnabled
     actions.setEnabled(next)
@@ -4034,34 +4175,14 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     }
   }, [stats.byDayModels, stats.byModel, stats.lowBalanceThreshold, balances, quotas, today])
 
-  // hover 速览主数字（issue #47）：口径由浮窗偏好选择。余额视角优先官方 DeepSeek，
-  // 否则取第一个配置成功的渠道；全部不可用时回退今日费用（格子保持有意义）。
-  const primaryFigure = useMemo((): { label: string; value: string; low: boolean } => {
-    if (floatPrefs.primary === 'balance') {
-      const ok = balances.filter(b => b.totalBalance !== undefined && b.error === undefined)
-      const pick = ok.find(b => normalizeProvider(b.provider).includes('deepseek')) ?? ok[0]
-      if (pick !== undefined && pick.totalBalance !== undefined) {
-        const cny = pick.currency === 'USD' ? pick.totalBalance * getRateInfo().rate : pick.totalBalance
-        return {
-          label: pick.displayName,
-          value: pick.currency === 'USD' ? `$${pick.totalBalance.toFixed(2)}` : formatMoney(pick.totalBalance),
-          low: cny < lowThreshold,
-        }
-      }
-    }
-    if (floatPrefs.primary === 'week') return { label: t('weekCost'), value: formatMoney(weekCost), low: false }
-    if (floatPrefs.primary === 'month') return { label: t('monthCost'), value: formatMoney(monthCost), low: false }
-    return { label: t('todayCost'), value: formatMoney(todayCost), low: false }
-  }, [floatPrefs.primary, balances, lowThreshold, t, weekCost, monthCost, todayCost])
-
   // hover 速览「数据卡」数值：全量累计用量（参考图风格）。
   const dash = useMemo(() => {
     const total = stats.total
     return {
-      totalToken: total.input + total.output,
       input: total.input,
       output: total.output,
       cacheRead: total.cacheHit,
+      cacheMiss: total.cacheMiss,
       calls: total.calls,
     }
   }, [stats])
@@ -4090,13 +4211,13 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
         days={last7}
         vendorStatus={vendorStatus}
         dash={dash}
-        primaryFigure={primaryFigure}
         cardPrefs={cardPrefs}
         monthTokens={monthTokens}
         todayTokens={todayTokens}
         weekTokens={weekTokens}
         floatPrefs={floatPrefs}
         subscriptions={quotas}
+        budgetPressure={budgetPressure}
       />
       {open && (
         <BillingDashboard

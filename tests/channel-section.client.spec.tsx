@@ -121,7 +121,7 @@ describe('subscription channel shows catalog-price estimate (P3)', () => {
     }))
   })
 
-  it('shows 订阅包含 ≈ estimate for plan-channel model rows', async () => {
+  it('shows the ≈ estimate followed by a plan badge for plan-channel model rows', async () => {
     const panel = await openProvidersTab()
     await waitFor(() => {
       expect(panel.textContent).toContain('腾讯云 Token Plan')
@@ -130,7 +130,24 @@ describe('subscription channel shows catalog-price estimate (P3)', () => {
     const plan = groups.find(group => group.textContent?.includes('腾讯云 Token Plan'))
     expect(plan).toBeDefined()
     expect(plan!.textContent).toContain('GLM-5.3')
-    // 订阅通道行：订阅包含 + 目录价预估（glm-5.3：输入 ¥8 / 输出 ¥28 → 0.22 元）。
-    expect(plan!.textContent).toContain('订阅包含 ≈¥0.22')
+    // 订阅通道行：金额在前 + 「订阅」短标签在后（glm-5.3：输入 ¥8 / 输出 ¥28 → 0.22 元）。
+    const badge = plan!.querySelector('[data-testid="billing-plan-badge"]')
+    expect(badge).not.toBeNull()
+    expect(badge!.textContent).toBe('订阅')
+    expect(plan!.textContent).toContain('≈¥0.22')
+  })
+
+  it('shows the group-head recharge link on the plan channel even without balance data (issue #47 反馈)', async () => {
+    // 订阅型组余额槽隐藏，充值入口与余额状态解耦：只要厂商收录了充值页就显示。
+    const panel = await openProvidersTab()
+    await waitFor(() => {
+      expect(panel.textContent).toContain('腾讯云 Token Plan')
+    })
+    const groups = screen.getAllByTestId('billing-provider-group')
+    const plan = groups.find(group => group.textContent?.includes('腾讯云 Token Plan'))
+    expect(plan).toBeDefined()
+    const recharge = plan!.querySelector('[data-testid="billing-group-recharge"]') as HTMLAnchorElement | null
+    expect(recharge).not.toBeNull()
+    expect(recharge!.href).toBe('https://console.cloud.tencent.com/expense/recharge')
   })
 })

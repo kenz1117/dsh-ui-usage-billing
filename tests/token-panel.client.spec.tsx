@@ -35,14 +35,11 @@ function todayStamp(): string {
 }
 
 describe('TokenPanel', () => {
-  it('renders token KPIs, the daily chart and the per-model ranking', () => {
+  it('renders the daily chart and the per-model ranking (token KPIs moved to the overview, issue #47 feedback)', () => {
     render(<TokenPanel stats={STATS} trendDays={7} onTrendDays={() => {}} t={t} />)
     expect(screen.getByTestId('billing-token-panel')).toBeTruthy()
-    expect(screen.getByTestId('billing-token-kpis')).toBeTruthy()
-    // 缓存命中率 400/(400+300)=57.1%（结构 KPI 与模型行各有此值）；思考占比 200/500=40%；输入/输出 700/500=1.40。
-    expect(screen.getAllByText('57.1%').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('40.0%')).toBeTruthy()
-    expect(screen.getByText('1.40')).toBeTruthy()
+    // 结构 KPI 已并入概览七卡：用量页不再有 KPI 区，直接从每日图开始。
+    expect(screen.queryByTestId('billing-token-kpis')).toBeNull()
     expect(screen.getByTestId('billing-token-daily')).toBeTruthy()
     expect(screen.getByTestId('billing-token-models')).toBeTruthy()
     expect(screen.getAllByTestId('billing-token-model').length).toBeGreaterThanOrEqual(1)

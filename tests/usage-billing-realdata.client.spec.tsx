@@ -446,8 +446,68 @@ describe('UsageBilling real-data surface', () => {
     // 同一直连通道组：既有模型用量表（非订阅模型显示费用），又有订阅卡片。
     expect(xiaomi!.querySelector('[data-testid="billing-table-scroll"]')).not.toBeNull()
     expect(xiaomi!.querySelector('[data-testid="billing-subscription-card"]')).not.toBeNull()
-    // 非订阅模型显示实际费用（0.40 元），不误标「订阅包含」。
+    // 非订阅模型显示实际费用（0.40 元），不挂「订阅」标签（订阅包含胶囊只出现在订阅通道行）。
     expect(xiaomi!.querySelector('[data-testid="billing-table-scroll"]')!.textContent).toContain('¥0.40')
-    expect(xiaomi!.querySelector('[data-testid="billing-table-scroll"]')!.textContent).not.toContain('订阅包含')
+    expect(xiaomi!.querySelector('[data-testid="billing-table-scroll"] [data-testid="billing-plan-badge"]')).toBeNull()
+  })
+})
+
+describe('UsageBilling budget-pressure trigger feedback', () => {
+  /** 当月今日费用快照：触发卡预算百分比 = 该费用 / 预算金额（今日即本月合计）。 */
+  const statsOf = (todayCost: number) => ({
+    budget: 10,
+    total: day(3, 3_000_000, 1_000_000, 1_000_000, 1_000_000, todayCost),
+    byModel: {},
+    byDay: { [todayStamp()]: day(3, 3_000_000, 1_000_000, 1_000_000, 1_000_000, todayCost) },
+    byDayModels: {},
+  })
+
+  /** 预算 store 预置开关与金额后挂载：其余 props 与主 describe 相同。 */
+  function renderWithBudget(enabled: boolean, amount: number, todayCost: number) {
+    const budgetStore = createBillingBudgetStore().create()
+    budgetStore.actions.setEnabled(enabled)
+    budgetStore.actions.setAmount(amount)
+    const props = {
+      ...makeProps(),
+      useStore: bindSnapshotSelector(budgetStore),
+      actions: budgetStore.actions,
+    } as unknown as ComponentProps<typeof UsageBilling>
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      const body = url.includes('/api/billing/pricing') ? { source: 'builtin' } : statsOf(todayCost)
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+    }))
+    return render(<UsageBilling {...props} />)
+  }
+
+  it('marks the trigger card with the warn pulse and hot icon at ≥80% of the budget', async () => {
+    const { container } = renderWithBudget(true, 10, 9)
+    // 触发卡常驻侧栏：无需打开面板，等 stats 到位后临界类出现（90% → warn 档）。
+    await waitFor(() => {
+      expect(screen.getByTestId('billing-trigger').className).toMatch(/triggerBudgetPulse/)
+    })
+    expect(screen.getByTestId('billing-trigger').className).not.toMatch(/triggerBudgetOver/)
+    // 指针/进度弧容器转红（CSS currentColor 级联）。
+    expect(screen.getByTestId('billing-trigger-icon').className).toMatch(/triggerBudgetHot/)
+    expect(container).toBeTruthy()
+  })
+
+  it('escalates to the accelerated pulse at ≥100% of the budget', async () => {
+    renderWithBudget(true, 10, 11)
+    await waitFor(() => {
+      expect(screen.getByTestId('billing-trigger').className).toMatch(/triggerBudgetOver/)
+    })
+    expect(screen.getByTestId('billing-trigger').className).toMatch(/triggerBudgetPulse/)
+    expect(screen.getByTestId('billing-trigger-icon').className).toMatch(/triggerBudgetHot/)
+  })
+
+  it('stays calm with the budget disabled even when the spend is over the amount', async () => {
+    renderWithBudget(false, 10, 11)
+    // 等一轮 stats 到位（monthCost 已超预算金额）后仍无任何临界类。
+    await waitFor(() => {
+      expect(screen.getByTestId('billing-trigger-spark')).not.toBeNull()
+    })
+    expect(screen.getByTestId('billing-trigger').className).not.toMatch(/triggerBudgetPulse/)
+    expect(screen.getByTestId('billing-trigger-icon').className).not.toMatch(/triggerBudgetHot/)
   })
 })

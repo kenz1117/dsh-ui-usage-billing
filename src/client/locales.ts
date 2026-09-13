@@ -15,7 +15,7 @@ export type UsageBillingKey =
   | 'inputTokens'
   | 'outputTokens'
   | 'avgCost'
-  | 'avgRange'
+  | 'kpiRange'
   | 'avgRangeToday'
   | 'avgRange7d'
   | 'avgRangeWeek'
@@ -29,6 +29,7 @@ export type UsageBillingKey =
   | 'trendMetricTokens'
   | 'trendEmpty'
   | 'budget'
+  | 'budgetRemain'
   | 'budgetAmount'
   | 'budgetSummary'
   | 'sessions'
@@ -101,11 +102,9 @@ export type UsageBillingKey =
   | 'floatMode'
   | 'floatTargets'
   | 'floatWindowHint'
-  | 'floatPrimary'
   | 'floatPrimaryToday'
   | 'floatPrimaryWeek'
   | 'floatPrimaryMonth'
-  | 'floatPrimaryBalance'
   | 'floatNoTargets'
   | 'floatNoTargetsHint'
   | 'cardDisplay'
@@ -113,7 +112,13 @@ export type UsageBillingKey =
   | 'cardMetric'
   | 'cardMetricMoney'
   | 'cardMetricTokens'
+  | 'cardSpan'
+  | 'cardSpanDay'
+  | 'cardSpanWeek'
+  | 'cardSpanMonth'
   | 'triggerMonthTokens'
+  | 'triggerTodayTokens'
+  | 'triggerWeekTokens'
   | 'subscriptionsStale'
   | 'staleLedgerNotice'
   | 'tokenCacheWrite'
@@ -194,7 +199,7 @@ export type UsageBillingKey =
   | 'subscriptionFeePerMonth'
   | 'triggerToday'
   | 'triggerMonth'
-  | 'subscriptionIncluded'
+  | 'subscriptionTag'
   | 'free'
   | 'perfSamples'
   | 'perfTtft'
@@ -221,7 +226,6 @@ export type UsageBillingKey =
   | 'tabToken'
   | 'tokenExport'
   | 'tokenExportCsv'
-  | 'tokenCacheHitRate'
   | 'tokenReasoningShare'
   | 'tokenReasoningShort'
   | 'tokenIo'
@@ -285,7 +289,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'inputTokens': '输入',
   'outputTokens': '输出',
   'avgCost': '平均成本',
-  'avgRange': '平均成本统计范围',
+  'kpiRange': '统计范围',
   'avgRangeToday': '今日',
   'avgRange7d': '近7天',
   'avgRangeWeek': '本周',
@@ -299,6 +303,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'trendMetricTokens': 'Token',
   'trendEmpty': '暂无趋势数据',
   'budget': '本月预算',
+  'budgetRemain': '剩余预算',
   'budgetAmount': '预算金额',
   'budgetSummary': '本月已用 {used} / {total}；达到 80% 时提醒，达到 100% 时红色脉冲警示',
   'sessions': '会话明细',
@@ -371,16 +376,19 @@ export const zh: Record<UsageBillingKey, string> = {
   'floatMode': '展示模式',
   'floatTargets': '订阅目标',
   'floatWindowHint': '悬浮在左下角计费卡上的用量速览；综合=当前样式，订阅卡=每次展示一张订阅额度卡（可切换）。',
-  'floatPrimary': '主数字',
   'floatPrimaryToday': '今日',
   'floatPrimaryWeek': '本周',
   'floatPrimaryMonth': '本月',
-  'floatPrimaryBalance': '官方余额',
+
   'cardDisplay': '计费卡显示',
-  'cardDisplayHint': '切换左下角计费卡的主指标：花费金额或 Token 消耗（副行与迷你柱同步切换，悬浮窗不受影响）。',
+  'cardDisplayHint': '切换左下角计费卡的主指标与主数字统计范围（迷你柱跟随视角，悬浮窗不受影响）。',
   'cardMetric': '主指标',
   'cardMetricMoney': '花费金额',
   'cardMetricTokens': 'Token 消耗',
+  'cardSpan': '统计范围',
+  'cardSpanDay': '日',
+  'cardSpanWeek': '周',
+  'cardSpanMonth': '月',
   'floatNoTargets': '未指定订阅通道，请在设置中勾选要展示的订阅。',
   'floatNoTargetsHint': '暂无可选的订阅通道。',
   'subscriptionsStale': '订阅额度刷新失败，以下为缓存数据',
@@ -464,7 +472,9 @@ export const zh: Record<UsageBillingKey, string> = {
   'triggerToday': '今日',
   'triggerMonth': '当月',
   'triggerMonthTokens': '当月 Token',
-  'subscriptionIncluded': '订阅包含',
+  'triggerTodayTokens': '今日 Token',
+  'triggerWeekTokens': '本周 Token',
+  'subscriptionTag': '订阅',
   'free': '免费',
   'perfSamples': '样本',
   'perfTtft': '首字延时',
@@ -491,7 +501,6 @@ export const zh: Record<UsageBillingKey, string> = {
   'tabToken': '用量',
   'tokenExport': '导出 Token',
   'tokenExportCsv': '按日 Token CSV',
-  'tokenCacheHitRate': '缓存命中率',
   'tokenReasoningShare': '思考占比',
   'tokenReasoningShort': '思考',
   'tokenIo': '输入/输出比',
@@ -554,7 +563,7 @@ export const en: Record<UsageBillingKey, string> = {
   'inputTokens': 'Input',
   'outputTokens': 'Output',
   'avgCost': 'Avg cost',
-  'avgRange': 'Avg cost range',
+  'kpiRange': 'Range',
   'avgRangeToday': 'Today',
   'avgRange7d': '7d',
   'avgRangeWeek': 'Week',
@@ -568,6 +577,7 @@ export const en: Record<UsageBillingKey, string> = {
   'trendMetricTokens': 'Tokens',
   'trendEmpty': 'No trend data yet',
   'budget': 'Monthly budget',
+  'budgetRemain': 'Remaining',
   'budgetAmount': 'Budget amount',
   'budgetSummary': 'Used {used} / {total} this month; warn at 80%, pulse red at 100%',
   'sessions': 'Sessions',
@@ -640,16 +650,19 @@ export const en: Record<UsageBillingKey, string> = {
   'floatMode': 'Display mode',
   'floatTargets': 'Targets',
   'floatWindowHint': 'Usage summary floating on the footer card; Combined=current style, Subscription cards=one quota card at a time (switchable).',
-  'floatPrimary': 'Primary figure',
   'floatPrimaryToday': 'Today',
   'floatPrimaryWeek': 'Week',
   'floatPrimaryMonth': 'Month',
-  'floatPrimaryBalance': 'Balance',
-  'cardDisplay': 'Billing card display',
-  'cardDisplayHint': 'Switch the main metric on the bottom-left billing card between cost and token usage (sub row and sparkline follow; the popover is unaffected).',
+
+  'cardDisplay': 'Billing card',
+  'cardDisplayHint': 'Switch the bottom-left billing card between cost and token usage, and pick the figure range (sparkline follows; the popover is unaffected).',
   'cardMetric': 'Main metric',
   'cardMetricMoney': 'Cost',
   'cardMetricTokens': 'Token usage',
+  'cardSpan': 'Range',
+  'cardSpanDay': 'Day',
+  'cardSpanWeek': 'Week',
+  'cardSpanMonth': 'Month',
   'floatNoTargets': 'No subscription selected — pick some in Settings.',
   'floatNoTargetsHint': 'No subscription channel available.',
   'subscriptionsStale': 'Subscription refresh failed — showing cached data',
@@ -733,7 +746,9 @@ export const en: Record<UsageBillingKey, string> = {
   'triggerToday': 'Today',
   'triggerMonth': 'This month',
   'triggerMonthTokens': 'Monthly tokens',
-  'subscriptionIncluded': 'Included',
+  'triggerTodayTokens': "Today's tokens",
+  'triggerWeekTokens': "This week's tokens",
+  'subscriptionTag': 'Plan',
   'free': 'Free',
   'perfSamples': 'Samples',
   'perfTtft': 'TTFT',
@@ -760,7 +775,6 @@ export const en: Record<UsageBillingKey, string> = {
   'tabToken': 'Usage',
   'tokenExport': 'Export tokens',
   'tokenExportCsv': 'Daily token CSV',
-  'tokenCacheHitRate': 'Cache hit rate',
   'tokenReasoningShare': 'Reasoning share',
   'tokenReasoningShort': 'reasoning',
   'tokenIo': 'In/out ratio',

@@ -134,18 +134,36 @@ export declare function lastSevenDays(byDay: Record<string, {
 export declare function sinceMondayOf<T>(byDay: Record<string, T>, today: string, pick?: (row: T) => number): number;
 /** 平均成本的统计范围（issue #47）；`all` = 全量累计，不进逐日求和。 */
 export type AvgCostRange = 'today' | '7d' | 'week' | 'month' | 'all';
+/** 全局 KPI 按日聚合行的最小字段（byDay 行 = ModelUsage，结构兼容）。 */
+interface KpiDayRow {
+    cost: number;
+    calls: number;
+    input: number;
+    output: number;
+    cacheHit: number;
+    cacheMiss: number;
+    reasoning?: number;
+}
+/** 全局 KPI 聚合结果：KPI 七卡按所选范围重算所需的全部字段。 */
+export interface KpiAgg {
+    cost: number;
+    calls: number;
+    input: number;
+    output: number;
+    cacheHit: number;
+    cacheMiss: number;
+    reasoning: number;
+    /** 范围内总处理 Token（缓存读+缓存写+输出）最大的日期戳；窗口无数据时 undefined。 */
+    peakDay: string | undefined;
+    /** 峰值日的总处理 Token 量；窗口无数据时 0。 */
+    peakTokens: number;
+}
 /**
- * 按范围求和 byDay 的费用与调用数（issue #47）：今日 / 近 7 天（含今天）/
- * 本周（周一起）/ 本月。日期戳字典序即时间序（与 dailyBurnRate 同口径）；
- * 累计口径由调用方直接取 total（含搜索估值兜底），不走此函数。
+ * 按范围聚合 byDay（issue #47）：今日 / 近 7 天（含今天）/ 本周（周一起）/
+ * 本月。日期戳字典序即时间序（与 dailyBurnRate 同口径）；累计口径由调用方
+ * 直接取 total（含搜索估值兜底），不走此函数。
  */
-export declare function sumByDayRange(byDay: Record<string, {
-    cost: number;
-    calls: number;
-}>, today: string, range: Exclude<AvgCostRange, 'all'>): {
-    cost: number;
-    calls: number;
-};
+export declare function sumByDayRange(byDay: Record<string, KpiDayRow>, today: string, range: Exclude<AvgCostRange, 'all'>): KpiAgg;
 /** 会话明细行（与服务端 SessionUsageRow 同形；旧快照可能缺失整个 bySession）。 */
 interface SessionBillingRow {
     id: string;

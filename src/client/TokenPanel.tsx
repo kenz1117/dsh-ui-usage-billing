@@ -29,8 +29,8 @@ function localStamp(time = Date.now()): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
-/** 短数字刻度：`1.2M` / `3.4K`。 */
-function shortNumber(v: number): string {
+/** 短数字刻度：`1.2M` / `3.4K`。导出供概览 KPI 峰值日卡复用。 */
+export function shortNumber(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`
   return String(Math.round(v))
@@ -262,24 +262,7 @@ export function TokenPanel(props: {
     return rows.map(r => ({ ...r, share: grand > 0 ? r.total / grand : 0 }))
   }, [byModel])
 
-  // 结构 KPI。（对旧快照缺失字段兜底：reasoning/cacheRead 等可能为 undefined。）
-  const kpis = useMemo(() => {
-    const hit = total.cacheHit ?? 0
-    const miss = total.cacheMiss ?? 0
-    const input = total.input ?? 0
-    const output = total.output ?? 0
-    const reasoning = total.reasoning ?? 0
-    const hitMiss = hit + miss
-    const cacheHitRate = hitMiss > 0 ? (hit / hitMiss) * 100 : 0
-    const reasoningPct = output > 0 ? (reasoning / output) * 100 : 0
-    const io = output > 0 ? input / output : 0
-    let peak: DailyBucket | undefined
-    for (const d of days) {
-      const t2 = d.miss + d.hit + d.output
-      if (peak === undefined || t2 > peak.miss + peak.hit + peak.output) peak = d
-    }
-    return { cacheHitRate, reasoningPct, io, peak, hit, miss, input, output, reasoning }
-  }, [total, days])
+  // 结构 KPI 已并入概览 KPI 七卡（issue #47 反馈），此处不再重复渲染。
 
   // 工具调用排行：取前 8 名，其余合并为「其他」。
   const toolRows = useMemo(() => {
@@ -353,33 +336,7 @@ export function TokenPanel(props: {
         </button>
       </div>
 
-      {/* Token 结构 KPI。 */}
-      <div className={css.kpiGrid} data-testid="billing-token-kpis">
-        <div className={css.kpiTile}>
-          <span className={css.kpiLabel}>{t('tokenCacheHitRate')}</span>
-          <span className={css.kpiValue}>{kpis.cacheHitRate.toFixed(1)}%</span>
-          {/* 显式缓存写入（cacheMiss 子集）在命中卡副行附带展示；无该维度时不显示。 */}
-          <span className={css.kpiDetail}>
-            {formatTokens(kpis.hit)} / {formatTokens(kpis.hit + kpis.miss)}
-            {(total.cacheWrite ?? 0) > 0 ? ` · ${t('tokenCacheWrite')} ${formatTokens(total.cacheWrite ?? 0)}` : ''}
-          </span>
-        </div>
-        <div className={css.kpiTile}>
-          <span className={css.kpiLabel}>{t('tokenReasoningShare')}</span>
-          <span className={css.kpiValue}>{kpis.reasoningPct.toFixed(1)}%</span>
-          <span className={css.kpiDetail}>{formatTokens(kpis.reasoning)}</span>
-        </div>
-        <div className={css.kpiTile}>
-          <span className={css.kpiLabel}>{t('tokenIo')}</span>
-          <span className={css.kpiValue}>{kpis.io.toFixed(2)}</span>
-          <span className={css.kpiDetail}>{formatTokens(kpis.input)} / {formatTokens(kpis.output)}</span>
-        </div>
-        <div className={css.kpiTile}>
-          <span className={css.kpiLabel}>{t('tokenPeak')}</span>
-          <span className={css.kpiValue}>{kpis.peak === undefined ? '—' : shortNumber(kpis.peak.miss + kpis.peak.hit + kpis.peak.output)}</span>
-          <span className={css.kpiDetail}>{kpis.peak?.date ?? '—'}</span>
-        </div>
-      </div>
+      {/* Token 结构 KPI 已并入概览（issue #47 反馈），用量页从每日趋势开始。 */}
 
       {/* 每日 token 堆叠趋势（按结构 / 按模型 双视角）。 */}
       <section className={css.panel} data-testid="billing-token-daily">

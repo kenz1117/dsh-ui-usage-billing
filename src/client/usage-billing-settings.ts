@@ -28,9 +28,6 @@ export const DEFAULT_ENABLE_USAGE_STATS_TOOL = false
 /** 模型用量悬浮窗的展示模式。 */
 export type FloatWindowMode = 'combined' | 'subscription'
 
-/** 悬浮窗「主数字」（指标网格首格）的口径（issue #47）。 */
-export type FloatPrimaryMetric = 'today' | 'week' | 'month' | 'balance'
-
 /**
  * 模型用量悬浮窗（左下角计费卡 hover 浮窗）的展示偏好。
  * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
@@ -40,12 +37,10 @@ export interface FloatWindowPrefs {
   mode: FloatWindowMode
   /** `subscription` 模式下可切换展示的订阅通道 provider id 列表（每次显示一张）。 */
   targets: string[]
-  /** 主数字口径：今日 / 本周 / 本月 / 官方余额（默认今日——月累计对按量用户最不直观）。 */
-  primary: FloatPrimaryMetric
 }
 
-/** 默认浮窗偏好：综合模式、无指定目标、主数字为今日费用。 */
-export const DEFAULT_FLOAT_WINDOW_PREFS: FloatWindowPrefs = { mode: 'combined', targets: [], primary: 'today' }
+/** 默认浮窗偏好：综合模式、无指定目标。 */
+export const DEFAULT_FLOAT_WINDOW_PREFS: FloatWindowPrefs = { mode: 'combined', targets: [] }
 
 /** localStorage key（与 budget store 的 `dsh.ui-usage-billing.*` 命名空间一致）。 */
 export const FLOAT_WINDOW_STORAGE_KEY = 'dsh.ui-usage-billing.float'
@@ -63,9 +58,6 @@ export function loadFloatWindowPrefs(): FloatWindowPrefs {
       targets: Array.isArray(parsed.targets)
         ? parsed.targets.filter((entry): entry is string => typeof entry === 'string')
         : [],
-      primary: parsed.primary === 'week' || parsed.primary === 'month' || parsed.primary === 'balance'
-        ? parsed.primary
-        : DEFAULT_FLOAT_WINDOW_PREFS.primary,
     }
   } catch {
     return fallback()
@@ -84,17 +76,22 @@ export function saveFloatWindowPrefs(prefs: FloatWindowPrefs): void {
 /** 左下角计费卡的主指标视角。 */
 export type BillingCardMetric = 'money' | 'tokens'
 
+/** 计费卡主数字的统计范围（单值卡面，issue #47 反馈）。 */
+export type BillingCardSpan = 'day' | 'week' | 'month'
+
 /**
- * 计费卡显示偏好：卡面主行/副行与迷你柱的计价视角。
+ * 计费卡显示偏好：卡面主数字与迷你柱的计价视角 + 主数字统计范围。
  * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
  */
 export interface BillingCardPrefs {
   /** 主指标：花费金额（CNY/USD 按币种）/ Token 消耗。 */
   metric: BillingCardMetric
+  /** 主数字统计范围：今日 / 本周 / 本月（默认今日）。 */
+  span: BillingCardSpan
 }
 
-/** 默认计费卡偏好：花费金额（向后兼容现有金额视图）。 */
-export const DEFAULT_BILLING_CARD_PREFS: BillingCardPrefs = { metric: 'money' }
+/** 默认计费卡偏好：花费金额 + 今日口径。 */
+export const DEFAULT_BILLING_CARD_PREFS: BillingCardPrefs = { metric: 'money', span: 'day' }
 
 /** localStorage key（与 budget store 的 `dsh.ui-usage-billing.*` 命名空间一致）。 */
 export const BILLING_CARD_STORAGE_KEY = 'dsh.ui-usage-billing.card'
@@ -105,7 +102,10 @@ export function loadBillingCardPrefs(): BillingCardPrefs {
     const raw = localStorage.getItem(BILLING_CARD_STORAGE_KEY)
     if (raw === null) return { ...DEFAULT_BILLING_CARD_PREFS }
     const parsed = JSON.parse(raw) as Partial<BillingCardPrefs>
-    return { metric: parsed.metric === 'tokens' ? 'tokens' : 'money' }
+    return {
+      metric: parsed.metric === 'tokens' ? 'tokens' : 'money',
+      span: parsed.span === 'week' || parsed.span === 'month' ? parsed.span : 'day',
+    }
   } catch {
     return { ...DEFAULT_BILLING_CARD_PREFS }
   }
@@ -115,6 +115,31 @@ export function loadBillingCardPrefs(): BillingCardPrefs {
 export function saveBillingCardPrefs(prefs: BillingCardPrefs): void {
   try {
     localStorage.setItem(BILLING_CARD_STORAGE_KEY, JSON.stringify(prefs))
+  } catch {
+    // ignore: storage full / unavailable — display preference is non-critical.
+  }
+}
+
+/** 概览 KPI 全局统计范围（今日/近7天/本周/本月/累计），与组件内 AvgCostRange 同构。 */
+export type KpiRangePref = 'today' | '7d' | 'week' | 'month' | 'all'
+
+/** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
+export const KPI_RANGE_STORAGE_KEY = 'dsh.ui-usage-billing.kpi-range'
+
+/** 读取 KPI 全局范围偏好（损坏/越界回退「累计」）。仅在浏览器半区调用。 */
+export function loadKpiRange(): KpiRangePref {
+  try {
+    const raw = localStorage.getItem(KPI_RANGE_STORAGE_KEY)
+    return raw === 'today' || raw === '7d' || raw === 'week' || raw === 'month' || raw === 'all' ? raw : 'all'
+  } catch {
+    return 'all'
+  }
+}
+
+/** 写入 KPI 全局范围偏好。失败静默（展示偏好非关键）。 */
+export function saveKpiRange(range: KpiRangePref): void {
+  try {
+    localStorage.setItem(KPI_RANGE_STORAGE_KEY, range)
   } catch {
     // ignore: storage full / unavailable — display preference is non-critical.
   }

@@ -13,7 +13,7 @@
  * dashboard shows zeros, never fabricated samples.
  */
 
-import { mkdir, readFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -228,6 +228,36 @@ function warnAuthOnce(source: string, provider: string, displayName: string): vo
   console.warn(`[usage-billing] ${displayName}（${provider}）鉴权失败：请检查 llm-pi-ai 设置中该 provider 的凭据环境变量是否正确/有效。`)
 }
 
+/** 锁等待上限：账本提交是毫秒级 read-render-commit，2s 已数倍于正常持锁时长。 */
+const LEDGER_LOCK_WAIT_MS = 2_000
+
+/**
+ * 锁年龄超过该值判为崩溃残留的孤儿锁。正常持锁是毫秒级文件提交，没有活跃
+ * writer 会合法持有 60s；库层刻意不做年龄判定（它无法假设调用方的操作时长），
+ * 本调用方知道自己操作的上界，可以给出有依据的清理阈值。
+ */
+const STALE_LEDGER_LOCK_MS = 60_000
+
+/**
+ * 锁等待超时后的孤儿锁自愈（issue #48）：仅当锁文件年龄超过
+ * STALE_LEDGER_LOCK_MS 才清理，避免误删慢 writer 的活跃锁。
+ * @param ledgerPath - 账本文件路径（锁为其 `.lock` 兄弟文件）。
+ * @returns 是否清理了孤儿锁；false = 锁已消失或太新鲜，调用方上抛原错误。
+ */
+async function reclaimStaleLedgerLock(ledgerPath: string): Promise<boolean> {
+  let ageMs: number
+  try {
+    ageMs = Date.now() - (await lstat(`${ledgerPath}.lock`)).mtimeMs
+  } catch {
+    // 锁在超时前后已消失（慢 writer 完成）：无可清理对象。
+    return false
+  }
+  if (ageMs < STALE_LEDGER_LOCK_MS) return false
+  console.warn(`[usage-billing] 账本锁已存在 ${Math.round(ageMs / 1000)}s（崩溃残留），清理后重试：${ledgerPath}.lock`)
+  await rm(`${ledgerPath}.lock`, { force: true })
+  return true
+}
+
 /**
  * Create the atomic file-backed durable-ledger store. The previous complete file
  * is retained as `.bak`; a malformed/missing main file falls back to that backup.
@@ -257,7 +287,7 @@ export function createFileUsageLedgerStore(ledgerPath: string): UsageLedgerStore
       // 的 mkdir 在其之后才执行，故此处先建父目录，否则 ledgerPath 在未创建的子目录
       // 下时开锁会抛 ENOENT。
       await mkdir(dirname(ledgerPath), { recursive: true, mode: 0o700 })
-      await withFileLock(ledgerPath, async () => {
+      const commit = async (): Promise<void> => {
         try {
           const existing = await readFile(ledgerPath, 'utf8')
           // Never replace a known-good backup with malformed main-file bytes.
@@ -267,7 +297,16 @@ export function createFileUsageLedgerStore(ledgerPath: string): UsageLedgerStore
           // First write or unreadable old ledger: atomically write the new document.
         }
         await writeFileAtomic(ledgerPath, JSON.stringify(document), { mode: 0o600, dirMode: 0o700 })
-      })
+      }
+      try {
+        await withFileLock(ledgerPath, commit, { waitMs: LEDGER_LOCK_WAIT_MS })
+      } catch (error) {
+        // 仅锁等待超时进入孤儿锁自愈（issue #48）：锁持有者崩溃后残留的锁无人
+        // 释放，库层竞争者永不删除已存在的锁，账本写入会永久超时。其余错误原样上抛。
+        if (!(error instanceof Error) || !error.message.includes('timed out waiting for the writer lock')) throw error
+        if (!(await reclaimStaleLedgerLock(ledgerPath))) throw error
+        await withFileLock(ledgerPath, commit, { waitMs: LEDGER_LOCK_WAIT_MS })
+      }
     },
   }
 }

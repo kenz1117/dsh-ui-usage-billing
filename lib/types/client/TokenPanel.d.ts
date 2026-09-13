@@ -16,6 +16,8 @@
 import type { UsageBillingKey } from './locales.ts';
 import type { TrendSeriesModel } from './TrendChart.tsx';
 import type { UsageStats } from './UsageBilling.tsx';
+/** 短数字刻度：`1.2M` / `3.4K`。导出供概览 KPI 峰值日卡复用。 */
+export declare function shortNumber(v: number): string;
 /** 每日 token 堆叠图元（按结构视角）。 */
 interface DailyBucket {
     date: string;

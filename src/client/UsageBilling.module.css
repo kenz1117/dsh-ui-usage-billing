@@ -67,14 +67,29 @@ body {
 }
 
 .railButton svg {
-  width: 18px;
-  height: 18px;
-  stroke-width: 2;
+  width: 22px;
+  height: 22px;
 }
 
-/* Wide mode: dashboard-style data card — icon badge, month figure, sparkline.
+/* 预算临界脉冲：卡片边缘红色呼吸（功能性警示，非装饰发光）；超支加速。
+   同时作用于 wide 触发卡与 rail 图标钮。 */
+.triggerBudgetPulse {
+  border-color: color-mix(in srgb, var(--ds-red) 55%, transparent);
+  animation: budgetPulse 2s ease-in-out infinite;
+}
+
+.triggerBudgetOver {
+  animation-duration: 1.2s;
+}
+
+@keyframes budgetPulse {
+  0%, 100% { box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 0 0 0 rgb(239 68 68 / 0); }
+  50% { box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 0 0 3px rgb(239 68 68 / 0.16); }
+}
+
+/* Wide mode: dashboard-style data card — icon, month figure, sparkline.
    设计「trigger-card」玻璃表面：半透明底 + 模糊 + 1px 边框 + ::before 顶部高光，
-   图标徽章淡蓝底为整卡唯一色彩焦点，让位给等宽主数字。 */
+   裸放仪表让位给等宽主数字。 */
 .trigger {
   position: relative;
   display: flex;
@@ -117,24 +132,85 @@ body {
   pointer-events: none;
 }
 
-/* 图标徽标：32×32 淡蓝底 + 蓝描边（设计 trigger-icon）。 */
+/* hover 扫描线：一道窄光带单次扫过卡面（精密仪表自检语义，克制不发光）。
+   每次进入 hover 重播一次，常驻静止。 */
+.trigger::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 42%,
+    color-mix(in srgb, var(--ds-blue) 9%, transparent) 50%,
+    transparent 58%
+  );
+  transform: translateX(-110%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.trigger:hover::after,
+.trigger:focus-visible::after {
+  animation: triggerScan 0.9s ease-out 1;
+}
+
+@keyframes triggerScan {
+  0% { transform: translateX(-110%); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translateX(110%); opacity: 0; }
+}
+
+/* 系统级减少动效：呼吸与扫描全部静止（指针 transition 一并去除）。 */
+@media (prefers-reduced-motion: reduce) {
+  .triggerSparkBar {
+    animation: none;
+  }
+
+  .trigger:hover::after,
+  .trigger:focus-visible::after {
+    animation: none;
+  }
+
+  .triggerGaugeNeedle,
+  .triggerGaugeArc {
+    transition: none;
+  }
+
+  .triggerBudgetPulse {
+    animation: none;
+  }
+}
+
+/* 图标：裸放仪表（issue #47 反馈去方框），26×26 容器承载 24×24 仪表，颜色随
+   临界态整体转红（.triggerBudgetHot 级联到 SVG currentColor）。 */
 .triggerIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--ds-r-1);
-  border: 1px solid color-mix(in srgb, var(--ds-blue) 28%, transparent);
-  background: color-mix(in srgb, var(--ds-blue) 14%, var(--dsb-3));
+  width: 26px;
+  height: 26px;
   color: var(--ds-blue);
 }
 
 .triggerIcon svg {
-  width: 16px;
-  height: 16px;
-  stroke-width: 2;
+  width: 24px;
+  height: 24px;
+}
+
+/* 仪表指针：水位更新（30s 轮询）时平滑摆动到新角度（SVG CSS transform）。 */
+.triggerGaugeNeedle {
+  transition: transform 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 进度弧：弧长随水位伸缩，与指针同节奏平滑。 */
+.triggerGaugeArc {
+  transition: stroke-dasharray 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 预算临界（≥80%）：指针/进度弧/轴点随 currentColor 转红。 */
+.triggerBudgetHot {
+  color: var(--ds-red);
 }
 
 /* 文本主体：当月（标签 + ¥ + 数字分离）+ 今日/本周 副行。 */
@@ -187,16 +263,6 @@ body {
   text-overflow: ellipsis;
 }
 
-/* 副行：今日 / 本周 费用，11px 三级灰。 */
-.triggerSub {
-  font-size: 11px;
-  line-height: 15px;
-  color: var(--ds-t-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* 近 7 天 sparkline：常驻迷你趋势，底对齐。 */
 .triggerSpark {
   display: flex;
@@ -216,6 +282,20 @@ body {
 
 .triggerSparkHot {
   opacity: 1;
+}
+
+/* 迷你柱呼吸：历史柱缓慢明暗起伏，错相位避免整齐划一；当日柱（hot）保持
+   实心不动——「当前值稳定、历史在流动」的仪表语义。 */
+.triggerSparkBar {
+  animation: triggerSparkBreath 3.6s ease-in-out infinite;
+}
+
+.triggerSparkBar:nth-child(2n) { animation-delay: -1.2s; }
+.triggerSparkBar:nth-child(3n) { animation-delay: -2.4s; }
+
+@keyframes triggerSparkBreath {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.34; }
 }
 
 /* 触发卡外壳：hover 速览卡的定位上下文。
@@ -254,20 +334,16 @@ body {
 }
 
 @container billing-trigger (max-width: 170px) {
-  .triggerSub {
-    display: none;
-  }
   .triggerLabel {
     display: none;
   }
 }
 
-/* 极窄档（不足 ~110px）：仅保留「当月金额」，icon/趋势/标签全部让位，金额居中。
+/* 极窄档（不足 ~110px）：仅保留主数字，icon/趋势/标签全部让位，数字居中。
    极端窄的侧边栏下仍能看到成本数字，不残缺、不溢出。 */
 @container billing-trigger (max-width: 110px) {
   .triggerIcon,
   .triggerSpark,
-  .triggerSub,
   .triggerLabel {
     display: none;
   }
@@ -364,8 +440,9 @@ body {
 }
 .metricGrid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px 14px;
+  /* 两行三列（issue #47 反馈）：行1 日/周/月费用，行2 输入/输出/缓存命中。 */
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px 12px;
 }
 .metricCell {
   display: flex;
@@ -387,7 +464,6 @@ body {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.metricValuePrimary { color: var(--ds-amber); }
 .metricValueSuccess { color: var(--ds-green); }
 .popModel {
   display: flex;
@@ -746,8 +822,19 @@ body {
   white-space: nowrap;
 }
 
-/* 环形预算环：中心百分比 + 标签，SVG viewBox 120 等比缩放，容器 96px 档。 */
+/* 环形余量表：弧 = 剩余预算比例，中心 = 剩余金额 + 标签，下方「已用/总额」读数。
+   SVG viewBox 120 等比缩放，表盘 96px 档。 */
 .heroGauge {
+  flex: none;
+  width: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 表盘本体：svg 与中心读数的 96×96 定位容器。 */
+.heroGaugeDial {
   position: relative;
   flex: none;
   width: 96px;
@@ -789,17 +876,18 @@ body {
   gap: 1px;
 }
 
-.heroGaugePct {
+/* 中心剩余金额（两位小数）：96px 表盘内放得下 ¥199.80 的宽度上限。 */
+.heroGaugeRemain {
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 28px;
-  line-height: 30px;
+  font-size: 16px;
+  line-height: 18px;
   font-weight: 600;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--ds-t-1);
 }
 
-.heroGaugePctOver {
+.heroGaugeRemainOver {
   color: var(--ds-red);
 }
 
@@ -809,51 +897,13 @@ body {
   color: var(--ds-t-3);
 }
 
-/* 底部预算进度条：设计 Hero 的预算行——标签 + 进度 + 「已用/总额 · 百分比」。
-   与环形仪表盘同口径，仅在启用预算且金额 >0 时由组件渲染；超支满格转红。 */
-.heroBudget {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--ds-border);
-}
-
-.heroBudgetLabel {
-  flex: none;
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--ds-t-2);
-  white-space: nowrap;
-}
-
-.heroBudgetTrack {
-  flex: 1;
-  min-width: 0;
-  height: 6px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--dsb-3);
-}
-
-.heroBudgetFill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--ds-blue);
-  transition: width var(--ds-t-fast);
-}
-
-.heroBudgetFillOver {
-  background: var(--ds-red);
-}
-
-.heroBudgetValue {
-  flex: none;
+/* 表盘下方的「已用 / 预算总额」读数（原底部进度行的数值，不带百分比）。 */
+.heroGaugeSub {
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--ds-t-2);
+  font-size: 10px;
+  line-height: 12px;
   font-variant-numeric: tabular-nums;
+  color: var(--ds-t-2);
   white-space: nowrap;
 }
 
@@ -951,6 +1001,26 @@ body {
 
 /* ── KPI grid ───────────────────────────────────────────────────────── */
 
+/* KPI 区容器：头部（全局统计范围切换）+ 七卡网格（issue #47 反馈）。 */
+.kpiZone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kpiZoneHead {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.kpiZoneLabel {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--ds-t-3);
+}
+
 .kpiGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1007,14 +1077,6 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* 平均成本 tile 内嵌的范围分段（issue #47）：压成两行紧凑排布。 */
-.kpiRangeRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  margin-top: 4px;
 }
 
 /* ── Panels (chart / tables) ────────────────────────────────────────── */
@@ -1696,16 +1758,8 @@ body {
   gap: 8px;
 }
 
-/* 厂商 logo：内嵌 SVG data URI，置于模型名前。 */
-.vendorLogo {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  object-fit: contain;
-}
-
-/* 厂商字母徽章兜底：无 logo 素材（字节/文心/讯飞/商汤/百川/零一/面壁/小红书）时使用。 */
+/* 厂商字母徽章：模型名前的 18×18 品牌色块 + 首字母（内嵌 SVG 已移除以守住
+   client.js 体积门禁，徽章是唯一形态；背景色由内联 colorVar 提供）。 */
 .vendorLetter {
   flex: none;
   width: 18px;
@@ -1899,6 +1953,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 数字列表头跟随右对齐（issue #49）：各表容器限定的 th 规则（如
+   .modelTable th，特异性 0,1,1）压过裸 .numCol（0,1,0），表头虽已挂
+   numCol 仍左对齐、与贴列尾的数字错位；thead 限定的选择器（0,1,2）压回。 */
+thead th.numCol {
+  text-align: right;
+}
+
 .na {
   color: var(--ds-t-4);
 }
@@ -2080,17 +2141,27 @@ body {
   background: var(--dsb-2);
 }
 
+/* 订阅包含标注（issue #47 反馈二次调整）：去胶囊外壳，裸排金额 + 「订阅」标签。
+   金额保持绿色标识「估算非实收」，标签保留小块底色作为订阅语义的视觉锚点。 */
 .planTag {
   display: inline-flex;
   align-items: center;
-  padding: 2px 7px;
-  border: 1px solid color-mix(in srgb, var(--ds-green) 36%, transparent);
-  border-radius: 999px;
+  gap: 4px;
   font-size: 10px;
   line-height: 14px;
   font-weight: 500;
   color: var(--ds-green);
-  background: color-mix(in srgb, var(--ds-green) 12%, transparent);
+  /* 金额 + 「订阅」标签保持单行：列宽不足时宁可横向溢出滚动，不在行内折行（issue #47 反馈）。 */
+  white-space: nowrap;
+}
+
+/* 金额尾部的「订阅」短标签：更深一档的绿色小块，与金额形成层次。 */
+.planTagBadge {
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 9px;
+  line-height: 12px;
+  background: color-mix(in srgb, var(--ds-green) 20%, transparent);
 }
 
 /* ── 未收录模型标签 ─────────────────────────────────────────────────── */
@@ -2232,33 +2303,40 @@ body {
   gap: 6px;
 }
 
-/* 官方充值外链（issue #47）：余额旁描边小链接，与圆形徽标同高同基调。 */
-.balanceRecharge {
+/* 组头「充值」chip：小描边胶囊按钮（issue #47 反馈：裸文字虚线太素）。 */
+.providerGroupRecharge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ds-c-1) 38%, transparent);
+  background: color-mix(in srgb, var(--ds-c-1) 8%, transparent);
   color: var(--ds-c-1);
   font-size: 10.5px;
   font-weight: 600;
+  line-height: 16px;
   text-decoration: none;
-  border-bottom: 1px dashed color-mix(in srgb, var(--ds-c-1) 55%, transparent);
+  white-space: nowrap;
 }
 
-.balanceRecharge:hover { border-bottom-style: solid; }
+.providerGroupRecharge:hover {
+  background: color-mix(in srgb, var(--ds-c-1) 15%, transparent);
+  border-color: color-mix(in srgb, var(--ds-c-1) 60%, transparent);
+}
 
-/* 余额主数字低值警示（issue #47 官方余额视角）：沿用语义红。 */
-.metricValueLow { color: var(--ds-red) !important; }
-
-/* 「约可撑 N 天」圆形徽标：点击弹出余额详情。 */
+/* 「约可撑 N 天」圆形徽标：点击弹出余额详情。16px 小圆，与余额文字同高不撑行。 */
 .balanceDaysBadge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 24px;
-  height: 24px;
-  padding: 0 6px;
-  border-radius: 12px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
   border: 1px solid var(--ds-border-strong);
   background: var(--dsb-2);
   color: var(--ds-t-2);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 600;
   line-height: 1;
   cursor: pointer;

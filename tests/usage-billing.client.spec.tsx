@@ -84,23 +84,70 @@ describe('UsageBilling surface', () => {
   it('switches the trigger card main metric between cost and token usage from the settings tab', async () => {
     render(<UsageBilling {...makeProps()} />)
     const card = screen.getByTestId('billing-trigger')
-    // 默认 money 视角：副行带 ¥ 币符，tokens 主数字不渲染。
+    // 默认 money 视角：主数字带 ¥ 币符，tokens 主数字不渲染（单值卡面，issue #47 反馈）。
     expect(card.textContent).toContain('¥')
-    expect(screen.queryByTestId('billing-trigger-month-tokens')).toBeNull()
+    expect(screen.queryByTestId('billing-trigger-span-tokens')).toBeNull()
     // 设置 Tab → 计费卡显示：切到 Token 消耗。
     fireEvent.click(card)
     await screen.findByText('使用统计')
     fireEvent.click(await screen.findByTestId('billing-tab-settings'))
     fireEvent.click(await screen.findByTestId('billing-card-tokens'))
-    // 修改即写入 localStorage。
-    expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.card')!)).toEqual({ metric: 'tokens' })
-    // 弹窗开着 trigger 也常驻：主行切为缩写 token（K/M/B），副行不再带币符。
-    expect(screen.getByTestId('billing-trigger-month-tokens').textContent).toBe('0')
+    // 修改即写入 localStorage（span 字段一并持久化，默认日口径）。
+    expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.card')!)).toEqual({ metric: 'tokens', span: 'day' })
+    // 弹窗开着 trigger 也常驻：主行切为缩写 token（K/M/B），金额币符消失。
+    expect(screen.getByTestId('billing-trigger-span-tokens').textContent).toBe('0')
     expect(screen.getByTestId('billing-trigger').textContent).not.toContain('¥')
     // 切回金额：tokens 主数字消失、币符恢复。
     fireEvent.click(await screen.findByTestId('billing-card-money'))
-    expect(screen.queryByTestId('billing-trigger-month-tokens')).toBeNull()
+    expect(screen.queryByTestId('billing-trigger-span-tokens')).toBeNull()
     expect(screen.getByTestId('billing-trigger').textContent).toContain('¥')
+  })
+
+  it('shows the hover quick-view cache-hit cell as a hit-rate percentage (issue #47 feedback)', () => {
+    const { container } = render(<UsageBilling {...makeProps()} />)
+    const trigger = container.querySelector('button')!
+    fireEvent.mouseEnter(trigger)
+    const pop = document.body.querySelector('[data-testid="billing-trigger-pop"]') as HTMLElement
+    expect(pop).not.toBeNull()
+    // 悬浮卡行2「缓存命中」显示命中率百分比（无数据为 0.0%），不再是 Token 量。
+    expect(pop.textContent).toContain('0.0%')
+  })
+
+  it('persists the overview KPI global range across remounts (issue #47 feedback)', async () => {
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    await screen.findByText('使用统计')
+    // 默认累计：all 按下。切到本周并持久化。
+    expect(screen.getByTestId('billing-kpi-range-all').getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(await screen.findByTestId('billing-kpi-range-week'))
+    expect(localStorage.getItem('dsh.ui-usage-billing.kpi-range')).toBe('week')
+    cleanup()
+    // 重新挂载：范围保持上次选择（本周），不再回到默认。
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    await screen.findByText('使用统计')
+    expect(screen.getByTestId('billing-kpi-range-week').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByTestId('billing-kpi-range-all').getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('renders the hero gauge as a remaining-budget dial with used/total beneath (issue #47 feedback)', async () => {
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    await screen.findByText('使用统计')
+    // 默认未启用预算：圆环整体不渲染（不再有「本月占本年」装饰回退）。
+    expect(screen.queryByTestId('billing-hero-gauge')).toBeNull()
+    // 设置 Tab 开启预算并设 10 元后回概览（默认金额 0 时不渲染圆环）。
+    fireEvent.click(await screen.findByTestId('billing-tab-settings'))
+    fireEvent.click(await screen.findByTestId('billing-budget-toggle'))
+    fireEvent.change(await screen.findByTestId('billing-budget-input'), { target: { value: '10' } })
+    fireEvent.click(await screen.findByTestId('billing-tab-overview'))
+    const gauge = await screen.findByTestId('billing-hero-gauge')
+    // 中心 = 剩余预算两位小数（默认 10 元未动）+ 「剩余预算」标签。
+    expect(gauge.textContent).toContain('¥10.00')
+    expect(gauge.textContent).toContain('剩余预算')
+    // 圆环下方 = 已用/总额读数（原底部进度行的数值，无百分比，无独立进度条）。
+    expect(gauge.textContent).toContain('¥0 / ¥10.0')
+    expect(screen.queryByTestId('billing-hero-budget')).toBeNull()
   })
 
   it('shows the live-cost capsule toggle by default and persists hiding it with a cross-tree broadcast', async () => {
@@ -153,14 +200,27 @@ describe('providerFromModelKey (B5 model-id fallback)', () => {
 describe('rechargeUrlOf (issue #47 账单页官方充值入口)', () => {
   it('maps the exact normalized provider to its official top-up page', () => {
     expect(rechargeUrlOf('DeepSeek')).toBe('https://platform.deepseek.com/top_up')
-    expect(rechargeUrlOf('MiniMax')).toBe('https://platform.minimaxi.com/')
-    expect(rechargeUrlOf('月之暗面')).toBe('https://platform.moonshot.cn/')
+    expect(rechargeUrlOf('MiniMax')).toBe('https://platform.minimax.cn/console/recharge-records')
+    expect(rechargeUrlOf('月之暗面')).toBe('https://platform.kimi.com/console/pay')
   })
 
   it('matches alias prefixes so region variants reuse the vendor URL', () => {
     // 归一化后带 region/产品后缀的名字走前缀命中，与该厂商主充值页一致。
-    expect(rechargeUrlOf('月之暗面 Kimi For Coding')).toBe('https://platform.moonshot.cn/')
-    expect(rechargeUrlOf('智谱 AI GLM')).toBe('https://open.bigmodel.cn/')
+    expect(rechargeUrlOf('月之暗面 Kimi For Coding')).toBe('https://platform.kimi.com/console/pay')
+    expect(rechargeUrlOf('智谱 AI GLM')).toBe('https://open.bigmodel.cn/finance-center/finance/pay')
+  })
+
+  it('covers xiaomi and the chinese channel group names (issue #47 反馈：非 DeepSeek 组也要有充值入口)', () => {
+    // 小米 MiMo 开放平台；'mi'/'mimo' 前缀等价。
+    expect(rechargeUrlOf('xiaomi-token-plan-cn')).toBe('https://platform.xiaomimimo.com/console/balance')
+    expect(rechargeUrlOf('mi-mimo')).toBe('https://platform.xiaomimimo.com/console/balance')
+    expect(rechargeUrlOf('mimo-cn')).toBe('https://platform.xiaomimimo.com/console/balance')
+    // 账单分组名是通道显示名：中文组名靠「腾讯云」前缀命中映射到腾讯云充值中心。
+    expect(rechargeUrlOf('腾讯云 Token Plan')).toBe('https://console.cloud.tencent.com/expense/recharge')
+    expect(rechargeUrlOf('腾讯云 TokenHub')).toBe('https://console.cloud.tencent.com/expense/recharge')
+    // 前缀命中按键序：'minimax-cn' 必须被 'minimax' 摘走，不被更短的 'mi' 劫持。
+    expect(rechargeUrlOf('minimax-cn')).toBe('https://platform.minimax.cn/console/recharge-records')
+    expect(rechargeUrlOf('kimi-coding')).toBe('https://platform.kimi.com/console/pay')
   })
 
   it('returns undefined for vendors without a known official top-up page', () => {
