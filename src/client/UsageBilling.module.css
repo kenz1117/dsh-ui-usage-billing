@@ -3198,17 +3198,17 @@ body {
   z-index: 2000;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   min-width: 280px;
   max-width: 380px;
-  padding: 16px;
-  border-radius: 12px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 82%, transparent);
-  backdrop-filter: blur(12px) saturate(1.2);
-  -webkit-backdrop-filter: blur(12px) saturate(1.2);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-  animation: peakAlertIn 200ms ease;
+  padding: 14px 16px;
+  border-radius: var(--ds-r-2);
+  border: 1px solid var(--ds-border-strong);
+  background: var(--dsb-glass-strong);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: var(--ds-shadow-2);
+  animation: peakAlertIn var(--ds-t-fast);
 }
 
 .peakCardCorner {
@@ -3222,8 +3222,8 @@ body {
   transform: translateX(-50%);
 }
 
-.peakCardPeak { color: var(--dsw-static-blue-500); }
-.peakCardOff { color: var(--dsw-static-green-500); }
+.peakCardPeak { color: var(--ds-blue); }
+.peakCardOff { color: var(--ds-cyan); }
 
 /* 头部：档位 tag（圆点 + 名）+ 关闭按钮。 */
 .peakHead {
@@ -3245,11 +3245,11 @@ body {
   font-weight: 600;
   white-space: nowrap;
 }
-.peakTagPrimary { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-static-blue-500); }
-.peakTagSuccess { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-static-green-500); }
+.peakTagPrimary { background: var(--dsw-alias-bg-layer-3); color: var(--ds-blue); }
+.peakTagSuccess { background: var(--dsw-alias-bg-layer-3); color: var(--ds-cyan); }
 .peakDot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
-.peakDotPrimary { background: var(--dsw-static-blue-500); }
-.peakDotSuccess { background: var(--dsw-static-green-500); }
+.peakDotPrimary { background: var(--ds-blue); }
+.peakDotSuccess { background: var(--ds-cyan); }
 
 .peakClose {
   display: inline-flex;
@@ -3259,36 +3259,38 @@ body {
   height: 24px;
   border: 0;
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-3);
   font-size: 15px;
   line-height: 1;
   cursor: pointer;
   border-radius: 6px;
-  transition: background-color 140ms ease, color 140ms ease;
+  transition: background-color var(--ds-t-fast), color var(--ds-t-fast);
 }
 
 .peakClose:hover {
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   background: var(--dsw-alias-bg-layer-2);
 }
 
 /* 大号等宽倒计时：突出剩余分钟。 */
 .peakCount {
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
   font-size: 28px;
-  line-height: 34px;
-  font-weight: 700;
+  line-height: 1;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.peakCountPrimary { color: var(--dsw-static-blue-500); }
-.peakCountSuccess { color: var(--dsw-static-green-500); }
+.peakCountPrimary { color: var(--ds-blue); }
+.peakCountSuccess { color: var(--ds-cyan); }
 
 .peakDesc {
-  margin: 0;
+  margin: 4px 0 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-1);
 }
 
+/* 纯 opacity 入场：center 变体靠 transform: translateX 居中，动画 transform 会覆盖它。 */
 @keyframes peakAlertIn {
   from { opacity: 0; }
   to { opacity: 1; }
