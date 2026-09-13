@@ -2080,7 +2080,7 @@ body {
 
 /* ── 即时代费用条（composer dock）──────────────────────────────────── */
 
-/* 会话 composer 输入框下方的统计条：与宿主 StatsLine 同姿态，一行小字。 */
+/* 会话 composer 输入框下方的统计条：强玻璃胶囊，一行小字。 */
 /* 设计 fee-bar：圆角胶囊条 —— 档位 chip → 倒计时 → 档位说明 → 本轮/会话 → 额度预警 chips。 */
 .feeBar {
   display: inline-flex;
@@ -2088,12 +2088,14 @@ body {
   flex-wrap: wrap;
   gap: 8px;
   padding: 6px 12px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--ds-border-strong);
   border-radius: 999px;
-  background: var(--dsw-alias-bg-layer-3);
+  background: var(--dsb-glass-strong);
+  backdrop-filter: blur(14px) saturate(1.3);
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2130,27 +2132,27 @@ body {
 }
 .feeInlineNum {
   padding-right: 6px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   font-weight: 600;
 }
-.feeInlineAlert { background: color-mix(in srgb, var(--dsw-static-amber-500) 12%, transparent); }
-.feeInlineAlert .feeInlineNum { color: var(--dsw-static-amber-500); }
-.feeInlineError { background: color-mix(in srgb, var(--dsw-static-red-500) 12%, transparent); }
-.feeInlineError .feeInlineNum { color: var(--dsw-static-red-500); }
+.feeInlineAlert { background: color-mix(in srgb, var(--ds-amber) 12%, transparent); }
+.feeInlineAlert .feeInlineNum { color: var(--ds-amber); }
+.feeInlineError { background: color-mix(in srgb, var(--ds-red) 12%, transparent); }
+.feeInlineError .feeInlineNum { color: var(--ds-red); }
 
 /* 分隔符弱化为静音点，费用数字由 .feeNum 承担主视觉（600 主色）。 */
 .feeBar .feeSep {
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--ds-t-4);
 }
 
-.feeCount { color: var(--dsw-alias-label-primary); font-weight: 600; }
-.feeSuffix { color: var(--dsw-alias-label-tertiary); }
-.feeItem { color: var(--dsw-alias-label-secondary); white-space: nowrap; }
+.feeCount { color: var(--ds-t-1); font-weight: 600; }
+.feeSuffix { color: var(--ds-t-3); }
+.feeItem { color: var(--ds-t-2); white-space: nowrap; }
 /* 费用数字：主色 + 600 加重，是这条统计条的视觉锚点。 */
-.feeNum { color: var(--dsw-alias-label-primary); font-weight: 600; }
-.feeSep { color: var(--dsw-alias-label-tertiary); }
+.feeNum { color: var(--ds-t-1); font-weight: 600; }
+.feeSep { color: var(--ds-t-4); }
 
-/* 档位 / 额度预警 chip：小胶囊，状态色 surface 底 + 状态色字。 */
+/* 档位 / 额度预警 chip：小胶囊，--dsb-3 底 + 1px 描边，状态 chip 覆写语义色文字与 30% 语义色描边。 */
 .feeChipPrimary,
 .feeChipOff,
 .feeChipAlert,
@@ -2159,17 +2161,19 @@ body {
   align-items: center;
   height: 20px;
   padding: 0 8px;
+  border: 1px solid var(--ds-border);
   border-radius: 999px;
+  background: var(--dsb-3);
   font-size: 10px;
   line-height: 14px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   font-weight: 600;
 }
-.feeChipPrimary { background: color-mix(in srgb, var(--dsw-static-blue-500) 14%, transparent); color: var(--dsw-static-blue-500); }
-.feeChipOff { background: color-mix(in srgb, var(--dsw-static-green-500) 14%, transparent); color: var(--dsw-static-green-500); }
-.feeChipAlert { background: color-mix(in srgb, var(--dsw-static-amber-500) 16%, transparent); color: var(--dsw-static-amber-500); }
-.feeChipError { background: color-mix(in srgb, var(--dsw-static-red-500) 14%, transparent); color: var(--dsw-static-red-500); }
+.feeChipPrimary { color: var(--ds-blue); border-color: color-mix(in srgb, var(--ds-blue) 30%, transparent); }
+.feeChipOff { color: var(--ds-cyan); border-color: color-mix(in srgb, var(--ds-cyan) 30%, transparent); }
+.feeChipAlert { color: var(--ds-amber); border-color: color-mix(in srgb, var(--ds-amber) 30%, transparent); }
+.feeChipError { color: var(--ds-red); border-color: color-mix(in srgb, var(--ds-red) 30%, transparent); }
 
 /* ── 余额天数提示 ───────────────────────────────────────────────────── */
 
