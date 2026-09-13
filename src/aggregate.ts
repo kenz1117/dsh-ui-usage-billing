@@ -540,6 +540,170 @@ export interface PerfSample {
   estimated: boolean
 }
 
+/**
+ * 会话级性能摘要（per model）：账本持久化形态——替代逐样本持久化，体积
+ * O(模型数) 而非 O(样本数)。计数/求和/极值精确合并；分位数（P50/P90）
+ * 在跨会话合并时按样本数加权（展示级近似）。进程内折叠的会话仍保留
+ * 完整样本（doc 生成走精确插值），仅账本恢复行以摘要参与聚合。
+ */
+export interface PerfModelDigest {
+  /** 样本数。 */
+  samples: number
+  ttftSum: number
+  ttftMax: number
+  ttftSpikes: number
+  ttftP50: number
+  ttftP90: number
+  /** 有可测生成速度的样本数。 */
+  tpsCount: number
+  tpsSum: number
+  /** 有可测总延迟的样本数。 */
+  latencyCount: number
+  latencySum: number
+  /** 以 step/start 估算的样本数。 */
+  estimated: number
+}
+
+/** 会话级 小时×模型 性能摘要（只用均值，合并无损）。 */
+export interface PerfHourDigest {
+  samples: number
+  ttftSum: number
+  tpsCount: number
+  tpsSum: number
+}
+
+/** 全零摘要（合并的恒等元）。 */
+const EMPTY_MODEL_DIGEST: PerfModelDigest = {
+  samples: 0, ttftSum: 0, ttftMax: 0, ttftSpikes: 0, ttftP50: 0, ttftP90: 0,
+  tpsCount: 0, tpsSum: 0, latencyCount: 0, latencySum: 0, estimated: 0,
+}
+
+/** 从样本集构建模型级摘要（样本侧精确：P50/P90 为精确插值）。 */
+function modelDigestOf(samples: readonly PerfSample[]): PerfModelDigest {
+  const ttfts: number[] = []
+  let ttftSum = 0
+  let ttftMax = 0
+  let ttftSpikes = 0
+  let tpsCount = 0
+  let tpsSum = 0
+  let latencyCount = 0
+  let latencySum = 0
+  let estimated = 0
+  for (const sample of samples) {
+    ttfts.push(sample.ttftMs)
+    ttftSum += sample.ttftMs
+    if (sample.ttftMs > ttftMax) ttftMax = sample.ttftMs
+    if (sample.ttftMs > PERF_SPIKE_MS) ttftSpikes += 1
+    if (sample.tps !== undefined) {
+      tpsCount += 1
+      tpsSum += sample.tps
+    }
+    if (sample.latencyMs !== undefined) {
+      latencyCount += 1
+      latencySum += sample.latencyMs
+    }
+    if (sample.estimated) estimated += 1
+  }
+  return {
+    samples: samples.length,
+    ttftSum,
+    ttftMax,
+    ttftSpikes,
+    ttftP50: percentile(ttfts, 0.5),
+    ttftP90: percentile(ttfts, 0.9),
+    tpsCount,
+    tpsSum,
+    latencyCount,
+    latencySum,
+    estimated,
+  }
+}
+
+/** 合并两个模型级摘要：计数/求和/极值精确；分位数按样本数加权。 */
+function mergeModelDigest(a: PerfModelDigest, b: PerfModelDigest): PerfModelDigest {
+  const n = a.samples + b.samples
+  const weighted = (x: number, y: number): number => n === 0 ? 0 : (x * a.samples + y * b.samples) / n
+  return {
+    samples: n,
+    ttftSum: a.ttftSum + b.ttftSum,
+    ttftMax: Math.max(a.ttftMax, b.ttftMax),
+    ttftSpikes: a.ttftSpikes + b.ttftSpikes,
+    ttftP50: weighted(a.ttftP50, b.ttftP50),
+    ttftP90: weighted(a.ttftP90, b.ttftP90),
+    tpsCount: a.tpsCount + b.tpsCount,
+    tpsSum: a.tpsSum + b.tpsSum,
+    latencyCount: a.latencyCount + b.latencyCount,
+    latencySum: a.latencySum + b.latencySum,
+    estimated: a.estimated + b.estimated,
+  }
+}
+
+/** 从样本集构建小时级摘要（均值可无损重建）。 */
+function hourDigestOf(samples: readonly PerfSample[]): PerfHourDigest {
+  let ttftSum = 0
+  let tpsCount = 0
+  let tpsSum = 0
+  for (const sample of samples) {
+    ttftSum += sample.ttftMs
+    if (sample.tps !== undefined) {
+      tpsCount += 1
+      tpsSum += sample.tps
+    }
+  }
+  return { samples: samples.length, ttftSum, tpsCount, tpsSum }
+}
+
+/** 全零小时摘要（合并的恒等元）。 */
+const EMPTY_HOUR_DIGEST: PerfHourDigest = { samples: 0, ttftSum: 0, tpsCount: 0, tpsSum: 0 }
+
+/** 合并两个小时级摘要（纯字段加法，无损）。 */
+function mergeHourDigest(a: PerfHourDigest, b: PerfHourDigest): PerfHourDigest {
+  return {
+    samples: a.samples + b.samples,
+    ttftSum: a.ttftSum + b.ttftSum,
+    tpsCount: a.tpsCount + b.tpsCount,
+    tpsSum: a.tpsSum + b.tpsSum,
+  }
+}
+
+/**
+ * 样本集 → 账本摘要形态（模型 → 摘要；小时 → 模型 → 摘要）。serializeFold
+ * 与账本迁移共用同一转换，两处口径不会漂移。
+ * @param samples - 一个会话的全部性能样本。
+ * @returns `{ byModel, byHourModel }` 的 JSON-safe 记录。
+ */
+function perfDigestsOf(samples: readonly PerfSample[]): {
+  byModel: Record<string, PerfModelDigest>
+  byHourModel: Record<string, Record<string, PerfHourDigest>>
+} {
+  const byModelSamples = new Map<string, PerfSample[]>()
+  const byHourModelSamples = new Map<string, Map<string, PerfSample[]>>()
+  for (const sample of samples) {
+    let modelSamples = byModelSamples.get(sample.model)
+    if (modelSamples === undefined) {
+      modelSamples = []
+      byModelSamples.set(sample.model, modelSamples)
+    }
+    modelSamples.push(sample)
+    let hourModels = byHourModelSamples.get(sample.hour)
+    if (hourModels === undefined) {
+      hourModels = new Map()
+      byHourModelSamples.set(sample.hour, hourModels)
+    }
+    let hourModelSamples = hourModels.get(sample.model)
+    if (hourModelSamples === undefined) {
+      hourModelSamples = []
+      hourModels.set(sample.model, hourModelSamples)
+    }
+    hourModelSamples.push(sample)
+  }
+  return {
+    byModel: Object.fromEntries([...byModelSamples].map(([model, list]) => [model, modelDigestOf(list)])),
+    byHourModel: Object.fromEntries([...byHourModelSamples].map(([hour, models]) =>
+      [hour, Object.fromEntries([...models].map(([model, list]) => [model, hourDigestOf(list)]))])),
+  }
+}
+
 /** 一个 step 的性能时间状态机（keyed `${turn}:${step}`）。 */
 interface StepPerf {
   /** step/start 时刻；无独立请求头时作为 TTFT 估算起点。 */
@@ -572,8 +736,13 @@ export interface SessionFold {
   planCalls: Map<string, number>
   /** 每轮费用明细（按轮次号升序，不含 sessionId）；sessionId 在合并时补齐。 */
   turns: SessionTurnRow[]
-  /** 性能样本（有可测 TTFT 的调用，按事件次序折叠）。 */
+  /** 性能样本（有可测 TTFT 的调用，按事件次序折叠）；仅进程内折叠产生，
+   *  账本恢复行恒为空（其性能在 {@link SessionFold.perfDigest} 里）。 */
   perf: PerfSample[]
+  /** 账本恢复行的模型级性能摘要；进程内折叠恒为空（序列化时从样本构建）。 */
+  perfDigest: Map<string, PerfModelDigest>
+  /** 账本恢复行的小时×模型性能摘要；进程内折叠恒为空。 */
+  perfHourDigest: Map<string, Map<string, PerfHourDigest>>
   /** 角色归因中间量：消息文本长度（user/tool）与输入/输出成本实测拆分。 */
   roles: RoleFold
   /** 日志里最新的 session/title 文本（无标题事件时 undefined）。 */
@@ -609,7 +778,11 @@ export interface SerializedSessionFold {
   unpricedModels: string[]
   planCalls: Record<string, number>
   turns: SessionTurnRow[]
-  perf: PerfSample[]
+  /** v16 起以摘要持久化性能（体积 O(模型数) 而非 O(样本数)）；旧行的
+   *  `perf` 逐样本数组由加载边界迁移转换为摘要。 */
+  perfDigest: Record<string, PerfModelDigest>
+  /** 小时×模型摘要（键 = {@link hourStamp}）；同上由迁移补齐。 */
+  perfHourDigest: Record<string, Record<string, PerfHourDigest>>
   roles: RoleFold
   lastActive: number
 }
@@ -680,7 +853,10 @@ export interface UsageLedgerDocument {
 // （价目页注释 (2) 改写）——pro 目录价由 Flash 价改回 V4 Pro 峰谷刊例，路由分界常量与
 // 显示层覆盖一并移除。v14 及更早的行把 09-14 之后的 pro 按 Flash 价折算（低估数倍），
 // bump 全量重折。
-export const FOLD_VERSION = 15
+// 16：折叠形态变更——性能持久化改摘要（`perf` 逐样本数组 → `perfDigest`/
+// `perfHourDigest`）。归账语义未变，但 stamp 复用旧行会把本可精确插值的活样本
+// 困在近似分位数上；bump 让日志仍在的会话重折，仅日志已删的行留在摘要口径。
+export const FOLD_VERSION = 16
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
@@ -696,7 +872,9 @@ export interface LedgerMigration {
 
 /**
  * 账本迁移注册表。首条迁移给 1.0.6 及更早的行回填 foldVersion = 1（它们全部出自
- * header 归因算法）；此后新写入的行总带当前 {@link FOLD_VERSION}。
+ * header 归因算法）；perf 摘要化迁移把 v15 及更早行的逐样本 `perf` 数组转换为
+ * `perfDigest`/`perfHourDigest` 摘要（日志已删的行不再被重折，迁移是它们唯一的
+ * 收缩机会）；此后新写入的行总带当前 {@link FOLD_VERSION} 与摘要形态。
  */
 export const LEDGER_MIGRATIONS: readonly LedgerMigration[] = [
   {
@@ -706,6 +884,28 @@ export const LEDGER_MIGRATIONS: readonly LedgerMigration[] = [
       for (const session of document.sessions) {
         if (session.foldVersion === undefined) {
           session.foldVersion = 1
+          changed = true
+        }
+      }
+      return changed
+    },
+  },
+  {
+    id: 'perf-sample-to-digest',
+    apply(document) {
+      let changed = false
+      for (const session of document.sessions) {
+        // durable 边界：旧行的 perf 是逐样本数组；已迁移行带摘要记录。
+        const fold = session.fold as Partial<SerializedSessionFold> & { perf?: unknown }
+        if (Array.isArray(fold.perf)) {
+          const { byModel, byHourModel } = perfDigestsOf(fold.perf as PerfSample[])
+          fold.perfDigest = byModel
+          fold.perfHourDigest = byHourModel
+          delete fold.perf
+          changed = true
+        } else if (fold.perfDigest === undefined || fold.perfHourDigest === undefined) {
+          fold.perfDigest ??= {}
+          fold.perfHourDigest ??= {}
           changed = true
         }
       }
@@ -748,6 +948,8 @@ export interface UsageLedgerStore {
 
 /** Serialize Map/Set-heavy fold state into a JSON-safe ledger entry. */
 function serializeFold(fold: SessionFold): SerializedSessionFold {
+  // 性能以摘要持久化（P0-2）：体积 O(模型数+小时×模型数)，逐样本数组不再落盘。
+  const { byModel: perfDigest, byHourModel: perfHourDigest } = perfDigestsOf(fold.perf)
   return {
     total: fold.total,
     byModel: Object.fromEntries(fold.byModel),
@@ -761,7 +963,8 @@ function serializeFold(fold: SessionFold): SerializedSessionFold {
     unpricedModels: [...fold.unpricedModels],
     planCalls: Object.fromEntries(fold.planCalls),
     turns: fold.turns,
-    perf: fold.perf,
+    perfDigest,
+    perfHourDigest,
     roles: fold.roles,
     lastActive: fold.lastActive,
     // 标题随账本持久化：缺失时重启从账本复用的会话明细回退到 id 前缀（用户可读性差）。
@@ -786,7 +989,11 @@ function deserializeFold(fold: SerializedSessionFold): SessionFold {
     unpricedModels: new Set(fold.unpricedModels),
     planCalls: new Map(Object.entries(fold.planCalls)),
     turns: fold.turns,
-    perf: fold.perf,
+    // 账本行无逐样本：性能以摘要形态参与聚合（进程内折叠才保留样本）。
+    perf: [],
+    perfDigest: new Map(Object.entries(fold.perfDigest)),
+    perfHourDigest: new Map(Object.entries(fold.perfHourDigest).map(([hour, models]) =>
+      [hour, new Map(Object.entries(models))])),
     roles: fold.roles,
     lastActive: fold.lastActive,
     ...(fold.title !== undefined ? { title: fold.title } : {}),
@@ -811,7 +1018,8 @@ function ledgerSessionsOf(value: unknown): UsageLedgerSession[] {
       && Array.isArray(fold.unpricedModels)
       && fold.planCalls !== undefined
       && Array.isArray(fold.turns)
-      && Array.isArray(fold.perf)
+      && fold.perfDigest !== undefined
+      && fold.perfHourDigest !== undefined
       && fold.roles !== undefined
       && typeof fold.lastActive === 'number'
   })
@@ -940,6 +1148,8 @@ function freshFold(): SessionFold {
     planCalls: new Map(),
     turns: [],
     perf: [],
+    perfDigest: new Map(),
+    perfHourDigest: new Map(),
     roles: { userChars: 0, toolChars: 0, inputCost: 0, outputCost: 0 },
     lastActive: 0,
   }
@@ -1265,12 +1475,6 @@ function mergeUsageInto(acc: ModelUsage, cell: ModelUsage): void {
   if (cell.searchCalls !== undefined) acc.searchCalls = (acc.searchCalls ?? 0) + cell.searchCalls
 }
 
-/** 均值（数组非空时调用；空数组按 0 兜底）。 */
-function mean(values: number[]): number {
-  if (values.length === 0) return 0
-  return values.reduce((sum, value) => sum + value, 0) / values.length
-}
-
 /** 分位数（0..1）：先拷贝排序，再线性插值；空数组返回 0。 */
 function percentile(values: number[], p: number): number {
   if (values.length === 0) return 0
@@ -1299,6 +1503,57 @@ interface PerfHourAccum {
   tps: number[]
 }
 
+/** 活样本累加器 → 模型级摘要（跨会话合并前先归一到摘要形态）。 */
+function accumToModelDigest(acc: PerfModelAccum): PerfModelDigest {
+  return {
+    samples: acc.ttfts.length,
+    ttftSum: acc.ttfts.reduce((sum, value) => sum + value, 0),
+    ttftMax: acc.ttfts.length === 0 ? 0 : Math.max(...acc.ttfts),
+    ttftSpikes: acc.ttfts.filter(ttft => ttft > PERF_SPIKE_MS).length,
+    ttftP50: percentile(acc.ttfts, 0.5),
+    ttftP90: percentile(acc.ttfts, 0.9),
+    tpsCount: acc.tps.length,
+    tpsSum: acc.tps.reduce((sum, value) => sum + value, 0),
+    latencyCount: acc.latencies.length,
+    latencySum: acc.latencies.reduce((sum, value) => sum + value, 0),
+    estimated: acc.estimated,
+  }
+}
+
+/** 活样本小时累加器 → 小时级摘要。 */
+function accumToHourDigest(acc: PerfHourAccum): PerfHourDigest {
+  return {
+    samples: acc.ttfts.length,
+    ttftSum: acc.ttfts.reduce((sum, value) => sum + value, 0),
+    tpsCount: acc.tps.length,
+    tpsSum: acc.tps.reduce((sum, value) => sum + value, 0),
+  }
+}
+
+/** 模型级摘要 → 面板行（均值由求和/计数派生）。 */
+function modelPerfOf(digest: PerfModelDigest): ModelPerf {
+  return {
+    samples: digest.samples,
+    ttftAvg: digest.samples === 0 ? 0 : digest.ttftSum / digest.samples,
+    ttftP50: digest.ttftP50,
+    ttftP90: digest.ttftP90,
+    ttftMax: digest.ttftMax,
+    ttftSpikes: digest.ttftSpikes,
+    ...(digest.tpsCount === 0 ? {} : { tpsAvg: digest.tpsSum / digest.tpsCount }),
+    latencyAvg: digest.latencyCount === 0 ? 0 : digest.latencySum / digest.latencyCount,
+    estimatedSamples: digest.estimated,
+  }
+}
+
+/** 小时级摘要 → 面板行（均值由求和/计数派生）。 */
+function hourPerfOf(digest: PerfHourDigest): HourModelPerf {
+  return {
+    samples: digest.samples,
+    ttftAvg: digest.samples === 0 ? 0 : digest.ttftSum / digest.samples,
+    ...(digest.tpsCount === 0 ? {} : { tpsAvg: digest.tpsSum / digest.tpsCount }),
+  }
+}
+
 /**
  * 增量聚合器：按会话缓存折叠结果，用日志文件的 mtime+size 作失效键——
  * 日志没动的会话直接复用，只有写过的会话重新折叠；整份文档另有短 TTL
@@ -1310,9 +1565,25 @@ export interface UsageAggregator {
   /** Aggregate current usage, reusing cached per-session folds when their logs are untouched.
    *  并发调用共享同一次进行中的折叠（in-flight 去重），不会多倍全量重读。 */
   aggregate(): Promise<UsageStatsDocument>
+  /**
+   * 按会话 id 取该会话的完整累计用量。doc 的 `byTurn` 封顶（最近 200 轮），
+   * 用户回到旧会话续聊时其轮次已被挤出，从 doc 反推会低估——这里直接读该
+   * 会话的缓存/账本折叠，是该会话的精确值（含联网搜索估算，口径与 total 一致）。
+   * @param sessionId - 会话 id（String(SessionId) 形态，与账本键同口径）。
+   * @returns 会话累计；日志与账本均无该会话时 undefined（调用方自行兜底）。
+   */
+  sessionUsageOf(sessionId: string): Promise<SessionUsageSummary | undefined>
   /** 立刻落盘未保存的账本改动（无视节流），供插件卸载时调用；
    *  进行中的聚合先等完再存，折叠失败仍保存已成功部分。 */
   flush(): Promise<void>
+}
+
+/** 单会话累计用量（{@link UsageAggregator.sessionUsageOf} 的返回）。 */
+export interface SessionUsageSummary {
+  calls: number
+  cost: number
+  input: number
+  output: number
 }
 
 /**
@@ -1652,9 +1923,12 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const workspaceMap = new Map<string, WorkspaceUsageRow>()
       // 角色归因跨会话累加：字符占比与输入/输出成本分别求和后再摊分。
       const roles: RoleFold = { userChars: 0, toolChars: 0, inputCost: 0, outputCost: 0 }
-      // 性能样本跨会话累加（按模型 / 小时分桶，聚合时才算均值/分位）。
+      // 性能：活样本进数组累加器（doc 生成精确插值）；账本恢复行的摘要进
+      // digest 累加器（计数/求和/极值精确，分位数按样本数加权）。
       const perfModel = new Map<string, PerfModelAccum>()
       const perfHourModel = new Map<string, Map<string, PerfHourAccum>>()
+      const perfModelDigest = new Map<string, PerfModelDigest>()
+      const perfHourDigest = new Map<string, Map<string, PerfHourDigest>>()
       for (const { id: sessionId, cwd, fold, staleLedger } of folds) {
         mergeUsageInto(total, fold.total)
         roles.userChars += fold.roles.userChars
@@ -1702,6 +1976,20 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           hourAccum.ttfts.push(sample.ttftMs)
           if (sample.tps !== undefined) hourAccum.tps.push(sample.tps)
         }
+        // 账本恢复行：摘要直并入全局摘要累加器（无样本可展开）。
+        for (const [model, digest] of fold.perfDigest) {
+          perfModelDigest.set(model, mergeModelDigest(perfModelDigest.get(model) ?? EMPTY_MODEL_DIGEST, digest))
+        }
+        for (const [hour, models] of fold.perfHourDigest) {
+          let hourModels = perfHourDigest.get(hour)
+          if (hourModels === undefined) {
+            hourModels = new Map()
+            perfHourDigest.set(hour, hourModels)
+          }
+          for (const [model, digest] of models) {
+            hourModels.set(model, mergeHourDigest(hourModels.get(model) ?? EMPTY_HOUR_DIGEST, digest))
+          }
+        }
         // 每轮明细：跨会话的轮次统一按起始时间倒序（展示最近 N 轮）。
         for (const row of fold.turns) turnRows.push({ sessionId, ...row })
         // 工作区聚合：按 cwd 归并（优先用宿主工作区标题，未注入/未命中回退到末级目录名）。
@@ -1748,25 +2036,34 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           [day, Object.fromEntries([...models].map(([model, sites]) => [model, Object.fromEntries(sites)]))]))
 
       // 性能指标：按模型（含 P90）、按小时×模型聚合；无任何可测样本时整个 perf 字段缺失。
-      const perf: PerfStats | undefined = perfModel.size === 0
+      // 活样本先归一为摘要再与账本恢复行合并——纯活数据下加权合并退化为精确插值
+      // （恒等元权重 0），混合数据下分位数按样本数加权（展示级近似）。
+      const modelKeys = new Set([...perfModel.keys(), ...perfModelDigest.keys()])
+      const hourKeys = new Set([...perfHourModel.keys(), ...perfHourDigest.keys()])
+      const perf: PerfStats | undefined = modelKeys.size === 0 && hourKeys.size === 0
         ? undefined
         : {
-          byModel: Object.fromEntries([...perfModel].map(([model, acc]) => [model, {
-            samples: acc.ttfts.length,
-            ttftAvg: mean(acc.ttfts),
-            ttftP50: percentile(acc.ttfts, 0.5),
-            ttftP90: percentile(acc.ttfts, 0.9),
-            ttftMax: Math.max(...acc.ttfts),
-            ttftSpikes: acc.ttfts.filter(ttft => ttft > PERF_SPIKE_MS).length,
-            ...(acc.tps.length === 0 ? {} : { tpsAvg: mean(acc.tps) }),
-            latencyAvg: acc.latencies.length === 0 ? 0 : mean(acc.latencies),
-            estimatedSamples: acc.estimated,
-          }])),
-          byHourModel: Object.fromEntries([...perfHourModel].map(([hour, models]) => [hour, Object.fromEntries([...models].map(([model, acc]) => [model, {
-            samples: acc.ttfts.length,
-            ttftAvg: mean(acc.ttfts),
-            ...(acc.tps.length === 0 ? {} : { tpsAvg: mean(acc.tps) }),
-          }]))])),
+          byModel: Object.fromEntries([...modelKeys].map((model) => {
+            const live = perfModel.get(model)
+            const restored = perfModelDigest.get(model)
+            const digest = live === undefined
+              ? restored
+              : mergeModelDigest(accumToModelDigest(live), restored ?? EMPTY_MODEL_DIGEST)
+            return digest === undefined ? null : [model, modelPerfOf(digest)]
+          }).filter((entry): entry is [string, ModelPerf] => entry !== null)),
+          byHourModel: Object.fromEntries([...hourKeys].sort().map((hour) => {
+            const liveModels = perfHourModel.get(hour)
+            const digestModels = perfHourDigest.get(hour)
+            const modelKeysInHour = new Set([...liveModels?.keys() ?? [], ...digestModels?.keys() ?? []])
+            return [hour, Object.fromEntries([...modelKeysInHour].map((model) => {
+              const live = liveModels?.get(model)
+              const restored = digestModels?.get(model)
+              const digest = live === undefined
+                ? restored
+                : mergeHourDigest(accumToHourDigest(live), restored ?? EMPTY_HOUR_DIGEST)
+              return digest === undefined ? null : [model, hourPerfOf(digest)]
+            }).filter((entry): entry is [string, HourModelPerf] => entry !== null))]
+          })),
         }
       lastDoc = {
         version: 4,
@@ -1812,6 +2109,24 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       // 触发聚合时共享同一次进行中的折叠，避免多倍全量重读压垮事件循环。
       inflight ??= aggregateOnce().finally(() => { inflight = undefined })
       return inflight
+    },
+    async sessionUsageOf(sessionId: string): Promise<SessionUsageSummary | undefined> {
+      // 先等一次聚合（TTL/并发共享与 aggregate() 同口径）：确保 cache 与
+      // ledger 至少反映最近一次折叠，而非空态。
+      await this.aggregate()
+      const hit = cache.get(sessionId)
+      if (hit !== undefined) {
+        return { calls: hit.fold.total.calls, cost: hit.fold.total.cost, input: hit.fold.total.input, output: hit.fold.total.output }
+      }
+      const row = ledger.get(sessionId)
+      if (row === undefined) return undefined
+      try {
+        const fold = deserializeFold(row.fold)
+        return { calls: fold.total.calls, cost: fold.total.cost, input: fold.total.input, output: fold.total.output }
+      } catch {
+        // 账本行损坏（deserialize 抛错）：视为无数据，调用方走 doc 兜底。
+        return undefined
+      }
     },
     async flush(): Promise<void> {
       // 等进行中的聚合落定（折叠失败也继续保存已成功部分），无视节流落盘。

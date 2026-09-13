@@ -65,7 +65,7 @@ function legacyFold(): UsageLedgerSession['fold'] {
     total,
     byModel: {}, byDay: {}, byDayModels: {}, bySite: {},
     unpricedModels: [], planCalls: {},
-    turns: [], perf: [],
+    turns: [], perfDigest: {}, perfHourDigest: {},
     roles: { userChars: 0, toolChars: 0, inputCost: 0, outputCost: 0 },
     lastActive: 1_000,
   }
@@ -1194,6 +1194,50 @@ describe('createUsageAggregator (incremental cache)', () => {
   })
 })
 
+describe('sessionUsageOf (byTurn cap bypass)', () => {
+  /** 单轮事件对：turn/start + assistant/message（带 usage），seq 递增。 */
+  function turnPair(seq: number, turnNum: number, time: number): SessionEvent[] {
+    return [
+      { type: 'turn/start', seq, time, data: { turn: turnNum } } as unknown as SessionEvent,
+      {
+        type: 'assistant/message', seq: seq + 1, time,
+        data: { turn: turnNum, step: 1, message: { role: 'assistant', content: [] }, usage: USAGE },
+      } as unknown as SessionEvent,
+    ]
+  }
+
+  it('returns the full session total even when its turns fell out of the capped byTurn', async () => {
+    const T0 = Date.UTC(2026, 7, 15, 4, 0, 0)
+    // 会话 a：5 轮（时间最早）；会话 b：205 轮（更晚）——byTurn 封顶 200 行后
+    // a 的轮次被全部挤出，从 doc 反推该会话会得到 0（usage_stats 低估场景）。
+    const a: SessionEvent[] = [header(1, 'deepseek-v4-flash')]
+    for (let i = 0; i < 5; i++) a.push(...turnPair(2 + i * 2, i + 1, T0 + i * 10))
+    const b: SessionEvent[] = [header(1, 'deepseek-v4-flash')]
+    for (let i = 0; i < 205; i++) b.push(...turnPair(2 + i * 2, i + 1, T0 + 100_000 + i * 10))
+    const aggregator = createUsageAggregator(fakePersistence({ a, b }))
+
+    const doc = await aggregator.aggregate()
+    // 前置：a 的轮次确实已被封顶挤出（旧路径在此低估为 0）。
+    expect(doc.byTurn.every(row => row.sessionId === 'b')).toBe(true)
+
+    // 修复后：sessionUsageOf 直读该会话的折叠，返回完整累计（input 口径含缓存桶）。
+    const summary = await aggregator.sessionUsageOf('a')
+    expect(summary).toEqual({
+      calls: 5,
+      cost: expect.any(Number),
+      input: 5 * (USAGE.inputTokens + USAGE.cacheReadTokens + USAGE.cacheWriteTokens),
+      output: 5 * USAGE.outputTokens,
+    })
+    expect(summary?.cost ?? 0).toBeGreaterThan(0)
+  })
+
+  it('answers undefined for a session absent from logs and ledger', async () => {
+    const aggregator = createUsageAggregator(fakePersistence({ a: [header(1, 'deepseek-v4-flash'), message(2, 1_000, USAGE)] }))
+    await aggregator.aggregate()
+    await expect(aggregator.sessionUsageOf('no-such-session')).resolves.toBeUndefined()
+  })
+})
+
 describe('performance aggregation (TTFT / tps / latency)', () => {
   /** Fold-session event row helper (durable-shape cast like the aggregator). */
   const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): SessionEvent =>
@@ -1399,10 +1443,88 @@ describe('LEDGER_MIGRATIONS (fold-version-backfill)', () => {
   it('skips backfill once the migration id is recorded (幂等)', () => {
     const row: UsageLedgerSession = { id: 'already-1', foldVersion: 1, fold: legacyFold() }
     const document = doc([row])
-    document.appliedMigrations = ['fold-version-backfill']
+    // 全部注册迁移均已应用：无行级变更、无新迁移 id 需记录，整体幂等。
+    document.appliedMigrations = ['fold-version-backfill', 'perf-sample-to-digest']
     const changed = runLedgerMigrations(document)
     expect(changed).toBe(false)
     expect(document.sessions[0]?.foldVersion).toBe(1)
+  })
+})
+
+describe('LEDGER_MIGRATIONS (perf-sample-to-digest)', () => {
+  /** 已含 `appliedMigrations: []` 的最简账本文档。 */
+  const doc = (sessions: UsageLedgerSession[]): UsageLedgerDocument => ({
+    version: 1, updatedAt: 1, sessions, appliedMigrations: [],
+  })
+
+  /** v15 及更早的逐样本 `perf` 数组（旧账本行形态）。 */
+  const oldSamples = [
+    { model: 'flash', hour: '2026-08-15T12', ttftMs: 100, tps: 500, latencyMs: 900, estimated: false },
+    { model: 'flash', hour: '2026-08-15T12', ttftMs: 300, estimated: true },
+  ]
+
+  it('converts legacy perf sample arrays into model and hour digests', () => {
+    const fold = { ...legacyFold(), perf: oldSamples } as unknown as UsageLedgerSession['fold']
+    const document = doc([{ id: 'old-row', foldVersion: 15, fold }])
+    const changed = runLedgerMigrations(document)
+    expect(changed).toBe(true)
+    const migrated = document.sessions[0]?.fold
+    // 逐样本数组被移除，摘要字段就位；P50/P90 为样本侧精确插值。
+    expect((migrated as { perf?: unknown }).perf).toBeUndefined()
+    expect(migrated.perfDigest.flash).toEqual({
+      samples: 2, ttftSum: 400, ttftMax: 300, ttftSpikes: 0,
+      ttftP50: 200, ttftP90: 280, tpsCount: 1, tpsSum: 500,
+      latencyCount: 1, latencySum: 900, estimated: 1,
+    })
+    expect(migrated.perfHourDigest['2026-08-15T12']?.flash).toEqual({
+      samples: 2, ttftSum: 400, tpsCount: 1, tpsSum: 500,
+    })
+    expect(document.appliedMigrations).toContain('perf-sample-to-digest')
+  })
+
+  it('skips conversion once the migration id is recorded (幂等)', () => {
+    const fold = { ...legacyFold(), perf: oldSamples } as unknown as UsageLedgerSession['fold']
+    const document = doc([{ id: 'old-row', foldVersion: 15, fold }])
+    document.appliedMigrations = ['fold-version-backfill', 'perf-sample-to-digest']
+    const changed = runLedgerMigrations(document)
+    expect(changed).toBe(false)
+    expect((document.sessions[0]?.fold as { perf?: unknown }).perf).toHaveLength(2)
+  })
+
+  it('fills empty digest fields on rows carrying neither form', () => {
+    // 无 perf 也无摘要的异常行：补空摘要，保持 deserialize 边界的完备性。
+    const fold = legacyFold() as unknown as UsageLedgerSession['fold'] & { perfDigest?: unknown }
+    delete (fold as { perfDigest?: unknown }).perfDigest
+    const document = doc([{ id: 'bare-row', foldVersion: 16, fold }])
+    const changed = runLedgerMigrations(document)
+    expect(changed).toBe(true)
+    expect(document.sessions[0]?.fold.perfDigest).toEqual({})
+    expect(document.sessions[0]?.fold.perfHourDigest).toEqual({})
+  })
+})
+
+describe('perf digest aggregation from restored ledger rows', () => {
+  it('merges digest-only rows into doc perf stats without reading logs', async () => {
+    // 账本恢复行（日志已删）：性能以摘要参与聚合，均值/计数精确。
+    const fold = {
+      ...legacyFold(),
+      perfDigest: {
+        flash: {
+          samples: 2, ttftSum: 400, ttftMax: 300, ttftSpikes: 0,
+          ttftP50: 200, ttftP90: 280, tpsCount: 1, tpsSum: 500,
+          latencyCount: 1, latencySum: 900, estimated: 1,
+        },
+      },
+      perfHourDigest: { '2026-08-15T12': { flash: { samples: 2, ttftSum: 400, tpsCount: 1, tpsSum: 500 } } },
+    }
+    const { store } = fakeLedgerStore([{ id: 'gone-session', stamp: 's1', foldVersion: FOLD_VERSION, fold }])
+    const stats = await aggregateUsage(fakePersistence({}), { ledger: store })
+    expect(stats.perf?.byModel.flash).toMatchObject({
+      samples: 2, ttftAvg: 200, ttftMax: 300, tpsAvg: 500, latencyAvg: 900, estimatedSamples: 1,
+    })
+    expect(stats.perf?.byHourModel['2026-08-15T12']?.flash).toMatchObject({
+      samples: 2, ttftAvg: 200, tpsAvg: 500,
+    })
   })
 })
 

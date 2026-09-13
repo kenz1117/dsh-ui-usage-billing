@@ -392,6 +392,36 @@ export interface PerfSample {
     /** 无独立 request/header，以 step/start 起算（工具续写步骤）。 */
     estimated: boolean;
 }
+/**
+ * 会话级性能摘要（per model）：账本持久化形态——替代逐样本持久化，体积
+ * O(模型数) 而非 O(样本数)。计数/求和/极值精确合并；分位数（P50/P90）
+ * 在跨会话合并时按样本数加权（展示级近似）。进程内折叠的会话仍保留
+ * 完整样本（doc 生成走精确插值），仅账本恢复行以摘要参与聚合。
+ */
+export interface PerfModelDigest {
+    /** 样本数。 */
+    samples: number;
+    ttftSum: number;
+    ttftMax: number;
+    ttftSpikes: number;
+    ttftP50: number;
+    ttftP90: number;
+    /** 有可测生成速度的样本数。 */
+    tpsCount: number;
+    tpsSum: number;
+    /** 有可测总延迟的样本数。 */
+    latencyCount: number;
+    latencySum: number;
+    /** 以 step/start 估算的样本数。 */
+    estimated: number;
+}
+/** 会话级 小时×模型 性能摘要（只用均值，合并无损）。 */
+export interface PerfHourDigest {
+    samples: number;
+    ttftSum: number;
+    tpsCount: number;
+    tpsSum: number;
+}
 /** One persisted session's folded usage plus drill-down metadata. */
 export interface SessionFold {
     total: ModelUsage;
@@ -412,8 +442,13 @@ export interface SessionFold {
     planCalls: Map<string, number>;
     /** 每轮费用明细（按轮次号升序，不含 sessionId）；sessionId 在合并时补齐。 */
     turns: SessionTurnRow[];
-    /** 性能样本（有可测 TTFT 的调用，按事件次序折叠）。 */
+    /** 性能样本（有可测 TTFT 的调用，按事件次序折叠）；仅进程内折叠产生，
+     *  账本恢复行恒为空（其性能在 {@link SessionFold.perfDigest} 里）。 */
     perf: PerfSample[];
+    /** 账本恢复行的模型级性能摘要；进程内折叠恒为空（序列化时从样本构建）。 */
+    perfDigest: Map<string, PerfModelDigest>;
+    /** 账本恢复行的小时×模型性能摘要；进程内折叠恒为空。 */
+    perfHourDigest: Map<string, Map<string, PerfHourDigest>>;
     /** 角色归因中间量：消息文本长度（user/tool）与输入/输出成本实测拆分。 */
     roles: RoleFold;
     /** 日志里最新的 session/title 文本（无标题事件时 undefined）。 */
@@ -447,7 +482,11 @@ export interface SerializedSessionFold {
     unpricedModels: string[];
     planCalls: Record<string, number>;
     turns: SessionTurnRow[];
-    perf: PerfSample[];
+    /** v16 起以摘要持久化性能（体积 O(模型数) 而非 O(样本数)）；旧行的
+     *  `perf` 逐样本数组由加载边界迁移转换为摘要。 */
+    perfDigest: Record<string, PerfModelDigest>;
+    /** 小时×模型摘要（键 = {@link hourStamp}）；同上由迁移补齐。 */
+    perfHourDigest: Record<string, Record<string, PerfHourDigest>>;
     roles: RoleFold;
     lastActive: number;
 }
@@ -491,7 +530,7 @@ export interface UsageLedgerDocument {
  * 会话费用只剩最近一段，issue #29）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export declare const FOLD_VERSION = 15;
+export declare const FOLD_VERSION = 16;
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
  * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并
@@ -505,7 +544,9 @@ export interface LedgerMigration {
 }
 /**
  * 账本迁移注册表。首条迁移给 1.0.6 及更早的行回填 foldVersion = 1（它们全部出自
- * header 归因算法）；此后新写入的行总带当前 {@link FOLD_VERSION}。
+ * header 归因算法）；perf 摘要化迁移把 v15 及更早行的逐样本 `perf` 数组转换为
+ * `perfDigest`/`perfHourDigest` 摘要（日志已删的行不再被重折，迁移是它们唯一的
+ * 收缩机会）；此后新写入的行总带当前 {@link FOLD_VERSION} 与摘要形态。
  */
 export declare const LEDGER_MIGRATIONS: readonly LedgerMigration[];
 /**
@@ -560,9 +601,24 @@ export interface UsageAggregator {
     /** Aggregate current usage, reusing cached per-session folds when their logs are untouched.
      *  并发调用共享同一次进行中的折叠（in-flight 去重），不会多倍全量重读。 */
     aggregate(): Promise<UsageStatsDocument>;
+    /**
+     * 按会话 id 取该会话的完整累计用量。doc 的 `byTurn` 封顶（最近 200 轮），
+     * 用户回到旧会话续聊时其轮次已被挤出，从 doc 反推会低估——这里直接读该
+     * 会话的缓存/账本折叠，是该会话的精确值（含联网搜索估算，口径与 total 一致）。
+     * @param sessionId - 会话 id（String(SessionId) 形态，与账本键同口径）。
+     * @returns 会话累计；日志与账本均无该会话时 undefined（调用方自行兜底）。
+     */
+    sessionUsageOf(sessionId: string): Promise<SessionUsageSummary | undefined>;
     /** 立刻落盘未保存的账本改动（无视节流），供插件卸载时调用；
      *  进行中的聚合先等完再存，折叠失败仍保存已成功部分。 */
     flush(): Promise<void>;
+}
+/** 单会话累计用量（{@link UsageAggregator.sessionUsageOf} 的返回）。 */
+export interface SessionUsageSummary {
+    calls: number;
+    cost: number;
+    input: number;
+    output: number;
 }
 /**
  * 聚合配置指纹：影响折叠语义的全部配置（订阅豁免、官方名单、路由别名、搜索估值）

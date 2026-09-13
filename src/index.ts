@@ -201,8 +201,10 @@ const DEFAULT_BALANCE_API_KEY_ENV = 'DEEPSEEK_API_KEY'
  */
 const PACKAGE_VERSION = (createRequire(import.meta.url)('../package.json') as { version?: string }).version ?? '0.0.0'
 
-/** 统计快照的落盘节流（毫秒）：前端 30 秒轮询，快照最多每 30 秒写一次。 */
-const SNAPSHOT_INTERVAL_MS = 30_000
+/** 统计快照的落盘节流（毫秒）：快照只服务聚合失败回退与重启首屏（展示级
+ *  新鲜度即可），降到 5 分钟一次——原子写含上一版备份是两次全量 JSON 落盘，
+ *  重度用户快照上百 KB，跟随前端轮询 30 秒写一次纯属写放大。 */
+const SNAPSHOT_INTERVAL_MS = 300_000
 
 /** usage-stats 响应的等待预算（毫秒）：聚合在此预算内完成就回实时数据，
  *  超预算立即回最近快照（stale-while-revalidate），后台折叠继续跑。
@@ -790,10 +792,13 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
           }
           return { range: args.range, cost, calls, input, output }
         }
-        // session：按当前会话 id 从每轮明细汇总（byTurn 封顶 200 行，当前会话
-        // 恒为最近轮次，覆盖完整）。
+        // session：直接从聚合器读该会话的完整折叠——doc 的 byTurn 封顶 200 行，
+        // 用户回到旧会话续聊时其轮次已被最近轮次挤出，遍历 byTurn 会低估。
         const sessionId = exec.agent?.id
         if (sessionId === undefined) throw new Error('usage_stats 的 session 范围需要 agent 会话上下文')
+        const summary = await aggregator.sessionUsageOf(String(sessionId))
+        if (summary !== undefined) return { range: args.range, ...summary }
+        // 兜底：日志与账本均无该会话（理论仅发生在日志与账本同时缺失时），回退 doc 遍历。
         let cost = 0
         let calls = 0
         let input = 0

@@ -698,6 +698,10 @@ const RELAY_PATH = '/api/billing/relay-quotas'
 /** 弹窗打开期间统计与定价的自动刷新间隔（毫秒）。 */
 const STATS_REFRESH_INTERVAL_MS = 30_000
 
+/** 弹窗关闭后的统计刷新间隔（毫秒）：侧栏触发器只需大致最新值，降到 5 分钟
+ *  省宿主聚合（每轮都是折叠 + 五个端点的串行响应）。 */
+const STATS_REFRESH_CLOSED_MS = 300_000
+
 /**
  * 本地时区（北京时间）日期戳：与服务端聚合的 dayStamp 一致。不要用
  * `toISOString()`——那是 UTC，北京时间的凌晨 0-8 点会取到前一天。
@@ -3603,14 +3607,33 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     void loadLivePricing()
   }, [reloadStats])
 
-  // 常驻定时刷新统计与定价：左下角触发器与弹窗都保持最新，无需退出重进。
+  // 页面可见性：隐藏时暂停常驻轮询（后台标签页不该持续打宿主聚合），恢复
+  // 可见时立即补一次刷新再回到节拍。jsdom 之外无 document 的环境视为可见。
+  const [visible, setVisible] = useState(() => typeof document === 'undefined' || !document.hidden)
   useEffect(() => {
+    if (typeof document === 'undefined') return
+    const onVisibility = (): void => {
+      setVisible(!document.hidden)
+      // 重新可见：立即补一次（隐藏期间可能错过多个节拍）。
+      if (!document.hidden) {
+        void reloadStats()
+        void loadLivePricing()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { document.removeEventListener('visibilitychange', onVisibility) }
+  }, [reloadStats])
+
+  // 常驻定时刷新统计与定价：左下角触发器与弹窗都保持最新，无需退出重进。
+  // 弹窗打开 30s（用户正看，新鲜度优先）；关闭后降到 5 分钟；页面隐藏暂停。
+  useEffect(() => {
+    if (!visible) return
     const timer = setInterval(() => {
       void reloadStats()
       void loadLivePricing()
-    }, STATS_REFRESH_INTERVAL_MS)
+    }, open ? STATS_REFRESH_INTERVAL_MS : STATS_REFRESH_CLOSED_MS)
     return () => { clearInterval(timer) }
-  }, [reloadStats])
+  }, [reloadStats, open, visible])
 
   // Probe connected models: the sidebar dot turns green when any provider
   // answers its model catalog (live credentials), red when none do. 探活的
