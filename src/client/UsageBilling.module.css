@@ -444,20 +444,19 @@ body {
 
 /* ── Dashboard modal ────────────────────────────────────────────────── */
 
-/* 实底弹窗：1px 边框 + 阴影，向设计「modal」的干净浅底卡片看齐（radius-16）。 */
+/* 实底弹窗：强描边 + --ds-shadow-2，向设计「modal」的干净浅底卡片看齐（radius-16）。 */
 .dashboardModal {
   width: min(760px, calc(100vw - 48px));
   max-height: min(760px, 88vh);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 14px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
-  background: var(--dsw-alias-bg-layer-1);
-  box-shadow: 0 12px 32px -12px rgb(0 0 0 / 0.18), 0 2px 8px rgb(0 0 0 / 0.06);
-  animation: dashboardIn 180ms ease-out;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-r-3);
+  background: var(--dsb-2);
+  box-shadow: var(--ds-shadow-2);
+  animation: dashboardIn 160ms ease-out;
 }
 
 @keyframes dashboardIn {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
   to { opacity: 1; transform: none; }
 }
 
@@ -480,7 +479,7 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 18px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 1px solid var(--ds-border);
 }
 
 .dashboardTitle {
@@ -488,14 +487,14 @@ body {
   font-size: 14px;
   line-height: 20px;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
 }
 
 .dashboardSubtitle {
   margin: 2px 0 0;
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--ds-t-3);
 }
 
 .closeButton {
@@ -505,17 +504,17 @@ body {
   width: 32px;
   height: 32px;
   flex: none;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 8px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-1);
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
   cursor: pointer;
-  transition: background-color 140ms ease, color 140ms ease;
+  transition: background-color var(--ds-t-fast), color var(--ds-t-fast);
 }
 
 .closeButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--dsb-3);
+  color: var(--ds-t-1);
 }
 
 .closeButton svg {
@@ -540,54 +539,57 @@ body {
   gap: 16px;
   flex-wrap: wrap;
   padding: 8px 18px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-top: 1px solid var(--ds-border);
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--ds-t-3);
 }
 
 /* ── Tab 导航（概览 / 明细 / 用量 / 趋势 / 费率 / 设置） ────────────── */
 
-/* 分段控件：整条浅底胶囊组，激活段以实底浮起，分段感一眼可辨。 */
+/* 分段控件：内嵌轨道（--dsb 更深一档），激活段以 --dsb-3 实底 + 1px 内描边浮起。 */
 .tabNav {
   display: flex;
   align-items: center;
   gap: 4px;
   margin: 14px 24px 0;
   padding: 4px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-1);
+  background: var(--dsb);
 }
 
 .tabButton {
   border: none;
-  border-radius: 7px;
-  padding: 6px 14px;
+  border-radius: 6px;
+  padding: 6px 12px;
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 13px;
-  line-height: 20px;
+  color: var(--ds-t-3);
+  font-size: 12px;
+  line-height: 16px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 160ms ease, color 160ms ease;
+  transition: background-color var(--ds-t-fast), color var(--ds-t-fast), box-shadow var(--ds-t-fast);
 }
 
-.tabButton:hover,
+.tabButton:hover {
+  color: var(--ds-t-2);
+}
+
 .tabButton:focus-visible {
-  color: var(--dsw-alias-label-primary);
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-3) 62%, transparent);
+  color: var(--ds-t-2);
+  box-shadow: 0 0 0 1px var(--ds-border-strong);
   outline: none;
 }
 
-/* 激活段：弹窗底色实底 + 轻投影浮起，替代下划线分段语言。 */
+/* 激活段：--dsb-3 实底 + 1px 内描边，替代下划线分段语言。 */
 .tabButtonActive,
 .tabButtonActive:hover,
 .tabButtonActive:focus-visible {
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
+  background: var(--dsb-3);
+  color: var(--ds-t-1);
   font-weight: 600;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  box-shadow: 0 0 0 1px var(--ds-border-strong) inset;
 }
 
 /* Tab 内容分区：切换时 140ms 淡入上移。 */
@@ -650,18 +652,30 @@ body {
 
 /* ── Hero ───────────────────────────────────────────────────────────── */
 
-/* 本月费用大卡：向设计「hero」中性卡片看齐——次级浅底 + 1px 边框 + radius-12，
-   去除产品化的液晶屏渐变，收敛为一个干净的读数卡。 */
+/* 本月费用大卡：强玻璃表面 + 1px 边框 + radius-16，顶部 1.5px 金光饰条。 */
 .hero {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 18px 20px;
   overflow: hidden;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-3);
+  background: var(--dsb-glass-strong);
+}
+
+/* 金光流光饰条：Hero 专属，amber 渐变 65% 透明度，不拦截指针。 */
+.hero::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent 10%, var(--ds-amber) 50%, transparent 90%);
+  opacity: 0.65;
+  pointer-events: none;
 }
 
 /* 顶部：左侧液晶读数 + 右侧环形仪表盘，同排。 */
@@ -682,57 +696,59 @@ body {
 
 /* 标签：大写小字距，与 KPI 卡标签同一「仪表标注」口径。 */
 .heroLabel {
-  font-size: 10px;
-  line-height: 14px;
+  font-size: 11px;
+  line-height: 15px;
   font-weight: 500;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--ds-t-3);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   white-space: nowrap;
 }
 
-/* 读数：单位小号、数字超大，等宽数码感（设计 hero__amount 40px 口径）。 */
+/* 读数：单位小号、数字超大，等宽数码感（设计 hero__amount 52px 口径）。 */
 .heroReadout {
   display: flex;
   align-items: baseline;
   gap: 4px;
 }
 
-/* 币种符号：小号，弱化为读数前缀，突出右侧主数字。 */
+/* 币种符号：中号，弱化为读数前缀，突出右侧主数字。 */
 .heroCurrency {
-  font-size: 15px;
-  line-height: 20px;
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 22px;
+  line-height: 26px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
   font-variant-numeric: tabular-nums;
 }
 
-/* 本月主数字：28px 等宽数字 —— 弹窗空间有限，主锚点靠字重与灰度对比而非尺寸堆叠。 */
+/* 本月主数字：52px 等宽（规格 huge 级，仅概览出现一次），主锚点靠尺寸与灰度对比。 */
 .heroValue {
-  font-size: 28px;
-  line-height: 34px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 52px;
+  line-height: 56px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
 }
 
 .heroMeta {
   margin-top: 2px;
-  font-size: 11px;
-  line-height: 15px;
-  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ds-t-2);
   white-space: nowrap;
 }
 
-/* 环形仪表盘：中心百分比 + 标签，SVG viewBox 120 等比缩放，容器 72px 紧凑档。 */
+/* 环形预算环：中心百分比 + 标签，SVG viewBox 120 等比缩放，容器 96px 档。 */
 .heroGauge {
   position: relative;
   flex: none;
-  width: 72px;
-  height: 72px;
+  width: 96px;
+  height: 96px;
 }
 
 .heroGaugeSvg {
@@ -744,20 +760,20 @@ body {
 
 .heroGaugeTrack {
   fill: none;
-  stroke: var(--dsw-alias-bg-module-platform);
+  stroke: var(--dsb-3);
   stroke-width: 7;
 }
 
 .heroGaugeArc {
   fill: none;
-  stroke: var(--dsw-static-blue-500);
+  stroke: var(--ds-blue);
   stroke-width: 7;
   stroke-linecap: round;
-  transition: stroke-dasharray 260ms ease;
+  transition: stroke-dasharray var(--ds-t-fast);
 }
 
 .heroGaugeArcOver {
-  stroke: var(--dsw-static-red-500);
+  stroke: var(--ds-red);
 }
 
 .heroGaugeCenter {
@@ -771,22 +787,23 @@ body {
 }
 
 .heroGaugePct {
-  font-size: 14px;
-  line-height: 18px;
-  font-weight: 700;
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 28px;
+  line-height: 30px;
+  font-weight: 600;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
 }
 
 .heroGaugePctOver {
-  color: var(--dsw-static-red-500);
+  color: var(--ds-red);
 }
 
 .heroGaugeLabel {
-  font-size: 9px;
-  line-height: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--ds-t-3);
 }
 
 /* 底部预算进度条：设计 Hero 的预算行——标签 + 进度 + 「已用/总额 · 百分比」。
@@ -796,14 +813,14 @@ body {
   align-items: center;
   gap: 14px;
   padding-top: 14px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-top: 1px solid var(--ds-border);
 }
 
 .heroBudgetLabel {
   flex: none;
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
   white-space: nowrap;
 }
 
@@ -813,25 +830,26 @@ body {
   height: 6px;
   overflow: hidden;
   border-radius: 999px;
-  background: var(--dsw-alias-border-l1);
+  background: var(--dsb-3);
 }
 
 .heroBudgetFill {
   height: 100%;
   border-radius: 999px;
-  background: var(--dsw-static-blue-500);
-  transition: width 220ms ease;
+  background: var(--ds-blue);
+  transition: width var(--ds-t-fast);
 }
 
 .heroBudgetFillOver {
-  background: var(--dsw-static-red-500);
+  background: var(--ds-red);
 }
 
 .heroBudgetValue {
   flex: none;
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -841,7 +859,7 @@ body {
   display: flex;
   align-items: stretch;
   padding-top: 12px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-top: 1px solid var(--ds-border);
 }
 
 .heroSideItem {
@@ -852,7 +870,7 @@ body {
   min-width: 0;
   padding-left: 14px;
   /* 设计「副行分隔」：分隔项间以细竖线区隔，替代纯留白。 */
-  border-left: 1px solid var(--dsw-alias-border-l1);
+  border-left: 1px solid var(--ds-border);
 }
 
 .heroSideItem:first-child {
@@ -863,7 +881,7 @@ body {
 .heroSideLabel {
   font-size: 10px;
   line-height: 13px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--ds-t-3);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 500;
@@ -874,10 +892,11 @@ body {
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
   font-size: 15px;
   line-height: 20px;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   white-space: nowrap;
@@ -904,13 +923,13 @@ body {
 }
 
 .deltaUp {
-  color: var(--dsw-static-green-500);
-  background: color-mix(in srgb, var(--dsw-static-green-500) 12%, transparent);
+  color: var(--ds-green);
+  background: color-mix(in srgb, var(--ds-green) 12%, transparent);
 }
 
 .deltaDown {
-  color: var(--dsw-static-red-500);
-  background: color-mix(in srgb, var(--dsw-static-red-500) 12%, transparent);
+  color: var(--ds-red);
+  background: color-mix(in srgb, var(--ds-red) 12%, transparent);
 }
 
 /* 未计价模型提示条：Hero 与 KPI 之间的轻量警告，琥珀低饱和，不打断视觉流。 */
@@ -932,7 +951,7 @@ body {
 .kpiGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 12px;
 }
 
 .kpiTile {
@@ -940,45 +959,48 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 12px;
+  padding: 14px 16px;
   overflow: hidden;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-2);
-  transition: border-color 160ms ease;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-2);
+  background: var(--dsb-glass);
+  transition: border-color var(--ds-t-fast);
 }
 
 .kpiTile:hover {
-  border-color: var(--dsw-alias-border-l2);
+  border-color: var(--ds-border-strong);
 }
 
 .kpiLabel {
-  font-size: 10px;
-  line-height: 13px;
-  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--ds-t-3);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   font-weight: 500;
 }
 
-/* KPI 值：16px 次级读数 —— 与 hero 28px 主锚点拉开两级，弹窗内不做第二层大数字。 */
+/* KPI 值：22px 等宽读数 —— 与 hero 52px 主锚点拉开两级，弹窗内不做第二层大数字。 */
 .kpiValue {
-  font-size: 16px;
-  line-height: 22px;
-  font-weight: 650;
-  color: var(--dsw-alias-label-primary);
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 22px;
+  line-height: 26px;
+  font-weight: 600;
+  margin-top: 6px;
+  color: var(--ds-t-1);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
 
 .kpiGreen {
-  color: var(--dsw-static-green-500);
+  color: var(--ds-green);
 }
 
 .kpiDetail {
-  font-size: 10.5px;
-  line-height: 14px;
-  color: var(--dsw-alias-label-caption);
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--ds-t-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2695,30 +2717,32 @@ body {
 .heatmapGrid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 8px;
+  gap: 3px;
 }
 
-/* 灰色占位卡（上月补位 / 未来日期 / 下月补位）：浅灰底 + 灰数字。 */
+/* 空格子（上月补位 / 未来日期 / 下月补位）：透明底 + 1px 虚线描边 + 灰数字。 */
 .heatmapCellEmpty {
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   height: 30px;
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-dimmed);
+  border: 1px dashed var(--ds-border);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ds-t-4);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
-/* 当日卡片：横向圆角矩形，数字居中；背景色按强度 level 内联覆盖。 */
+/* 当日卡片：小圆角方块，数字居中；背景色按强度 level 内联覆盖。 */
 .heatmapCell {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 30px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 2px;
   padding: 0;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -2755,11 +2779,12 @@ body {
   display: block;
   width: 14px;
   height: 14px;
-  border-radius: 4px;
+  border-radius: 2px;
 }
 
 .heatmapHover {
   margin-left: auto;
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2773,18 +2798,18 @@ body {
 
 .heatmapRangeButton {
   padding: 2px 8px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 1px solid var(--ds-border);
   border-radius: 6px;
   background: transparent;
-  color: var(--dsw-alias-text-secondary);
+  color: var(--ds-t-2);
   font-size: 11px;
   line-height: 1.4;
   cursor: pointer;
 }
 
 .heatmapRangeButtonActive {
-  border-color: currentColor;
-  color: var(--dsw-alias-text-primary);
+  border-color: var(--ds-border-strong);
+  color: var(--ds-t-1);
   font-weight: 600;
 }
 
@@ -2808,7 +2833,7 @@ body {
   flex: none;
   padding-top: 12px;
   font-size: 9px;
-  color: var(--dsw-alias-text-tertiary);
+  color: var(--ds-t-3);
   line-height: 11px;
 }
 
@@ -2825,7 +2850,7 @@ body {
   gap: 3px;
   min-width: max-content;
   font-size: 9px;
-  color: var(--dsw-alias-text-tertiary);
+  color: var(--ds-t-3);
   line-height: 12px;
   overflow: visible;
 }

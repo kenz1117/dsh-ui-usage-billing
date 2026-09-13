@@ -36,11 +36,11 @@ interface Cell {
 }
 
 const LEVEL_COLORS: readonly string[] = [
-  'var(--dsw-alias-bg-layer-2)',
-  'color-mix(in srgb, var(--dsw-static-green-500) 22%, var(--dsw-alias-bg-layer-2))',
-  'color-mix(in srgb, var(--dsw-static-green-500) 45%, var(--dsw-alias-bg-layer-2))',
-  'color-mix(in srgb, var(--dsw-static-green-500) 70%, var(--dsw-alias-bg-layer-2))',
-  'var(--dsw-static-green-500)',
+  'color-mix(in srgb, var(--ds-blue) 10%, var(--dsb-3))',
+  'color-mix(in srgb, var(--ds-blue) 30%, var(--dsb-3))',
+  'color-mix(in srgb, var(--ds-blue) 60%, var(--dsb-3))',
+  'color-mix(in srgb, var(--ds-blue) 90%, var(--dsb-3))',
+  'var(--ds-blue)',
 ]
 
 /** 月份缩写（年度热力图横轴标签，GitHub 风格）。 */
