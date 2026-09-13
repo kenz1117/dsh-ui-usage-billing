@@ -20,7 +20,7 @@ import { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { formatMoney, formatSwitchCountdown, tierCountdown } from './pricing.ts'
+import { formatMoney, formatSwitchCountdown, channelCountdown, rateChannelOf, tierCountdown, type RateChannel } from './pricing.ts'
 import { LIVE_COST_BAR_PREF_EVENT, loadLiveCostBarPrefs } from './usage-billing-settings.ts'
 import type { LiveCostBarPrefs } from './usage-billing-settings.ts'
 import type { UsageBillingKey } from './locales.ts'
@@ -29,7 +29,7 @@ import css from './UsageBilling.module.css'
 /** The usage-stats shape the composer bar needs (a thin slice, not the whole doc). */
 export interface LiveStats {
   bySession?: readonly { id: string; cost: number }[]
-  byTurn?: readonly { sessionId: string; turn: number; cost: number }[]
+  byTurn?: readonly { sessionId: string; turn: number; model?: string; cost: number }[]
 }
 
 /** 订阅额度的薄切片（/api/billing/subscriptions 响应的行）。 */
@@ -93,6 +93,27 @@ export function lowQuotaChips(
     }
   }
   return chips.sort((a, b) => a.pct - b.pct).slice(0, 3)
+}
+
+/**
+ * 当前会话最近一轮的模型（峰谷窗口跟随它）：byTurn 里该会话轮次号最大的 model。
+ * 导出供测试：纯函数。
+ * @param stats - 薄统计切片。
+ * @param sessionId - 当前会话 id。
+ * @returns 该会话最近一轮的归因模型键；无轮次或轮行未带模型时 undefined。
+ */
+export function sessionModelOf(stats: LiveStats | null, sessionId: string | undefined): string | undefined {
+  if (sessionId === undefined || stats?.byTurn === undefined) return undefined
+  let latestTurn = -1
+  let model: string | undefined
+  for (const item of stats.byTurn) {
+    if (item.sessionId !== sessionId) continue
+    if (latestTurn === -1 || item.turn > latestTurn) {
+      latestTurn = item.turn
+      model = item.model
+    }
+  }
+  return model
 }
 
 /** Endpoint the node half serves (same constant the dashboard uses). */
@@ -180,7 +201,7 @@ function useLiveCostPrefs(): { visible: boolean; position: CapsulePosition } {
 function useLiveCostData(sessionId: SessionId): {
   sessionCost: number
   turnCost: number
-  tier: ReturnType<typeof tierCountdown>
+  tier: ReturnType<typeof tierCountdown> | null
   chips: ReturnType<typeof lowQuotaChips>
 } {
   const [stats, setStats] = useState<LiveStats | null>(null)
@@ -209,8 +230,14 @@ function useLiveCostData(sessionId: SessionId): {
   // 当前会话累计费用与当前轮费用：由纯函数派生，便于测试。
   const sessionCost = useMemo(() => sessionCostOf(stats, sessionId), [stats, sessionId])
   const turnCost = useMemo(() => turnCostOf(stats, sessionId), [stats, sessionId])
-  const tier = tierCountdown(nowMs)
+  // 峰谷窗口跟随当前会话最近一轮的模型：DeepSeek 按量分时；智谱模型在持有
+  // Z.ai Coding Plan（status ok）时走积分分时；其余模型 null——档位 UI 整段隐藏。
   const chips = useMemo(() => lowQuotaChips(quotas), [quotas])
+  const channel: RateChannel = useMemo(
+    () => rateChannelOf(sessionModelOf(stats, sessionId), quotas.some(q => q.displayName === 'Z.ai Coding Plan' && q.status === 'ok')),
+    [stats, sessionId, quotas],
+  )
+  const tier = useMemo(() => channelCountdown(nowMs, channel), [nowMs, channel])
   return { sessionCost, turnCost, tier, chips }
 }
 
@@ -225,7 +252,8 @@ export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode
   const money = (cny: number): string => formatMoney(cny, 'cny')
 
   const hasCost = sessionCost > 0 || turnCost > 0
-  const isPeak = tier.tier === 'peak'
+  // 档位 chip 仅在当前会话模型涉及峰谷时渲染（tier 非 null）；倒计时随之隐藏。
+  const isPeak = tier?.tier === 'peak'
   // 设置 Tab 里关闭「平价消耗胶囊」或切到工具行 chip 后，整条不渲染
   // （dock 槽位对 null 子元素安全，纯显隐门控：数据轮询与统计口径不受影响）。
   if (!visible || position === 'toolbar') return null
@@ -237,11 +265,15 @@ export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode
       className={position === 'above' ? clsx(css.feeBar, css.feeBarAbove) : css.feeBar}
       data-testid="billing-live-cost-bar"
     >
-      <span className={isPeak ? css.feeChipPrimary : css.feeChipOff} data-testid="billing-live-tier">
-        {isPeak ? t('tierPeak') : t('tierOff')}
-      </span>
-      <span className={css.feeCount}>{formatSwitchCountdown(tier.nextSwitchInMs)}</span>
-      <span className={css.feeSuffix}>{isPeak ? t('tierToOff') : t('tierToPeak')}</span>
+      {tier !== null && (
+        <>
+          <span className={isPeak ? css.feeChipPrimary : css.feeChipOff} data-testid="billing-live-tier">
+            {isPeak ? t('tierPeak') : t('tierOff')}
+          </span>
+          <span className={css.feeCount}>{formatSwitchCountdown(tier.nextSwitchInMs)}</span>
+          <span className={css.feeSuffix}>{isPeak ? t('tierToOff') : t('tierToPeak')}</span>
+        </>
+      )}
       {hasCost && (
         <>
           <span className={css.feeSep} aria-hidden="true">·</span>
@@ -281,12 +313,15 @@ export function LiveCostChip({ sessionId, t }: LiveCostBarProps): React.ReactNod
   const { sessionCost, turnCost, tier, chips } = useLiveCostData(sessionId)
   // 非工具行位置时 chip 让位给 bar（同 id 双槽互斥由位置偏好门控）。
   if (!visible || position !== 'toolbar') return null
-  const isPeak = tier.tier === 'peak'
-  // 额度预警压到 chip 上：最紧张的一档决定颜色（error > alert > normal）。
+  // 档位小徽章仅在当前会话模型涉及峰谷时渲染；额度预警压到 chip 上：
+  // 最紧张的一档决定颜色（error > alert > normal）。
+  const isPeak = tier?.tier === 'peak'
   const worst = chips.reduce<number>((min, c) => Math.min(min, c.pct), 100)
   const cls = worst <= 10 ? css.feeInlineError : worst <= 20 ? css.feeInlineAlert : css.feeInline
   const title = [
-    `${formatSwitchCountdown(tier.nextSwitchInMs)} ${isPeak ? t('tierToOff') : t('tierToPeak')}`,
+    ...(tier !== null
+      ? [`${formatSwitchCountdown(tier.nextSwitchInMs)} ${isPeak ? t('tierToOff') : t('tierToPeak')}`]
+      : []),
     `${t('liveTurn')} ${formatMoney(turnCost, 'cny')}`,
     `${t('liveSession')} ${formatMoney(sessionCost, 'cny')}`,
     ...chips.map(chip => `${chip.name} ${t(windowLabelKey(chip.kind))} ${chip.pct}%`),
@@ -294,9 +329,11 @@ export function LiveCostChip({ sessionId, t }: LiveCostBarProps): React.ReactNod
   return (
     <Tooltip label={title} side="top" delayMs={500}>
       <span className={cls} data-testid="billing-live-cost-chip" role="note" aria-label={title}>
-        <span className={isPeak ? css.feeChipPrimary : css.feeChipOff} data-testid="billing-live-tier">
-          {isPeak ? t('tierPeak') : t('tierOff')}
-        </span>
+        {tier !== null && (
+          <span className={isPeak ? css.feeChipPrimary : css.feeChipOff} data-testid="billing-live-tier">
+            {isPeak ? t('tierPeak') : t('tierOff')}
+          </span>
+        )}
         {sessionCost > 0 && <span className={css.feeInlineNum}>{formatMoney(sessionCost, 'cny')}</span>}
       </span>
     </Tooltip>

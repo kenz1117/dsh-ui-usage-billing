@@ -7,7 +7,7 @@
  * `lastTierSwitchAt` 承担（与原系统通知共用一份去重，避免一条切换提醒弹两次）。
  */
 
-import { upcomingTierSwitch, type PriceTierId } from './pricing.ts'
+import { channelUpcomingSwitch, type PriceTierId, type RateChannel } from './pricing.ts'
 
 /** 提醒模式：只提醒进入峰时 / 只提醒进入平价 / 峰与谷都提醒。 */
 export type PeakAlertMode = 'peak' | 'offPeak' | 'both'
@@ -41,10 +41,11 @@ export const DEFAULT_PEAK_ALERT_CONFIG: PeakAlertConfig = {
   mode: 'both',
 }
 
-/** 一次命中：即将进入的档位与该切换时刻。 */
+/** 一次命中：即将进入的档位、该切换时刻与命中的计费通道（决定文案口径）。 */
 export interface PeakAlertHit {
   entering: PriceTierId
   atMs: number
+  channel: RateChannel
 }
 
 /** 读取本地偏好（缺失/损坏回退默认，字段宽松校验）。 */
@@ -79,19 +80,22 @@ export function savePeakAlertConfig(config: PeakAlertConfig): void {
 }
 
 /**
- * 计算是否需要提醒：已启用、距切换不足提前量、按模式过滤、且该切换点未提醒过。
+ * 计算是否需要提醒：已启用、当前计费通道有峰谷窗口、距切换不足提前量、按模式过滤、
+ * 且该切换点未提醒过。通道由调用方按「当前会话最近一轮的模型 + 订阅状态」推导
+ * （rateChannelOf）；none（模型不涉及峰谷）恒不提醒。
  * 导出供测试：纯函数。
  * @param nowMs - 当前时刻（epoch 毫秒）。
  * @param config - 峰谷提醒偏好。
  * @param lastAlertedAt - 上次提醒过的切换点时刻（budget store 的 lastTierSwitchAt）；同点跳过。
- * @returns 命中（含即将进入的档位与切换时刻），否则 null。
+ * @param channel - 当前会话模型的计费通道；none 直接返回 null。
+ * @returns 命中（含即将进入的档位、切换时刻与通道），否则 null。
  */
-export function computePeakAlert(nowMs: number, config: PeakAlertConfig, lastAlertedAt: number): PeakAlertHit | null {
+export function computePeakAlert(nowMs: number, config: PeakAlertConfig, lastAlertedAt: number, channel: RateChannel): PeakAlertHit | null {
   if (!config.enabled) return null
-  const upcoming = upcomingTierSwitch(nowMs, config.leadMin * 60_000)
+  const upcoming = channelUpcomingSwitch(nowMs, channel, config.leadMin * 60_000)
   if (upcoming === null) return null
   if (config.mode === 'peak' && upcoming.entering !== 'peak') return null
   if (config.mode === 'offPeak' && upcoming.entering !== 'offPeak') return null
   if (upcoming.atMs === lastAlertedAt) return null
-  return upcoming
+  return { ...upcoming, channel }
 }

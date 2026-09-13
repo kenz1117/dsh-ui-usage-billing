@@ -311,9 +311,19 @@ export function isPeakHour(beijingHour: number): boolean {
  */
 export function tierAt(timeMs: number | null | undefined): PriceTierId {
   if (timeMs === null || timeMs === undefined || !Number.isFinite(timeMs)) return 'peak'
+  return tierAtWithBounds(timeMs, TIER_BOUNDARY_MINUTES)
+}
+
+/** 按给定峰段边界判档：周末全天低谷；工作日分钟数落在任一 [b(i), b(i+1)) 峰段即为高峰。 */
+function tierAtWithBounds(timeMs: number, bounds: readonly number[]): PriceTierId {
   if (isBeijingWeekend(timeMs)) return 'offPeak'
-  const beijingHour = (new Date(timeMs).getUTCHours() + 8) % 24
-  return isPeakHour(beijingHour) ? 'peak' : 'offPeak'
+  const minute = Math.floor(beijingMillisOfDay(timeMs) / 60_000)
+  for (let i = 0; i + 1 < bounds.length; i += 2) {
+    const start = bounds[i] ?? 0
+    const end = bounds[i + 1] ?? 0
+    if (minute >= start && minute < end) return 'peak'
+  }
+  return 'offPeak'
 }
 
 /** 时刻是否落在北京时间周末（周六/周日）。 */
@@ -324,6 +334,12 @@ function isBeijingWeekend(timeMs: number): boolean {
 
 /** 峰谷切换边界（北京时间的当日分钟数）：09:00 / 12:00 / 14:00 / 18:00。 */
 const TIER_BOUNDARY_MINUTES: readonly number[] = [540, 720, 840, 1080]
+
+/**
+ * 智谱 Coding Plan 的高峰边界（北京时间当日分钟）：工作日 14:00–18:00 为高峰，
+ * 额度按基础积分全额抵扣；其余时段（含周末全天）按基础积分 5 折抵扣。
+ */
+const ZHIPU_CODING_PLAN_BOUNDARY_MINUTES: readonly number[] = [840, 1080]
 
 /** 北京时间的当日毫秒数（0–86,400,000）。 */
 function beijingMillisOfDay(timeMs: number): number {
@@ -342,21 +358,26 @@ function beijingMillisOfDay(timeMs: number): number {
  * @returns 当前档位与到下一切换边界的毫秒数。
  */
 export function tierCountdown(nowMs: number): { tier: PriceTierId; nextSwitchInMs: number } {
-  const tier = tierAt(nowMs)
+  return tierCountdownWithBounds(nowMs, TIER_BOUNDARY_MINUTES)
+}
+
+/** 按给定峰段边界计算当前档位与距下一切换的时长（扫描结构与 tierCountdown 相同）。 */
+function tierCountdownWithBounds(nowMs: number, bounds: readonly number[]): { tier: PriceTierId; nextSwitchInMs: number } {
+  const tier = tierAtWithBounds(nowMs, bounds)
   const dayMs = beijingMillisOfDay(nowMs)
   for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
     const dayStart = dayOffset * 86_400_000 - dayMs
-    for (const boundary of TIER_BOUNDARY_MINUTES) {
+    for (const boundary of bounds) {
       const inMs = dayStart + boundary * 60_000
-      // 当天已过的边界不是候选；未来的边界按 tierAt 判档位是否真变化。
+      // 当天已过的边界不是候选；未来的边界按同一边界集判档位是否真变化。
       if (inMs <= 0) continue
-      if (tierAt(nowMs + inMs) !== tier) {
+      if (tierAtWithBounds(nowMs + inMs, bounds) !== tier) {
         return { tier, nextSwitchInMs: inMs }
       }
     }
   }
-  // 不可达兜底：7 天窗口内必有档位切换（任一工作日就有四次边界）。
-  const firstBoundary = TIER_BOUNDARY_MINUTES[0] ?? 0
+  // 不可达兜底：7 天窗口内必有档位切换（任一工作日至少一对边界）。
+  const firstBoundary = bounds[0] ?? 0
   return { tier, nextSwitchInMs: 86_400_000 - dayMs + firstBoundary * 60_000 }
 }
 
@@ -367,11 +388,55 @@ export function tierCountdown(nowMs: number): { tier: PriceTierId; nextSwitchInM
  * @param leadMs - 提前量（毫秒）。
  */
 export function upcomingTierSwitch(nowMs: number, leadMs: number): { entering: PriceTierId; atMs: number } | null {
-  const { nextSwitchInMs } = tierCountdown(nowMs)
+  return upcomingSwitchWithBounds(nowMs, TIER_BOUNDARY_MINUTES, leadMs)
+}
+
+/** 按给定峰段边界的切换预告（扫描结构与 upcomingTierSwitch 相同）。 */
+function upcomingSwitchWithBounds(nowMs: number, bounds: readonly number[], leadMs: number): { entering: PriceTierId; atMs: number } | null {
+  const { nextSwitchInMs } = tierCountdownWithBounds(nowMs, bounds)
   if (nextSwitchInMs > leadMs) return null
   const atMs = nowMs + nextSwitchInMs
   // 边界另一侧的档位即即将进入的档位（边界时刻本身按新档位计）。
-  return { entering: tierAt(atMs), atMs }
+  return { entering: tierAtWithBounds(atMs, bounds), atMs }
+}
+
+/** 计费通道的峰谷窗口：无窗口 / DeepSeek 按量分时 / 智谱 Coding Plan 积分分时。 */
+export type RateChannel = 'none' | 'deepseek-metered' | 'zhipu-coding-plan'
+
+/**
+ * 由会话当前模型与订阅状态推断峰谷窗口。DeepSeek 目录模型恒为按量分时；
+ * 智谱模型仅在持有 Z.ai Coding Plan（status ok）时适用积分分时——智谱按量价
+ * 全天统一，不涉及峰谷。其余模型（含未收录）返回 none：不显示档位、不提醒，
+ * 峰谷提示严格跟随当前对话实际使用的模型而非全局规则。
+ * @param modelKey - 当前会话最近一轮的计费目录键（归因模型 key）；无轮次时 undefined。
+ * @param hasZhipuPlan - 是否存在状态正常的 Z.ai Coding Plan 订阅。
+ * @returns 命中的峰谷窗口种类。
+ */
+export function rateChannelOf(modelKey: string | undefined, hasZhipuPlan: boolean): RateChannel {
+  if (modelKey === undefined || modelKey === '') return 'none'
+  const resolved = resolveCatalogKey(modelKey)
+  const provider = MODEL_CATALOG.find(entry => entry.key === resolved)?.provider
+  if (provider === 'DeepSeek') return 'deepseek-metered'
+  if (hasZhipuPlan && provider === '智谱 AI') return 'zhipu-coding-plan'
+  return 'none'
+}
+
+/** 按计费通道的峰谷倒计时：none 返回 null（调用方据此隐藏档位 UI 与切换预告）。 */
+export function channelCountdown(nowMs: number, channel: RateChannel): { tier: PriceTierId; nextSwitchInMs: number } | null {
+  switch (channel) {
+    case 'deepseek-metered': return tierCountdownWithBounds(nowMs, TIER_BOUNDARY_MINUTES)
+    case 'zhipu-coding-plan': return tierCountdownWithBounds(nowMs, ZHIPU_CODING_PLAN_BOUNDARY_MINUTES)
+    case 'none': return null
+  }
+}
+
+/** 按计费通道的切换预告：语义同 upcomingTierSwitch，窗口取自通道；none 恒 null。 */
+export function channelUpcomingSwitch(nowMs: number, channel: RateChannel, leadMs: number): { entering: PriceTierId; atMs: number } | null {
+  switch (channel) {
+    case 'deepseek-metered': return upcomingSwitchWithBounds(nowMs, TIER_BOUNDARY_MINUTES, leadMs)
+    case 'zhipu-coding-plan': return upcomingSwitchWithBounds(nowMs, ZHIPU_CODING_PLAN_BOUNDARY_MINUTES, leadMs)
+    case 'none': return null
+  }
 }
 
 /**

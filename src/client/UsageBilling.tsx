@@ -50,7 +50,7 @@ import type { createBillingBudgetStore } from './budget-store.ts'
 import {
   applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, canonModelId, cnyToUsd, computeCost, convertUnitPrice,
   DEFAULT_PEAK_SHARE, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, getUserPrices, isPromoActive,
-  modelOf, normalizeOriginInput, resolveToken, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
+  modelOf, normalizeOriginInput, rateChannelOf, resolveToken, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
@@ -4070,10 +4070,19 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     setPeakConfig(config)
     savePeakAlertConfig(config)
   }, [])
+  // 当前对话的峰谷窗口：跟随最近一轮调用的模型（byTurn 服务端按起始时间倒序）
+  // 与订阅状态推导——DeepSeek 按量分时 / 智谱 Coding Plan 积分分时 / 其余不涉及。
+  const hasZhipuPlan = quotas.some(q => q.displayName === 'Z.ai Coding Plan' && q.status === 'ok')
+  const currentChannel = rateChannelOf(stats.byTurn?.[0]?.model, hasZhipuPlan)
   const previewPeak = useCallback(() => {
-    // 预览：3 分钟后进入与当前相反的档位（不触真实去重，关闭即消失）。
-    setPeakPreview({ entering: tierAt(Date.now()) === 'peak' ? 'offPeak' : 'peak', atMs: Date.now() + 3 * 60_000 })
-  }, [])
+    // 预览：3 分钟后进入与当前相反的档位（不触真实去重，关闭即消失）；
+    // 文案按当前通道口径渲染。
+    setPeakPreview({
+      entering: tierAt(Date.now()) === 'peak' ? 'offPeak' : 'peak',
+      atMs: Date.now() + 3 * 60_000,
+      channel: currentChannel,
+    })
+  }, [currentChannel])
   const effectiveBudget = budgetAmount > 0 ? budgetAmount : (stats.budget ?? 0)
   // 预算临界态：与设置页进度条同阈值分档（≥80% 警示 / ≥100% 超支），驱动触发卡
   // 指针变红与卡片边缘红色脉冲。未启用预算或无金额时恒为 none。
@@ -4111,21 +4120,27 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   }, [budgetEnabled, effectiveBudget, monthCost, tierAlertDays, today, actions, t])
 
   // 峰/谷切换前提醒（增强版）：距进入下一档不足提前量且该切换点未提醒过时，
-  // 弹可视化浮层 +（可选的）系统通知。`lastTierSwitchAt` 去重跨重启生效，
-  // 与旧的系统通知共用同一份去重，避免一条切换提醒弹两次。
+  // 弹可视化浮层 +（可选的）系统通知。峰谷窗口跟随当前对话实际使用的模型
+  // （rateChannelOf）：DeepSeek 按量模型走分时价，智谱模型在持有 Z.ai Coding
+  // Plan 时走积分分时，其余模型不提醒也不显示档位。`lastTierSwitchAt` 去重
+  // 跨重启生效，与旧的系统通知共用同一份去重，避免一条切换提醒弹两次。
+  // 「当前对话的模型」= 最近一轮调用（byTurn 服务端按起始时间倒序下发）的归因
+  // 模型键；无任何轮次时视为不涉及峰谷。
   useEffect(() => {
-    const upcoming = computePeakAlert(nowMs, peakConfig, lastTierSwitchAt)
+    const upcoming = computePeakAlert(nowMs, peakConfig, lastTierSwitchAt, currentChannel)
     if (upcoming === null) return
     actions.markTierSwitchAlerted(upcoming.atMs)
     setPeakHit(upcoming)
     if (!peakConfig.webNotify || !notifyAllowed()) return
     const minutes = Math.max(1, Math.round((upcoming.atMs - nowMs) / 60_000))
     const title = t(upcoming.entering === 'peak' ? 'peakAlertTitlePeak' : 'peakAlertTitleOff')
-    const body = t(upcoming.entering === 'peak' ? 'tierAlertEnterPeak' : 'tierAlertEnterOff')
+    const body = t(upcoming.channel === 'zhipu-coding-plan'
+      ? (upcoming.entering === 'peak' ? 'tierAlertEnterPeakZhipu' : 'tierAlertEnterOffZhipu')
+      : (upcoming.entering === 'peak' ? 'tierAlertEnterPeak' : 'tierAlertEnterOff'))
       .replace('{minutes}', String(minutes))
     // 认领失败 = 另一实例刚发过同一切换点提醒，本实例跳过（issue #44）。
     notifyAcrossInstances(`peak:${upcoming.atMs}`, () => { new Notification(title, { body }) })
-  }, [nowMs, lastTierSwitchAt, peakConfig, actions, t])
+  }, [nowMs, lastTierSwitchAt, peakConfig, currentChannel, quotas, stats.byTurn, actions, t])
 
   // 余额不足告警：任一提供方余额低于阈值（折算人民币）时每天提醒一次；
   // 与预算开关无关——余额是硬性约束，无论是否开启预算都要提醒。

@@ -204,6 +204,28 @@ export declare function upcomingTierSwitch(nowMs: number, leadMs: number): {
     entering: PriceTierId;
     atMs: number;
 } | null;
+/** 计费通道的峰谷窗口：无窗口 / DeepSeek 按量分时 / 智谱 Coding Plan 积分分时。 */
+export type RateChannel = 'none' | 'deepseek-metered' | 'zhipu-coding-plan';
+/**
+ * 由会话当前模型与订阅状态推断峰谷窗口。DeepSeek 目录模型恒为按量分时；
+ * 智谱模型仅在持有 Z.ai Coding Plan（status ok）时适用积分分时——智谱按量价
+ * 全天统一，不涉及峰谷。其余模型（含未收录）返回 none：不显示档位、不提醒，
+ * 峰谷提示严格跟随当前对话实际使用的模型而非全局规则。
+ * @param modelKey - 当前会话最近一轮的计费目录键（归因模型 key）；无轮次时 undefined。
+ * @param hasZhipuPlan - 是否存在状态正常的 Z.ai Coding Plan 订阅。
+ * @returns 命中的峰谷窗口种类。
+ */
+export declare function rateChannelOf(modelKey: string | undefined, hasZhipuPlan: boolean): RateChannel;
+/** 按计费通道的峰谷倒计时：none 返回 null（调用方据此隐藏档位 UI 与切换预告）。 */
+export declare function channelCountdown(nowMs: number, channel: RateChannel): {
+    tier: PriceTierId;
+    nextSwitchInMs: number;
+} | null;
+/** 按计费通道的切换预告：语义同 upcomingTierSwitch，窗口取自通道；none 恒 null。 */
+export declare function channelUpcomingSwitch(nowMs: number, channel: RateChannel, leadMs: number): {
+    entering: PriceTierId;
+    atMs: number;
+} | null;
 /**
  * 切换倒计时短格式：`1h23m` / `45m` / `3m`。导出供测试：纯函数。
  * @param ms - 剩余毫秒数。

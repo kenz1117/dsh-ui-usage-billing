@@ -38,7 +38,11 @@ export function PeakAlertBanner({ hit, config, t, onDismiss }: PeakAlertBannerPr
   const minutes = Math.max(1, Math.round((hit.atMs - nowMs) / 60_000))
   const entering = hit.entering
   const tag = entering === 'peak' ? t('tierPeak') : t('tierOff')
-  const desc = entering === 'peak' ? t('peakAlertDescPeak') : t('peakAlertDescOff')
+  // 文案按通道区分口径：DeepSeek 按量分时讲单价，智谱 Coding Plan 讲积分抵扣比例。
+  const descKey = hit.channel === 'zhipu-coding-plan'
+    ? (entering === 'peak' ? 'peakAlertDescPeakZhipu' : 'peakAlertDescOffZhipu')
+    : (entering === 'peak' ? 'peakAlertDescPeak' : 'peakAlertDescOff')
+  const desc = t(descKey)
   const isPeak = entering === 'peak'
 
   return (

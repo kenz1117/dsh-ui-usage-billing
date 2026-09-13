@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { formatSwitchCountdown, tierCountdown, upcomingTierSwitch } from '../src/client/pricing.ts'
+import { channelCountdown, channelUpcomingSwitch, formatSwitchCountdown, rateChannelOf, tierCountdown, upcomingTierSwitch } from '../src/client/pricing.ts'
 
 /**
  * 北京时间某星期几某时刻的 epoch 毫秒。固定 2026-08 的日历：
@@ -81,6 +81,62 @@ describe('upcomingTierSwitch', () => {
     const monday = upcomingTierSwitch(beijing(24, 8, 58), 5 * 60_000)
     expect(monday?.entering).toBe('peak')
     expect(monday?.atMs).toBe(beijing(24, 9))
+  })
+})
+
+describe('rateChannelOf', () => {
+  it('maps DeepSeek catalog models to the metered time-of-day window', () => {
+    expect(rateChannelOf('flash', true)).toBe('deepseek-metered')
+    expect(rateChannelOf('pro', false)).toBe('deepseek-metered')
+  })
+
+  it('maps zhipu models to the coding-plan window only when the plan exists', () => {
+    expect(rateChannelOf('glm-5.3', true)).toBe('zhipu-coding-plan')
+    // 无订阅（或按量）时智谱价全天统一，不涉及峰谷。
+    expect(rateChannelOf('glm-5.3', false)).toBe('none')
+  })
+
+  it('returns none for unknown or missing models', () => {
+    expect(rateChannelOf('some-unknown-model', true)).toBe('none')
+    expect(rateChannelOf(undefined, true)).toBe('none')
+    expect(rateChannelOf('', true)).toBe('none')
+  })
+})
+
+describe('channelCountdown / channelUpcomingSwitch', () => {
+  it('returns null for the none channel', () => {
+    expect(channelCountdown(beijing(21, 10), 'none')).toBeNull()
+    expect(channelUpcomingSwitch(beijing(21, 10), 'none', 60 * 60 * 1000)).toBeNull()
+  })
+
+  it('zhipu window: peak is 14:00–18:00 on weekdays only', () => {
+    // 周五 13:00：谷档，距 14:00 峰起点 1h。
+    const before = channelCountdown(beijing(21, 13), 'zhipu-coding-plan')
+    expect(before?.tier).toBe('offPeak')
+    expect(before?.nextSwitchInMs).toBe(60 * 60 * 1000)
+    // 周五 15:00：峰档，距 18:00 峰终点 3h。
+    const inside = channelCountdown(beijing(21, 15), 'zhipu-coding-plan')
+    expect(inside?.tier).toBe('peak')
+    expect(inside?.nextSwitchInMs).toBe(3 * 60 * 60 * 1000)
+    // DeepSeek 的 09:00 边界对智谱窗口不存在：周五 10:00 仍是谷档，
+    // 下一切换是当天 14:00（4h）。
+    const morning = channelCountdown(beijing(21, 10), 'zhipu-coding-plan')
+    expect(morning?.tier).toBe('offPeak')
+    expect(morning?.nextSwitchInMs).toBe(4 * 60 * 60 * 1000)
+  })
+
+  it('zhipu window: weekend has no boundary, rolling to Monday 14:00', () => {
+    // 周六 10:00 → 周一 14:00：周六剩余 14h + 周日 24h + 周一 14h = 52h。
+    const saturday = channelCountdown(beijing(22, 10), 'zhipu-coding-plan')
+    expect(saturday?.tier).toBe('offPeak')
+    expect(saturday?.nextSwitchInMs).toBe(52 * 60 * 60 * 1000)
+  })
+
+  it('zhipu channel announces the 14:00 peak start within the lead window', () => {
+    const soon = channelUpcomingSwitch(beijing(21, 13, 45), 'zhipu-coding-plan', 30 * 60 * 1000)
+    expect(soon).not.toBeNull()
+    expect(soon?.entering).toBe('peak')
+    expect(soon?.atMs).toBe(beijing(21, 14))
   })
 })
 

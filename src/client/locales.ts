@@ -165,6 +165,8 @@ export type UsageBillingKey =
   | 'peakAlertHint'
   | 'peakAlertDescPeak'
   | 'peakAlertDescOff'
+  | 'peakAlertDescPeakZhipu'
+  | 'peakAlertDescOffZhipu'
   | 'export'
   | 'exportCsvDay'
   | 'exportCsvSession'
@@ -185,6 +187,8 @@ export type UsageBillingKey =
   | 'tierToOff'
   | 'tierAlertEnterPeak'
   | 'tierAlertEnterOff'
+  | 'tierAlertEnterPeakZhipu'
+  | 'tierAlertEnterOffZhipu'
   | 'peakAlertTitlePeak'
   | 'peakAlertTitleOff'
   | 'peakAlert'
@@ -441,6 +445,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'peakAlertHint': '在切档前弹窗提醒，可选同步系统通知',
   'peakAlertDescPeak': '即将进入高峰时段，价格将上调，请提前安排长任务',
   'peakAlertDescOff': '即将进入平价时段，价格减半，适合运行大批量任务',
+  'peakAlertDescPeakZhipu': '即将进入高峰时段（工作日 14:00–18:00），Coding Plan 额度将按基础积分全额抵扣',
+  'peakAlertDescOffZhipu': '即将进入非高峰时段，Coding Plan 额度按基础积分 5 折抵扣',
   'export': '导出',
   'exportCsvDay': '按日 CSV',
   'exportCsvSession': '按会话 CSV',
@@ -461,6 +467,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'tierToOff': '后转平价',
   'tierAlertEnterPeak': '{minutes} 分钟后进入峰时（DeepSeek 高峰价 ×2），不急的调用可稍等',
   'tierAlertEnterOff': '{minutes} 分钟后进入平价（价格减半）',
+  'tierAlertEnterPeakZhipu': '{minutes} 分钟后进入智谱高峰时段，Coding Plan 额度将全额抵扣',
+  'tierAlertEnterOffZhipu': '{minutes} 分钟后进入智谱非高峰时段，额度按基础积分 5 折抵扣',
   'peakAlertTitlePeak': '即将进入高峰价',
   'peakAlertTitleOff': '即将进入平价',
   'peakAlert': '峰谷切换提醒',
@@ -719,6 +727,8 @@ export const en: Record<UsageBillingKey, string> = {
   'peakAlertHint': 'Alert before a tier switch, optionally via system notification',
   'peakAlertDescPeak': 'About to enter peak hours — prices rise, plan long tasks ahead',
   'peakAlertDescOff': 'About to enter off-peak hours — price halves, ideal for large batches',
+  'peakAlertDescPeakZhipu': 'Peak hours soon (weekdays 14:00–18:00) — Coding Plan credits will be deducted at full rate',
+  'peakAlertDescOffZhipu': 'Off-peak soon — Coding Plan credits will be deducted at 50% of base credits',
   'export': 'Export',
   'exportCsvDay': 'Daily CSV',
   'exportCsvSession': 'Sessions CSV',
@@ -739,6 +749,8 @@ export const en: Record<UsageBillingKey, string> = {
   'tierToOff': 'until off-peak',
   'tierAlertEnterPeak': 'Peak pricing (2x) starts in {minutes} min — non-urgent calls can wait',
   'tierAlertEnterOff': 'Off-peak pricing (50% off) starts in {minutes} min',
+  'tierAlertEnterPeakZhipu': 'Zhipu peak hours in {minutes} min — Coding Plan credits burn at full rate',
+  'tierAlertEnterOffZhipu': 'Zhipu off-peak in {minutes} min — credit burn drops to 50%',
   'peakAlertTitlePeak': 'Peak pricing incoming',
   'peakAlertTitleOff': 'Off-peak incoming',
   'peakAlert': 'Peak/off-peak alert',

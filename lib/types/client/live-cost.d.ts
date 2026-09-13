@@ -26,6 +26,7 @@ export interface LiveStats {
     byTurn?: readonly {
         sessionId: string;
         turn: number;
+        model?: string;
         cost: number;
     }[];
 }
@@ -66,6 +67,14 @@ export declare function lowQuotaChips(quotas: readonly QuotaSlice[], threshold?:
     kind: string;
     pct: number;
 }[];
+/**
+ * 当前会话最近一轮的模型（峰谷窗口跟随它）：byTurn 里该会话轮次号最大的 model。
+ * 导出供测试：纯函数。
+ * @param stats - 薄统计切片。
+ * @param sessionId - 当前会话 id。
+ * @returns 该会话最近一轮的归因模型键；无轮次或轮行未带模型时 undefined。
+ */
+export declare function sessionModelOf(stats: LiveStats | null, sessionId: string | undefined): string | undefined;
 /** Props: the framework's session identity plus the owning dock's locale seat. */
 export interface LiveCostBarProps {
     /** Current Session identity supplied by the session-scope standard kit. */
