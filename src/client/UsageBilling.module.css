@@ -1,6 +1,41 @@
 /* Usage billing dashboard: sidebar trigger + centered modal dashboard.
    Refined-tech palette: token-driven surfaces, 1px borders, no gradients. */
 
+/* 设计令牌（精致科技风）。暗亮机制：本文件无 [data-theme] 或媒体查询机制，取色全部经宿主 --dsw-* 别名（亮=body、暗=body[data-ds-dark-theme]），故表面/文字/描边令牌从宿主别名派生以自动跟随暗亮；因 var() 在声明元素上求值而宿主别名定义于 body，派生块挂 body 而非 :root。语义色/图表色/圆角/动效两主题同值，冻结硬编码。 */
+body {
+  --dsb: var(--dsw-alias-bg-layer-1);
+  --dsb-2: var(--dsw-alias-bg-layer-2);
+  --dsb-3: var(--dsw-alias-bg-layer-3);
+  --dsb-glass: color-mix(in srgb,var(--dsw-alias-bg-layer-2) 78%,transparent);
+  --dsb-glass-strong: color-mix(in srgb,var(--dsw-alias-bg-layer-3) 88%,transparent);
+  --ds-border: var(--dsw-alias-border-l1);
+  --ds-border-strong: var(--dsw-alias-border-l2);
+  --ds-hi-top: rgba(255,255,255,0.045);
+  --ds-shadow-1: 0 1px 0 rgba(255,255,255,0.04) inset,0 8px 24px rgba(0,0,0,0.35);
+  --ds-shadow-2: 0 1px 0 rgba(255,255,255,0.05) inset,0 18px 48px rgba(0,0,0,0.5);
+  --ds-t-1: var(--dsw-alias-label-primary);
+  --ds-t-2: var(--dsw-alias-label-secondary);
+  --ds-t-3: var(--dsw-alias-label-tertiary);
+  --ds-t-4: var(--dsw-alias-label-dimmed);
+  --ds-blue: #4f8cff;
+  --ds-cyan: #2dd4bf;
+  --ds-green: #34d399;
+  --ds-amber: #f59e0b;
+  --ds-red: #ef4444;
+  --ds-violet: #a78bfa;
+  --ds-c-1: #4f8cff;
+  --ds-c-2: #2dd4bf;
+  --ds-c-3: #a78bfa;
+  --ds-c-4: #f59e0b;
+  --ds-c-5: #f472b6;
+  --ds-c-6: #fbbf24;
+  --ds-c-7: #38bdf8;
+  --ds-r-1: 8px;
+  --ds-r-2: 12px;
+  --ds-r-3: 16px;
+  --ds-t-fast: 160ms cubic-bezier(0.2,0.8,0.2,1);
+}
+
 /* ── Sidebar footer trigger ─────────────────────────────────────────── */
 
 /* Rail mode: compact icon button with a subtle accent tint. */
