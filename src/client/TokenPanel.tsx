@@ -85,11 +85,10 @@ const PAD = { top: 14, right: 18, bottom: 22, left: 46 }
  * 用于按列宽推算两端多少根柱处于「居中会溢出容器」的安全区外（issue #45）。 */
 const TOOLTIP_HALF_PX = 80
 
-const MISS_COLOR = 'var(--dsw-static-blue-500)'
-// 缓存命中段：用青色系与输入（蓝）区分；`--dsw-static-cyan-500` 在宿主主题里不存在，
-// 改用自定义青绿色（#14b8a6）保证可读性。
-const HIT_COLOR = '#14b8a6'
-const OUTPUT_COLOR = 'var(--dsw-static-amber-500)'
+const MISS_COLOR = 'var(--ds-blue)'
+// 缓存命中段：用青色系与输入（蓝）区分，取设计 spec §3.4 的 --ds-cyan（#2dd4bf）。
+const HIT_COLOR = 'var(--ds-cyan)'
+const OUTPUT_COLOR = 'var(--ds-amber)'
 
 /** 聚焦时其余模型段的透明度：目标段保持原色，y 轴与柱总高不变。 */
 const DIM_OPACITY = 0.15

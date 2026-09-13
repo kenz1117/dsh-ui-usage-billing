@@ -1013,10 +1013,10 @@ body {
   flex-direction: column;
   gap: 8px;
   padding: 12px 14px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-2);
-  transition: border-color 160ms ease;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-2);
+  background: var(--dsb-glass);
+  transition: border-color var(--ds-t-fast);
 }
 
 .panelHead {
@@ -1035,17 +1035,17 @@ body {
 
 .panelTitle {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 20px;
   font-weight: 600;
   letter-spacing: -0.005em;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
 }
 
 .panelHint {
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--ds-t-3);
   white-space: nowrap;
 }
 
@@ -1055,9 +1055,9 @@ body {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 1px solid var(--ds-border);
   border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-1);
+  background: var(--dsb-3);
 }
 
 .rangeButton {
@@ -1065,17 +1065,18 @@ body {
   border-radius: 6px;
   padding: 2px 8px;
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--ds-t-3);
   font-size: 11px;
   line-height: 16px;
   cursor: pointer;
-  transition: background-color 140ms ease, color 140ms ease;
+  transition: background-color var(--ds-t-fast), color var(--ds-t-fast);
 }
 
 .rangeButtonActive {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--dsb-2);
+  color: var(--ds-t-1);
   font-weight: 600;
+  box-shadow: 0 0 0 1px var(--ds-border-strong);
 }
 
 /* ── 数据导出工具条（统计 Tab 顶部） ────────────────────────────────── */
@@ -1090,25 +1091,25 @@ body {
 .exportLabel {
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--ds-t-3);
 }
 
 .exportButton {
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 1px solid var(--ds-border);
   border-radius: 999px;
   padding: 4px 12px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  color: var(--ds-t-2);
   font-size: 11.5px;
   line-height: 16px;
   cursor: pointer;
-  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
+  transition: border-color var(--ds-t-fast), color var(--ds-t-fast), background-color var(--ds-t-fast);
 }
 
 .exportButton:hover,
 .exportButton:focus-visible {
-  border-color: var(--dsw-alias-border-l2);
-  color: var(--dsw-alias-label-primary);
+  border-color: var(--ds-border-strong);
+  color: var(--ds-t-1);
   outline: none;
 }
 
@@ -1116,36 +1117,36 @@ body {
 
 .shareTrack {
   display: flex;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--dsw-alias-bg-module-platform);
+  height: 8px;
+  border-radius: 4px;
+  background: var(--dsb-3);
   overflow: hidden;
 }
 
 .shareSeg {
   height: 100%;
-  transition: width 200ms ease;
+  transition: width var(--ds-t-fast);
 }
 
 .shareSegPeak {
-  background: var(--dsw-static-blue-500);
+  background: var(--ds-blue);
 }
 
 .shareSegOff {
-  background: color-mix(in srgb, var(--dsw-static-blue-500) 25%, var(--dsw-alias-bg-module-platform));
+  background: color-mix(in srgb, var(--ds-blue) 30%, var(--dsb-3));
 }
 
 /* 费用构成三段：用户输入（蓝）/ 助手输出（绿）/ 工具结果（琥珀）。 */
 .shareSegUser {
-  background: var(--dsw-static-blue-500);
+  background: var(--ds-blue);
 }
 
 .shareSegAssistant {
-  background: var(--dsw-static-green-500);
+  background: var(--ds-green);
 }
 
 .shareSegTool {
-  background: var(--dsw-static-amber-500);
+  background: var(--ds-amber);
 }
 
 .shareLegend {
@@ -1158,9 +1159,9 @@ body {
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 17px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
 }
 
 /* 官方/三方费用分桶（明细表费用列：混合时用 官方 / 三方 分解展示）。 */
@@ -1168,32 +1169,33 @@ body {
   display: inline-flex;
   align-items: baseline;
   gap: 3px;
+  font-variant-numeric: tabular-nums;
 }
 
 .bucketOfficial {
-  color: var(--dsw-static-blue-500);
+  color: var(--ds-blue);
   font-weight: 600;
 }
 
 .bucketSep {
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--ds-t-4);
 }
 
 .bucketThird {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
 }
 
 .shareDot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: 2px;
   align-self: center;
   flex: none;
 }
 
 .shareValue {
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1205,7 +1207,7 @@ body {
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   font-size: 12px;
   line-height: 16px;
   font-variant-numeric: tabular-nums;
@@ -1219,50 +1221,45 @@ body {
 /* 开关：轨道 + 滑块；开启时轨道转主色、滑块右移。 */
 .switch {
   position: relative;
-  width: 30px;
-  height: 17px;
+  width: 32px;
+  height: 18px;
   flex: none;
   padding: 0;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--ds-border);
   border-radius: 999px;
-  background: var(--dsw-alias-bg-module-platform);
+  background: var(--dsb-3);
   cursor: pointer;
-  transition: background-color 160ms ease, border-color 160ms ease;
+  transition: background-color var(--ds-t-fast), border-color var(--ds-t-fast);
 }
 
 .switchOn {
-  border-color: var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-label-primary);
+  border-color: transparent;
+  background: color-mix(in srgb, var(--ds-blue) 60%, transparent);
 }
 
 .switchKnob {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: var(--dsw-static-neutral-bluish-00);
-  transition: transform 160ms ease;
+  background: #fff;
+  transition: transform var(--ds-t-fast);
 }
 
 .switchOn .switchKnob {
-  transform: translateX(13px);
+  transform: translateX(14px);
 }
 
 /* 接近超支（≥80%）：琥珀色警示档。 */
 .budgetFillWarn {
-  background: var(--dsw-static-amber-500);
+  background: var(--ds-amber);
 }
 
-/* 超支：满格转红并缓慢脉冲（系统通知不可用时的界面兜底提示）。 */
+/* 超支：满格转红（系统通知不可用时的界面兜底提示）。 */
 .budgetFillOver {
-  background: var(--dsw-static-red-500);
-  animation: budgetOverPulse 1.6s ease-in-out infinite;
-}
-
-@keyframes budgetOverPulse {
-  50% { opacity: 0.55; }
+  background: var(--ds-red);
 }
 
 /* ── Trend chart ────────────────────────────────────────────────────── */
@@ -1284,7 +1281,7 @@ body {
   justify-content: center;
   height: 140px;
   font-size: 13px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--ds-t-3);
 }
 
 /* Model table empty-state row (no billing data yet). */
@@ -1292,21 +1289,21 @@ body {
   padding: 28px 0;
   text-align: center;
   font-size: 13px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--ds-t-3);
 }
 
 .chartGrid {
-  stroke: var(--dsw-alias-border-l1);
+  stroke: var(--ds-border);
   stroke-width: 1;
 }
 
 .chartAxisLabel {
   font-size: 10px;
-  fill: var(--dsw-alias-label-tertiary);
+  fill: var(--ds-t-3);
 }
 
 .chartBar {
-  fill: var(--dsw-static-blue-500);
+  fill: var(--ds-blue);
   opacity: 0.7;
 }
 
@@ -1316,7 +1313,7 @@ body {
 
 /* Stacked per-model segment: fill rides each model's brand color inline. */
 .chartStack {
-  stroke: var(--dsw-alias-bg-layer-1);
+  stroke: var(--dsb);
   stroke-width: 0.75;
 }
 
@@ -1325,14 +1322,14 @@ body {
 }
 
 .chartLine {
-  stroke: var(--dsw-static-blue-500);
+  stroke: var(--ds-blue);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .chartCrosshair {
-  stroke: var(--dsw-alias-label-dimmed);
+  stroke: var(--ds-t-4);
   stroke-width: 1;
   stroke-dasharray: 3 3;
 }
@@ -1343,10 +1340,10 @@ body {
   pointer-events: none;
   z-index: 2;
   padding: 8px 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--ds-border-strong);
   border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-2);
-  box-shadow: none;
+  background: var(--dsb-2);
+  box-shadow: var(--ds-shadow-1);
   white-space: nowrap;
 }
 
@@ -1364,7 +1361,7 @@ body {
 .chartTooltipDate {
   font-size: 11px;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   margin-bottom: 3px;
 }
 
@@ -1374,12 +1371,12 @@ body {
   gap: 5px;
   font-size: 11px;
   line-height: 17px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
 }
 
 .chartTooltipRow strong {
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1399,7 +1396,7 @@ body {
 .chartTooltipHead strong {
   font-size: 11px;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1420,12 +1417,12 @@ body {
   margin: -2px 0 4px 13px;
   font-size: 10.5px;
   line-height: 14px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--ds-t-3);
   font-variant-numeric: tabular-nums;
 }
 
 .chartBarPlaceholder {
-  fill: color-mix(in srgb, var(--dsw-alias-label-secondary) 30%, transparent);
+  fill: color-mix(in srgb, var(--ds-t-2) 30%, transparent);
 }
 
 .chartLegendLine {
@@ -1433,7 +1430,7 @@ body {
   width: 10px;
   height: 3px;
   border-radius: 2px;
-  background: var(--dsw-static-blue-500);
+  background: var(--ds-blue);
 }
 
 .chartLegendBar {
@@ -1441,7 +1438,7 @@ body {
   width: 7px;
   height: 7px;
   border-radius: 2px;
-  background: var(--dsw-static-blue-500);
+  background: var(--ds-blue);
   opacity: 0.5;
 }
 
@@ -1451,7 +1448,7 @@ body {
   flex: none;
   width: 8px;
   height: 8px;
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
 .chartLegend {
@@ -1460,7 +1457,7 @@ body {
   justify-content: flex-end;
   margin-top: 2px;
   font-size: 11px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--ds-t-2);
 }
 
 .chartLegend span {
@@ -1484,11 +1481,11 @@ body {
 }
 
 .chartLegendItem:hover {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-1);
 }
 
 .chartLegendItemActive {
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   font-weight: 600;
 }
 
@@ -1512,19 +1509,19 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 1px solid var(--ds-border);
   border-radius: 999px;
   padding: 2px 9px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-secondary);
+  background: var(--dsb-3);
+  color: var(--ds-t-2);
   font-size: 11px;
   line-height: 16px;
   cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease, opacity 120ms ease;
+  transition: border-color var(--ds-t-fast), color var(--ds-t-fast), opacity var(--ds-t-fast);
 }
 
 .perfChip:hover {
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
 }
 
 .perfChipOff {
@@ -1536,12 +1533,12 @@ body {
   flex: none;
   width: 8px;
   height: 8px;
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
 /* 吸附小时处各模型曲线的高亮圆点：白描边浮在彩线上。 */
 .chartHoverDot {
-  stroke: var(--dsw-alias-bg-layer-2);
+  stroke: var(--dsb-2);
   stroke-width: 1.5;
 }
 
@@ -1549,8 +1546,8 @@ body {
 
 .tableScroll {
   overflow: auto;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-2);
   /* Elevated surface scrollbar rebind contract (ui-theme scrollbar.css):
      the thumb pair must target the l2 elevation so it stays visible on the
      panel surface instead of inheriting the base pair. */
@@ -1567,9 +1564,9 @@ body {
   gap: 12px;
   flex-wrap: wrap;
   padding: 10px 14px;
-  border: 1px solid color-mix(in srgb, var(--dsw-static-blue-500) 30%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--dsw-static-blue-500) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ds-blue) 30%, transparent);
+  border-radius: var(--ds-r-1);
+  background: color-mix(in srgb, var(--ds-blue) 8%, transparent);
   font-size: 12px;
   line-height: 17px;
 }
@@ -1582,13 +1579,13 @@ body {
 
 .ubRate {
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   font-variant-numeric: tabular-nums;
 }
 
 .ubAlertNote {
   margin: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
 }
 
 .ubTag,
@@ -1598,33 +1595,35 @@ body {
 .ubTagPromo {
   display: inline-flex;
   align-items: center;
-  height: 18px;
-  padding: 0 7px;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid var(--ds-border-strong);
   border-radius: 999px;
   font-size: 10px;
   line-height: 14px;
   font-weight: 600;
   white-space: nowrap;
 }
-.ubTagSuccess { background: color-mix(in srgb, var(--dsw-static-green-500) 14%, transparent); color: var(--dsw-static-green-500); }
-.ubTagNeutral { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-secondary); }
-.ubTagAlert { background: color-mix(in srgb, var(--dsw-static-amber-500) 16%, transparent); color: var(--dsw-static-amber-500); }
+.ubTag { color: var(--ds-t-2); background: var(--dsb-2); }
+.ubTagSuccess { color: var(--ds-green); border-color: color-mix(in srgb, var(--ds-green) 36%, transparent); background: color-mix(in srgb, var(--ds-green) 12%, transparent); }
+.ubTagNeutral { color: var(--ds-t-2); background: var(--dsb-2); }
+.ubTagAlert { color: var(--ds-amber); border-color: color-mix(in srgb, var(--ds-amber) 36%, transparent); background: color-mix(in srgb, var(--ds-amber) 12%, transparent); }
 /* 限时促销徽章：红色系与「未收录」警示色区分，提示当前价为折扣价。 */
-.ubTagPromo { background: color-mix(in srgb, var(--dsw-static-red-500) 14%, transparent); color: var(--dsw-static-red-500); cursor: help; }
+.ubTagPromo { color: var(--ds-red); border-color: color-mix(in srgb, var(--ds-red) 36%, transparent); background: color-mix(in srgb, var(--ds-red) 12%, transparent); cursor: help; }
 
 /* 附加计价子行（Batch / 显式缓存等参考价）：整体弱化，避免与主行混读。 */
 .ubExtraRow td { padding-top: 2px; padding-bottom: 2px; opacity: 0.72; font-size: 12px; }
-.ubExtraName { margin-left: 26px; color: var(--dsw-alias-label-secondary); }
-.ubExtraNote { margin-left: 8px; font-size: 10px; color: var(--dsw-alias-label-tertiary); }
+.ubExtraName { margin-left: 26px; color: var(--ds-t-2); }
+.ubExtraNote { margin-left: 8px; font-size: 10px; color: var(--ds-t-3); }
 
 .ubCard {
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 16px 18px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-2);
+  background: var(--dsb-glass);
 }
 
 .ubCardHead {
@@ -1639,43 +1638,45 @@ body {
   font-size: 13px;
   line-height: 18px;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
 }
 
 .ubCardSub {
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--ds-t-3);
 }
 
 .ubTablewrap {
   overflow: auto;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 10px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-1);
 }
 
 .ubTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
 .ubTable th,
 .ubTable td {
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ds-border);
   text-align: left;
+  color: var(--ds-t-1);
 }
 
 .ubTable tbody tr:last-child td { border-bottom: 0; }
 
 .ubTable thead th {
-  color: var(--dsw-alias-label-tertiary);
+  padding: 8px 12px;
+  color: var(--ds-t-3);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .ubModel {
@@ -1713,7 +1714,7 @@ body {
   align-items: center;
   gap: 6px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
 }
 
 .ubPricepair {
@@ -1740,8 +1741,8 @@ body {
   font-weight: 600;
 }
 
-.ubChipPeak { background: color-mix(in srgb, var(--dsw-static-blue-500) 14%, transparent); color: var(--dsw-static-blue-500); }
-.ubChipOff { background: color-mix(in srgb, var(--dsw-static-green-500) 14%, transparent); color: var(--dsw-static-green-500); }
+.ubChipPeak { background: color-mix(in srgb, var(--ds-blue) 12%, transparent); border: 1px solid color-mix(in srgb, var(--ds-blue) 36%, transparent); color: var(--ds-blue); }
+.ubChipOff { background: color-mix(in srgb, var(--ds-green) 12%, transparent); border: 1px solid color-mix(in srgb, var(--ds-green) 36%, transparent); color: var(--ds-green); }
 
 .ubNotes {
   display: flex;
@@ -1762,7 +1763,7 @@ body {
   flex: 0 0 72px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
 }
 
 .ubNotesDesc {
@@ -1770,7 +1771,7 @@ body {
   min-width: 0;
   font-size: 12px;
   line-height: 17px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
 }
 
 /* 趋势头部右侧控件组（7天/30天 与 费用/Token 分段）。 */
@@ -1792,8 +1793,9 @@ body {
   line-height: 14px;
   font-weight: 600;
   white-space: nowrap;
-  background: color-mix(in srgb, var(--dsw-static-red-500) 14%, transparent);
-  color: var(--dsw-static-red-500);
+  background: color-mix(in srgb, var(--ds-red) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ds-red) 36%, transparent);
+  color: var(--ds-red);
 }
 
 .modelTable {
@@ -1803,7 +1805,7 @@ body {
      出横向滚动而不是叠字。 */
   min-width: 640px;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: 12px;
   /* 固定列宽布局（issue #37）：每个厂商组的子表是独立 table，auto 布局按各组
      内容分配列宽会让「调用/输入/输出」等列位跨组漂移；fixed + 统一列宽让
      所有组的表格纵向对齐成同一张网格。列宽由表头 nth-child 定义。 */
@@ -1820,10 +1822,11 @@ body {
 
 .modelTable th,
 .modelTable td th td {
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ds-border);
   text-align: left;
   white-space: nowrap;
+  color: var(--ds-t-1);
 }
 
 .modelTable tbody tr:last-child td tbody tr:last-child td {
@@ -1840,7 +1843,7 @@ body {
   content: '›';
   display: inline-block;
   margin-right: 6px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--ds-t-3);
 }
 
 .sessionGroupRow[aria-expanded='true'] .modelName::before {
@@ -1852,12 +1855,13 @@ body {
 }
 
 .modelTable thead th thead th {
+  padding: 8px 12px;
   font-size: 11px;
-  font-weight: 600;
-  color: var(--dsw-alias-label-tertiary);
+  font-weight: 500;
+  color: var(--ds-t-3);
   background: transparent;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
 }
 
 .modelTable tbody tr tbody tr {
@@ -1875,16 +1879,17 @@ body {
 
 .modelTable tbody tr.modelRowActive,
 .modelTable tbody tr.modelRowActive:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: color-mix(in srgb, var(--ds-blue) 10%, transparent);
 }
 
 .numCol {
   text-align: right;
+  font-family: var(--mono);
   font-variant-numeric: tabular-nums;
 }
 
 .na {
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--ds-t-4);
 }
 
 .modelCell {
@@ -1894,16 +1899,16 @@ body {
 }
 
 .modelDot {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   flex: none;
-  border-radius: 50%;
+  border-radius: 2px;
 }
 
 .modelName {
   display: block;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   line-height: 16px;
 }
 
@@ -1911,7 +1916,7 @@ body {
   display: block;
   font-size: 10.5px;
   line-height: 14px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--ds-t-3);
 }
 
 /* ── Pricing collapse toggle ────────────────────────────────────────── */
@@ -1924,9 +1929,9 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 8px 10px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-1);
+  background: var(--dsb-2);
 }
 
 .siteRowName {
@@ -1940,34 +1945,38 @@ body {
   flex: none;
   display: inline-flex;
   align-items: center;
-  padding: 1px 7px;
+  padding: 2px 7px;
+  border: 1px solid transparent;
   border-radius: 999px;
-  font-size: 10.5px;
-  line-height: 16px;
+  font-size: 10px;
+  line-height: 14px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .siteKindSite {
-  color: var(--dsw-static-blue-500);
-  background: color-mix(in srgb, var(--dsw-static-blue-500) 14%, transparent);
+  color: var(--ds-blue);
+  border-color: color-mix(in srgb, var(--ds-blue) 36%, transparent);
+  background: color-mix(in srgb, var(--ds-blue) 12%, transparent);
 }
 
 .siteKindDirect {
-  color: var(--dsw-static-green-500);
-  background: color-mix(in srgb, var(--dsw-static-green-500) 14%, transparent);
+  color: var(--ds-green);
+  border-color: color-mix(in srgb, var(--ds-green) 36%, transparent);
+  background: color-mix(in srgb, var(--ds-green) 12%, transparent);
 }
 
 .siteKindUnknown {
-  color: var(--dsw-static-red-500);
-  background: color-mix(in srgb, var(--dsw-static-red-500) 14%, transparent);
+  color: var(--ds-red);
+  border-color: color-mix(in srgb, var(--ds-red) 36%, transparent);
+  background: color-mix(in srgb, var(--ds-red) 12%, transparent);
 }
 
 .siteRowTitle {
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 18px;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1983,21 +1992,21 @@ body {
 .siteRowCost {
   font-size: 12.5px;
   line-height: 18px;
-  font-weight: 700;
-  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  color: var(--ds-t-1);
   font-variant-numeric: tabular-nums;
 }
 
 .siteRowCalls {
   font-size: 11.5px;
   line-height: 17px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
   font-variant-numeric: tabular-nums;
 }
 
 /* 中转站额度低配额（剩余 < 20%）标红，与订阅低配额语义一致。 */
 .siteRowCallsLow {
-  color: var(--dsw-static-red-500);
+  color: var(--ds-red);
 }
 
 /* ── Peak/off-peak band display ─────────────────────────────────────── */
@@ -2005,29 +2014,31 @@ body {
 .flatTag {
   font-size: 10.5px;
   line-height: 14px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--ds-t-3);
 }
 
 /* ── Model health dot & badges ──────────────────────────────────────── */
 
 .healthDot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   flex: none;
   border-radius: 50%;
 }
 
 .healthOk {
-  background: var(--dsw-static-green-500);
+  background: var(--ds-green);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ds-green) 18%, transparent);
 }
 
 .healthBad {
-  background: var(--dsw-static-red-500);
+  background: var(--ds-red);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ds-red) 18%, transparent);
 }
 
 .healthIdle {
-  background: var(--dsw-static-neutral-bluish-400);
+  background: var(--ds-t-4);
 }
 
 .dashboardRight {
@@ -2049,25 +2060,26 @@ body {
 }
 
 .healthBadgeOk {
-  color: var(--dsw-static-green-500);
-  background: var(--dsw-alias-bg-layer-2);
+  color: var(--ds-green);
+  background: var(--dsb-2);
 }
 
 .healthBadgeBad {
-  color: var(--dsw-static-red-500);
-  background: var(--dsw-alias-bg-layer-2);
+  color: var(--ds-red);
+  background: var(--dsb-2);
 }
 
 .planTag {
   display: inline-flex;
   align-items: center;
-  padding: 1px 8px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--ds-green) 36%, transparent);
   border-radius: 999px;
-  font-size: 11px;
-  line-height: 17px;
+  font-size: 10px;
+  line-height: 14px;
   font-weight: 500;
-  color: var(--dsw-static-green-500);
-  background: var(--dsw-alias-bg-layer-2);
+  color: var(--ds-green);
+  background: color-mix(in srgb, var(--ds-green) 12%, transparent);
 }
 
 /* ── 未收录模型标签 ─────────────────────────────────────────────────── */
@@ -2077,13 +2089,14 @@ body {
   display: inline-block;
   margin-left: 6px;
   padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--ds-amber) 36%, transparent);
   border-radius: 999px;
   font-size: 10px;
   line-height: 16px;
   font-weight: 600;
   vertical-align: 1px;
-  color: var(--dsw-static-amber-500);
-  background: var(--dsw-alias-bg-layer-2);
+  color: var(--ds-amber);
+  background: color-mix(in srgb, var(--ds-amber) 12%, transparent);
 }
 
 /* 估算价标记：厂商未公布官方按量单价，用量青色系区分于「未收录」的琥珀色。 */
@@ -2091,13 +2104,14 @@ body {
   display: inline-block;
   margin-left: 6px;
   padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--ds-blue) 36%, transparent);
   border-radius: 999px;
   font-size: 10px;
   line-height: 16px;
   font-weight: 600;
   vertical-align: 1px;
-  color: var(--dsw-static-blue-500);
-  background: var(--dsw-alias-bg-layer-2);
+  color: var(--ds-blue);
+  background: color-mix(in srgb, var(--ds-blue) 12%, transparent);
 }
 
 /* ── 即时代费用条（composer dock）──────────────────────────────────── */
@@ -2216,24 +2230,24 @@ body {
   height: 24px;
   padding: 0 6px;
   border-radius: 12px;
-  border: 1px solid var(--dsw-alias-label-caption);
-  background: color-mix(in srgb, var(--dsw-alias-label-caption) 10%, transparent);
-  color: var(--dsw-alias-label-secondary);
+  border: 1px solid var(--ds-border-strong);
+  background: var(--dsb-2);
+  color: var(--ds-t-2);
   font-size: 10.5px;
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
 }
 .balanceDaysBadge:hover {
-  border-color: var(--dsw-alias-label-secondary);
-  background: color-mix(in srgb, var(--dsw-alias-label-caption) 18%, transparent);
+  border-color: var(--ds-t-3);
+  color: var(--ds-t-1);
 }
 
 /* 剩余不足 3 天：徽标红色强调。 */
 .balanceDaysBadgeLow {
-  color: var(--dsw-static-red-500);
-  border-color: var(--dsw-static-red-500);
-  background: color-mix(in srgb, var(--dsw-static-red-500) 10%, transparent);
+  color: var(--ds-red);
+  border-color: color-mix(in srgb, var(--ds-red) 36%, transparent);
+  background: color-mix(in srgb, var(--ds-red) 12%, transparent);
 }
 
 /* 余额详情弹窗：点击徽标后显示，定位于余额字段下方。 */
@@ -2244,10 +2258,10 @@ body {
   z-index: 20;
   min-width: 180px;
   padding: 8px 10px;
-  background: var(--dsw-alias-bg-layer-3);
-  border: 1px solid var(--dsw-alias-label-caption);
+  background: var(--dsb-2);
+  border: 1px solid var(--ds-border-strong);
   border-radius: 8px;
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  box-shadow: var(--ds-shadow-1);
   display: inline-flex;
   flex-direction: column;
   gap: 6px;
@@ -2262,7 +2276,7 @@ body {
 .balanceDetailTitle {
   font-weight: 600;
   font-size: 12px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
 }
 .balanceDetailClose {
   border: none;
@@ -2270,10 +2284,10 @@ body {
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
-  color: var(--dsw-alias-label-caption);
+  color: var(--ds-t-3);
 }
 .balanceDetailClose:hover {
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
 }
 .balanceDetailGrid {
   display: inline-flex;
@@ -2286,14 +2300,14 @@ body {
   gap: 16px;
   font-size: 11px;
   line-height: 15px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
   font-variant-numeric: tabular-nums;
 }
 .balanceDetailLabel {
-  color: var(--dsw-alias-label-caption);
+  color: var(--ds-t-3);
 }
 .balanceDetailValue {
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   font-weight: 500;
 }
 
@@ -2340,40 +2354,14 @@ body {
 .subscriptionCard {
   position: relative;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 75%, transparent);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-2);
+  padding: 14px 16px;
   /* 玻璃质感：半透明底 + 背景模糊，透出厂商组底色，营造磨砂层次。 */
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 62%, transparent);
+  background: var(--dsb-glass);
   backdrop-filter: blur(12px) saturate(1.3);
   -webkit-backdrop-filter: blur(12px) saturate(1.3);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.10);
-  transition: border-color 200ms ease, box-shadow 200ms ease;
-}
-
-/* 顶部金色流光饰条：琥珀→高亮→琥珀的渐变在卡顶缓慢流动，营造高级质感。 */
-.subscriptionCard::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1.5px;
-  background: linear-gradient(90deg, transparent 0%, var(--dsw-static-amber-500) 30%, var(--dsw-alias-label-primary) 50%, var(--dsw-static-amber-500) 70%, transparent 100%);
-  background-size: 200% 100%;
-  animation: subscriptionGoldFlow 3.6s ease-in-out infinite;
-  opacity: 0.9;
-  pointer-events: none;
-}
-
-@keyframes subscriptionGoldFlow {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.subscriptionCard:hover {
-  border-color: color-mix(in srgb, var(--dsw-static-amber-500) 55%, var(--dsw-alias-border-l1));
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.16);
+  transition: border-color var(--ds-t-fast);
 }
 
 .subscriptionHead {
@@ -2385,13 +2373,14 @@ body {
 }
 
 .subscriptionName {
-  font-weight: 700;
+  font-weight: 600;
   font-size: 13px;
+  color: var(--ds-t-1);
 }
 
 .subscriptionPlan {
   font-size: 11px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
 }
 
 /* plan 类型徽标（订阅制/按量）：与厂商组徽标同款圆角胶囊。 */
@@ -2400,14 +2389,14 @@ body {
   padding: 1px 8px;
   border-radius: 999px;
   font-weight: 500;
-  color: var(--dsw-alias-label-secondary);
-  background: var(--dsw-alias-bg-layer-3);
+  color: var(--ds-t-2);
+  background: var(--dsb-3);
 }
 
 /* 档位月费旁边的周期额度口径（如「周额度 $30」）。 */
 .subscriptionTier {
   margin-left: 6px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-3);
 }
 
 /* 自动识别徽标：档位价来自内置知识库，非厂商实时价格。 */
@@ -2415,14 +2404,15 @@ body {
   margin-left: 6px;
   font-size: 10px;
   padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--ds-blue) 36%, transparent);
   border-radius: 999px;
-  color: var(--dsw-static-blue-500);
-  background: color-mix(in srgb, var(--dsw-static-blue-500) 14%, var(--dsw-alias-bg-layer-2));
+  color: var(--ds-blue);
+  background: color-mix(in srgb, var(--ds-blue) 12%, transparent);
 }
 
 .subscriptionStatus {
   font-size: 11px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
   margin-bottom: 6px;
 }
 
@@ -2436,14 +2426,14 @@ body {
 
 .subscriptionWindowLabel {
   flex: 0 0 44px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-3);
 }
 
 .subscriptionTrack {
   flex: 1;
   height: 6px;
   border-radius: 3px;
-  background: var(--dsw-alias-bg-layer-3);
+  background: var(--dsb-3);
   overflow: hidden;
 }
 
@@ -2451,18 +2441,18 @@ body {
   display: block;
   height: 100%;
   border-radius: 3px;
-  background: var(--dsw-static-blue-500);
-  transition: width 200ms ease;
+  background: var(--ds-blue);
+  transition: width var(--ds-t-fast);
 }
 
 /* ≥80% 已用：琥珀警示。 */
 .subscriptionFillWarn {
-  background: var(--dsw-static-amber-500);
+  background: var(--ds-amber);
 }
 
 /* 用尽（≥100% 已用）：满格红。 */
 .subscriptionFillOver {
-  background: var(--dsw-static-red-500);
+  background: var(--ds-red);
 }
 
 /* 「剩余% + 重置时间」右对齐 meta 块：上下排布，避免冗长时间戳横向挤压进度条。 */
@@ -2478,12 +2468,14 @@ body {
   flex: 0 0 auto;
   min-width: 52px;
   text-align: right;
+  font-family: var(--mono);
   font-variant-numeric: tabular-nums;
+  color: var(--ds-t-1);
 }
 
 /* 已用尽：红色强调文案。 */
 .subscriptionExhausted {
-  color: var(--dsw-static-red-500);
+  color: var(--ds-red);
   font-weight: 600;
   min-width: 52px;
 }
@@ -2491,7 +2483,7 @@ body {
 .subscriptionReset {
   flex: 0 0 auto;
   font-size: 10px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--ds-t-3);
   white-space: nowrap;
 }
 
@@ -2506,10 +2498,10 @@ body {
 
 /* 厂商组卡片：厂商名 + 模型用量子表 + 订阅额度卡片。 */
 .providerGroup {
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-2);
   padding: 12px 14px;
-  background: var(--dsw-alias-bg-layer-1);
+  background: var(--dsb-glass);
 }
 
 /* 厂商组头部：左侧厂商名 + 健康点，右侧订阅套数 + 厂商余额。 */
@@ -2531,7 +2523,7 @@ body {
   font-size: 13px;
   line-height: 18px;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
 }
 
 .providerGroupMeta {
@@ -2548,12 +2540,13 @@ body {
   align-items: center;
   justify-content: center;
   padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--ds-green) 36%, transparent);
   border-radius: 999px;
-  font-size: 11px;
-  line-height: 17px;
+  font-size: 10px;
+  line-height: 16px;
   font-weight: 500;
-  color: var(--dsw-static-green-500);
-  background: var(--dsw-alias-bg-layer-2);
+  color: var(--ds-green);
+  background: color-mix(in srgb, var(--ds-green) 12%, transparent);
   /* 固定槽宽：缺席时由空占位保持列位。 */
   min-width: 64px;
 }
@@ -2564,7 +2557,7 @@ body {
   gap: 6px;
   font-size: 12px;
   line-height: 17px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   /* 固定槽宽 + 右贴：余额金额跨组纵向对齐。 */
@@ -2580,7 +2573,7 @@ body {
   gap: 6px;
   font-size: 12px;
   line-height: 17px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   /* 固定槽宽 + 右贴：费用金额跨组纵向对齐（issue #37）。 */
@@ -2593,7 +2586,7 @@ body {
 }
 
 .providerGroupCostValue {
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   font-weight: 600;
   min-width: 56px;
   text-align: right;
@@ -2602,7 +2595,7 @@ body {
 .providerGroupBalanceLabel {
   font-size: 11px;
   line-height: 17px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--ds-t-3);
 }
 
 /* ── 每轮费用 + 异常 ───────────────────────────────────────────────── */
@@ -2633,12 +2626,12 @@ body {
 
 /* 峰时列：琥珀淡色带（颜色映射背景，主题自适应）。 */
 .roundsBarColPeak {
-  background: color-mix(in srgb, var(--dsw-static-amber-500) 16%, transparent);
+  background: color-mix(in srgb, var(--ds-amber) 16%, transparent);
 }
 
 /* 平价列：中性淡色带。 */
 .roundsBarColOff {
-  background: var(--dsw-alias-bg-module-platform);
+  background: var(--dsb-3);
 }
 
 /* 每根柱子顶部的费用数字：随柱高定位（bottom = height%），紧贴各自柱顶上方。 */
@@ -2651,7 +2644,7 @@ body {
   font-size: 9px;
   line-height: 1.2;
   text-align: center;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2670,7 +2663,7 @@ body {
   width: 100%;
   min-height: 2px;
   border-radius: 2px 2px 0 0;
-  background: var(--dsw-static-blue-500);
+  background: var(--ds-blue);
   position: relative;
 }
 
@@ -2678,7 +2671,7 @@ body {
   width: 100%;
   min-height: 2px;
   border-radius: 2px 2px 0 0;
-  background: var(--dsw-static-red-500);
+  background: var(--ds-red);
   position: relative;
 }
 
@@ -2689,7 +2682,7 @@ body {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--dsw-static-red-500);
+  background: var(--ds-red);
 }
 
 .roundsAxis {
@@ -2697,13 +2690,13 @@ body {
   justify-content: space-between;
   margin-top: 6px;
   font-size: 10px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-3);
 }
 
 .roundsEmpty {
   margin-top: 10px;
   font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
 }
 
 /* ── 用量热力图（月度活跃地图：每天一格大圆角卡片，周日开头 7 列） ──── */
@@ -3328,9 +3321,9 @@ body {
   flex-direction: column;
   gap: 12px;
   padding: 16px 18px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-2);
+  background: var(--dsb-glass);
 }
 
 /* 聚合卡内的开关网格：一行三列（窄屏折叠单列）。cell 是 setCardHead 形态的
@@ -3362,8 +3355,8 @@ body {
   flex-direction: column;
   gap: 8px;
   padding: 12px 14px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 10px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-1);
   min-width: 0;
 }
 
@@ -3386,14 +3379,14 @@ body {
   font-size: 13px;
   line-height: 18px;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
 }
 
 .setCardDesc {
   margin: 0;
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-3);
 }
 
 /* 控制列：label + 控件（输入框 / 下拉 / 复选框 / 按钮 / 进度条）。 */
@@ -3419,7 +3412,7 @@ body {
   flex: 0 0 96px;
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-3);
 }
 
 .ctlGroup {
@@ -3437,7 +3430,7 @@ body {
   align-items: center;
   gap: 10px;
   padding: 8px 0;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 1px solid var(--ds-border);
 }
 
 .userPriceCheck {
@@ -3445,7 +3438,7 @@ body {
   width: 14px;
   height: 14px;
   margin: 0;
-  accent-color: var(--dsw-static-blue-500);
+  accent-color: var(--ds-blue);
 }
 
 .userPriceBody {
@@ -3491,8 +3484,9 @@ body {
   align-items: flex-end;
 }
 
-/* 价格行（标准价 / 低谷价）：相对行1 的二级分组——缩进 + 左侧引导线 +
-   弱化行标签，一眼看出从属于本条模型/来源；三桶输入横排，两行结构对称。 */
+/* 价格行（标准价 / 低谷价）：相对行1 的二级分组——缩进 + 左侧琥珀引导线
+   （自定义覆盖价强调）+ 弱化行标签，一眼看出从属于本条模型/来源；
+   三桶输入横排，两行结构对称。 */
 .userPricePriceLine {
   display: flex;
   align-items: center;
@@ -3501,14 +3495,14 @@ body {
   flex-wrap: wrap;
   margin-left: 10px;
   padding: 2px 0 6px 12px;
-  border-left: 2px solid var(--dsw-alias-border-l1);
+  border-left: 2px solid var(--ds-amber);
 }
 
 /* 二级行标签：窄列、弱色、小字号，与一级字段标签拉开层级。 */
 .userPricePriceLine > .ctlLabel {
   flex: 0 0 44px;
   font-size: 11px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-3);
 }
 
 /* 价格行三输入横排均分、过窄才折行。 */
@@ -3537,10 +3531,10 @@ body {
   min-width: 96px;
   max-width: 160px;
   padding: 4px 8px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 1px solid var(--ds-border);
   border-radius: 6px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
+  background: var(--dsb-3);
+  color: var(--ds-t-1);
   font-size: 12px;
   line-height: 16px;
 }
@@ -3557,7 +3551,7 @@ body {
   gap: 6px;
   font-size: 12px;
   line-height: 16px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -3574,12 +3568,12 @@ body {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 1px solid var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--ds-border-strong);
+  background: var(--dsb-3);
 }
 
 .rdo input:checked + .rdoDot {
-  border-color: var(--dsw-static-blue-500);
+  border-color: var(--ds-blue);
 }
 
 .rdo input:checked + .rdoDot::after {
@@ -3587,7 +3581,7 @@ body {
   position: absolute;
   inset: 3px;
   border-radius: 50%;
-  background: var(--dsw-static-blue-500);
+  background: var(--ds-blue);
 }
 
 .inp {
@@ -3595,31 +3589,31 @@ body {
   align-items: center;
   gap: 4px;
   padding: 2px 6px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 1px solid var(--ds-border);
   border-radius: 6px;
-  background: var(--dsw-alias-bg-layer-1);
+  background: var(--dsb-3);
 }
 
 .affix {
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--ds-t-3);
 }
 
 .prog {
   flex: 1;
   min-width: 0;
   height: 6px;
-  border-radius: 999px;
-  background: var(--dsw-alias-bg-module-platform);
+  border-radius: 3px;
+  background: var(--dsb-3);
   overflow: hidden;
 }
 
 .progFill {
   height: 100%;
-  border-radius: 999px;
-  background: var(--dsw-static-blue-500);
-  transition: width 200ms ease;
+  border-radius: 3px;
+  background: var(--ds-blue);
+  transition: width var(--ds-t-fast);
 }
 
 .btn {
@@ -3628,20 +3622,20 @@ body {
   gap: 6px;
   height: 28px;
   padding: 0 12px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 1px solid var(--ds-border);
   border-radius: 999px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  color: var(--ds-t-2);
   font-size: 12px;
   line-height: 16px;
   cursor: pointer;
-  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
+  transition: border-color var(--ds-t-fast), color var(--ds-t-fast), background-color var(--ds-t-fast);
 }
 
 .btn:hover {
-  border-color: var(--dsw-static-blue-500);
-  color: var(--dsw-alias-label-primary);
-  background: color-mix(in srgb, var(--dsw-static-blue-500) 12%, var(--dsw-alias-bg-layer-1));
+  border-color: var(--ds-blue);
+  color: var(--ds-t-1);
+  background: color-mix(in srgb, var(--ds-blue) 12%, transparent);
 }
 
 /* ── 设置 Tab：分区标题 + 分组说明 ─────────────────────────────────── */
@@ -3651,6 +3645,6 @@ body {
   text-align: right;
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
 }
 

@@ -718,10 +718,13 @@ function formatClock(time: number): string {
 /**
  * 高区分度图表色板：趋势图柱、图例与计费表圆点按模型分配。不用模型品牌色
  * （目录里多为蓝色系，视觉上几乎分不开），保证每个模型一眼可辨。
+ * 取设计 spec §3.4 七段色板（与 CSS --ds-c-1..7 同值；SVG presentation
+ * attribute 不解析 var()，故用同值字面量而非令牌引用），后三位保持
+ * 原有高区分度补位色，10 路循环不变。
  */
 const CHART_PALETTE: readonly string[] = [
-  '#3b82f6', '#06b6d4', '#8b5cf6', '#f59e0b', '#10b981',
-  '#ef4444', '#ec4899', '#6366f1', '#f97316', '#14b8a6',
+  '#4f8cff', '#2dd4bf', '#a78bfa', '#f59e0b', '#f472b6',
+  '#fbbf24', '#38bdf8', '#6366f1', '#f97316', '#14b8a6',
 ]
 
 /** Empty snapshot: shown before (or without) real host data — zeros, never fabricated samples. */
@@ -2851,14 +2854,14 @@ function BillingDashboard({
                     </div>
                     <div className={css.shareLegend}>
                       <span className={css.shareItem}>
-                        <span className={css.shareDot} style={{ background: 'var(--dsw-static-blue-500)' }} />
+                        <span className={css.shareDot} style={{ background: 'var(--ds-blue)' }} />
                         {t('peak')}
                         <span className={css.shareValue} data-testid="billing-share-peak">
                           {money(peakShare.peak)} · {peakPct.toFixed(1)}%
                         </span>
                       </span>
                       <span className={css.shareItem}>
-                        <span className={css.shareDot} style={{ background: 'color-mix(in srgb, var(--dsw-static-blue-500) 30%, var(--dsw-alias-bg-module-platform))' }} />
+                        <span className={css.shareDot} style={{ background: 'color-mix(in srgb, var(--ds-blue) 30%, var(--dsb-3))' }} />
                         {t('offPeak')}
                         <span className={css.shareValue} data-testid="billing-share-offpeak">
                           {money(peakShare.offPeak)} · {(100 - peakPct).toFixed(1)}%
