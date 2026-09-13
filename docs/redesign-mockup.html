@@ -1,0 +1,1062 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>dsh-ui-usage-billing · 设计演示稿 v3</title>
+<style>
+  /* ───── 设计令牌（重构基线） ───── */
+  :root {
+    /* 表面 */
+    --bg: #0e1116;
+    --bg-2: #141a22;
+    --bg-3: #1a222c;
+    --bg-glass: color-mix(in srgb, #141a22 78%, transparent);
+    --bg-glass-strong: color-mix(in srgb, #1a222c 88%, transparent);
+    --border: color-mix(in srgb, #2a3340 82%, transparent);
+    --border-strong: color-mix(in srgb, #3a4452 90%, transparent);
+    --hi-top: rgba(255,255,255,0.045);
+    --shadow-1: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.35);
+    --shadow-2: 0 1px 0 rgba(255,255,255,0.05) inset, 0 18px 48px rgba(0,0,0,0.5);
+
+    /* 文字 */
+    --t-1: #e6edf3;
+    --t-2: #a4b1c2;
+    --t-3: #6b7787;
+    --t-4: #4a5360;
+
+    /* 语义 */
+    --blue: #4f8cff;
+    --cyan: #2dd4bf;
+    --green: #34d399;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --violet: #a78bfa;
+
+    /* 图表色板（按用量降序冷→暖） */
+    --c1: #4f8cff;
+    --c2: #2dd4bf;
+    --c3: #a78bfa;
+    --c4: #f59e0b;
+    --c5: #f472b6;
+    --c6: #fbbf24;
+    --c7: #38bdf8;
+
+    /* 字体 */
+    --font-num: 'JetBrains Mono', 'SF Mono', ui-monospace, 'Menlo', 'Consolas', monospace;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+
+    --r-1: 8px;
+    --r-2: 12px;
+    --r-3: 16px;
+
+    --t-fast: 160ms cubic-bezier(.2,.8,.2,1);
+  }
+
+  [data-theme="light"] {
+    --bg: #f6f7f9;
+    --bg-2: #ffffff;
+    --bg-3: #eef0f4;
+    --bg-glass: color-mix(in srgb, #ffffff 80%, transparent);
+    --bg-glass-strong: color-mix(in srgb, #ffffff 92%, transparent);
+    --border: #e3e7ed;
+    --border-strong: #cdd3db;
+    --hi-top: rgba(255,255,255,0.6);
+    --shadow-1: 0 1px 0 rgba(255,255,255,0.8) inset, 0 6px 18px rgba(15,23,30,0.06);
+    --shadow-2: 0 1px 0 rgba(255,255,255,0.9) inset, 0 18px 40px rgba(15,23,30,0.08);
+    --t-1: #0e1116;
+    --t-2: #4b5563;
+    --t-3: #6b7280;
+    --t-4: #9ca3af;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--t-1);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    /* 极淡的氛围光 */
+    background-image:
+      radial-gradient(900px 600px at 80% -10%, color-mix(in srgb, var(--blue) 14%, transparent), transparent 60%),
+      radial-gradient(700px 500px at -10% 110%, color-mix(in srgb, var(--violet) 8%, transparent), transparent 60%);
+  }
+
+  /* ───── 顶部工具条 ───── */
+  .toolbar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 24px;
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    border-bottom: 1px solid var(--border);
+  }
+  .toolbar h1 { font-size: 13px; font-weight: 600; margin: 0; letter-spacing: 0.02em; }
+  .toolbar .sub { color: var(--t-3); font-size: 11px; margin-left: 4px; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .seg { display: flex; padding: 2px; gap: 2px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; }
+  .toolbar .seg button {
+    background: transparent; color: var(--t-2);
+    border: 0; padding: 5px 12px; border-radius: 6px; font-size: 11px; cursor: pointer;
+    font-family: var(--font-sans);
+  }
+  .toolbar .seg button[aria-pressed="true"] {
+    background: var(--bg-3); color: var(--t-1);
+    box-shadow: 0 0 0 1px var(--border-strong);
+  }
+  .toolbar .switch {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--t-2); font-size: 11px; cursor: pointer;
+  }
+  .toolbar .switch input { appearance: none; width: 30px; height: 16px; background: var(--bg-3); border-radius: 8px; position: relative; cursor: pointer; }
+  .toolbar .switch input::after { content: ""; position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--t-2); transition: transform var(--t-fast); }
+  .toolbar .switch input:checked { background: color-mix(in srgb, var(--blue) 60%, transparent); }
+  .toolbar .switch input:checked::after { transform: translateX(14px); background: white; }
+
+  /* ───── 演示稿容器 ───── */
+  main { padding: 28px 24px 96px; max-width: 1280px; margin: 0 auto; }
+  section { margin-bottom: 56px; }
+  .sec-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; }
+  .sec-head h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.01em; }
+  .sec-head .tag {
+    font-size: 10px; padding: 2px 6px; border-radius: 4px;
+    background: color-mix(in srgb, var(--blue) 14%, transparent);
+    color: var(--blue); border: 1px solid color-mix(in srgb, var(--blue) 28%, transparent);
+    font-family: var(--font-num); letter-spacing: 0.04em;
+  }
+  .sec-head .desc { color: var(--t-3); font-size: 12px; }
+
+  /* ───── 通用：玻璃卡 ───── */
+  .card {
+    background: var(--bg-glass);
+    border: 1px solid var(--border);
+    border-radius: var(--r-3);
+    box-shadow: var(--shadow-1);
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--hi-top), transparent);
+  }
+  .card.bordered { background: var(--bg-glass-strong); }
+  .card .card-h {
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .card .card-h h3 { margin: 0; font-size: 13px; font-weight: 600; }
+  .card .card-h .meta { color: var(--t-3); font-size: 11px; }
+  .card .card-b { padding: 18px; }
+
+  /* ───── 数字 / 等宽 ───── */
+  .num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+  .big { font-size: 36px; font-weight: 600; letter-spacing: -0.02em; }
+  .huge { font-size: 52px; font-weight: 600; letter-spacing: -0.03em; }
+  .t1 { color: var(--t-1); } .t2 { color: var(--t-2); } .t3 { color: var(--t-3); } .t4 { color: var(--t-4); }
+
+  /* ───── 状态点 / 徽标 ───── */
+  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
+  .dot.b { background: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 18%, transparent); }
+  .dot.c { background: var(--cyan); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cyan) 18%, transparent); }
+  .dot.g { background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 18%, transparent); }
+  .dot.a { background: var(--amber); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 18%, transparent); }
+  .dot.r { background: var(--red);   box-shadow: 0 0 0 3px color-mix(in srgb, var(--red)   18%, transparent); }
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; padding: 2px 7px; border-radius: 999px;
+    border: 1px solid var(--border-strong); color: var(--t-2);
+    background: var(--bg-2); font-family: var(--font-sans); white-space: nowrap;
+  }
+  .badge.live  { color: var(--blue);   border-color: color-mix(in srgb, var(--blue)   36%, transparent); background: color-mix(in srgb, var(--blue)   12%, transparent); }
+  .badge.warn  { color: var(--amber);  border-color: color-mix(in srgb, var(--amber)  36%, transparent); background: color-mix(in srgb, var(--amber)  12%, transparent); }
+  .badge.danger{ color: var(--red);    border-color: color-mix(in srgb, var(--red)    36%, transparent); background: color-mix(in srgb, var(--red)    12%, transparent); }
+  .badge.ok    { color: var(--green);  border-color: color-mix(in srgb, var(--green)  36%, transparent); background: color-mix(in srgb, var(--green)  12%, transparent); }
+  .badge.sub   { color: var(--cyan);   border-color: color-mix(in srgb, var(--cyan)   36%, transparent); background: color-mix(in srgb, var(--cyan)   12%, transparent); }
+
+  /* ───── 1. 设计令牌（视觉系统） ───── */
+  .tokens {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;
+  }
+  .swatch { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-1); background: var(--bg-2); }
+  .swatch .chip { width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08); }
+  .swatch .label { font-family: var(--font-num); font-size: 11px; color: var(--t-2); }
+  .swatch .name  { font-size: 12px; }
+  .lvl-row { display: grid; grid-template-columns: 100px 1fr; align-items: center; gap: 16px; padding: 8px 0; border-bottom: 1px dashed var(--border); }
+  .lvl-row:last-child { border-bottom: 0; }
+  .lvl-row .sample .num { color: var(--t-1); }
+  .lvl-row .desc { color: var(--t-3); font-size: 11px; font-family: var(--font-num); }
+
+  /* ───── 2. 仪表盘弹窗 ───── */
+  .modal-shell {
+    border-radius: var(--r-3);
+    background: var(--bg-2);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-2);
+    overflow: hidden;
+    width: 760px; max-width: 100%;
+    margin: 0 auto;
+  }
+  .modal-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    -webkit-app-region: drag;
+  }
+  .modal-head .lights { display: flex; gap: 6px; }
+  .modal-head .lights span { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .modal-head .lights span:nth-child(1) { background: #ed6a5e; }
+  .modal-head .lights span:nth-child(2) { background: #f5bf4f; }
+  .modal-head .lights span:nth-child(3) { background: #62c554; }
+  .modal-head .tabs { display: flex; gap: 2px; margin-left: 18px; }
+  .modal-head .tabs button {
+    background: transparent; color: var(--t-3);
+    border: 0; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+  }
+  .modal-head .tabs button[aria-current="page"] {
+    background: var(--bg-3); color: var(--t-1);
+    box-shadow: 0 0 0 1px var(--border-strong);
+  }
+  .modal-body { padding: 20px; display: grid; gap: 18px; }
+
+  /* ───── Hero ───── */
+  .hero {
+    display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px;
+    padding: 22px 24px;
+    background: var(--bg-glass-strong);
+    border: 1px solid var(--border); border-radius: var(--r-3);
+    position: relative; overflow: hidden;
+  }
+  .hero::after {
+    /* 顶部金光流光饰条（重构保留） */
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1.5px;
+    background: linear-gradient(90deg, transparent 10%, var(--amber) 50%, transparent 90%);
+    opacity: 0.65;
+  }
+  .hero .label { color: var(--t-3); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .hero .huge { margin-top: 8px; }
+  .hero .subline { color: var(--t-2); margin-top: 4px; font-size: 12px; }
+  .hero .subline b { color: var(--t-1); font-weight: 600; }
+  .hero .ring-wrap { display: flex; align-items: center; justify-content: center; position: relative; }
+  .hero .ring-wrap .center { position: absolute; text-align: center; }
+  .hero .ring-wrap .pct { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+  .hero .ring-wrap .pct-label { color: var(--t-3); font-size: 11px; }
+  .hero .kv-row { display: flex; gap: 18px; margin-top: 12px; font-size: 12px; color: var(--t-2); }
+  .hero .kv-row .v { font-weight: 600; }
+  .hero .kv-row .delta-up { color: var(--red); }
+  .hero .kv-row .delta-down { color: var(--green); }
+
+  /* ───── KPI ───── */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi { padding: 14px 16px; border-radius: var(--r-2); background: var(--bg-glass); border: 1px solid var(--border); }
+  .kpi .l { color: var(--t-3); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .kpi .v { font-size: 22px; font-weight: 600; margin-top: 6px; }
+  .kpi .d { color: var(--t-3); font-size: 11px; margin-top: 4px; }
+
+  /* ───── 表格 ───── */
+  table.t { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+  table.t th { color: var(--t-3); font-weight: 500; text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+  table.t td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  table.t tr:last-child td { border-bottom: 0; }
+  table.t .num { text-align: right; }
+  table.t .num.r { text-align: right; }
+  table.t .right { text-align: right; }
+  table.t .name { display: flex; align-items: center; gap: 8px; }
+
+  /* ───── 进度条 ───── */
+  .bar { height: 6px; border-radius: 3px; background: var(--bg-3); overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: 3px; background: var(--blue); }
+  .bar.warn > i { background: var(--amber); }
+  .bar.danger > i { background: var(--red); }
+  .bar.ok > i { background: var(--green); }
+
+  /* ───── 热力图 ───── */
+  .heatmap { display: grid; grid-template-columns: repeat(26, 1fr); gap: 3px; }
+  .heatmap .h { aspect-ratio: 1/1; border-radius: 2px; background: color-mix(in srgb, var(--blue) 10%, var(--bg-3)); }
+  .heatmap .h[data-l="1"] { background: color-mix(in srgb, var(--blue) 18%, var(--bg-3)); }
+  .heatmap .h[data-l="2"] { background: color-mix(in srgb, var(--blue) 36%, var(--bg-3)); }
+  .heatmap .h[data-l="3"] { background: color-mix(in srgb, var(--blue) 60%, var(--bg-3)); }
+  .heatmap .h[data-l="4"] { background: color-mix(in srgb, var(--blue) 88%, var(--bg-3)); }
+  .heatmap .h.none { background: transparent; border: 1px dashed var(--border); }
+
+  /* ───── 趋势图（手绘 SVG） ───── */
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 14px; font-size: 11px; color: var(--t-2); }
+  .legend i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 4px; vertical-align: middle; }
+
+  /* ───── Footer 触发卡（surface A） ───── */
+  .triggers {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: end;
+  }
+  .trigger-wide {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-radius: 10px;
+    background: var(--bg-glass); border: 1px solid var(--border);
+    width: 100%;
+  }
+  .trigger-wide .icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: grid; place-items: center;
+    background: color-mix(in srgb, var(--blue) 14%, var(--bg-3));
+    border: 1px solid color-mix(in srgb, var(--blue) 28%, transparent);
+  }
+  .trigger-wide .col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .trigger-wide .col .big { font-size: 22px; font-weight: 600; line-height: 1.1; }
+  .trigger-wide .col .sub { color: var(--t-3); font-size: 11px; }
+  .trigger-wide .spark { width: 84px; height: 28px; flex: none; }
+
+  .trigger-rail {
+    width: 36px; height: 36px; border-radius: 8px;
+    display: grid; place-items: center;
+    background: var(--bg-glass); border: 1px solid var(--border);
+  }
+  .trigger-rail:hover { border-color: var(--blue); }
+
+  /* popover */
+  .popover {
+    background: var(--bg-glass-strong); backdrop-filter: blur(14px) saturate(1.2);
+    border: 1px solid var(--border-strong); border-radius: var(--r-3);
+    box-shadow: var(--shadow-2);
+    width: 360px; padding: 16px;
+    position: relative;
+  }
+  .popover::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1.5px;
+    background: linear-gradient(90deg, transparent, var(--amber), transparent);
+    opacity: 0.65;
+    border-radius: var(--r-3) var(--r-3) 0 0;
+  }
+  .popover h4 { margin: 0 0 10px; font-size: 12px; color: var(--t-3); letter-spacing: 0.06em; text-transform: uppercase; }
+  .popover .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+  .popover .grid2 .l { color: var(--t-3); font-size: 11px; }
+  .popover .grid2 .v { font-size: 13px; }
+
+  /* ───── dock 即时代费条 ───── */
+  .dock {
+    background: var(--bg-glass-strong); backdrop-filter: blur(14px) saturate(1.3);
+    border: 1px solid var(--border-strong); border-radius: 999px;
+    padding: 6px 12px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-size: 11px; color: var(--t-2);
+  }
+  .dock .sep { color: var(--t-4); }
+  .dock .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 999px;
+    background: var(--bg-3); border: 1px solid var(--border);
+  }
+  .dock .chip.peak { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 30%, transparent); }
+  .dock .chip.off  { color: var(--cyan); border-color: color-mix(in srgb, var(--cyan) 30%, transparent); }
+
+  /* ───── PeakAlert 浮层 ───── */
+  .peak {
+    position: fixed; right: 24px; bottom: 24px;
+    width: 320px; padding: 14px 16px;
+    background: var(--bg-glass-strong); backdrop-filter: blur(14px) saturate(1.2);
+    border: 1px solid var(--border-strong); border-radius: var(--r-2);
+    box-shadow: var(--shadow-2);
+    display: flex; align-items: center; gap: 12px;
+    z-index: 5;
+  }
+  .peak .count { font-size: 28px; font-weight: 600; line-height: 1; }
+  .peak .label { color: var(--t-3); font-size: 11px; }
+  .peak .body { font-size: 12px; color: var(--t-1); margin-top: 4px; }
+  .peak .x { margin-left: auto; color: var(--t-3); cursor: pointer; }
+
+  /* ───── 网格 ───── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .stack { display: grid; gap: 16px; }
+
+  /* ───── 浮层行（订阅） ───── */
+  .quota-card { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-2); background: var(--bg-glass); }
+  .quota-card .head { display: flex; align-items: center; gap: 8px; }
+  .quota-card .head .name { font-weight: 600; }
+  .quota-card .head .plan { color: var(--t-3); font-size: 11px; margin-left: 6px; }
+  .quota-card .window + .window { margin-top: 10px; }
+  .quota-card .window .l { display: flex; justify-content: space-between; font-size: 11px; color: var(--t-3); margin-bottom: 4px; }
+  .quota-card .window .l .pct { color: var(--t-1); font-family: var(--font-num); }
+
+  /* ───── 设置页 ───── */
+  .settings-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+  }
+  .setting {
+    padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-2); background: var(--bg-glass);
+    display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center;
+  }
+  .setting .name { font-weight: 600; font-size: 13px; }
+  .setting .desc { color: var(--t-3); font-size: 11px; grid-column: 1 / -1; }
+  .toggle { width: 32px; height: 18px; background: var(--bg-3); border-radius: 999px; position: relative; cursor: pointer; }
+  .toggle::after { content: ""; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; background: var(--t-2); border-radius: 50%; transition: transform var(--t-fast); }
+  .toggle.on { background: color-mix(in srgb, var(--blue) 60%, transparent); }
+  .toggle.on::after { transform: translateX(14px); background: white; }
+
+  /* ───── 评级 / 字段 ───── */
+  .row { display: flex; align-items: center; gap: 8px; }
+
+  /* ───── footer note ───── */
+  .note {
+    margin-top: 32px; padding: 16px;
+    color: var(--t-3); font-size: 12px; line-height: 1.7;
+    border: 1px dashed var(--border-strong); border-radius: var(--r-2);
+  }
+  .note b { color: var(--t-2); }
+
+  /* ───── 列布局（明细页） ───── */
+  .prov-row { display: grid; grid-template-columns: 1fr; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .prov-row:last-child { border-bottom: 0; }
+  .prov-head { display: flex; align-items: center; gap: 10px; }
+  .prov-head .name { font-weight: 600; }
+  .prov-head .bal { margin-left: auto; color: var(--t-2); font-size: 12px; }
+  .prov-head .bal .v { font-weight: 600; color: var(--t-1); }
+
+  /* ───── 字段对齐规则说明 ───── */
+  .legend-table { display: grid; grid-template-columns: 100px 1fr; gap: 6px 16px; font-size: 12px; color: var(--t-2); }
+
+  /* ───── token 柱 ───── */
+  .tokenbar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--bg-3); }
+  .tokenbar i { display: block; height: 100%; }
+
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="toolbar">
+  <h1>dsh-ui-usage-billing · 设计演示稿 v3</h1>
+  <span class="sub">精致科技风 · 玻璃表面 · 1px 边框 · 等宽数字</span>
+  <span class="spacer"></span>
+  <div class="seg" role="tablist" aria-label="主题">
+    <button data-theme-btn="dark"  aria-pressed="true">暗</button>
+    <button data-theme-btn="light" aria-pressed="false">亮</button>
+  </div>
+</div>
+
+<main>
+
+  <!-- ───── 0. 概要 ───── -->
+  <section>
+    <div class="sec-head"><h2>0 · 概要</h2><span class="tag">v3</span></div>
+    <div class="card bordered">
+      <div class="card-b" style="display:grid; grid-template-columns: repeat(4,1fr); gap: 18px;">
+        <div><div class="t3" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">方向锚点</div>
+          <div class="t1" style="margin-top:6px">精致科技风（Refined-tech）</div>
+          <div class="t3" style="font-size:11px;margin-top:4px">Linear Insights + Raycast 设参的混合</div></div>
+        <div><div class="t3" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">表面</div>
+          <div class="t1" style="margin-top:6px">玻璃 + 1px 描边 + 顶部高光</div>
+          <div class="t3" style="font-size:11px;margin-top:4px">背景：bg 78% + blur(14px) + saturate(1.2)</div></div>
+        <div><div class="t3" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">字体</div>
+          <div class="t1" style="margin-top:6px">金额/Token 全部等宽</div>
+          <div class="t3" style="font-size:11px;margin-top:4px">tabular-nums + JetBrains Mono</div></div>
+        <div><div class="t3" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">动效</div>
+          <div class="t1" style="margin-top:6px">仅 160ms ease</div>
+          <div class="t3" style="font-size:11px;margin-top:4px">不动画震、不颜闪、不进度撛</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── 1. 设计令牌 ───── -->
+  <section>
+    <div class="sec-head"><h2>1 · 设计令牌</h2><span class="tag">tokens</span><span class="desc">所有表面只能从这里选色 · 现有 24 个 + 7 个推荐新增</span></div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-h"><h3>表面 / 文字</h3><span class="meta">背景分层 + 文字阶层</span></div>
+        <div class="card-b">
+          <div class="tokens">
+            <div class="swatch"><div class="chip" style="background:#0e1116"></div><div><div class="name">bg</div><div class="label">--bg</div></div></div>
+            <div class="swatch"><div class="chip" style="background:#141a22"></div><div><div class="name">bg-2 卡片</div><div class="label">--bg-2</div></div></div>
+            <div class="swatch"><div class="chip" style="background:#1a222c"></div><div><div class="name">bg-3 表输入</div><div class="label">--bg-3</div></div></div>
+            <div class="swatch"><div class="chip" style="background:#2a3340"></div><div><div class="name">border</div><div class="label">--border</div></div></div>
+            <div class="swatch"><div class="chip" style="background:#3a4452"></div><div><div class="name">border-strong</div><div class="label">--border-strong</div></div></div>
+            <div class="swatch"><div class="chip" style="background:#e6edf3"></div><div><div class="name">t-1 主</div><div class="label">--t-1</div></div></div>
+            <div class="swatch"><div class="chip" style="background:#a4b1c2"></div><div><div class="name">t-2 次</div><div class="label">--t-2</div></div></div>
+            <div class="swatch"><div class="chip" style="background:#6b7787"></div><div><div class="name">t-3 说明</div><div class="label">--t-3</div></div></div>
+            <div class="swatch"><div class="chip" style="background:#4a5360"></div><div><div class="name">t-4 弱化</div><div class="label">--t-4</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>语义 / 图表色板</h3><span class="meta">6 个语义色 + 7 段图表色</span></div>
+        <div class="card-b">
+          <div class="tokens">
+            <div class="swatch"><div class="chip" style="background:#4f8cff"></div><div><div class="name">blue 峰/强调</div><div class="label">--blue</div></div></div>
+            <div class="swatch"><div class="chip" style="background:#2dd4bf"></div><div><div class="name">cyan 平价/订阅</div><div class="label">--cyan</div></div></div>
+            <div class="swatch"><div class="chip" style="background:#34d399"></div><div><div class="name">green 正常</div><div class="label">--green</div></div></div>
+            <div class="swatch"><div class="chip" style="background:#f59e0b"></div><div><div class="name">amber 预警</div><div class="label">--amber</div></div></div>
+            <div class="swatch"><div class="chip" style="background:#ef4444"></div><div><div class="name">red 超支</div><div class="label">--red</div></div></div>
+            <div class="swatch"><div class="chip" style="background:#a78bfa"></div><div><div class="name">violet 订阅</div><div class="label">--violet</div></div></div>
+          </div>
+          <div style="margin-top:14px;display:flex;gap:4px;align-items:center">
+            <span class="t3" style="font-size:11px;font-family:var(--font-num)">chart · </span>
+            <span style="display:inline-block;width:22px;height:14px;border-radius:3px;background:#4f8cff"></span>
+            <span style="display:inline-block;width:22px;height:14px;border-radius:3px;background:#2dd4bf"></span>
+            <span style="display:inline-block;width:22px;height:14px;border-radius:3px;background:#a78bfa"></span>
+            <span style="display:inline-block;width:22px;height:14px;border-radius:3px;background:#f59e0b"></span>
+            <span style="display:inline-block;width:22px;height:14px;border-radius:3px;background:#f472b6"></span>
+            <span style="display:inline-block;width:22px;height:14px;border-radius:3px;background:#fbbf24"></span>
+            <span style="display:inline-block;width:22px;height:14px;border-radius:3px;background:#38bdf8"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: 1 / -1">
+        <div class="card-h"><h3>字号层级</h3><span class="meta">金额 / 指标 / 标签 全部等宽 · 标签使用 sans</span></div>
+        <div class="card-b">
+          <div class="lvl-row"><div class="t3" style="font-size:11px">huge · 52px</div><div class="sample num huge">¥1,284.50</div><div class="desc">Hero · 本月费用 · 仅在概览页用一次</div></div>
+          <div class="lvl-row"><div class="t3" style="font-size:11px">big · 36px</div><div class="sample num big">¥284.50</div><div class="desc">KPI 主值 · 弹窗 Tab 标题</div></div>
+          <div class="lvl-row"><div class="t3" style="font-size:11px">kpi · 22px</div><div class="sample num" style="font-size:22px;font-weight:600">58.3%</div><div class="desc">KPI 格 · 卡片主数字</div></div>
+          <div class="lvl-row"><div class="t3" style="font-size:11px">body · 13px</div><div class="sample num">128,439</div><div class="desc">表格 · 列表项</div></div>
+          <div class="lvl-row"><div class="t3" style="font-size:11px">small · 11px</div><div class="sample num" style="font-size:11px">9.3 / 1k</div><div class="desc">辅助 · 状态标签</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── 2. 仪表盘弹窗 ───── -->
+  <section>
+    <div class="sec-head"><h2>2 · 仪表盘弹窗 · 概览 Tab</h2><span class="tag">overview</span><span class="desc">760×自适应 88vh · 暗亮双主题已对照</span></div>
+
+    <div class="modal-shell">
+      <div class="modal-head">
+        <div class="lights"><span></span><span></span><span></span></div>
+        <div class="tabs">
+          <button aria-current="page">概览</button>
+          <button>明细</button>
+          <button>用量</button>
+          <button>趋势</button>
+          <button>费率</button>
+          <button>设置</button>
+        </div>
+        <span style="margin-left:auto;color:var(--t-3);font-size:11px">实时更新 · 30s</span>
+      </div>
+      <div class="modal-body">
+
+        <!-- 对账提示条（仅 drift 时显示） -->
+        <div class="card" style="background: color-mix(in srgb, var(--amber) 8%, var(--bg-2)); border-color: color-mix(in srgb, var(--amber) 30%, transparent);">
+          <div class="card-b" style="display:flex; align-items:center; gap:12px; padding:12px 14px">
+            <span class="dot a"></span>
+            <div style="flex:1;font-size:12px"><b style="color:var(--t-1)">本面板只统计本机 dsh 会话。</b><span class="t2">官方余额变动 vs 本地费用差额 </span><span class="num warn" style="color:var(--amber)">¥ −18.30</span><span class="t2">（月初余额变更尚未入账）。</span></div>
+            <button class="badge">知道了</button>
+          </div>
+        </div>
+
+        <!-- Hero -->
+        <div class="hero">
+          <div>
+            <div class="label">本月费用</div>
+            <div class="huge num">¥1,284<span style="color:var(--t-3);font-size:28px">.50</span></div>
+            <div class="subline"><b class="num">¥184.20</b> 今日 · <b class="num">¥782.10</b> 本周 · 预计 <b class="num">¥1,520</b></div>
+            <div class="kv-row">
+              <div>环比昨日 <span class="delta-up num">+¥22.4</span></div>
+              <div>日均 <span class="v num">¥61.2</span></div>
+              <div>调用 <span class="v num">487</span></div>
+            </div>
+          </div>
+          <div class="ring-wrap">
+            <svg viewBox="0 0 120 120" width="140" height="140">
+              <circle cx="60" cy="60" r="52" fill="none" stroke="var(--bg-3)" stroke-width="10" />
+              <circle cx="60" cy="60" r="52" fill="none" stroke="var(--blue)" stroke-width="10" stroke-linecap="round" stroke-dasharray="245 327" transform="rotate(-90 60 60)" />
+              <circle cx="60" cy="60" r="42" fill="none" stroke="var(--bg-3)" stroke-width="6" />
+              <circle cx="60" cy="60" r="42" fill="none" stroke="var(--cyan)" stroke-width="6" stroke-linecap="round" stroke-dasharray="120 264" transform="rotate(-90 60 60)" />
+            </svg>
+            <div class="center">
+              <div class="pct num">71%</div>
+              <div class="pct-label">预算已用</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- KPI × 4 -->
+        <div class="kpis">
+          <div class="kpi"><div class="l">缓存命中率</div><div class="v num">58.3%</div><div class="d num">命中 ¥41.20 / 千次节省</div></div>
+          <div class="kpi"><div class="l">总 Token</div><div class="v num">12.4M</div><div class="d num">入 8.2M · 出 4.2M</div></div>
+          <div class="kpi"><div class="l">平均 / 千 token</div><div class="v num">¥0.103</div><div class="d num">环比 −2.1%</div></div>
+          <div class="kpi"><div class="l">调用次数</div><div class="v num">487</div><div class="d num">失败 3 · 重试 7</div></div>
+        </div>
+
+        <!-- 用量热力图 -->
+        <div class="card">
+          <div class="card-h">
+            <h3>用量热力图</h3>
+            <span class="meta">过去 26 周 · 活跃 124 天 · 连续 18 天</span>
+            <span style="margin-left:auto" class="seg" role="tablist">
+              <button aria-pressed="true" style="font-size:10px;padding:3px 8px;background:var(--bg-3);color:var(--t-1);border-radius:5px;border:1px solid var(--border-strong);cursor:pointer">月</button>
+              <button style="font-size:10px;padding:3px 8px;background:transparent;color:var(--t-3);border:0;cursor:pointer">年</button>
+            </span>
+          </div>
+          <div class="card-b">
+            <div class="heatmap" id="heatmap"></div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:11px;color:var(--t-3)">
+              <span>少</span>
+              <span class="h" style="width:14px;height:14px;border-radius:2px;background:color-mix(in srgb, var(--blue) 10%, var(--bg-3))"></span>
+              <span class="h" style="width:14px;height:14px;border-radius:2px;background:color-mix(in srgb, var(--blue) 30%, var(--bg-3))"></span>
+              <span class="h" style="width:14px;height:14px;border-radius:2px;background:color-mix(in srgb, var(--blue) 60%, var(--bg-3))"></span>
+              <span class="h" style="width:14px;height:14px;border-radius:2px;background:color-mix(in srgb, var(--blue) 90%, var(--bg-3))"></span>
+              <span>多</span>
+              <span style="margin-left:auto">2026-03-08 → 2026-09-08</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── 3. 明细 Tab ───── -->
+  <section>
+    <div class="sec-head"><h2>3 · 仪表盘 · 明细 Tab</h2><span class="tag">providers</span><span class="desc">中转站分布 · 厂商计费与订阅 · 会话明细</span></div>
+
+    <div class="modal-shell">
+      <div class="modal-head">
+        <div class="lights"><span></span><span></span><span></span></div>
+        <div class="tabs">
+          <button>概览</button>
+          <button aria-current="page">明细</button>
+          <button>用量</button>
+          <button>趋势</button>
+          <button>费率</button>
+          <button>设置</button>
+        </div>
+      </div>
+      <div class="modal-body">
+
+        <!-- 中转站分布 -->
+        <div class="card">
+          <div class="card-h"><h3>中转站分布</h3><span class="meta">按 baseURL 归组 · 6 站点</span></div>
+          <div class="card-b" style="padding:0">
+            <table class="t">
+              <thead><tr><th>站点</th><th>类别</th><th class="right">费用</th><th class="right">调用</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr><td><b>api.deepseek.com</b></td><td><span class="badge ok">直连</span></td><td class="num">¥612.40</td><td class="num">189</td><td><span class="row"><span class="dot g"></span><span class="t2">在线</span></span></td></tr>
+                <tr><td><b>api.moonshot.cn</b></td><td><span class="badge live">三方</span></td><td class="num">¥284.10</td><td class="num">132</td><td><span class="row"><span class="dot g"></span><span class="t2">在线</span></span></td></tr>
+                <tr><td><b>open.bigmodel.cn</b></td><td><span class="badge live">三方</span></td><td class="num">¥198.20</td><td class="num">98</td><td><span class="row"><span class="dot a"></span><span class="t2">余额低</span></span></td></tr>
+                <tr><td><b>newapi.example.com</b></td><td><span class="badge live">三方</span></td><td class="num">¥102.80</td><td class="num">41</td><td><span class="row"><span class="dot r"></span><span class="t2">密钥无效</span></span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 厂商计费与订阅（合并：DeepSeek） -->
+        <div class="card">
+          <div class="prov-row" style="border-bottom:1px solid var(--border)">
+            <div class="prov-head">
+              <span class="dot g"></span>
+              <span class="name">DeepSeek</span>
+              <span class="badge live">直连</span>
+              <span class="badge sub">2 订阅</span>
+              <span class="bal">本月 <span class="v num">¥612.40</span></span>
+            </div>
+          </div>
+          <div style="padding: 0 16px 16px">
+            <table class="t" style="font-size:11px">
+              <thead><tr><th>模型</th><th class="right">调用</th><th class="right">输入</th><th class="right">输出</th><th class="right">缓存率</th><th class="right">费用</th></tr></thead>
+              <tbody>
+                <tr><td><div class="row"><span style="width:8px;height:8px;border-radius:2px;background:var(--c1)"></span><b>deepseek-v4.1-flash</b></div></td><td class="num">128</td><td class="num">3.2M</td><td class="num">1.8M</td><td class="num">62%</td><td class="num">¥384.20</td></tr>
+                <tr><td><div class="row"><span style="width:8px;height:8px;border-radius:2px;background:var(--c4)"></span><b>deepseek-v4-pro</b></div></td><td class="num">42</td><td class="num">1.1M</td><td class="num">0.6M</td><td class="num">31%</td><td class="num">¥182.10</td></tr>
+                <tr><td><div class="row"><span style="width:8px;height:8px;border-radius:2px;background:var(--c7)"></span><b>deepseek-reasoner</b></div></td><td class="num">19</td><td class="num">0.4M</td><td class="num">0.2M</td><td class="num">—</td><td class="num">¥46.10</td></tr>
+              </tbody>
+            </table>
+            <!-- 订阅额度卡 -->
+            <div class="grid-2" style="margin-top:12px">
+              <div class="quota-card">
+                <div class="head">
+                  <span class="name">Coding 套餐</span>
+                  <span class="badge live">订阅制 · 自动识别</span>
+                  <span style="margin-left:auto;color:var(--t-3);font-size:11px">2026-10-08 重置</span>
+                </div>
+                <div class="window">
+                  <div class="l"><span>本次会话（5h）</span><span class="pct">31%</span></div>
+                  <div class="bar ok"><i style="width:31%"></i></div>
+                </div>
+                <div class="window">
+                  <div class="l"><span>本周</span><span class="pct">68%</span></div>
+                  <div class="bar warn"><i style="width:68%"></i></div>
+                </div>
+              </div>
+              <div class="quota-card">
+                <div class="head">
+                  <span class="name">Token 套餐</span>
+                  <span class="badge live">订阅制 · 自动识别</span>
+                  <span style="margin-left:auto;color:var(--t-3);font-size:11px">2026-10-01 重置</span>
+                </div>
+                <div class="window">
+                  <div class="l"><span>本月</span><span class="pct">42%</span></div>
+                  <div class="bar"><i style="width:42%"></i></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 会话明细 -->
+        <div class="card">
+          <div class="card-h"><h3>会话明细</h3><span class="meta">按费用倒序 · 12 / 86</span><span style="margin-left:auto"><span class="badge">展开全部</span></span></div>
+          <div class="card-b" style="padding:0">
+            <table class="t">
+              <thead><tr><th style="width:40%">标题</th><th>项目</th><th class="right">调用</th><th class="right">费用</th><th>最后活跃</th></tr></thead>
+              <tbody>
+                <tr><td><b>重构 billing 模块 0.1.0</b></td><td class="t2 num">~/code/dsh-host</td><td class="num">42</td><td class="num">¥38.20</td><td class="t3 num">2h 前</td></tr>
+                <tr><td><b>解释 pricing 折叠规则</b></td><td class="t2 num">~/code/dsh-billing</td><td class="num">28</td><td class="num">¥26.10</td><td class="t3 num">5h 前</td></tr>
+                <tr><td><b>补 LocaleOwned 文案</b></td><td class="t2 num">~/code/dsh-ui</td><td class="num">14</td><td class="num">¥18.40</td><td class="t3 num">昨天</td></tr>
+                <tr><td class="t3">… 还有 83 个会话</td><td></td><td></td><td></td><td></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── 4. 趋势 Tab ───── -->
+  <section>
+    <div class="sec-head"><h2>4 · 仪表盘 · 趋势 Tab</h2><span class="tag">trends</span><span class="desc">每日堆叠 · 每轮费用 · 峰谷占比</span></div>
+
+    <div class="modal-shell">
+      <div class="modal-head">
+        <div class="lights"><span></span><span></span><span></span></div>
+        <div class="tabs">
+          <button>概览</button>
+          <button>明细</button>
+          <button>用量</button>
+          <button aria-current="page">趋势</button>
+          <button>费率</button>
+          <button>设置</button>
+        </div>
+      </div>
+      <div class="modal-body">
+
+        <!-- 每日费用堆叠 -->
+        <div class="card">
+          <div class="card-h">
+            <h3>每日费用</h3>
+            <span class="meta">过去 30 天</span>
+            <span style="margin-left:auto" class="seg" role="tablist">
+              <button aria-pressed="true" style="font-size:10px;padding:3px 8px;background:var(--bg-3);color:var(--t-1);border-radius:5px;border:1px solid var(--border-strong);cursor:pointer">7d</button>
+              <button style="font-size:10px;padding:3px 8px;background:transparent;color:var(--t-3);border:0;cursor:pointer">30d</button>
+            </span>
+            <span style="margin-left:6px" class="seg" role="tablist">
+              <button aria-pressed="true" style="font-size:10px;padding:3px 8px;background:var(--bg-3);color:var(--t-1);border-radius:5px;border:1px solid var(--border-strong);cursor:pointer">费用</button>
+              <button style="font-size:10px;padding:3px 8px;background:transparent;color:var(--t-3);border:0;cursor:pointer">Token</button>
+            </span>
+          </div>
+          <div class="card-b">
+            <div id="trend-chart" style="width:100%;height:220px"></div>
+            <div class="legend" style="margin-top:10px">
+              <span><i style="background:var(--c1)"></i>deepseek-v4.1-flash</span>
+              <span><i style="background:var(--c2)"></i>kimi-k2.8</span>
+              <span><i style="background:var(--c3)"></i>glm-5</span>
+              <span><i style="background:var(--c4)"></i>deepseek-v4-pro</span>
+              <span><i style="background:var(--c5)"></i>gpt-5.6-sol</span>
+              <span><i style="background:var(--c6)"></i>qwen-max</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 每轮费用 -->
+        <div class="card">
+          <div class="card-h">
+            <h3>每轮费用（成本突增）</h3>
+            <span class="meta">¥38.20 · 09-04 22:14 · deepseek-v4-pro · 异常</span>
+          </div>
+          <div class="card-b">
+            <div style="display:flex;align-items:flex-end;gap:4px;height:90px">
+              <!-- 28 根柱 -->
+            </div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:8px">红线 = Z=3 · 共 1 个会话触发</div>
+          </div>
+        </div>
+
+        <!-- 峰谷时段占比 -->
+        <div class="card">
+          <div class="card-h"><h3>峰谷时段占比</h3><span class="meta">按时段 · 9 月</span></div>
+          <div class="card-b">
+            <div class="tokenbar">
+              <i style="flex:0 0 42%; background:var(--blue)"></i>
+              <i style="flex:0 0 38%; background:var(--cyan)"></i>
+              <i style="flex:0 0 20%; background:var(--violet)"></i>
+            </div>
+            <div class="legend" style="margin-top:10px">
+              <span><i style="background:var(--blue)"></i>峰时 09:00-18:00 · 42%</span>
+              <span><i style="background:var(--cyan)"></i>谷时 18:00-09:00 · 38%</span>
+              <span><i style="background:var(--violet)"></i>订阅 · 20%</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── 5. 设置 Tab ───── -->
+  <section>
+    <div class="sec-head"><h2>5 · 仪表盘 · 设置 Tab</h2><span class="tag">settings</span><span class="desc">预算 · 峰谷 · 开关 · 显隐 · 自定义单价 · 插件信息</span></div>
+
+    <div class="modal-shell">
+      <div class="modal-head">
+        <div class="lights"><span></span><span></span><span></span></div>
+        <div class="tabs">
+          <button>概览</button>
+          <button>明细</button>
+          <button>用量</button>
+          <button>趋势</button>
+          <button>费率</button>
+          <button aria-current="page">设置</button>
+        </div>
+      </div>
+      <div class="modal-body">
+
+        <!-- 预算 -->
+        <div class="card">
+          <div class="card-h"><h3>月度预算</h3><span class="meta">¥1,800 / 月</span></div>
+          <div class="card-b">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span class="num" style="font-size:22px;font-weight:600">¥1,284</span>
+              <div style="flex:1">
+                <div class="bar"><i style="width:71%"></i></div>
+                <div class="t3" style="font-size:11px;margin-top:4px">已用 71% · 余 ¥516</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 开关 -->
+        <div class="settings-grid">
+          <div class="setting"><div><div class="name">峰谷切换提醒</div></div><div class="toggle on"></div><div class="desc">进峰前 10 分钟弹浮层提醒；可改时段。</div></div>
+          <div class="setting"><div><div class="name">usage_stats 工具</div></div><div class="toggle on"></div><div class="desc">向宿主暴露本机用量；模型可见 ⟺ 会话日志。</div></div>
+          <div class="setting"><div><div class="name">模型用量悬浮窗</div></div><div class="toggle"></div><div class="desc">在每条消息旁显示本次调用的模型与 token。</div></div>
+          <div class="setting"><div><div class="name">完成通知</div></div><div class="toggle on"></div><div class="desc">对话进入完成态时发系统通知。</div></div>
+        </div>
+
+        <!-- 自定义单价 -->
+        <div class="card">
+          <div class="card-h"><h3>自定义单价</h3><span class="meta">3 个模型覆盖</span></div>
+          <div class="card-b" style="padding:0">
+            <table class="t">
+              <thead><tr><th>模型</th><th class="right">输入 ¥/1M</th><th class="right">缓存命中 ¥/1M</th><th class="right">输出 ¥/1M</th><th></th></tr></thead>
+              <tbody>
+                <tr><td><b>deepseek-v4-pro</b> <span class="badge">已覆盖</span></td><td class="num">4.50</td><td class="num">0.15</td><td class="num">13.50</td><td class="t3">编辑</td></tr>
+                <tr><td><b>gpt-5.6-sol</b> <span class="badge">已覆盖</span></td><td class="num">2.80</td><td class="num">0.28</td><td class="num">13.40</td><td class="t3">编辑</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── 6. 浮层与触发卡 ───── -->
+  <section>
+    <div class="sec-head"><h2>6 · 常驻表面 · 触发卡 / 浮层 / 即时条</h2><span class="tag">surfaces</span><span class="desc">Surface A/B/C 三形态</span></div>
+
+    <div class="grid-2">
+      <!-- Surface A: Footer 触发卡 + hover 浮层 -->
+      <div class="card">
+        <div class="card-h"><h3>Sidebar Footer 触发卡</h3><span class="meta">wide · rail 两形态 · 容器查询三档</span></div>
+        <div class="card-b stack">
+          <div class="triggers">
+            <div>
+              <div class="t3" style="font-size:11px;margin-bottom:6px">wide · 280px+</div>
+              <button class="trigger-wide">
+                <div class="icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round"><path d="M3 7h18M3 12h12M3 17h6"/></svg>
+                </div>
+                <div class="col">
+                  <div class="row" style="gap:6px"><span class="big num">¥1,284<span style="font-size:14px;color:var(--t-3)">.50</span></span><span class="dot b"></span></div>
+                  <div class="sub">今日 <b class="num t1">¥184</b> · 本周 <b class="num t1">¥782</b></div>
+                </div>
+                <svg class="spark" viewBox="0 0 84 28">
+                  <path d="M0 22 L12 18 L24 20 L36 14 L48 16 L60 8 L72 12 L84 6" fill="none" stroke="var(--blue)" stroke-width="1.5"/>
+                  <path d="M0 22 L12 18 L24 20 L36 14 L48 16 L60 8 L72 12 L84 6 L84 28 L0 28 Z" fill="color-mix(in srgb, var(--blue) 16%, transparent)"/>
+                </svg>
+              </button>
+            </div>
+            <div>
+              <div class="t3" style="font-size:11px;margin-bottom:6px">rail · 120px 以下</div>
+              <button class="trigger-rail">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--t-2)" stroke-width="2" stroke-linecap="round"><path d="M3 7h18M3 12h12M3 17h6"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="t3" style="font-size:11px;margin-top:6px">hover 速览浮层（combined · 主消耗模型状态）</div>
+          <div style="position:relative">
+            <div class="popover">
+              <h4>本月概况 · 14:32</h4>
+              <div class="grid2">
+                <div class="l">本月费用</div><div class="v num"><b style="font-size:18px">¥1,284.50</b></div>
+                <div class="l">总 Token</div><div class="v num">12.4M</div>
+                <div class="l">输入</div><div class="v num">8.2M</div>
+                <div class="l">输出</div><div class="v num">4.2M</div>
+                <div class="l">缓存命中</div><div class="v num">58.3%</div>
+                <div class="l">调用次数</div><div class="v num">487</div>
+              </div>
+              <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border)">
+                <div class="t3" style="font-size:11px;margin-bottom:6px">主力消耗模型</div>
+                <div class="row" style="gap:8px"><span class="badge live">直连</span><b>deepseek-v4.1-flash</b><span class="t3" style="margin-left:auto">¥384.20</span></div>
+                <div class="row" style="gap:8px;margin-top:4px"><span class="badge sub">订阅</span><b>glm-5-token</b><span style="margin-left:auto" class="row"><span class="dot a"></span><span class="t3">本周 68%</span></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Surface B + C: dock + peak alert -->
+      <div class="card">
+        <div class="card-h"><h3>即时代费条 · 峰谷提醒浮层</h3><span class="meta">composer dock · fixed 右下</span></div>
+        <div class="card-b stack">
+          <div class="t3" style="font-size:11px">composer 下常驻胶囊</div>
+          <div class="dock">
+            <span class="chip peak"><span class="dot b"></span>峰时 · 剩 1h 23m</span>
+            <span class="sep">·</span>
+            <span>本轮 <b class="num t1">¥0.42</b></span>
+            <span class="sep">·</span>
+            <span>会话 <b class="num t1">¥4.18</b></span>
+            <span class="sep">·</span>
+            <span class="chip warn">glm-5 · 本周 68%</span>
+            <span class="chip danger">kimi-k2.8 · 本次 12%</span>
+          </div>
+
+          <div class="t3" style="font-size:11px;margin-top:8px">峰谷切换浮层（右下）</div>
+          <div class="peak">
+            <div>
+              <div class="label">距峰时</div>
+              <div class="count num">10m</div>
+            </div>
+            <div>
+              <div class="row"><span class="dot b"></span><span class="t2">峰时价生效</span></div>
+              <div class="body">V4 Pro 输入从 ¥2.25 → ¥9.00 · 输出 ¥13.50 → ¥27.00</div>
+            </div>
+            <span class="x">×</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── 7. 字段对齐规则 ───── -->
+  <section>
+    <div class="sec-head"><h2>7 · 字段对齐 & 数字规范</h2><span class="tag">rules</span><span class="desc">金额 · Token · 百分比 · 时间</span></div>
+    <div class="card">
+      <div class="card-b">
+        <div class="legend-table">
+          <div><b>金额</b></div><div><code style="color:var(--blue)">font-variant-numeric: tabular-nums</code> + 单位后置（¥/千 token） · <code>formatMoney</code> 一律两位小数（不足补 0）</div>
+          <div><b>Token</b></div><div>M / k 单位切换 @ 1,000,000 / 1,000 · 等宽对齐 · 不显示小数</div>
+          <div><b>百分比</b></div><div>整数百分比 · 缓存命中率小数 1 位 · 等宽</div>
+          <div><b>时间</b></div><div>绝对时间 <code>HH:mm</code> · 相对时间 <code>2h 前 / 昨天 / 09-04</code> · 不混用</div>
+          <div><b>主数字</b></div><div>整数部分与小数字号对比（huge 52 + 28 灰色）· 视觉重心在整数</div>
+          <div><b>状态色点</b></div><div>6×6 · 带 3px 同色低透光环 · 与下方文字基线对齐</div>
+          <div><b>徽标</b></div><div>圆角 999px · 字号 10 · 行内不换行 · 仅传递状态语义，不承担导航</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="note">
+    <b>本稿范围：</b>4 个常驻 / 浮层表面（Footer 触发卡、即时条、峰谷提醒、仪表盘弹窗）+ 弹窗内 6 Tab（概览/明细/用量/趋势/费率/设置）。<br/>
+    <b>设计语言：</b>精致科技风（Refined-tech）· 玻璃 + 1px 边框 + 顶部高光 · 等宽数字 · 6 个语义色 · 7 段图表色板 · 仅 160ms ease 动效。<br/>
+    <b>下一步：</b>本稿定调后，按设计稿在 <code style="color:var(--blue)">src/client/UsageBilling.module.css</code> 中落实令牌映射，对每个表面按本稿规格替换排版（不改 data-testid 与持久化 key）。
+  </div>
+
+</main>
+
+<script>
+  // 主题切换
+  document.querySelectorAll('[data-theme-btn]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const theme = btn.dataset.themeBtn;
+      document.body.dataset.theme = theme;
+      document.querySelectorAll('[data-theme-btn]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeBtn === theme)));
+    });
+  });
+
+  // 热力图：26 周 × 7 天（共 182 格）
+  const heat = document.getElementById('heatmap');
+  if (heat) {
+    const today = new Date('2026-09-08');
+    const start = new Date(today); start.setDate(today.getDate() - 7 * 26);
+    // 跳过 start 之前的本周
+    for (let i = 0; i < 182; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i);
+      if (d > today) { const ph = document.createElement('div'); ph.className = 'h none'; heat.appendChild(ph); continue; }
+      const cell = document.createElement('div');
+      cell.className = 'h';
+      // 周末略低；构造一个看起来真实的分布
+      const dow = d.getDay();
+      const base = Math.sin(i / 11) * 0.5 + 0.5;
+      const wk = dow === 0 || dow === 6 ? 0.5 : 1;
+      const lvl = Math.max(0, Math.min(4, Math.round(base * wk * 4)));
+      cell.dataset.l = String(lvl);
+      heat.appendChild(cell);
+    }
+  }
+
+  // 趋势图（手绘 SVG：堆叠柱状）
+  const tc = document.getElementById('trend-chart');
+  if (tc) {
+    const W = tc.clientWidth, H = 220;
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.style.display = 'block';
+    // 模拟 7 个模型 × 7 天的堆叠
+    const models = ['#4f8cff','#2dd4bf','#a78bfa','#f59e0b','#f472b6','#fbbf24'];
+    const days = 7;
+    const seed = [12, 8, 14, 11, 16, 9, 13];
+    const max = Math.max(...seed) * 1.1;
+    const padL = 28, padB = 18, padT = 8;
+    const innerW = W - padL - 8;
+    const innerH = H - padB - padT;
+    const bw = innerW / days;
+    // y 轴
+    for (let i = 0; i <= 3; i++) {
+      const y = padT + (innerH * i) / 3;
+      const line = document.createElementNS(NS,'line');
+      line.setAttribute('x1', padL); line.setAttribute('x2', W - 8);
+      line.setAttribute('y1', y); line.setAttribute('y2', y);
+      line.setAttribute('stroke', 'var(--border)');
+      line.setAttribute('stroke-dasharray', '2 4');
+      svg.appendChild(line);
+      const lbl = document.createElementNS(NS,'text');
+      lbl.setAttribute('x', 4); lbl.setAttribute('y', y + 3);
+      lbl.setAttribute('fill', 'var(--t-3)');
+      lbl.setAttribute('font-size', '10');
+      lbl.setAttribute('font-family', 'JetBrains Mono, monospace');
+      lbl.textContent = `¥${Math.round(max - (max * i) / 3)}`;
+      svg.appendChild(lbl);
+    }
+    // 柱
+    for (let d = 0; d < days; d++) {
+      let acc = padT + innerH;
+      const total = seed[d];
+      models.forEach((c, mi) => {
+        const portion = total * (0.45 - mi * 0.05 + (Math.sin(d*3+mi)*0.05));
+        const h = (portion / max) * innerH;
+        acc -= h;
+        const rect = document.createElementNS(NS,'rect');
+        rect.setAttribute('x', padL + d * bw + bw * 0.18);
+        rect.setAttribute('y', acc);
+        rect.setAttribute('width', bw * 0.64);
+        rect.setAttribute('height', h);
+        rect.setAttribute('rx', 3);
+        rect.setAttribute('fill', c);
+        rect.setAttribute('opacity', 0.92);
+        svg.appendChild(rect);
+      });
+      const x = padL + d * bw + bw / 2;
+      const lbl = document.createElementNS(NS,'text');
+      lbl.setAttribute('x', x); lbl.setAttribute('y', H - 4);
+      lbl.setAttribute('text-anchor','middle');
+      lbl.setAttribute('fill','var(--t-3)');
+      lbl.setAttribute('font-size','10');
+      lbl.textContent = ['一','二','三','四','五','六','日'][d];
+      svg.appendChild(lbl);
+    }
+    tc.appendChild(svg);
+  }
+</script>
+</body>
+</html>
