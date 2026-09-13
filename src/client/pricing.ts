@@ -528,7 +528,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'flash',
     name: 'DeepSeek V4.1 Flash',
     provider: 'DeepSeek',
-    colorVar: 'dsw-static-blue-500',
+    colorVar: 'ds-blue',
     // 2026-09-10 12:00（北京）起官方调价：谷 1.5/0.05/4.5 → 1/0.02/4（峰 = 谷 × 2）。
     // 此处写现行价；分界前的历史事件由 computeCostAt 按 FLASH_REPRICE_MS 回算旧价。
     // 型号名对齐官方价目页现行版本：旧 V4 Flash / Vision (Exp) 已下线，flash 流量
@@ -546,7 +546,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'flash-vision-exp',
     name: 'DeepSeek V4 Flash Vision (Exp)',
     provider: 'DeepSeek',
-    colorVar: 'dsw-static-blue-500',
+    colorVar: 'ds-blue',
     // 官方已下线（价目页注释：旧名仍可调用，请求由 V4.1 Flash 服务并按 Flash
     // 价计）；与 flash 同价、同步调价（2026-09-10 12:00 起），历史回算同
     // FLASH_REPRICE_MS。retired = 不进费率表面板，目录与历史回算保留。
@@ -590,7 +590,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'glm-5.3',
     name: 'GLM-5.3',
     provider: '智谱 AI',
-    colorVar: 'dsw-static-blue-500',
+    colorVar: 'ds-blue',
     price: { currency: 'CNY', input: 8, cacheHit: 2, output: 28 },
   },
   {
@@ -631,7 +631,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'glm-5-turbo',
     name: 'GLM-5-Turbo',
     provider: '智谱 AI',
-    colorVar: 'dsw-static-blue-500',
+    colorVar: 'ds-blue',
     price: { currency: 'CNY', input: 5, cacheHit: 1.2, output: 22 },
   },
   {
@@ -703,7 +703,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'qwen-plus',
     name: 'Qwen3.5-Plus',
     provider: '阿里通义',
-    colorVar: 'dsw-static-blue-500',
+    colorVar: 'ds-blue',
     // 官方刊例价（元 / 每百万 token，≤128K 档）：输入 ¥0.8 / 命中 ¥0.08 / 输出 ¥4.8。
     price: { currency: 'CNY', input: 0.8, cacheHit: 0.08, output: 4.8 },
     // 附加计价维度（纯展示，估算计费仍走主价三桶；≤128K 档官方价目）：
@@ -734,7 +734,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'doubao',
     name: 'Doubao Seed-2.0 Pro',
     provider: '字节豆包',
-    colorVar: 'dsw-static-red-500',
+    colorVar: 'ds-red',
     price: { currency: 'CNY', input: 3.2, cacheHit: 0.64, output: 16 },
   },
   {
@@ -756,7 +756,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'doubao-seed-evolving',
     name: 'Doubao-Seed-Evolving',
     provider: '字节豆包',
-    colorVar: 'dsw-static-red-500',
+    colorVar: 'ds-red',
     price: { currency: 'CNY', input: 6, cacheHit: 1.2, output: 30 },
   },
   {
@@ -823,7 +823,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'minimax',
     name: 'MiniMax-M3',
     provider: 'MiniMax',
-    colorVar: 'dsw-static-amber-500',
+    colorVar: 'ds-amber',
     price: { currency: 'CNY', input: 2.1, cacheHit: 0.42, output: 8.4 },
   },
   // MiniMax-M2.7 / M2.7-highspeed：官方按量价（元 / 每百万 token，2026-08）。
@@ -838,7 +838,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'minimax-m2.7-highspeed',
     name: 'MiniMax-M2.7-highspeed',
     provider: 'MiniMax',
-    colorVar: 'dsw-static-amber-500',
+    colorVar: 'ds-amber',
     price: { currency: 'CNY', input: 4.2, cacheHit: 0.42, output: 16.8 },
   },
   // 百度文心 (OpenAI-compatible, 千帆 2026-08).
@@ -869,7 +869,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'yi',
     name: 'Yi-Lightning',
     provider: '零一万物',
-    colorVar: 'dsw-static-green-500',
+    colorVar: 'ds-green',
     price: { currency: 'CNY', input: 0.99, cacheHit: 0.1, output: 0.99 },
   },
   // 阶跃星辰 Step (OpenAI-compatible, platform.stepfun.com 2026-08; 缓存命中 ¥0.27).
@@ -911,7 +911,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'gpt-6-astra',
     name: 'GPT-6 Astra',
     provider: 'OpenAI',
-    colorVar: 'dsw-static-green-500',
+    colorVar: 'ds-green',
     // 标准档（输入 ≤272K）：缓存输入 $1 / 输入 $10 / 输出 $50。官方另有超长上下文
     // 加价（单请求输入 >272K 时整笔输入 ×2、输出 ×1.5）与 Fast 模式 ×2、Batch ×0.5，
     // 目录只记标准档，费率表按刊例展示。
@@ -921,7 +921,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'gpt-5.6-sol',
     name: 'GPT-5.6 Sol',
     provider: 'OpenAI',
-    colorVar: 'dsw-static-green-500',
+    colorVar: 'ds-green',
     price: { currency: 'USD', input: 5, cacheHit: 0.5, output: 30 },
     // 官方促销（至少持续至 2026-11-21）：缓存输入 $0.4 / 输入 $4 / 输出 $20。
     // 三档折扣并不同比（0.8 / 0.8 / 2/3），用 factors 逐档覆盖。
@@ -943,7 +943,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'gpt-5.6-luna',
     name: 'GPT-5.6 Luna',
     provider: 'OpenAI',
-    colorVar: 'dsw-static-green-500',
+    colorVar: 'ds-green',
     price: { currency: 'USD', input: 0.2, cacheHit: 0.02, output: 1.2 },
   },
   // Google — Gemini 3.x (ai.google.dev/gemini-api/docs/pricing 2026-08).
@@ -1001,7 +1001,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'llama',
     name: 'Llama 4 Maverick',
     provider: 'Meta',
-    colorVar: 'dsw-static-red-500',
+    colorVar: 'ds-red',
     price: { currency: 'USD', input: 0.2, cacheHit: 0.05, output: 0.6 },
   },
   {
@@ -1016,7 +1016,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'claude-opus-4-6',
     name: 'Claude Opus 4.6',
     provider: 'Anthropic',
-    colorVar: 'dsw-static-red-500',
+    colorVar: 'ds-red',
     price: { currency: 'USD', input: 5, cacheHit: 0.5, output: 25 },
   },
   {
@@ -1037,7 +1037,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'claude-opus-5',
     name: 'Claude Opus 5',
     provider: 'Anthropic',
-    colorVar: 'dsw-static-red-500',
+    colorVar: 'ds-red',
     price: { currency: 'USD', input: 5, cacheHit: 0.5, output: 25 },
   },
   {
@@ -1051,7 +1051,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'mistral-large-2512',
     name: 'Mistral Large 3',
     provider: 'Mistral AI',
-    colorVar: 'dsw-static-violet-500',
+    colorVar: 'ds-violet',
     price: { currency: 'USD', input: 0.5, cacheHit: 0.05, output: 1.5 },
   },
   {
@@ -1072,7 +1072,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'command-a-03-2025',
     name: 'Command A',
     provider: 'Cohere',
-    colorVar: 'dsw-static-cyan-500',
+    colorVar: 'ds-cyan',
     price: { currency: 'USD', input: 2.5, cacheHit: 0.25, output: 10 },
   },
   {
@@ -1087,7 +1087,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'longcat-2.0',
     name: 'LongCat 2.0',
     provider: '美团',
-    colorVar: 'dsw-static-amber-500',
+    colorVar: 'ds-amber',
     price: { currency: 'CNY', input: 4, cacheHit: 0.8, output: 16 },
     estimated: true,
   },
@@ -1095,7 +1095,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'minicpm-v-4.5',
     name: 'MiniCPM-V 4.5',
     provider: '面壁智能',
-    colorVar: 'dsw-static-green-500',
+    colorVar: 'ds-green',
     price: { currency: 'CNY', input: 1, cacheHit: 0.2, output: 4 },
     estimated: true,
   },
@@ -1111,7 +1111,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'dots-3-note-preview',
     name: 'Dots3-Note Preview',
     provider: '小红书',
-    colorVar: 'dsw-static-red-500',
+    colorVar: 'ds-red',
     price: { currency: 'CNY', input: 2, cacheHit: 0.4, output: 8 },
     estimated: true,
   },
@@ -1222,7 +1222,7 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     key: 'doubao-seed-2.0-code',
     name: 'Doubao Seed-2.0 Code',
     provider: '字节豆包',
-    colorVar: 'dsw-static-red-500',
+    colorVar: 'ds-red',
     price: { currency: 'CNY', input: 3.2, cacheHit: 0.64, output: 16 },
   },
   {

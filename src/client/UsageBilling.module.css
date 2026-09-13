@@ -2,6 +2,15 @@
    Refined-tech palette: token-driven surfaces, 1px borders, no gradients. */
 
 /* 设计令牌（精致科技风）。暗亮机制：本文件无 [data-theme] 或媒体查询机制，取色全部经宿主 --dsw-* 别名（亮=body、暗=body[data-ds-dark-theme]），故表面/文字/描边令牌从宿主别名派生以自动跟随暗亮；因 var() 在声明元素上求值而宿主别名定义于 body，派生块挂 body 而非 :root。语义色/图表色/圆角/动效两主题同值，冻结硬编码。 */
+/* 语义六色挂 :root：硬编码两主题同值，且 pricing.ts 的 resolveToken 从 documentElement 读取，body 声明不向上继承、html 读不到。 */
+:root {
+  --ds-blue: #4f8cff;
+  --ds-cyan: #2dd4bf;
+  --ds-green: #34d399;
+  --ds-amber: #f59e0b;
+  --ds-red: #ef4444;
+  --ds-violet: #a78bfa;
+}
 body {
   --dsb: var(--dsw-alias-bg-layer-1);
   --dsb-2: var(--dsw-alias-bg-layer-2);
@@ -17,12 +26,6 @@ body {
   --ds-t-2: var(--dsw-alias-label-secondary);
   --ds-t-3: var(--dsw-alias-label-tertiary);
   --ds-t-4: var(--dsw-alias-label-dimmed);
-  --ds-blue: #4f8cff;
-  --ds-cyan: #2dd4bf;
-  --ds-green: #34d399;
-  --ds-amber: #f59e0b;
-  --ds-red: #ef4444;
-  --ds-violet: #a78bfa;
   --ds-c-1: #4f8cff;
   --ds-c-2: #2dd4bf;
   --ds-c-3: #a78bfa;
@@ -938,9 +941,9 @@ body {
   align-items: center;
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--dsw-static-amber-500) 30%, transparent);
-  background: color-mix(in srgb, var(--dsw-static-amber-500) 8%, transparent);
-  color: var(--dsw-static-amber-500);
+  border: 1px solid color-mix(in srgb, var(--ds-amber) 30%, transparent);
+  background: color-mix(in srgb, var(--ds-amber) 8%, transparent);
+  color: var(--ds-amber);
   font-size: 11.5px;
   line-height: 17px;
   font-weight: 500;
@@ -2960,9 +2963,9 @@ body {
 }
 
 .floatModeBtnOn {
-  border-color: var(--dsw-static-blue-500);
+  border-color: var(--ds-blue);
   color: var(--dsw-alias-label-primary);
-  background: color-mix(in srgb, var(--dsw-static-blue-500) 16%, transparent);
+  background: color-mix(in srgb, var(--ds-blue) 16%, transparent);
 }
 
 /* 平价消耗胶囊位置行：标签居左、下拉靠右，与开关头部的视觉重心对齐。 */
@@ -2999,7 +3002,7 @@ body {
 }
 
 .rdoSelect:focus-visible {
-  border-color: var(--dsw-static-blue-500);
+  border-color: var(--ds-blue);
   outline: none;
 }
 
@@ -3035,9 +3038,9 @@ body {
   padding: 8px 10px;
   border-radius: 10px;
   font-size: 11px;
-  color: var(--dsw-static-amber-500);
-  background: color-mix(in srgb, var(--dsw-static-amber-500) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--dsw-static-amber-500) 30%, transparent);
+  color: var(--ds-amber);
+  background: color-mix(in srgb, var(--ds-amber) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ds-amber) 30%, transparent);
 }
 
 /* 插件信息卡（设计 plg-card）：图标 + 名称/版本 tag + 描述 → 元信息网格。 */
@@ -3132,7 +3135,7 @@ body {
 .plgLink {
   font-size: 12px;
   line-height: 17px;
-  color: var(--dsw-static-blue-500);
+  color: var(--ds-blue);
   text-decoration: none;
   word-break: break-all;
 }
@@ -3162,11 +3165,11 @@ body {
 }
 
 .tokenModelPartIn {
-  background: var(--dsw-static-blue-500);
+  background: var(--ds-blue);
 }
 
 .tokenModelPartOut {
-  background: var(--dsw-static-amber-500);
+  background: var(--ds-amber);
 }
 
 .tokenModelShareRow {
