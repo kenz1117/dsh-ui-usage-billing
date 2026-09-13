@@ -47,19 +47,19 @@ body {
   flex: none;
   width: 36px;
   height: 36px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-label-secondary);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-1);
+  background: var(--dsb-2);
+  color: var(--ds-t-2);
   cursor: pointer;
   padding: 0;
-  transition: border-color 160ms ease, color 160ms ease;
+  transition: border-color var(--ds-t-fast), color var(--ds-t-fast);
 }
 
 .railButton:hover,
 .railButton:focus-visible {
-  border-color: var(--dsw-static-blue-500);
-  color: var(--dsw-static-blue-500);
+  border-color: var(--ds-blue);
+  color: var(--ds-blue);
   outline: none;
 }
 
@@ -70,37 +70,51 @@ body {
 }
 
 /* Wide mode: dashboard-style data card — icon badge, month figure, sparkline.
-   向设计「trigger-card」中性卡片看齐：实底 + 1px 边框 + 轻投影，去除重毛玻璃靠模糊，
-   图标徽章保留蓝色渐变为整卡唯一色彩焦点。 */
+   设计「trigger-card」玻璃表面：半透明底 + 模糊 + 1px 边框 + ::before 顶部高光，
+   图标徽章淡蓝底为整卡唯一色彩焦点，让位给等宽主数字。 */
 .trigger {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
   /* 允许卡片在 footer 横向 flex 行（无 wrap）里收缩，不靠 nowrap 金额撑开兄弟按钮。 */
   min-width: 0;
-  padding: 9px 12px;
+  padding: 10px 14px;
   overflow: hidden;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 14px;
-  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-2);
+  background: var(--dsb-glass);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   cursor: pointer;
   text-align: left;
-  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+  transition: border-color var(--ds-t-fast), transform var(--ds-t-fast), box-shadow var(--ds-t-fast);
 }
 
 .trigger:hover,
 .trigger:focus-visible {
-  border-color: var(--dsw-static-blue-500);
-  box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--dsw-static-blue-500) 45%, transparent);
+  border-color: var(--ds-border-strong);
+  box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--ds-blue) 45%, transparent);
   transform: translateY(-1px);
   outline: none;
 }
 
-/* 图标徽章：设计 trigger-icon —— 中性边框方块，取消渐变蓝底（唯一色彩让位给数字）。 */
+/* 玻璃表面顶部 1px 高光，强化卡片的受光边缘。 */
+.trigger::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(180deg, var(--ds-hi-top), transparent);
+  pointer-events: none;
+}
+
+/* 图标徽标：32×32 淡蓝底 + 蓝描边（设计 trigger-icon）。 */
 .triggerIcon {
   display: inline-flex;
   align-items: center;
@@ -108,10 +122,10 @@ body {
   flex: none;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  color: var(--dsw-alias-label-secondary);
-  opacity: 0.8;
+  border-radius: var(--ds-r-1);
+  border: 1px solid color-mix(in srgb, var(--ds-blue) 28%, transparent);
+  background: color-mix(in srgb, var(--ds-blue) 14%, var(--dsb-3));
+  color: var(--ds-blue);
 }
 
 .triggerIcon svg {
@@ -140,7 +154,7 @@ body {
 .triggerLabel {
   font-size: 11px;
   line-height: 15px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--ds-t-3);
   white-space: nowrap;
   min-width: 0;
   overflow: hidden;
@@ -152,17 +166,17 @@ body {
   font-size: 12px;
   line-height: 16px;
   font-weight: 600;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--ds-t-3);
   font-variant-numeric: tabular-nums;
 }
 
-/* 当月主数值：等宽主色。空间不足时省略号兜底，永不溢出卡片。 */
+/* 当月主数值：22px/600 等宽主色。空间不足时省略号兜底，永不溢出卡片。 */
 .triggerMetric {
-  font-size: 20px;
-  line-height: 24px;
-  font-weight: 700;
-  color: var(--dsw-alias-label-primary);
-  letter-spacing: -0.02em;
+  font-size: 22px;
+  line-height: 26px;
+  font-weight: 600;
+  color: var(--ds-t-1);
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   min-width: 0;
@@ -170,11 +184,11 @@ body {
   text-overflow: ellipsis;
 }
 
-/* 副行：今日 / 本周 费用，次层级。 */
+/* 副行：今日 / 本周 费用，11px 三级灰。 */
 .triggerSub {
-  font-size: 10px;
-  line-height: 14px;
-  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--ds-t-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -193,7 +207,7 @@ body {
 .triggerSparkHot {
   width: 3px;
   border-radius: 1px 1px 0 0;
-  background: var(--dsw-static-blue-500);
+  background: var(--ds-blue);
   opacity: 0.6;
 }
 
@@ -283,13 +297,13 @@ body {
   gap: 5px;
   padding: 10px 12px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 80%, transparent);
-  border-radius: 14px;
-  /* 玻璃质地：半透明底 + 背景模糊 + 顶部高光，与触发卡同一语言。 */
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-3) 72%, transparent);
-  backdrop-filter: blur(14px) saturate(1.3);
-  -webkit-backdrop-filter: blur(14px) saturate(1.3);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.16), inset 0 1px 0 color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-r-3);
+  /* 玻璃质地：半透明底 + 背景模糊 + 阴影，与触发卡同一语言。 */
+  background: var(--dsb-glass-strong);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: var(--ds-shadow-2);
   opacity: 0;
   /* visibility 与 opacity 成对：即使外部样式（冲突插件的全局 !important）把
      opacity/transform 拉回可见，visibility:hidden 仍保证弹层不渲染、不挡视线；
@@ -297,12 +311,12 @@ body {
   visibility: hidden;
   transform: translateY(calc(-100% + 4px));
   pointer-events: none;
-  transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 160ms;
+  transition: opacity var(--ds-t-fast), transform var(--ds-t-fast), visibility 0s linear 160ms;
   /* 与 peakCard 同层（挂 body 后需压过宿主内容层）。 */
   z-index: 2000;
 }
 
-/* 弹层顶部金色流光饰条（与订阅卡同一设计语言）。 */
+/* 弹层顶部金色饰条（与订阅卡同一设计语言）。 */
 .triggerPop,
 .triggerPop * {
   box-sizing: border-box;
@@ -315,10 +329,8 @@ body {
   left: 0;
   right: 0;
   height: 1.5px;
-  background: linear-gradient(90deg, transparent 0%, var(--dsw-static-amber-500) 30%, var(--dsw-alias-label-primary) 50%, var(--dsw-static-amber-500) 70%, transparent 100%);
-  background-size: 200% 100%;
-  animation: subscriptionGoldFlow 4s ease-in-out infinite;
-  opacity: 0.9;
+  background: linear-gradient(90deg, transparent 10%, var(--ds-amber) 50%, transparent 90%);
+  opacity: 0.65;
   pointer-events: none;
 }
 
@@ -328,11 +340,11 @@ body {
   opacity: 1;
   visibility: visible;
   /* 显示时 visibility 立即生效（无延迟），否则首帧不可见。 */
-  transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 0s;
+  transition: opacity var(--ds-t-fast), transform var(--ds-t-fast), visibility 0s linear 0s;
   transform: translateY(-100%);
 }
 
-/* 设计 pop-card 内容：标题行 / 3 列指标网格 / 主力消耗模型行 */
+/* 设计 pop-card 内容：标题行 / 2 列指标网格 / 主力消耗模型行 */
 .popHead {
   display: flex;
   align-items: baseline;
@@ -340,15 +352,17 @@ body {
   gap: 8px;
 }
 .popTitle {
-  font-size: 13px;
+  font-size: 12px;
   line-height: 18px;
   font-weight: 700;
-  color: var(--dsw-alias-label-primary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ds-t-3);
 }
 .metricGrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px 8px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 14px;
 }
 .metricCell {
   display: flex;
@@ -357,37 +371,40 @@ body {
   min-width: 0;
 }
 .metricLabel {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 14px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--ds-t-3);
 }
 .metricValue {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 16px;
   font-weight: 700;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.metricValuePrimary { color: var(--dsw-static-amber-500); }
-.metricValueSuccess { color: var(--dsw-static-green-500); }
+.metricValuePrimary { color: var(--ds-amber); }
+.metricValueSuccess { color: var(--ds-green); }
 .popModel {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* 分隔线与上方指标网格留出 14px（含弹层 gap 5px）。 */
+  margin-top: 9px;
   padding-top: 10px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-top: 1px dashed var(--ds-border);
 }
 .popModelLabel {
   font-size: 10px;
   line-height: 14px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--ds-t-3);
 }
 .popModelRow { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .popDot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
-.popDotDirect { background: var(--dsw-static-green-500); }
-.popDotSub { background: var(--dsw-static-amber-500); }
-.popDotNeutral { background: var(--dsw-alias-label-tertiary); }
+.popDotDirect { background: var(--ds-green); }
+.popDotSub { background: var(--ds-amber); }
+.popDotNeutral { background: var(--ds-t-3); }
 .popTagPrimary,
 .popTagSub {
   display: inline-flex;
@@ -401,13 +418,13 @@ body {
   flex: none;
   white-space: nowrap;
 }
-.popTagPrimary { background: color-mix(in srgb, var(--dsw-static-blue-500) 14%, transparent); color: var(--dsw-static-blue-500); }
-.popTagSub { background: color-mix(in srgb, var(--dsw-static-amber-500) 18%, transparent); color: var(--dsw-static-amber-500); }
+.popTagPrimary { background: color-mix(in srgb, var(--ds-blue) 14%, transparent); color: var(--ds-blue); }
+.popTagSub { background: color-mix(in srgb, var(--ds-amber) 18%, transparent); color: var(--ds-amber); }
 .popModelName {
   font-size: 11px;
   line-height: 16px;
   font-weight: 500;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--ds-t-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -417,11 +434,11 @@ body {
   font-size: 11px;
   line-height: 16px;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--ds-t-1);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.popModelStatusLow { color: var(--dsw-static-red-500); }
+.popModelStatusLow { color: var(--ds-red); }
 
 /* ── 参考图风格「数据卡」弹层 ─────────────────────────────────── */
 
