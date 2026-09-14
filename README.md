@@ -151,10 +151,6 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 - **服务端**（`src/index.ts`）：注入 `webServer`、`sessionPersistence` 与 `credentials`，注册 `GET /api/billing/usage-stats`、`/api/billing/pricing`、`/api/billing/balance`、`/api/billing/subscriptions`、`/api/billing/relay-quotas`。聚合器按会话缓存折叠结果：一次 LLM 调用归属到其前置 `request/header` 记录的模型，token 拆分到缓存命中 / 未命中桶，日期按本机时区归天；日志文件 mtime+size 不变则直接复用缓存，只有写过的会话重新折叠，整份文档另有 5 秒 TTL 合并密集轮询。每个成功折叠的会话同时原子写入独立的持久用量账本，永久删除会话后历史费用与 token 仍保留。
 - **浏览器端**（`src/client/`）：请求上述接口渲染仪表盘，通过 `llm.models` 探测各厂商连接状态。真实数据到达前显示全零空快照，不展示伪造样本。
 
-## 🧩 主题协作
-
-本插件**不依赖任何主题包**，可独立安装运行。仪表盘弹窗声明 `billing.dashboard.decor` 装饰孔位（head / hero / trend / models / footer 锚点），并将实时费用摘要注册为 `ctx.billingMetrics` 服务：主题插件（如 acid-zine）主动注入 MacDots / 胶带 / 撕角便签等装饰视觉、订阅费用数据渲染自己的贴纸层。插件与主题各自独立装卸——主题不存在时走默认视觉，billing 不存在时主题照常运行。
-
 ## 💡 计费细节
 
 单价表（`src/client/pricing.ts`）采用**原生币种**存储：国内厂商直接录入人民币价格，国外厂商录入美元价格。费用统一以人民币计算与展示——美元模型按**实时汇率**折算，国内模型全程不经过汇率换算。启动时服务端拉取实时汇率与模型价（`src/pricing-fetch.ts`）：USD→CNY 优先腾讯财经行情（免 key、国内可达），失败依次降级 open.er-api 与内置默认值；之后每 6 小时后台刷新，单价表弹窗标注「今日汇率」与实时 / 内置徽标。金额与费率表的**展示币种跟随用户所选**：切 ¥ / $ 时把每条每百万 token 单价经 `convertUnitPrice` 按实时汇率换算到目标币种再显示（汇率缺失时回退原生币种）。
