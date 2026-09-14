@@ -30,25 +30,30 @@
 
 ![Demo](screenshots/demo.gif)
 
-## ✨ Highlights
+## ✨ Why this plugin
 
-- **Real usage, no fabricated samples** — the server aggregates from persisted session logs and estimates against live multi-provider official prices; it shows an empty snapshot until real data arrives.
-- **Everything on one screen** — a sidebar trigger card plus a full dashboard (Overview / Trends / Providers / Stats / Rates / Settings) across six tabs: month / today / projection / heatmap / trend.
-- **Subscriptions · balance · quota · reconcile** — plan quota, multi-provider balance, relay-station quota, declared endpoints and balance-delta reconciliation form a cross-verifiable billing loop.
-- **Peak/off-peak pricing + switch alerts** — weekday peak split and weekend all-day off-peak, **priced per official change boundary** (base price before 08-17, weekend peak hours 08-17~08-23, weekend all-day off-peak from 08-23), with a popover / system notification before a tier switch, configurable lead time.
-- **Offline & self-contained** — no chart library, no external CDN, pure design tokens; lightweight and ready to use.
-- **Multi-language + dual currency** — Chinese / English, ¥/$ toggle that only affects this plugin.
+Most billing plugins stop at "token count × unit price". dsh-ui-usage-billing turns billing into a **reconcilable ledger pipeline** — real usage, live prices, and peak/off-peak awareness that follows the model.
 
-## ⚖️ How it differs from similar plugins
+### Real usage you can reconcile
+Usage is aggregated live from persisted session logs — never fabricated (an empty snapshot shows until real data arrives); daily official-balance deltas are cross-checked against the local ledger, and deviations beyond the threshold prompt a review — a bill that survives scrutiny.
 
-Peer plugins (cost-meter, usage-stats, dsh-bill, …) each have their strengths; this plugin's positioning:
+### Live prices, history never rewritten
+A live models.dev catalog + a built-in catalog of 77 models across 24 vendors + user-defined prices in the settings panel (bindable per relay origin) mean new models never wait for a release; DeepSeek time-of-day prices are **segmented by official change boundaries** (base price before 08-17, weekend peak hours 08-17~08-23, weekend all-day off-peak from 08-23) and later price changes never rewrite old bills.
 
-- **Live pricing sources** — a real-time models.dev catalog + a built-in catalog of 77 models across 24 vendors + user-defined prices in the settings panel (bindable per relay origin); new models don't wait for a hand-edited price table.
-- **History is never recomputed** — every call is priced at its own moment, segmented by official change boundaries (base price before 08-17 → peak/off-peak v1 → weekend all-day off-peak from 08-23); pre-install history is backfilled from existing session logs, and later price changes never rewrite old bills.
-- **Not just "how much" but "on what"** — input split by cache hit/miss (including reasoning), official vs third-party buckets, drill-down by workspace/session/relay site, per-turn cost-spike attribution; plus a performance panel few peers offer (per-model TTFT mean/P50/P90 and generation speed).
-- **Subscription & balance loop** — 7 official provider balances + Coding Plan quotas + relay-station balances and rolling quota windows + self-declared endpoints + cross-reconciliation between official balance deltas and the local ledger.
-- **Uncatalogued models stay visible** — they are explicitly marked "uncatalogued" and counted in the Hero hint; a custom price takes effect immediately instead of silently billing 0 or charging the wrong model's rate.
-- **The model can check for itself** — an optional `usage_stats` tool lets the model answer "what did I spend today" or "which site used the most".
+### Peak/off-peak aware, alerts follow the model
+The billing channel is detected from the current session's model: DeepSeek metered uses time-of-day prices (weekday 9-12 / 14-18 peak ×2, weekend all-day off-peak), Zhipu Coding Plan uses credit windows (weekday 14-18 peak at full rate, off-peak at **50% of base credits**) — the channel layer is extensible for more providers; a popover / system notification fires automatically before each switch, and only sessions whose current model actually involves peak/off-peak get alerted or show the tier section — no watching the clock.
+
+### Subscriptions, balances and quotas on one screen
+7 official provider balances (DeepSeek / Kimi / Zhipu GLM / Tencent Cloud TokenHub / …), Coding Plan quotas, relay-station rolling quota windows, self-declared endpoints, plus balance-delta reconciliation — what the plan deducted and what the balance deducted, verifiable side by side.
+
+### Details few peers offer
+
+- Not just "how much" but "on what": input split by cache hit/miss (including reasoning), official vs third-party buckets, drill-down by workspace/session/relay site, per-turn cost-spike attribution.
+- A performance panel: per-model TTFT mean/P50/P90 and generation speed.
+- Uncatalogued models are explicitly marked and never silently billed 0; one alias entry prices an out-of-catalog model.
+- An optional `usage_stats` tool lets the model answer "what did I spend today" or "which site used the most".
+- A pure UI surface: no tools registered, no system-prompt injection, no model-visible log events.
+- Chinese / English and ¥ / ≈$ toggles; no chart library, no external CDN, offline & self-contained.
 
 ## 📊 Dashboard
 
