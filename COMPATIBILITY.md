@@ -9,15 +9,16 @@
 | 0.1.0/0.1.1 系（旧） | 0.1.0-rc.8 ~ 0.1.1-rc.2 | （无，已从 latest 退位） | client bundle 提供 `dsh-client-runtime` / `connection` |
 | 0.1.2 系 | 0.1.2-alpha.1 ~ 0.1.2-rc.1 | （已从 latest 退位） | client bundle 改为 `remote` / `store`；移除 `settingsNamespace` |
 | 0.1.3 系 | 0.1.3-alpha.1 ~ 0.1.3-alpha.2 | （无独立标签，alpha 波动） | SessionPersistence 改 SessionHandle 模型（`open`/`read`，`readFrom`/`locate` 消失）；session format v2 |
-| 0.1.5 系（现行 latest） | 0.1.5-alpha.1 ~ 0.1.5-rc.2 | `latest` / `next`（rc.2 起）、`alpha` | SessionHandle 面与 0.1.3-alpha.2 一致；`handle.read` 返回 `SessionHandleReadResult`（`{eventState, events}` 包装，0.1.3-alpha.1 为裸数组）；rc.2 相对 rc.1 仅追加代码文件图标 artwork 与构建元数据，对插件零影响 |
+| 0.1.5 系 | 0.1.5-alpha.1 ~ 0.1.5-rc.2 | `latest`（rc.1 起）/ `next`（rc.2 起） | SessionHandle 面与 0.1.3-alpha.2 一致；`handle.read` 返回 `SessionHandleReadResult`（`{eventState, events}` 包装，0.1.3-alpha.1 为裸数组）；rc.2 相对 rc.1 仅追加代码文件图标 artwork 与构建元数据，对插件零影响 |
+| 0.1.6 系（alpha 预览） | 0.1.6-alpha.1 ~ | `alpha` | 变更集中在 desktop asar runtime / compaction banner / session-title；插件五个依赖包（session-persistence、ui-slots、ui-sidebar、host-webserver、tools）零代码变更，对插件零影响 |
 
-关键事实：宿主 `latest` 现指向 0.1.5-rc.1（0.1.2 系为上一代）——新用户默认装到的就是新代际。预览线 `dsh` 区间（`>=0.1.2-alpha.1`，无上界）天然覆盖 0.1.3/0.1.5，插件 v1.0.29-alpha.1 起适配 SessionHandle 持久化新面（注入点结构探测，双宿主形状通吃）；v1.2.1 起适配 `handle.read` 的包装返回形状。2026-09-10 已在宿主 0.1.5-rc.1 + 插件本地构建上真机验证（插件加载、`/api/billing/usage-stats` 聚合、历史会话回读全部正常）。0.1.3→0.1.5 无新增宿主面破坏（逐包类型面比对确认）。
+关键事实：宿主 `latest` 现指向 0.1.5-rc.1（0.1.2 系为上一代），`alpha` 已前移到 0.1.6-alpha.1（2026-09-15 发布）——新用户默认装到的仍是新代际，alpha 用户提前进 0.1.6。预览线 `dsh` 区间（`>=0.1.2-alpha.1`，无上界）天然覆盖 0.1.3/0.1.5/0.1.6，插件 v1.0.29-alpha.1 起适配 SessionHandle 持久化新面（注入点结构探测，双宿主形状通吃）；v1.2.1 起适配 `handle.read` 的包装返回形状。2026-09-10 已在宿主 0.1.5-rc.1 + 插件本地构建上真机验证（插件加载、`/api/billing/usage-stats` 聚合、历史会话回读全部正常）。0.1.3→0.1.5 无新增宿主面破坏（逐包类型面比对确认）；0.1.5→0.1.6 插件依赖包逐包比对零代码变更（2026-09-16，逐 diff 确认）。
 
 ## 插件双线对照
 
 | 线 | 分支 | 版本号 | npm 标签 | 服务宿主 | package.json 声明 |
 |---|---|---|---|---|---|
-| 预览线 | `main` | `1.2.x`（v1.2.0 起） | `latest`（v1.0.26 起）+ `alpha` | 0.1.2 ~ 0.1.5 系 | `dsh: >=0.1.2-alpha.1` + `dshReleases` 逐版本 |
+| 预览线 | `main` | `1.2.x`（v1.2.0 起） | `latest`（v1.0.26 起）+ `alpha` | 0.1.2 ~ 0.1.6 系 | `dsh: >=0.1.2-alpha.1` + `dshReleases` 逐版本 |
 | 稳定线（**已冻结**） | `compat/stable-dsh` | `1.1.x`（终版 v1.1.17） | `stable`（v1.1.6 起，永久指向 v1.1.17） | 0.1.1 系 | `dsh: >=0.1.0-rc.8 <0.1.1-0 \|\| >=0.1.1-rc.1 <0.1.2-0` + `dshReleases` 三版本 |
 
 **标签策略：插件 `latest` 永远跟随宿主 `latest` 所在代际。** 宿主 latest 换代时，旧代际线退到 `stable` 标签，其去留按下文冻结策略处理，新代际线接管 `latest`。历史包袱一：v1.0.26/v1.1.6 之前插件 `latest` 是稳定线（1.1.5），与宿主 latest（0.1.2-rc.1）错配，导致 issue #31（新用户默认组合必崩）。历史包袱二：预览线 1.0.x 曾**低于**稳定线 1.1.x（版本号倒挂），pnpm 的 `minimumReleaseAge` 冷静期把刚发布的 latest 跳过后会回退到旧稳定线（issue #40 有实测：`@latest` 实际装到 1.1.11，0.1.2 宿主直接崩）——**自 v1.2.0 起预览线采用 1.2.x 序列，恒高于稳定线**，倒挂根除；过渡期宿主 profile 里的逐版本 `minimumReleaseAgeExclude` 不再需要（可改为包级豁免）。
@@ -32,7 +33,7 @@
 
 ### 用户安装指引
 
-- 宿主 0.1.2 ~ 0.1.5 系（`npm view @deepseek-ai/dsh version` 显示 0.1.2-* ~ 0.1.5-*）：`dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@latest`（latest 即预览线；`--profile` 必填，建议钉具体版本号避开发布冷静期）
+- 宿主 0.1.2 ~ 0.1.6 系（`npm view @deepseek-ai/dsh version` 显示 0.1.2-* ~ 0.1.6-*）：`dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@latest`（latest 即预览线；`--profile` 必填，建议钉具体版本号避开发布冷静期）
 - 宿主 0.1.1 系（0.1.0-rc.8 ~ 0.1.1-rc.2）：`dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@stable`（该线**已冻结**，`stable` 指向终版 v1.1.17，不会再更新）
 - 不确定宿主代际：先跑 `dsh --version` 或看 `npm ls -g @deepseek-ai/dsh`
 
@@ -49,17 +50,18 @@
 - 校验统一按 `includePrerelease: true` 求值；区间写法同时保证在默认语义下方向正确（不把 0.1.2 系放进稳定线）。
 - `0.1.2-alpha.1` 已被官方从 npm 下架（GitHub release 仍在），矩阵保留声明仅服务存量安装，校验脚本对此降级为警告。
 
-## 当前状态（2026-09-11）
+## 当前状态（2026-09-16）
 
 - [x] v1.0.26/v1.1.6：`dsh` 区间落地，`latest`/`stable` 标签移交完成，issue #31 关闭
 - [x] v1.2.0：预览线切换 1.2.x 序列，倒挂根除（latest=1.2.0 > stable=1.1.14）
 - [x] v1.2.1：`dshReleases` 补 0.1.3-alpha.2 / 0.1.5-alpha.1 / 0.1.5-alpha.2 / 0.1.5-rc.1；`handle.read` 包装形状适配；宿主 0.1.5-rc.1 真机验证通过
 - [x] v1.2.5：`dshReleases` 补 0.1.5-rc.2——逐包 lib 比对确认其相对 rc.1 仅图标 artwork 与构建元数据变化，对插件零影响
 - [x] 稳定线冻结：终版 v1.1.17，`stable` 标签永久保留；正式 EOL 待宿主首个正式 tag
+- [x] v1.4.1：`dshReleases` 补 0.1.6-alpha.1——host latest 仍在 0.1.5-rc.1、alpha 前移 0.1.6；插件五个依赖包逐包 diff 零代码变更，对插件零影响
 - [ ] 宿主侧把 profile 逐版本 `minimumReleaseAgeExclude` 改为包级豁免（待与宿主作者沟通）
 
 ---
 
 ## English summary
 
-This file is the single source of truth for plugin↔host compatibility. The host `@deepseek-ai/dsh` has shipped three generations: 0.1.1-era (rc.8 ~ 0.1.1-rc.2), 0.1.2-era (client bundle switches to `remote`/`store`), and 0.1.5-era (npm `latest` at 0.1.5-rc.1; the SessionHandle persistence model from 0.1.3 stays put — `handle.read` returns the `SessionHandleReadResult` wrapper `{eventState, events}` since 0.1.3-alpha.2). The plugin maintains two release lines: preview (`main`, 1.2.x since v1.2.0 — kept strictly above the stable line to kill the version inversion that let pnpm`s `minimumReleaseAge` cooldown fall back to the old stable line, see issue #40; npm `latest` from v1.0.26) serving 0.1.2 ~ 0.1.5 hosts, and stable (`compat/stable-dsh`, 1.1.x, npm `stable` from v1.1.6) serving 0.1.1 hosts (frozen since 2026-09-11 at the final v1.1.17: the 0.1.1 era sat on npm `latest` for only nine days before the 0.1.2 generation took over, so the line takes no further changes; the `stable` tag stays on v1.1.17 permanently so existing installs never break; formal EOL, which removes the legacy install instructions, triggers on the host's first non-prerelease version rather than a date). Since v1.2.1 the host-shape adapter handles both `handle.read` return shapes, and the 0.1.5-rc.1 host was verified on real hardware (plugin load, `/api/billing/usage-stats` aggregation, historical session replay all pass); v1.2.5 declares 0.1.5-rc.2 after a per-package lib diff showed it changes only icon artwork and build metadata. Policy: the plugin's `latest` tag always follows the host generation that owns the host's `latest` tag. `scripts/check-compat.mjs` validates both lines' compatibility matrices against npm registry metadata (per-version declaration required for every in-range host release and every dist-tag target); the `watch-dsh-releases` GitHub Actions workflow runs it daily and files a `compat-drift` issue on drift. SemVer pitfalls: use `<X.Y.Z-0` to exclude a whole prerelease generation, and union ranges to cover prereleases across patch tuples. Release rule (issue #40): always publish the preview line with an explicit `--tag latest` and the stable line with `--tag stable` — npm never moves `latest` to a lower semver, so a bare publish of 1.0.x leaves `latest` on the 1.1.x line while the marketplace and `dsh plugin add` install `latest` by default; verify dist-tags after every publish. `0.1.2-alpha.1` was unpublished from npm by upstream; the matrix keeps it for existing installs (warning-level only).
+This file is the single source of truth for plugin↔host compatibility. The host `@deepseek-ai/dsh` has shipped four generations: 0.1.1-era (rc.8 ~ 0.1.1-rc.2), 0.1.2-era (client bundle switches to `remote`/`store`), 0.1.5-era (npm `latest` at 0.1.5-rc.1; the SessionHandle persistence model from 0.1.3 stays put — `handle.read` returns the `SessionHandleReadResult` wrapper `{eventState, events}` since 0.1.3-alpha.2), and the 0.1.6 era (`alpha` tag at 0.1.6-alpha.1 since 2026-09-15 — desktop asar runtime, compaction banner and session-title changes; the plugin's five dependency packages have zero code changes, verified by per-package diff). The plugin maintains two release lines: preview (`main`, 1.2.x since v1.2.0 — kept strictly above the stable line to kill the version inversion that let pnpm`s `minimumReleaseAge` cooldown fall back to the old stable line, see issue #40; npm `latest` from v1.0.26) serving 0.1.2 ~ 0.1.5 hosts, and stable (`compat/stable-dsh`, 1.1.x, npm `stable` from v1.1.6) serving 0.1.1 hosts (frozen since 2026-09-11 at the final v1.1.17: the 0.1.1 era sat on npm `latest` for only nine days before the 0.1.2 generation took over, so the line takes no further changes; the `stable` tag stays on v1.1.17 permanently so existing installs never break; formal EOL, which removes the legacy install instructions, triggers on the host's first non-prerelease version rather than a date). Since v1.2.1 the host-shape adapter handles both `handle.read` return shapes, and the 0.1.5-rc.1 host was verified on real hardware (plugin load, `/api/billing/usage-stats` aggregation, historical session replay all pass); v1.2.5 declares 0.1.5-rc.2 after a per-package lib diff showed it changes only icon artwork and build metadata. Policy: the plugin's `latest` tag always follows the host generation that owns the host's `latest` tag. `scripts/check-compat.mjs` validates both lines' compatibility matrices against npm registry metadata (per-version declaration required for every in-range host release and every dist-tag target); the `watch-dsh-releases` GitHub Actions workflow runs it daily and files a `compat-drift` issue on drift. SemVer pitfalls: use `<X.Y.Z-0` to exclude a whole prerelease generation, and union ranges to cover prereleases across patch tuples. Release rule (issue #40): always publish the preview line with an explicit `--tag latest` and the stable line with `--tag stable` — npm never moves `latest` to a lower semver, so a bare publish of 1.0.x leaves `latest` on the 1.1.x line while the marketplace and `dsh plugin add` install `latest` by default; verify dist-tags after every publish. `0.1.2-alpha.1` was unpublished from npm by upstream; the matrix keeps it for existing installs (warning-level only).
