@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, parseMiniMaxRemains, parseOpenRouterCredits } from '../src/subscriptions.ts'
+import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, parseAnthropicUsage, parseCommandCodeCredits, parseMiniMaxRemains, parseOpenRouterCredits } from '../src/subscriptions.ts'
 
 /** A stubbed fetch answering one JSON body with the given status. */
 function stubFetch(body: unknown, status = 200): void {
@@ -443,5 +443,150 @@ describe('tencent-token-plan adapter (TokenHub control plane)', () => {
     )
     expect(quotas[0]?.status).toBe('ok')
     expect(quotas[0]?.windows).toHaveLength(0)
+  })
+})
+
+describe('anthropic adapter (Claude Pro/Max OAuth usage)', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('is not identified from a bare anthropic llm-pi-ai route (pay-as-you-go must stay metered)', () => {
+    // anthropic 有意不在 SUBSCRIPTION_ID_RE：该正则同时是聚合层按 token 计费的
+    // 豁免判定，按量 sk-ant key 一旦豁免费用会错误归零。订阅行走 Claude Code
+    // 登录态自动发现补行（resolveSubscriptionKeys），不经这张正则。
+    const identified = identifySubscriptionPlans({ 'anthropic': { apiKeyEnv: 'ANTHROPIC_API_KEY' } })
+    expect(identified).toEqual([])
+  })
+
+  it('maps five_hour/seven_day onto session/weekly and drops model-scoped sub-windows', () => {
+    const windows = parseAnthropicUsage({
+      five_hour: { utilization: 42.5, resets_at: 1_789_600_000 },
+      seven_day: { utilization: 18, resets_at: 1_789_900_000 },
+      // 单模型系列子配额：口径更窄，整体丢弃，不得覆盖主窗口。
+      seven_day_sonnet: { utilization: 3, resets_at: 1_789_900_000 },
+      five_hour_opus: { utilization: 9 },
+      extra_usage: { utilization: 7 },
+    })
+    expect(windows).toHaveLength(2)
+    expect(windows[0]).toMatchObject({ kind: 'session', usedPercent: 42.5, remainingPercent: 57.5 })
+    expect(windows[1]).toMatchObject({ kind: 'weekly', usedPercent: 18, remainingPercent: 82 })
+  })
+
+  it('clamps out-of-range utilization and skips windows without a percent', () => {
+    const windows = parseAnthropicUsage({
+      five_hour: { utilization: 140 },
+      seven_day: { resets_at: 1_789_900_000 },
+    })
+    expect(windows).toHaveLength(1)
+    expect(windows[0]).toMatchObject({ kind: 'session', usedPercent: 100, remainingPercent: 0 })
+  })
+
+  it('returns empty for a null/shapeless body', () => {
+    expect(parseAnthropicUsage(null)).toEqual([])
+    expect(parseAnthropicUsage({})).toEqual([])
+  })
+
+  it('hits the OAuth usage endpoint with the bearer token', async () => {
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ five_hour: { utilization: 10, resets_at: 1_789_600_000 } }),
+    }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, anthropicApiKey: 'oauth-token' },
+      [{ provider: 'anthropic' }],
+    )
+    expect(quotas[0]).toMatchObject({ provider: 'anthropic', status: 'ok', displayName: 'Claude (Anthropic)' })
+    expect(quotas[0]?.windows).toHaveLength(1)
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://api.anthropic.com/api/oauth/usage')
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer oauth-token')
+  })
+
+  it('degrades to not-configured with an OAuth hint when no token is found', async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS },
+      [{ provider: 'anthropic' }],
+    )
+    expect(quotas[0]).toMatchObject({ status: 'not-configured' })
+    expect(quotas[0]?.hint).toContain('.credentials.json')
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('maps a 401 to unauthorized', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 401, json: async () => ({}) })))
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, anthropicApiKey: 'expired-token' },
+      [{ provider: 'anthropic' }],
+    )
+    expect(quotas[0]?.status).toBe('unauthorized')
+  })
+})
+
+describe('commandcode adapter (5h/weekly windows + monthly credits)', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('is identified from a commandcode llm-pi-ai route with an adapter', () => {
+    const identified = identifySubscriptionPlans({ 'commandcode': { apiKeyEnv: 'COMMANDCODE_API_KEY' } })
+    expect(identified).toHaveLength(1)
+    expect(identified[0]).toMatchObject({ provider: 'commandcode', adapter: true, displayName: 'CommandCode' })
+  })
+
+  it('maps fiveHour/weekly used-cap rows onto session/weekly windows', () => {
+    const windows = parseCommandCodeCredits({
+      windowLimits: {
+        fiveHour: { used: 30, cap: 100, resetAt: 1_789_600_000_000 },
+        weekly: { used: 250, cap: 1000, resetAt: 1_789_900_000_000 },
+      },
+      credits: { monthlyCredits: 84.5 },
+    })
+    expect(windows).toHaveLength(2)
+    expect(windows[0]).toMatchObject({ kind: 'session', usedPercent: 30, remainingPercent: 70 })
+    expect(windows[1]).toMatchObject({ kind: 'weekly', usedPercent: 25, remainingPercent: 75 })
+  })
+
+  it('skips rows without a positive cap and yields no window from the credits pool', () => {
+    // monthlyCredits 是余额池（无总量字段），算不出百分比，不产出窗口。
+    const windows = parseCommandCodeCredits({
+      windowLimits: {
+        fiveHour: { used: 30 },
+        weekly: { used: 0, cap: 0 },
+      },
+      credits: { monthlyCredits: 120 },
+    })
+    expect(windows).toEqual([])
+    expect(parseCommandCodeCredits(null)).toEqual([])
+  })
+
+  it('hits the billing credits endpoint with the bearer key', async () => {
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ windowLimits: { fiveHour: { used: 10, cap: 100 } } }),
+    }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, commandcodeApiKey: 'user_abc' },
+      [{ provider: 'commandcode' }],
+    )
+    expect(quotas[0]).toMatchObject({ provider: 'commandcode', status: 'ok', displayName: 'CommandCode' })
+    expect(quotas[0]?.windows).toHaveLength(1)
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://api.commandcode.ai/alpha/billing/credits')
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer user_abc')
+  })
+
+  it('degrades to not-configured with a key hint when unconfigured', async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS },
+      [{ provider: 'commandcode' }],
+    )
+    expect(quotas[0]).toMatchObject({ status: 'not-configured' })
+    expect(quotas[0]?.hint).toContain('user_')
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

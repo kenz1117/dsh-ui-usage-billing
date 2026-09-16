@@ -844,6 +844,9 @@ const USAGE_STATS_PATH = '/api/billing/usage-stats'
 /** Path to the live-pricing endpoint served by this plugin's node half. */
 const PRICING_PATH = '/api/billing/pricing'
 
+/** Path to the manual pricing-sync endpoint (POST) served by this plugin's node half. */
+const PRICING_REFRESH_PATH = '/api/billing/pricing/refresh'
+
 /** Path to the account-balance endpoint served by this plugin's node half. */
 const BALANCE_PATH = '/api/billing/balance'
 
@@ -962,6 +965,10 @@ async function loadUsageStats(): Promise<UsageStats | null> {
  *  若都在 `builtin` 时各自起 setTimeout 重试链会叠加出多余请求，这里只保留一条。 */
 let livePricingRetryPending = false
 
+/** 上次价格目录同步完成的本机时间戳（毫秒）：loadLivePricing 每次拿到完整
+ *  pricing 文档时更新；组件渲染时读取，手动同步后经 setState 触发重渲染刷新。 */
+let lastPricingSyncedAt = 0
+
 async function loadLivePricing(attempt = 0): Promise<void> {
   const MAX_ATTEMPTS = 4
   try {
@@ -988,10 +995,31 @@ async function loadLivePricing(attempt = 0): Promise<void> {
       return
     }
     livePricingRetryPending = false
+    lastPricingSyncedAt = pricing.syncedAt ?? 0
     applyLivePricing(pricing)
   } catch {
     // 拉取失败：维持内置目录与内置汇率（默认值降级）。
     livePricingRetryPending = false
+  }
+}
+
+/**
+ * 手动同步价格目录：POST /api/billing/pricing/refresh 让服务端立刻重拉
+ * models.dev / 汇率，随后重载 pricing 文档并刷新界面。失败静默保持现状。
+ * @returns 同步是否成功（供按钮态展示降级）。
+ */
+async function syncPricingNow(): Promise<boolean> {
+  try {
+    const response = await fetch(PRICING_REFRESH_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    })
+    if (!response.ok) return false
+    await loadLivePricing()
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -1370,10 +1398,12 @@ function UsageBillingTrigger(
               return tokenView ? (
                 <span className={css.triggerMetric} data-testid="billing-trigger-span-tokens">{formatTokens(spanValue)}</span>
               ) : (
-                <>
+                /* 币符与数值同行（issue #51 修正）：column 布局下需显式包横排行，
+                   否则 ¥ 与数字被拆成两行堆叠。 */
+                <span className={css.triggerValueRow}>
                   <span className={css.triggerYen} aria-hidden="true">{formatMoney(spanValue).charAt(0)}</span>
                   <span className={css.triggerMetric} data-testid="billing-trigger-span-money">{formatMoney(spanValue).slice(1)}</span>
-                </>
+                </span>
               )
             })()}
           </span>
@@ -1876,8 +1906,10 @@ function BillingDashboard({
     setReconcileDismissedDay(day)
     try { window.localStorage.setItem('dsh-billing:reconcile-dismissed', day) } catch { /* 写入失败可忽略 */ }
   }, [])
-  // 概览用量热力图范围：月（日历月）/ 年（GitHub 风格年度贡献图，含月份与周几标注）。
-  const [heatmapRange, setHeatmapRange] = useState<'month' | 'year'>('month')
+  // 概览用量热力图范围：月（日历月）/ 半年（26 周大格，截图友好的主视觉图）/
+  // 年（GitHub 风格年度贡献图，含月份与周几标注）；指标：费用 / Token 双口径。
+  const [heatmapRange, setHeatmapRange] = useState<'month' | 'half' | 'year'>('month')
+  const [heatmapMetric, setHeatmapMetric] = useState<'cost' | 'tokens'>('cost')
   // KPI 全局统计范围（issue #47 反馈）：控制概览 KPI 七卡（含平均成本）的统计口径，
   // 默认累计；用户选择持久化到 localStorage，下次打开保持上次范围。
   const [kpiRange, setKpiRange] = useState<AvgCostRange>(loadKpiRange)
@@ -1926,6 +1958,15 @@ function BillingDashboard({
 
   // 当前汇率与来源：供单价表标题展示（实时 / 内置）。
   const rateInfo = getRateInfo()
+  // 价格目录手动同步：按钮进行中状态；完成（或失败）后 setState 触发重渲染，
+  // 重渲染读取模块级 lastPricingSyncedAt 显示「上次同步」时间。
+  const [pricingSyncing, setPricingSyncing] = useState(false)
+  const syncPricing = useCallback(() => {
+    if (pricingSyncing) return
+    setPricingSyncing(true)
+    void syncPricingNow().finally(() => { setPricingSyncing(false) })
+  }, [pricingSyncing])
+  const pricingSyncedAt = lastPricingSyncedAt
 
   // 显示币种换算：usd 时把 CNY 金额按当前汇率换算显示。
   const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
@@ -2059,11 +2100,17 @@ function BillingDashboard({
   }, [trendDays])
   const latestDate = trendDates.at(-1) ?? today
 
-  // 热力图输入：按日费用（YYYY-MM-DD → 金额）。
+  // 热力图输入：按日指标（YYYY-MM-DD → 数值）。value 的含义跟随 heatmapMetric：
+  // 费用（CNY）或 Token 总量（与趋势图 tokens 口径一致：输入 + 输出 + 命中 + 未命中）。
   const heatmapDays: HeatmapDay[] = useMemo(
-    () => Object.entries(byDay).map(([date, day]) => ({ date, value: day.cost })),
-    [byDay],
+    () => Object.entries(byDay).map(([date, day]) => ({
+      date,
+      value: heatmapMetric === 'tokens' ? day.input + day.output + day.cacheHit + day.cacheMiss : day.cost,
+    })),
+    [byDay, heatmapMetric],
   )
+  // 区间合计：当前口径下全部有值日的总和（面板摘要展示，截图时的主数字）。
+  const heatmapTotal = useMemo(() => heatmapDays.reduce((sum, day) => sum + day.value, 0), [heatmapDays])
   // 活跃天数（有调用记录的天数）与连续使用天数（从今天往前连续的活跃日）。
   const activeDays = activeDaysOf(byDay)
   const streakDays = streakDaysOf(byDay)
@@ -2678,14 +2725,29 @@ function BillingDashboard({
               </div>
 
               {/* 用量热力图：概览常驻区块（月历信息密度高，进入二级 Tab 后不再折叠）。
-              头部带「活跃天数 / 连续使用」摘要与 月/年 范围切换。 */}
+              头部带 费用/Token 指标切换、月/半年/年 范围切换与「合计 + 活跃天数 + 连续使用」摘要；
+              半年视图 26 周大格是截图传播的主视觉。 */}
               <section className={css.panel} data-testid="billing-panel-heatmap">
                 <div className={css.panelHead}>
                   <h3 className={css.panelTitle}>
                     {t('heatmap')}
                   </h3>
+                  <div className={css.heatmapRangeSwitch} data-testid="billing-heatmap-metric" role="group" aria-label={t('heatmap')}>
+                    {(['cost', 'tokens'] as const).map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        className={clsx(css.heatmapRangeButton, heatmapMetric === m && css.heatmapRangeButtonActive)}
+                        data-testid={`billing-heatmap-metric-${m}`}
+                        aria-pressed={heatmapMetric === m}
+                        onClick={() => { setHeatmapMetric(m) }}
+                      >
+                        {m === 'cost' ? t('metricCost') : t('metricTokens')}
+                      </button>
+                    ))}
+                  </div>
                   <div className={css.heatmapRangeSwitch} data-testid="billing-heatmap-range" role="group" aria-label={t('heatmap')}>
-                    {(['month', 'year'] as const).map(r => (
+                    {(['month', 'half', 'year'] as const).map(r => (
                       <button
                         key={r}
                         type="button"
@@ -2694,15 +2756,16 @@ function BillingDashboard({
                         aria-pressed={heatmapRange === r}
                         onClick={() => { setHeatmapRange(r) }}
                       >
-                        {r === 'month' ? t('heatmapMonth') : t('heatmapYear')}
+                        {r === 'month' ? t('heatmapMonth') : r === 'half' ? t('heatmapHalf') : t('heatmapYear')}
                       </button>
                     ))}
                   </div>
                   <span className={css.panelHint} data-testid="billing-heatmap-summary">
-                    {t('activeDays')} {activeDays} · {t('streakDays')} {streakDays}
+                    {t('heatmapTotal')} {heatmapMetric === 'tokens' ? formatTokens(heatmapTotal) : money(heatmapTotal)}
+                    {' · '}{t('activeDays')} {activeDays} · {t('streakDays')} {streakDays}
                   </span>
                 </div>
-                <UsageHeatmap days={heatmapDays} currency={currency} t={t} range={heatmapRange} />
+                <UsageHeatmap days={heatmapDays} currency={currency} t={t} range={heatmapRange} unit={heatmapMetric} />
               </section>
             </div>
           )}
@@ -3624,7 +3687,7 @@ function BillingDashboard({
 
           {tab === 'pricing' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-pricing">
-              {/* 1. 汇率与峰谷说明条（中性 alert）。 */}
+              {/* 1. 汇率与峰谷说明条（中性 alert）：汇率来源徽标 + 上次同步时间 + 手动同步按钮。 */}
               <div className={css.ubAlert} role="note">
                 <div className={css.ubAlertLeft}>
                   <span className={css.ubRate} data-testid="billing-rate">
@@ -3633,6 +3696,20 @@ function BillingDashboard({
                   <span className={clsx(css.ubTag, rateInfo.live ? css.ubTagSuccess : css.ubTagNeutral)}>
                     {rateInfo.live ? t('rateLive') : t('rateBuiltin')}
                   </span>
+                  {pricingSyncedAt > 0 && (
+                    <span className={css.ubTag} data-testid="billing-pricing-synced">
+                      {t('pricingSyncedAt')} {new Date(pricingSyncedAt).toLocaleTimeString(lang === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className={css.heatmapRangeButton}
+                    data-testid="billing-pricing-sync"
+                    disabled={pricingSyncing}
+                    onClick={syncPricing}
+                  >
+                    {pricingSyncing ? t('pricingSyncing') : t('pricingSyncNow')}
+                  </button>
                 </div>
                 <p className={css.ubAlertNote}>{t('pricingTip')}</p>
               </div>

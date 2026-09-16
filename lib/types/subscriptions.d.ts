@@ -24,6 +24,10 @@ export interface SubscriptionKeys {
     minmaxApiKey: string;
     /** OpenRouter API key（credits 已用%）。 */
     openrouterApiKey: string;
+    /** Anthropic Claude Pro/Max OAuth access token。 */
+    anthropicApiKey: string;
+    /** CommandCode API key（user_* 前缀）。 */
+    commandcodeApiKey: string;
     /** 腾讯云云 API 密钥对（`<SecretId>:<SecretKey>`，管控面用，非 TokenHub 推理 key）。 */
     tencentCloudApi: string;
     /** Z.ai 区域（global / bigmodel-cn）。 */
@@ -67,6 +71,28 @@ export declare function parseMiniMaxRemains(body: unknown): SubscriptionWindow[]
  * @returns 窗口列表;无有效额度时为 []。
  */
 export declare function parseOpenRouterCredits(body: unknown): SubscriptionWindow[];
+/**
+ * 解析 Anthropic OAuth 用量响应（GET https://api.anthropic.com/api/oauth/usage）。
+ * 形如 `{ five_hour: { utilization, resets_at }, seven_day: {...}, seven_day_sonnet: {...} }`：
+ * `utilization` 为 0–100 百分数，`resets_at` 为 unix 秒。子配额窗口
+ * （`seven_day_sonnet` / `five_hour_opus` 等单模型系列限额）只描述一个模型分支，
+ * 与主窗口量纲相同但口径更窄，整体丢弃，避免面板百分比被分支配额覆盖。
+ * 导出供测试：纯函数。
+ * @param body - 接口响应 JSON。
+ * @returns 窗口列表（5 小时 → session、7 天 → weekly）；无可用窗口时为 []。
+ */
+export declare function parseAnthropicUsage(body: unknown): SubscriptionWindow[];
+/**
+ * 解析 CommandCode（commandcode.ai）额度响应
+ * （GET https://api.commandcode.ai/alpha/billing/credits）。形如
+ * `{ windowLimits: { fiveHour: { used, cap, resetAt }, weekly: {...} }, credits: { monthlyCredits } }`：
+ * 窗口按 used/cap 算已用%（resetAt 为 epoch 毫秒）；monthlyCredits 是月度
+ * Credits 余额池（1 credit ≈ $1 用量），无总量字段、算不出百分比，不产出窗口。
+ * 导出供测试：纯函数。
+ * @param body - 接口响应 JSON。
+ * @returns 窗口列表（5 小时 → session、周 → weekly）；无可用窗口时为 []。
+ */
+export declare function parseCommandCodeCredits(body: unknown): SubscriptionWindow[];
 /**
  * Collect quota for the given plans concurrently (adapter-backed plans only;
  * identified plans without an adapter are surfaced by the caller as "no

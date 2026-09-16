@@ -33,6 +33,10 @@ export interface SubscriptionKeys {
   minmaxApiKey: string
   /** OpenRouter API key（credits 已用%）。 */
   openrouterApiKey: string
+  /** Anthropic Claude Pro/Max OAuth access token。 */
+  anthropicApiKey: string
+  /** CommandCode API key（user_* 前缀）。 */
+  commandcodeApiKey: string
   /** 腾讯云云 API 密钥对（`<SecretId>:<SecretKey>`，管控面用，非 TokenHub 推理 key）。 */
   tencentCloudApi: string
   /** Z.ai 区域（global / bigmodel-cn）。 */
@@ -46,6 +50,8 @@ export const EMPTY_SUBSCRIPTION_KEYS: SubscriptionKeys = {
   opencodeApiKey: '',
   minmaxApiKey: '',
   openrouterApiKey: '',
+  anthropicApiKey: '',
+  commandcodeApiKey: '',
   tencentCloudApi: '',
   zaiRegion: 'global',
 }
@@ -89,6 +95,11 @@ const SUBSCRIPTION_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   // same plan; users see the official id in the Models page.
   'minimax-cn': 'MiniMax Token Plan（国内）',
   'openrouter': 'OpenRouter',
+  // 注意：anthropic 有意不在本表也不在 SUBSCRIPTION_ID_RE——isSubscriptionProviderId
+  //（正则 + 本表兜底）同时是聚合层按 token 计费的豁免判定，llm-pi-ai 的 anthropic
+  // 路由多是按量 sk-ant key，纳入识别会把这部分调用的费用错误豁免。Claude 订阅行
+  // 只经 resolveSubscriptionKeys 的 Claude Code 登录态自动发现补入（自带 displayName）。
+  'commandcode': 'CommandCode',
   'tencent-token-plan': '腾讯云 Token Plan',
   // 订阅管理类插件（dsh-plugin-subscrip）注册的订阅直连通道：不经 llm-pi-ai
   // 路由表，provider id 即官方订阅名（issue #37，Grok = X Premium 订阅）。
@@ -98,7 +109,7 @@ const SUBSCRIPTION_DISPLAY_NAMES: Readonly<Record<string, string>> = {
 /** 订阅类 provider id 判定：带 coding / agent-plan / token-plan 后缀，或已知订阅通道。 */
 const SUBSCRIPTION_ID_RE = new RegExp(
   '(?:^|-)(?:coding|agent[-_]?plan|token[-_]?plan)(?:$|-|_)|' +
-    '^(?:opencode|opencode-go|kimi-coding|zai-coding|minimax|minimax-cn|minimax-token-plan|minimax-token-plan-cn|openrouter|grok)',
+    '^(?:opencode|opencode-go|kimi-coding|zai-coding|minimax|minimax-cn|minimax-token-plan|minimax-token-plan-cn|openrouter|grok|commandcode)',
   'i',
 )
 
@@ -121,6 +132,8 @@ const SUBSCRIPTION_ADAPTERS: Readonly<Record<string, {
   'minimax-token-plan': { collect: collectMiniMax },
   'minimax-token-plan-cn': { collect: collectMiniMax },
   'openrouter': { collect: collectOpenRouter },
+  'anthropic': { collect: collectAnthropic },
+  'commandcode': { collect: collectCommandCode },
   'tencent-token-plan': { collect: collectTencentTokenPlan },
 }
 
@@ -641,6 +654,136 @@ async function collectOpenRouter(keys: SubscriptionKeys, config: SubscriptionPla
       windows: [],
       ...(status === 'unauthorized' ? { hint: 'OpenRouter 额度接口只认 Management Key；你配的 key 返回了 401，请换成管理密钥（在 openrouter.ai/settings/keys 创建）' } : {}),
     }
+  }
+}
+
+// ── Anthropic（Claude Pro/Max 订阅用量）─────────────────────────────────────
+
+/** Parse one Anthropic usage window (`utilization` is already 0–100). */
+function anthropicWindow(value: unknown, kind: 'session' | 'weekly'): SubscriptionWindow | null {
+  if (value === null || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  const utilization = numberOrNull(record.utilization ?? record.used_percentage)
+  if (utilization === null) return null
+  const usedPercent = round1(clampPercent(utilization) ?? 0)
+  const resetsAt = toIso(record.resets_at ?? record.reset_at)
+  return {
+    kind,
+    usedPercent,
+    remainingPercent: round1(100 - usedPercent),
+    ...(resetsAt === null ? {} : { resetsAt }),
+  }
+}
+
+/**
+ * 解析 Anthropic OAuth 用量响应（GET https://api.anthropic.com/api/oauth/usage）。
+ * 形如 `{ five_hour: { utilization, resets_at }, seven_day: {...}, seven_day_sonnet: {...} }`：
+ * `utilization` 为 0–100 百分数，`resets_at` 为 unix 秒。子配额窗口
+ * （`seven_day_sonnet` / `five_hour_opus` 等单模型系列限额）只描述一个模型分支，
+ * 与主窗口量纲相同但口径更窄，整体丢弃，避免面板百分比被分支配额覆盖。
+ * 导出供测试：纯函数。
+ * @param body - 接口响应 JSON。
+ * @returns 窗口列表（5 小时 → session、7 天 → weekly）；无可用窗口时为 []。
+ */
+export function parseAnthropicUsage(body: unknown): SubscriptionWindow[] {
+  const doc = (body ?? {}) as Record<string, unknown>
+  return [
+    anthropicWindow(doc.five_hour, 'session'),
+    anthropicWindow(doc.seven_day, 'weekly'),
+  ].filter((hit): hit is SubscriptionWindow => hit !== null)
+}
+
+/** Collect the Claude Pro/Max subscription usage via the OAuth usage endpoint. */
+async function collectAnthropic(keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number): Promise<SubscriptionQuota> {
+  const token = keys.anthropicApiKey.trim()
+  const base = config.baseUrl ?? 'https://api.anthropic.com'
+  const displayName = 'Claude (Anthropic)'
+  if (token === '') {
+    return {
+      provider: config.provider,
+      displayName,
+      status: 'not-configured',
+      windows: [],
+      hint: '需 Claude Code 登录态（~/.claude/.credentials.json 自动读取）或 OAuth token；普通 sk-ant- 按量 API key 查不了订阅用量',
+    }
+  }
+  try {
+    const body = await requestJson(
+      `${base}/api/oauth/usage`,
+      { headers: { authorization: `Bearer ${token}`, accept: 'application/json' } },
+      timeoutMs,
+    )
+    const windows = parseAnthropicUsage(body)
+    return { provider: config.provider, displayName, status: windows.length > 0 ? 'ok' : 'invalid-response', windows }
+  } catch (error) {
+    return { provider: config.provider, displayName, status: statusOf(error), windows: [] }
+  }
+}
+
+// ── CommandCode（5h/周窗口 + 月度 Credits）──────────────────────────────────
+
+/** Parse one CommandCode window row (`used/cap`, `resetAt` is epoch ms). */
+function commandcodeWindow(value: unknown, kind: 'session' | 'weekly'): SubscriptionWindow | null {
+  if (value === null || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  const used = numberOrNull(record.used)
+  const cap = numberOrNull(record.cap ?? record.limit ?? record.total)
+  if (used === null || cap === null || cap <= 0 || used < 0) return null
+  const usedPercent = round1(clampPercent((used / cap) * 100) ?? 0)
+  const resetsAt = toIso(record.resetAt ?? record.reset_at ?? record.resetsAt)
+  return {
+    kind,
+    usedPercent,
+    remainingPercent: round1(100 - usedPercent),
+    ...(resetsAt === null ? {} : { resetsAt }),
+  }
+}
+
+/**
+ * 解析 CommandCode（commandcode.ai）额度响应
+ * （GET https://api.commandcode.ai/alpha/billing/credits）。形如
+ * `{ windowLimits: { fiveHour: { used, cap, resetAt }, weekly: {...} }, credits: { monthlyCredits } }`：
+ * 窗口按 used/cap 算已用%（resetAt 为 epoch 毫秒）；monthlyCredits 是月度
+ * Credits 余额池（1 credit ≈ $1 用量），无总量字段、算不出百分比，不产出窗口。
+ * 导出供测试：纯函数。
+ * @param body - 接口响应 JSON。
+ * @returns 窗口列表（5 小时 → session、周 → weekly）；无可用窗口时为 []。
+ */
+export function parseCommandCodeCredits(body: unknown): SubscriptionWindow[] {
+  const doc = (body ?? {}) as Record<string, unknown>
+  const limits = doc.windowLimits
+  if (limits === null || typeof limits !== 'object' || Array.isArray(limits)) return []
+  const record = limits as Record<string, unknown>
+  return [
+    commandcodeWindow(record.fiveHour ?? record.five_hour, 'session'),
+    commandcodeWindow(record.weekly ?? record.week, 'weekly'),
+  ].filter((hit): hit is SubscriptionWindow => hit !== null)
+}
+
+/** Collect the CommandCode quota (5h/weekly windows + monthly credits). */
+async function collectCommandCode(keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number): Promise<SubscriptionQuota> {
+  const apiKey = keys.commandcodeApiKey.trim()
+  const base = config.baseUrl ?? 'https://api.commandcode.ai'
+  const displayName = SUBSCRIPTION_DISPLAY_NAMES['commandcode'] ?? 'CommandCode'
+  if (apiKey === '') {
+    return {
+      provider: config.provider,
+      displayName,
+      status: 'not-configured',
+      windows: [],
+      hint: '需 commandcode.ai 的 API key（user_ 前缀）；可在 llm-pi-ai 给 commandcode 路由配 apiKeyEnv',
+    }
+  }
+  try {
+    const body = await requestJson(
+      `${base}/alpha/billing/credits`,
+      { headers: { authorization: `Bearer ${apiKey}`, accept: 'application/json' } },
+      timeoutMs,
+    )
+    const windows = parseCommandCodeCredits(body)
+    return { provider: config.provider, displayName, status: windows.length > 0 ? 'ok' : 'invalid-response', windows }
+  } catch (error) {
+    return { provider: config.provider, displayName, status: statusOf(error), windows: [] }
   }
 }
 

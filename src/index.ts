@@ -187,6 +187,10 @@ export interface UsageBillingConfig {
 /** 实时定价的后台刷新间隔（毫秒）：汇率/模型价低频变化，6 小时一次足够。 */
 const PRICING_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000
 
+/** 历史回放预热的延迟：等宿主启动高峰（插件加载 / 路由挂载）过去再全量折叠，
+ *  避免抢启动期的 CPU；纯延迟不阻塞任何请求，面板提前打开也只会提前聚合。 */
+const WARMUP_DELAY_MS = 3_000
+
 /** 订阅套餐额度缓存时长（毫秒）：上游配额 API 低频变化，5 分钟足够。 */
 const SUBSCRIPTION_CACHE_MS = 5 * 60 * 1000
 // 余额接口缓存：与订阅 / 中转站配额一致，5 分钟，避免每 30 秒后台轮询打官方余额 API。
@@ -329,7 +333,10 @@ const SUBSCRIPTION_KEY_SOURCES: ReadonlyArray<{ provider: string; key: Exclude<k
   { provider: 'minimax-token-plan-cn', key: 'minmaxApiKey' },
   { provider: 'minimax-cn', key: 'minmaxApiKey' },
   { provider: 'openrouter', key: 'openrouterApiKey' },
+  { provider: 'commandcode', key: 'commandcodeApiKey' },
   { provider: 'tencent-token-plan', key: 'tencentCloudApi' },
+  // 注意：anthropic 有意不在此表——llm-pi-ai 的 anthropic 路由多为按量 sk-ant key
+  //（误当 OAuth token 查订阅会 401），Claude 订阅行只走 Claude Code 登录态自动发现。
 ]
 
 /**
@@ -473,6 +480,17 @@ export async function resolveSubscriptionKeys(
   if (keys.opencodeApiKey === '') {
     keys.opencodeApiKey = await readOpenCodeToken()
   }
+  // Claude Code 登录态自动发现：读 ~/.claude/.credentials.json 的 OAuth token，
+  // 发现到凭据时把 Claude 订阅行补进识别结果（anthropic 不在 SUBSCRIPTION_ID_RE，
+  // 不补行的话自动发现永远没机会展示）。文件不存在/未登录安静退回，绝不报错。
+  keys.anthropicApiKey = await readClaudeOAuthToken()
+  if (keys.anthropicApiKey !== '') {
+    const identified = identifySubscriptionPlans(providers)
+    if (!identified.some(plan => plan.provider === 'anthropic')) {
+      identified.push({ provider: 'anthropic', displayName: 'Claude (Anthropic)', adapter: true })
+    }
+    return { keys, identified }
+  }
   return { keys, identified: identifySubscriptionPlans(providers) }
 }
 
@@ -488,6 +506,21 @@ async function readOpenCodeToken(): Promise<string> {
     }
   } catch {
     // 文件不存在 / 读不动 / JSON 解析失败 → 视为没有凭据，不报错。
+  }
+  return ''
+}
+
+/**
+ * 从本机 Claude Code 登录态自动发现 Anthropic OAuth access token；取不到返回
+ * 空串（安静退回）。与 OpenCode auth.json 兜底同款姿态：只是一次便利，绝不报错。
+ */
+async function readClaudeOAuthToken(): Promise<string> {
+  try {
+    const cred = JSON.parse(await readFile(join(homedir(), '.claude', '.credentials.json'), 'utf8')) as unknown
+    const token = (cred as { claudeAiOauth?: { accessToken?: unknown } } | null)?.claudeAiOauth?.accessToken
+    if (typeof token === 'string' && token !== '') return token
+  } catch {
+    // 未登录 Claude Code / 文件不可读 → 视为没有凭据。
   }
   return ''
 }
@@ -627,6 +660,17 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 插件卸载时把落盘节流窗口内的账本改动 flush 掉（fire-and-forget：
   // disposer 不能阻塞关闭流程，等不起进行中的长折叠）。
   ctx.effect(() => () => { void aggregator.flush() }, 'usage-billing: ledger flush on dispose')
+  // 安装/升级后的历史回放预热：宿主就绪即后台全量折叠一次（聚合器有 in-flight
+  // 去重与账本幂等，与首次面板请求并发也无副作用）。不预热的话聚合只在前端轮询
+  // 到达时触发，新用户首次打开面板要等一遍全量折叠，观感是「装完没数据」。
+  const warmupTimer = setTimeout(() => {
+    void aggregator.aggregate()
+      .then(() => { console.info('[usage-billing] historical replay warmed up; ledger ready') })
+      .catch((error: unknown) => {
+        console.warn('[usage-billing] historical replay warmup failed; will fold on first dashboard request:', error)
+      })
+  }, WARMUP_DELAY_MS)
+  ctx.effect(() => () => { clearTimeout(warmupTimer) }, 'usage-billing: historical replay warmup timer')
   const candidates = [
     config.statsPath,
     process.env.DSH_USAGE_STATS,
@@ -860,8 +904,12 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 失败自动降级内置目录；之后每 6 小时刷新一次，汇率/价格无需重启进程就能
   // 保持最新。host 侧同步应用：聚合计价与客户端展示同源（含目录外补充条目）。
   let live: LivePricing = { source: 'builtin' }
+  // 上次同步完成的本机时间戳：每次刷新尝试完成即更新（live 或降级 builtin 都是
+  // 一次完成的同步动作），随 pricing 响应下发供费率条展示「上次同步」。
+  let pricingSyncedAt = 0
   const refreshPricing = async (): Promise<void> => {
     live = await fetchLivePricing()
+    pricingSyncedAt = Date.now()
     applyLivePricing(live)
   }
   void refreshPricing()
@@ -880,10 +928,41 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       handler: async (req, res) => {
         if (!guardLoopback(req, res)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-        res.end(JSON.stringify(live))
+        res.end(JSON.stringify({ ...live, syncedAt: pricingSyncedAt }))
       },
     }),
     'usage-billing: pricing route',
+  )
+
+  // 手动同步价格目录：费率条「立即同步」按钮调用。写操作按回环写防护模板
+  // 校验 Origin 与 Content-Type；无 body，刷新完成后返回新目录与同步时间。
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'exact',
+      path: '/api/billing/pricing/refresh',
+      handler: async (req, res) => {
+        if (!guardLoopback(req, res)) return
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'content-type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'method not allowed' }))
+          return
+        }
+        if (!isLoopbackOrigin(req.headers.origin)) {
+          res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'forbidden: loopback only' }))
+          return
+        }
+        if (!(req.headers['content-type'] ?? '').toLowerCase().includes('application/json')) {
+          res.writeHead(415, { 'content-type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'unsupported content-type' }))
+          return
+        }
+        await refreshPricing()
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({ ...live, syncedAt: pricingSyncedAt }))
+      },
+    }),
+    'usage-billing: pricing refresh route',
   )
 
   let balanceCache: { at: number; doc: { balances: Awaited<ReturnType<typeof queryBalances>>; reconcile?: ReconcileEvent } } = { at: 0, doc: { balances: [] } }

@@ -222,10 +222,19 @@ body {
   gap: 2px;
 }
 
+/* 维度标签行在上、主数值行在下（issue #51）：窄卡里数值独占整行不再被标签挤压截断。 */
 .triggerPrimary {
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* 币符+数值横排行（issue #51 修正）：¥ 与数字保持同行 baseline 对齐。 */
+.triggerValueRow {
+  display: flex;
   align-items: baseline;
-  gap: 5px;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -3015,6 +3024,31 @@ body {
   border-radius: 2px;
   padding: 0;
   cursor: pointer;
+}
+
+/* 半年视图（26 周，截图传播主视觉）：复用年度网格结构，格子放大到 16px、
+   圆角加大；26 周 × 19px ≈ 494px，概览面板内不触发横向滚动。 */
+.heatmapHalf .heatmapYearWeekdays {
+  grid-template-rows: repeat(7, 16px);
+  line-height: 16px;
+}
+
+.heatmapHalf .heatmapYearWeekday {
+  height: 16px;
+}
+
+.heatmapHalf .heatmapYearMonths {
+  grid-template-columns: repeat(26, 16px);
+}
+
+.heatmapHalf .heatmapYearGrid {
+  grid-template-rows: repeat(7, 16px);
+}
+
+.heatmapHalf .heatmapYearCell {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
 }
 
 /* ── 模型用量悬浮窗（左下角 hover 浮窗）─────────────────────────────── */

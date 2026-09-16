@@ -61,6 +61,9 @@ export type UsageBillingKey =
   | 'todayRate'
   | 'rateLive'
   | 'rateBuiltin'
+  | 'pricingSyncedAt'
+  | 'pricingSyncNow'
+  | 'pricingSyncing'
   | 'promoBadge'
   | 'promoUntil'
   | 'promoOpenEnded'
@@ -223,7 +226,11 @@ export type UsageBillingKey =
   | 'perfAll'
   | 'perfChartEmpty'
   | 'heatmapYear'
+  | 'heatmapHalf'
   | 'heatmapMonth'
+  | 'metricCost'
+  | 'metricTokens'
+  | 'heatmapTotal'
   | 'activeDays'
   | 'streakDays'
   | 'subscriptionAutoDetect'
@@ -343,6 +350,9 @@ export const zh: Record<UsageBillingKey, string> = {
   'todayRate': '今日汇率',
   'rateLive': '实时',
   'rateBuiltin': '内置',
+  'pricingSyncedAt': '上次同步',
+  'pricingSyncNow': '立即同步',
+  'pricingSyncing': '同步中…',
   'promoBadge': '促',
   'promoUntil': '促销价至 {date}，之后自动恢复刊例价',
   'promoOpenEnded': '厂商未公布截止时间，当前按折扣计价；公告截止后自动恢复刊例价',
@@ -455,7 +465,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'peakSharePerCall': '按调用时刻精确判档',
   'offPeakSavings': '挪谷可省约 {amount}',
   'perfMax': '最大 TTFT',
-  'weekCost': '本周',
+  'weekCost': '本周消耗金额',
   'roleCost': '费用构成',
   'roleUser': '用户输入',
   'roleAssistant': '助手输出',
@@ -485,11 +495,11 @@ export const zh: Record<UsageBillingKey, string> = {
   'planTypeCode': '订阅制',
   'planTypeToken': '按量',
   'subscriptionFeePerMonth': '{amount}/月',
-  'triggerToday': '今日',
-  'triggerMonth': '当月',
-  'triggerMonthTokens': '当月 Token',
-  'triggerTodayTokens': '今日 Token',
-  'triggerWeekTokens': '本周 Token',
+  'triggerToday': '今日消耗金额',
+  'triggerMonth': '当月消耗金额',
+  'triggerMonthTokens': '当月消耗 Token',
+  'triggerTodayTokens': '今日消耗 Token',
+  'triggerWeekTokens': '本周消耗 Token',
   'subscriptionTag': '订阅',
   'free': '免费',
   'perfSamples': '样本',
@@ -506,7 +516,11 @@ export const zh: Record<UsageBillingKey, string> = {
   'perfAll': '全选',
   'perfChartEmpty': '未选择模型或该指标暂无数据',
   'heatmapYear': '年',
+  'heatmapHalf': '半年',
   'heatmapMonth': '月',
+  'metricCost': '费用',
+  'metricTokens': 'Token',
+  'heatmapTotal': '合计',
   'activeDays': '活跃天数',
   'streakDays': '连续使用',
   'subscriptionAutoDetect': '自动识别',
@@ -625,6 +639,9 @@ export const en: Record<UsageBillingKey, string> = {
   'todayRate': 'Today rate',
   'rateLive': 'Live',
   'rateBuiltin': 'Built-in',
+  'pricingSyncedAt': 'Synced',
+  'pricingSyncNow': 'Sync now',
+  'pricingSyncing': 'Syncing…',
   'promoBadge': 'Promo',
   'promoUntil': 'Promo price until {date}, then list price resumes automatically',
   'promoOpenEnded': 'End date not announced; billed at the discounted rate until further notice, then list price resumes',
@@ -737,7 +754,7 @@ export const en: Record<UsageBillingKey, string> = {
   'peakSharePerCall': 'per-call attribution, full history',
   'offPeakSavings': 'Shift peak to off-peak: save ~{amount}',
   'perfMax': 'Max TTFT',
-  'weekCost': 'This week',
+  'weekCost': "This week's spend",
   'roleCost': 'Cost breakdown',
   'roleUser': 'User input',
   'roleAssistant': 'Assistant output',
@@ -767,9 +784,9 @@ export const en: Record<UsageBillingKey, string> = {
   'planTypeCode': 'Subscription',
   'planTypeToken': 'Usage',
   'subscriptionFeePerMonth': '{amount}/mo',
-  'triggerToday': 'Today',
-  'triggerMonth': 'This month',
-  'triggerMonthTokens': 'Monthly tokens',
+  'triggerToday': "Today's spend",
+  'triggerMonth': "This month's spend",
+  'triggerMonthTokens': "This month's tokens",
   'triggerTodayTokens': "Today's tokens",
   'triggerWeekTokens': "This week's tokens",
   'subscriptionTag': 'Plan',
@@ -788,7 +805,11 @@ export const en: Record<UsageBillingKey, string> = {
   'perfAll': 'All',
   'perfChartEmpty': 'No model selected or no data for this metric',
   'heatmapYear': 'Year',
+  'heatmapHalf': 'Half',
   'heatmapMonth': 'Month',
+  'metricCost': 'Cost',
+  'metricTokens': 'Tokens',
+  'heatmapTotal': 'Total',
   'activeDays': 'Active days',
   'streakDays': 'Streak',
   'subscriptionAutoDetect': 'Auto',

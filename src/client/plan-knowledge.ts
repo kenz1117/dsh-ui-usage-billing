@@ -71,6 +71,8 @@ export const PLAN_KNOWLEDGE: Readonly<Record<string, PlanKnowledgeEntry>> = {
   'kimi-coding': { type: 'code' },
   'zai-coding-cn': { type: 'code' },
   'zai-coding': { type: 'code' },
+  // CommandCode（commandcode.ai）只有订阅制：5h/周窗口 + 月度 Credits 池。
+  'commandcode': { type: 'code' },
   'qwen-token-plan': { type: 'code' },
   'qwen-token-plan-cn': { type: 'code' },
   'xiaomi-token-plan-ams': { type: 'code' },

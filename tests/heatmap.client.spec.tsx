@@ -79,6 +79,23 @@ describe('UsageHeatmap', () => {
     expect(body).toContain('Wed')
     expect(body).toContain('Fri')
   })
+
+  it('renders 26 weeks of large cells in half range (Codex-style shareable view)', () => {
+    const { getAllByTestId, getByTestId } = render(<UsageHeatmap days={DAYS} currency="cny" now={NOW} t={t} range="half" />)
+    // 26 周 × 7 天。
+    expect(getAllByTestId('heatmap-year-cell')).toHaveLength(26 * 7)
+    // 半年视图用独立容器 testid 与 `.heatmapHalf` 修饰类（CSS 放大格子）。
+    expect(getByTestId('heatmap-half').className).toMatch(/heatmapHalf/)
+  })
+
+  it('formats hover amounts as tokens when unit=tokens', () => {
+    const { getAllByTestId, getByTestId } = render(<UsageHeatmap days={DAYS} currency="cny" now={NOW} t={t} unit="tokens" />)
+    fireEvent.mouseEnter(getAllByTestId('heatmap-cell')[0]!)
+    const hover = getByTestId('heatmap-hover')
+    // token 口径：紧凑格式化数字，不带货币符号。
+    expect(hover.textContent).toMatch(/· 8/)
+    expect(hover.textContent).not.toMatch(/¥/)
+  })
 })
 
 describe('active / streak day counting', () => {

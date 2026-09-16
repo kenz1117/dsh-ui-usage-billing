@@ -5,6 +5,7 @@
 <p align="center">把每一分模型开销，看得清清楚楚。</p>
 
 <p align="center">
+  <a href="https://github.com/kenz1117/dsh-ui-usage-billing/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/kenz1117/dsh-ui-usage-billing/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/kenz1117/dsh-ui-usage-billing?logo=github"></a>
   <a href="https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing"><img alt="npm version" src="https://img.shields.io/npm/v/@kenz1117/dsh-ui-usage-billing?logo=npm"></a>
   <a href="https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@kenz1117/dsh-ui-usage-billing?logo=npm"></a>
@@ -67,7 +68,7 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 ## 💰 计费引擎
 
 - **提供商优先分组**：费用按调用实际发生的 llm 入口（通道）分组——腾讯云 TokenHub / Token Plan / DeepSeek 官方 / 直连·路由名 / 未知路由，模型品牌只是行内徽标 + 副标；官方判定按通道 origin（`api.deepseek.com`）而非路由名，`deepseek-*` 网关路由不再被误算官方。`routeAliases` 归位改名 / 删除的历史路由，`modelKeyAliases` 把目录外模型 id 绑定到计费键（日期后缀、组织前缀、TokenHub 短 id `hy3` 已内置识别）。
-- **实时费率表**：models.dev 抓价 + 探活模型对标，系统实际配置的模型全纳入；峰谷分时（工作日 9-12 / 14-18 高峰 ×2、周末全天低谷，历史费用按官方变更节点分段，见下方「计费细节」）+ 实时汇率（USD→CNY），每 6 小时刷新。
+- **实时费率表**：models.dev 抓价 + 探活模型对标，系统实际配置的模型全纳入；峰谷分时（工作日 9-12 / 14-18 高峰 ×2、周末全天低谷，历史费用按官方变更节点分段，见下方「计费细节」）+ 实时汇率（USD→CNY），每 6 小时自动刷新；费率条显示「上次同步」时间并可**一键立即同步**（无需重启宿主）。
 - **自定义单价**：设置面板为未收录或变价模型填实付价（未命中 / 缓存命中 / 输出，可选 USD 与低谷价），总览与日趋势按用户价重估；支持按中转站来源绑定同模型不同价，目录外模型填价即生效。
 
   ![费率：模型单价表（峰谷分时与实时汇率）](screenshots/5.png)
@@ -77,7 +78,7 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 
 ## 🔌 订阅与余额
 
-- **订阅套餐额度**：自动识别订阅类 provider（Kimi / Z.ai / OpenCode Go / MiniMax / OpenRouter / 小米 / 火山…），有额度 API 的实时显示剩余 % 与重置时间、用尽标红，无 API 标「未接入」；订阅通道模型费用记 0，档位月费与周期额度由内置知识库识别（如 OpenCode Go $10/月 + 周 $30 额度）。**MiniMax 注意**：国内用 `minimax-token-plan-cn`（自动对接 `api.minimaxi.com`），国际用 `minimax` / `minimax-token-plan`；可在该 provider 设置覆盖 `baseUrl`。
+- **订阅套餐额度**：自动识别订阅类 provider（Kimi / Z.ai / OpenCode Go / MiniMax / OpenRouter / Claude / CommandCode / 小米 / 火山…），有额度 API 的实时显示剩余 % 与重置时间、用尽标红，无 API 标「未接入」；订阅通道模型费用记 0，档位月费与周期额度由内置知识库识别（如 OpenCode Go $10/月 + 周 $30 额度）。**MiniMax 注意**：国内用 `minimax-token-plan-cn`（自动对接 `api.minimaxi.com`），国际用 `minimax` / `minimax-token-plan`；可在该 provider 设置覆盖 `baseUrl`。**Claude 订阅**：本机登录 Claude Code 后自动发现（读 `~/.claude/.credentials.json` 的 OAuth token），显示 5 小时 / 周窗口用量；llm-pi-ai 里按量 `anthropic` 路由不会被误识别，费用照常按 token 计。**CommandCode**：在 llm-pi-ai 给 `commandcode` 路由配 `apiKeyEnv`（`user_` 前缀 key），显示 5 小时 / 周窗口与月度 Credits。
 - **多厂商余额**：DeepSeek / Kimi / 阶跃星辰 / 硅基流动 / xAI / 智谱 GLM 内置官方余额，按近 7 天日均折算「约可撑 N 天」；**腾讯云 TokenHub Token Plan** 余量与订阅额度走云 API 管控面（TC3 签名，`src/tc3.ts`）——凭据填 `<SecretId>:<SecretKey>` 密钥对（非推理 key），路由命名 `tencent-tokenhub` / `tokenhub` / `tencent` / `tencentcloud` 任一即可命中，剩余与总额度都可解析时才产出百分比窗口（绝不猜总额度）。
 - **自定义 Provider 余额**：配置任意 HTTP 端点查余额（`extract` 支持常量 / 点路径 / 四则运算，请求头 `{{ENV}}` 经凭据 seam）。
 - **声明端点 + 余额对账**：内置表没有的供应商用 `declaredEndpoints` 自声明余额接口——只写「数字在哪里」的点路径、无表达式；安全边界（单斜杠绝对路径、仅 GET、拒跨源重定向、响应体 / 超时上限、凭据只取本 provider）由 `src/declarative.ts` 强制执行，取错路径在界面标 `declared` 与 reason。**余额差对账**（`reconcilePath`）用官方余额当日变动与本地账本交叉校验，偏差超阈值（0.3 元且 >15%）提示核对；充值 / 授信 / 币种变化重置基准而非告警，余额未减少（走订阅扣费）静默。
@@ -85,9 +86,11 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 
   ![明细：厂商计费与订阅（余额、套餐额度、模型用量）](screenshots/3.png)
 
+> 全部渠道的适配矩阵（识别方式 / 端点 / 凭据要求 / 排查顺序）见 [docs/adapters.md](docs/adapters.md)。
+
 ## 📈 用量可视化
 
-- **会话明细 + 热力图**：按会话费用倒序（标题 / 项目 / 调用 / 费用 / 最后活跃）；月 / 年日历热力图（5 档色阶、悬停明细，年视图近 52 周 GitHub 风格），头部显示活跃天数 / 连续使用天数。
+- **会话明细 + 热力图**：按会话费用倒序（标题 / 项目 / 调用 / 费用 / 最后活跃）；月 / 半年 / 年三档日历热力图（5 档色阶、悬停明细，年视图近 52 周 GitHub 风格，**半年视图 26 周大格**——一张图看完近半年强度，截图即用），**费用 / Token 双口径**切换，头部显示区间合计、活跃天数 / 连续使用天数。
 - **性能指标**：每模型 TTFT 均值 / P50 / P90、生成速度（tokens/s）、总延迟均值；按小时 × 模型对比曲线——指标 tab 切换、模型 chip 点击开关曲线（默认点亮样本数前 5）、悬停吸附最近小时显示十字线与逐模型数值，缺失样本小时断线不造假；视图偏好本地持久化。
 - **Token 统计洞察**：每日 token 堆叠双视角——「按结构」（输入未命中 / 命中 / 输出三桶，含 reasoning）与「按模型」（旧快照缺明细时自动隐藏切换）；悬停显示当日精确明细（千分位不缩写），点击图例色块或 Token 表行聚焦单模型（再点解除）；结构 KPI（缓存命中率 / 思考占比 / 输入输出比 / 峰值日）；按日 CSV 与 JSON 导出（JSON 含按日 × 模型明细）。
 
@@ -265,6 +268,7 @@ npm publish --access public
 - **会话明细不可跳转**：点击会话行不会打开对应会话（跨插件导航需要宿主会话选择通道）；会话数封顶 100 行、面板只显示前 20 行。
 - **费用为目录价估算**：讯飞 / 商汤 / 小米等未公布按量单价的模型使用估算价（特性表脚注 ¹），正式定价以厂商账单为准。
 - **账本从首次成功聚合开始生效**：升级前已经永久删除且不在旧快照中的会话无法恢复；手动删除 `.dsh-usage-ledger.json` 及其 `.bak` 会清空独立保留的历史。账本只保留本插件已经成功观测过的调用。
+- **历史回放预热**：插件加载 3 秒后台自动全量折叠宿主全部历史会话日志（账本幂等，重复折叠不重复计数），首次打开面板即可看到完整历史统计，无需等一遍首次折叠。历史会话按「首次折叠时的模型单价」计价；厂商改价前的历史消耗不会按新价重算（价格目录无历史时点价，属估算口径）。
 
 ## ❤️ Contributors
 

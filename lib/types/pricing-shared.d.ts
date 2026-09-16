@@ -27,6 +27,8 @@ export interface LivePricing {
      * 内置目录未收录」的模型也能计价并出现在费率表。
      */
     extraModels?: readonly ExtraModelPrice[];
+    /** 上次价格目录同步完成的本机时间戳（毫秒）；0 = 尚未完成过任何一次同步。 */
+    syncedAt?: number;
 }
 /** models.dev 补充的目录外模型价（USD / 1M tokens）。 */
 export interface ExtraModelPrice {

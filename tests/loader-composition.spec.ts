@@ -234,10 +234,31 @@ describe('usage-billing real Loader composition', () => {
     expect(doc.bySession).toHaveLength(1)
     expect(doc.bySession[0]).toMatchObject({ id: 's1', calls: 2 })
 
-    // pricing：外网被拒绝，降级为内置定价文档。
+    // pricing：外网被拒绝，降级为内置定价文档；syncedAt 记录这次已完成的同步动作。
     const pricing = await getJson(port, '/api/billing/pricing')
     expect(pricing.status).toBe(200)
-    expect((pricing.json as { source: string }).source).toBe('builtin')
+    const pricingDoc = pricing.json as { source: string; syncedAt: number }
+    expect(pricingDoc.source).toBe('builtin')
+    expect(pricingDoc.syncedAt).toBeGreaterThan(0)
+
+    // 手动同步端点：回环 POST 放行，返回新目录与不早于上次的同步时间；
+    // GET 拒绝（405）、跨站 Origin 拒绝（403，写防护与 usage-tool 开关同规则）。
+    const refresh = await fetch(`http://127.0.0.1:${String(port)}/api/billing/pricing/refresh`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: `http://127.0.0.1:${String(port)}` },
+      body: '{}',
+    })
+    expect(refresh.status).toBe(200)
+    const refreshed = JSON.parse(await refresh.text()) as { source: string; syncedAt: number }
+    expect(refreshed.source).toBe('builtin')
+    expect(refreshed.syncedAt).toBeGreaterThanOrEqual(pricingDoc.syncedAt)
+    expect((await getJson(port, '/api/billing/pricing/refresh')).status).toBe(405)
+    const crossSite = await fetch(`http://127.0.0.1:${String(port)}/api/billing/pricing/refresh`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'http://evil.example' },
+      body: '{}',
+    })
+    expect(crossSite.status).toBe(403)
 
     // usage_stats 工具开关节点接口：组合 base 缺省关闭 → 返回 enabled=false。
     const usageTool = await getJson(port, '/api/billing/usage-tool')
@@ -269,6 +290,7 @@ describe('usage-billing real Loader composition', () => {
     await billingEntry!.fiber?.dispose()
     expect((await getJson(port, '/api/billing/usage-stats')).status).toBe(404)
     expect((await getJson(port, '/api/billing/pricing')).status).toBe(404)
+    expect((await getJson(port, '/api/billing/pricing/refresh')).status).toBe(404)
     expect((await getJson(port, '/api/billing/balance')).status).toBe(404)
     expect((await getJson(port, '/api/billing/notify-claim')).status).toBe(404)
   })
