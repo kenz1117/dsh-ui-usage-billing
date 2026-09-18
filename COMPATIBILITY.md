@@ -10,9 +10,9 @@
 | 0.1.2 系 | 0.1.2-alpha.1 ~ 0.1.2-rc.1 | （已从 latest 退位） | client bundle 改为 `remote` / `store`；移除 `settingsNamespace` |
 | 0.1.3 系 | 0.1.3-alpha.1 ~ 0.1.3-alpha.2 | （无独立标签，alpha 波动） | SessionPersistence 改 SessionHandle 模型（`open`/`read`，`readFrom`/`locate` 消失）；session format v2 |
 | 0.1.5 系 | 0.1.5-alpha.1 ~ 0.1.5-rc.2 | `latest`（rc.1 起）/ `next`（rc.2 起） | SessionHandle 面与 0.1.3-alpha.2 一致；`handle.read` 返回 `SessionHandleReadResult`（`{eventState, events}` 包装，0.1.3-alpha.1 为裸数组）；rc.2 相对 rc.1 仅追加代码文件图标 artwork 与构建元数据，对插件零影响 |
-| 0.1.6 系（alpha 预览） | 0.1.6-alpha.1 ~ | `alpha` | 变更集中在 desktop asar runtime / compaction banner / session-title；插件五个依赖包（session-persistence、ui-slots、ui-sidebar、host-webserver、tools）零代码变更，对插件零影响 |
+| 0.1.6 系（alpha 预览） | 0.1.6-alpha.1 ~ 2 | `alpha` | 变更集中在 desktop asar runtime / compaction banner / session-title；插件五个依赖包（session-persistence、ui-slots、ui-sidebar、host-webserver、tools）零代码变更，对插件零影响（alpha.1 于 2026-09-16、alpha.2 于 2026-09-19 逐 diff 复核） |
 
-关键事实：宿主 `latest` 现指向 0.1.5-rc.1（0.1.2 系为上一代），`alpha` 已前移到 0.1.6-alpha.1（2026-09-15 发布）——新用户默认装到的仍是新代际，alpha 用户提前进 0.1.6。预览线 `dsh` 区间（`>=0.1.2-alpha.1`，无上界）天然覆盖 0.1.3/0.1.5/0.1.6，插件 v1.0.29-alpha.1 起适配 SessionHandle 持久化新面（注入点结构探测，双宿主形状通吃）；v1.2.1 起适配 `handle.read` 的包装返回形状。2026-09-10 已在宿主 0.1.5-rc.1 + 插件本地构建上真机验证（插件加载、`/api/billing/usage-stats` 聚合、历史会话回读全部正常）。0.1.3→0.1.5 无新增宿主面破坏（逐包类型面比对确认）；0.1.5→0.1.6 插件依赖包逐包比对零代码变更（2026-09-16，逐 diff 确认）。
+关键事实：宿主 `latest` 现指向 0.1.5-rc.2（0.1.2 系为上一代），`alpha` 已前移到 0.1.6-alpha.2（2026-09-18 发布）——新用户默认装到的仍是新代际，alpha 用户提前进 0.1.6。预览线 `dsh` 区间（`>=0.1.2-alpha.1`，无上界）天然覆盖 0.1.3/0.1.5/0.1.6，插件 v1.0.29-alpha.1 起适配 SessionHandle 持久化新面（注入点结构探测，双宿主形状通吃）；v1.2.1 起适配 `handle.read` 的包装返回形状。2026-09-10 已在宿主 0.1.5-rc.1 + 插件本地构建上真机验证（插件加载、`/api/billing/usage-stats` 聚合、历史会话回读全部正常）。0.1.3→0.1.5 无新增宿主面破坏（逐包类型面比对确认）；0.1.5→0.1.6 插件依赖包逐包比对零代码变更（alpha.1 与 alpha.2 均逐 diff 确认）。
 
 ## 插件双线对照
 
@@ -58,6 +58,7 @@
 - [x] v1.2.5：`dshReleases` 补 0.1.5-rc.2——逐包 lib 比对确认其相对 rc.1 仅图标 artwork 与构建元数据变化，对插件零影响
 - [x] 稳定线冻结：终版 v1.1.17，`stable` 标签永久保留；正式 EOL 待宿主首个正式 tag
 - [x] v1.4.1：`dshReleases` 补 0.1.6-alpha.1——host latest 仍在 0.1.5-rc.1、alpha 前移 0.1.6；插件五个依赖包逐包 diff 零代码变更，对插件零影响
+- [x] v1.4.1（追加，watch-dsh-releases 报警后补）：`dshReleases` 补 0.1.6-alpha.2（2026-09-18 发布，五包 diff 仍为零代码变更）；宿主 `latest` 前移至 0.1.5-rc.2，文档同步
 - [ ] 宿主侧把 profile 逐版本 `minimumReleaseAgeExclude` 改为包级豁免（待与宿主作者沟通）
 
 ---

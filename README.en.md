@@ -112,7 +112,7 @@ The billing channel is detected from the current session's model: DeepSeek meter
 
 Check your host generation first (`dsh --version`), then pick the matching install command — **a mismatched line is rejected by the DSH Store via the `engines.dsh` declaration** (declared since v1.0.41). Note that `dsh plugin add` requires an explicit `--profile` (otherwise it fails with `required option '--profile <name>' not specified`), and prefer **pinning an exact version** over `@latest` (pnpm's `minimumReleaseAge` cooldown skips freshly published versions and may fall back to the other line):
 
-- **DSH 0.1.2 ~ 0.1.6 era** (0.1.2-alpha.1 and later; npm `latest` currently at 0.1.6-alpha.1; `npm ls -g @deepseek-ai/dsh` shows 0.1.2-* ~ 0.1.6-*):
+- **DSH 0.1.2 ~ 0.1.6 era** (0.1.2-alpha.1 and later; npm `latest` currently at 0.1.5-rc.2, with the alpha preview moved to 0.1.6-alpha.2; `npm ls -g @deepseek-ai/dsh` shows 0.1.2-* ~ 0.1.6-*):
 
   ```sh
   dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@latest
@@ -235,9 +235,9 @@ The host discovers the browser side automatically via the `dsh.client` declarati
 
 ## 🔐 Permissions & Compatibility (DSH STORE)
 
-- **Permission level: high**: reads durable session logs (files), calls official multi-vendor / subscription / balance / pricing APIs (network), reads `apiKeyEnv` via the credentials seam (credentials), writes the ledger under `~/.dsh` (persistent state); **no** command execution / shell.
+- **Permission level: high**: reads durable session logs (files), calls official multi-vendor / subscription / balance / pricing APIs (network), reads `apiKeyEnv` via the credentials seam (credentials), writes the ledger and stats snapshot under the harness home (`DSH_HOME` / `~/.dsh`) (persistent state); **no** command execution / shell.
 - **Update channel: `user-reviewed`**: with file / network / credential capabilities, DSH STORE requires local manual confirmation on every install; review the repo, pinned commit, lifecycle scripts, and impact scope before installing.
-- **Compatibility**: the preview line (npm `latest`/`alpha`, 1.2.x — kept above the stable line to kill the version inversion) targets DSH `0.1.2` ~ `0.1.6` (host `latest` currently at 0.1.5-rc.1, verified on real hardware; 0.1.6-alpha.1 declared compatible — zero code changes in the plugin's dependency packages); the stable line (npm `stable`, 1.1.x, **frozen**, final v1.1.17) targets legacy hosts `0.1.0-rc.8` ~ `0.1.1-rc.2`. Per-version declarations live in `package.json` under `dsh.compatibility`; the two-line mapping and monitoring mechanism are documented in [COMPATIBILITY.md](COMPATIBILITY.md). Node.js `^22.19.0 || >=24.0.0`.
+- **Compatibility**: the preview line (npm `latest`/`alpha`, 1.2.x — kept above the stable line to kill the version inversion) targets DSH `0.1.2` ~ `0.1.6` (host `latest` currently at 0.1.5-rc.2, verified on real hardware; 0.1.6-alpha.1/2 declared compatible — zero code changes in the plugin's dependency packages); the stable line (npm `stable`, 1.1.x, **frozen**, final v1.1.17) targets legacy hosts `0.1.0-rc.8` ~ `0.1.1-rc.2`. Per-version declarations live in `package.json` under `dsh.compatibility`; the two-line mapping and monitoring mechanism are documented in [COMPATIBILITY.md](COMPATIBILITY.md). Node.js `^22.19.0 || >=24.0.0`.
 - **Lifecycle**: no `preinstall` / `install` / `postinstall` / `prepare` (ready on install).
 - **No impersonation**: adds only its own entry id `ui-usage-billing`; `@deepseek-ai/dsh-*` packages are `peerDependencies` only (no reinstall / replace / shadowing of official components); the package uses the third-party namespace `@kenz1117/*`.
 - **Build artifacts**: runtime files `lib/*` and `cordis.patch.yml` are committed at the pinned commit and declared in `files`.
