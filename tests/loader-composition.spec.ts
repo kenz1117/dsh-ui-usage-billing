@@ -130,8 +130,9 @@ async function loadComposition(): Promise<Context> {
 
 /** 参数化组装：默认用正常 persistence；`corrupt` 时注入 readFrom 抛错的替身，
  *  `slow` 时注入 list 延迟 3 秒的替身；`statsPath` 写入配置指向回退快照文件
- * （聚合失败/超预算时走该文件）。 */
-async function loadCompositionWith(options: { corrupt?: boolean; slow?: boolean; statsPath?: string } = {}): Promise<Context> {
+ * （聚合失败/超预算时走该文件）；`omitPersistPaths` 省略三个持久化路径——
+ * 配合 vi.stubEnv('DSH_HOME', …) 验证默认路径跟随宿主 harness home（issue #52）。 */
+async function loadCompositionWith(options: { corrupt?: boolean; slow?: boolean; statsPath?: string; omitPersistPaths?: boolean } = {}): Promise<Context> {
   root = await mkdtemp(join(tmpdir(), 'dsh-usage-billing-'))
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
@@ -147,10 +148,13 @@ async function loadCompositionWith(options: { corrupt?: boolean; slow?: boolean;
     '    monthlyBudget: 100',
     // 隔离持久化路径：快照/账本/对账基准都写入本测试临时目录，避免读/写
     // 宿主家目录下的使用统计与账本等真实持久化数据（由宿主服务运行产生，
-    // 测试硬编码读取会导致断言污染值而失败）。
-    `    snapshotPath: '${join(root, 'usage-stats.json')}'`,
-    `    ledgerPath: '${join(root, 'usage-ledger.json')}'`,
-    `    reconcilePath: '${join(root, 'usage-reconcile.json')}'`,
+    // 测试硬编码读取会导致断言污染值而失败）。omitPersistPaths 用例必须先
+    // stub DSH_HOME，默认根才落在临时目录而不碰真实 ~/.dsh。
+    ...(options.omitPersistPaths ? [] : [
+      `    snapshotPath: '${join(root, 'usage-stats.json')}'`,
+      `    ledgerPath: '${join(root, 'usage-ledger.json')}'`,
+      `    reconcilePath: '${join(root, 'usage-reconcile.json')}'`,
+    ]),
     ...(options.statsPath === undefined ? [] : [`    statsPath: '${options.statsPath}'`]),
     '',
   ].join('\n'))
@@ -204,6 +208,20 @@ async function postClaim(port: number, key: string): Promise<{ status: number; j
   } catch {
     return { status: response.status, json: undefined }
   }
+}
+
+/** 等待文件出现：账本/快照在 aggregateOnce 内 await 写入，通常早于响应返回；
+ *  小轮询只容忍文件系统可见性时序，不改变断言语义。 */
+async function pollForFile(path: string, attempts = 20): Promise<boolean> {
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      await readFile(path)
+      return true
+    } catch {
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+  }
+  return false
 }
 
 describe('usage-billing real Loader composition', () => {
@@ -331,6 +349,27 @@ describe('usage-billing real Loader composition', () => {
     expect(doc.total.calls).toBe(42)
     expect(doc.total.cost).toBe(0)
     await rm(snapshotDir, { recursive: true, force: true })
+  })
+
+  it('follows DSH_HOME for the default persistence root (issue #52)', { timeout: 60_000 }, async () => {
+    // 默认路径跟随宿主 harness home：config 未显式指定三个持久化路径时，
+    // DSH_HOME 环境变量优先于 ~/.dsh（resolveDshHome 语义），多套隔离环境
+    // 互不污染账本 / 快照 / 对账基准。stub 必须先于插件加载（apply 读 env）。
+    const home = await mkdtemp(join(tmpdir(), 'dsh-usage-billing-home-'))
+    vi.stubEnv('DSH_HOME', home)
+    try {
+      const loaded = await loadCompositionWith({ omitPersistPaths: true })
+      const port = loaded.webServer.port
+      const stats = await getJson(port, '/api/billing/usage-stats')
+      expect(stats.status).toBe(200)
+      expect((stats.json as { total: { calls: number } }).total.calls).toBe(2)
+      // 聚合响应返回后，账本与快照都应落在 DSH_HOME 根下（而不是 ~/.dsh）。
+      await expect(pollForFile(join(home, '.dsh-usage-ledger.json'))).resolves.toBe(true)
+      await expect(pollForFile(join(home, '.dsh-usage-stats.json'))).resolves.toBe(true)
+    } finally {
+      vi.unstubAllEnvs()
+      await rm(home, { recursive: true, force: true })
+    }
   })
 
   it('serves the recent snapshot while a slow first fold keeps running in the background', { timeout: 60_000 }, async () => {

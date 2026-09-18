@@ -31,13 +31,14 @@ export declare function guardLoopback(req: IncomingMessage, res: ServerResponse)
 export interface UsageBillingConfig {
     /** Absolute path to a `.dsh-usage-stats.json` fallback file. */
     statsPath?: string;
-    /** 统计快照的持久化路径；默认 `~/.dsh/.dsh-usage-stats.json`。
+    /** 统计快照的持久化路径；默认 `<harness home>/.dsh-usage-stats.json`
+     *  （harness home = `DSH_HOME` 环境变量或 `~/.dsh`，见 resolveDshHome）。
      *  测试注入临时目录以隔离真实家目录（聚合失败回退与快照落盘都走此路径）。 */
     snapshotPath?: string;
-    /** 独立持久用量账本的绝对路径；默认 `~/.dsh/.dsh-usage-ledger.json`。
+    /** 独立持久用量账本的绝对路径；默认 `<harness home>/.dsh-usage-ledger.json`。
      *  账本与会话日志解耦，因此永久删除会话不会抹掉已经观测到的用量。 */
     ledgerPath?: string;
-    /** 余额差对账基准的持久化路径；默认 `~/.dsh/.dsh-usage-reconcile.json`。 */
+    /** 余额差对账基准的持久化路径；默认 `<harness home>/.dsh-usage-reconcile.json`。 */
     reconcilePath?: string;
     /** 订阅制（coding / token / agent plan）provider id 列表；默认 kimi-coding、xiaomi-token-plan-cn。 */
     subscriptionProviders?: string[];

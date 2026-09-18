@@ -32,6 +32,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { writeFileAtomic, withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { SettingsProvider, SettingsScope } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
@@ -133,13 +134,14 @@ const UsageBillingSettingsSchema: z<UsageBillingSettings> = z.object({
 export interface UsageBillingConfig {
   /** Absolute path to a `.dsh-usage-stats.json` fallback file. */
   statsPath?: string
-  /** 统计快照的持久化路径；默认 `~/.dsh/.dsh-usage-stats.json`。
+  /** 统计快照的持久化路径；默认 `<harness home>/.dsh-usage-stats.json`
+   *  （harness home = `DSH_HOME` 环境变量或 `~/.dsh`，见 resolveDshHome）。
    *  测试注入临时目录以隔离真实家目录（聚合失败回退与快照落盘都走此路径）。 */
   snapshotPath?: string
-  /** 独立持久用量账本的绝对路径；默认 `~/.dsh/.dsh-usage-ledger.json`。
+  /** 独立持久用量账本的绝对路径；默认 `<harness home>/.dsh-usage-ledger.json`。
    *  账本与会话日志解耦，因此永久删除会话不会抹掉已经观测到的用量。 */
   ledgerPath?: string
-  /** 余额差对账基准的持久化路径；默认 `~/.dsh/.dsh-usage-reconcile.json`。 */
+  /** 余额差对账基准的持久化路径；默认 `<harness home>/.dsh-usage-reconcile.json`。 */
   reconcilePath?: string
   /** 订阅制（coding / token / agent plan）provider id 列表；默认 kimi-coding、xiaomi-token-plan-cn。 */
   subscriptionProviders?: string[]
@@ -603,8 +605,12 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // usage_stats 工具开关的设置命名空间 scope：settings 服务就绪后注册；HTTP 路由据此读写。
   let usageSettingsScope: SettingsScope<UsageBillingSettings> | undefined
   const cwd = process.cwd()
-  const snapshotPath = config.snapshotPath ?? join(homedir(), '.dsh/.dsh-usage-stats.json')
-  const ledgerPath = config.ledgerPath ?? join(homedir(), '.dsh/.dsh-usage-ledger.json')
+  // 持久化文件的默认根跟随宿主 harness home：DSH_HOME 环境变量优先，回退
+  // `~/.dsh`（resolveDshHome 的解析语义与宿主一致）。自定义 DSH_HOME 的多套
+  // 隔离环境互不污染账本 / 快照 / 对账基准（issue #52）；config 显式路径仍最高。
+  const dshHome = resolveDshHome()
+  const snapshotPath = config.snapshotPath ?? join(dshHome, '.dsh-usage-stats.json')
+  const ledgerPath = config.ledgerPath ?? join(dshHome, '.dsh-usage-ledger.json')
 
   // 独立持久账本：主文件损坏时读 `.bak`，写入使用宿主的原子写工具并限制为
   // 当前用户可读。账本保存每个已成功折叠的会话；删除会话日志不删除账本行。
@@ -612,7 +618,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
 
   // 余额差对账基准：持久化到独立文件（跨重启保留当日基准），随每次 balance
   // 轮询刷新。仅官方 DeepSeek 方向对账，见 reconcile.ts。
-  const reconcilePath = config.reconcilePath ?? join(homedir(), '.dsh/.dsh-usage-reconcile.json')
+  const reconcilePath = config.reconcilePath ?? join(dshHome, '.dsh-usage-reconcile.json')
   let reconcileRef: BalanceRef | null = null
   void (async () => {
     try {
