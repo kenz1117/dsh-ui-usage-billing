@@ -669,6 +669,14 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     promo: { factor: 0.5, endsAtMs: Date.UTC(2026, 8, 8, 16, 0, 0), note: '限时 5 折' },
   },
   {
+    key: 'glm-5.3-flashx',
+    name: 'GLM-5.3-FlashX',
+    provider: '智谱 AI',
+    colorVar: 'dsw-static-blue-300',
+    // 官方刊例价（元 / 每百万 token）：输入 ¥2（未命中）/ ¥0.57（命中）/ 输出 ¥7（腾讯云 TokenHub 价目 2026-09）。
+    price: { currency: 'CNY', input: 2, cacheHit: 0.57, output: 7 },
+  },
+  {
     key: 'glm-4.6',
     name: 'GLM-4.6',
     provider: '智谱 AI',
@@ -921,6 +929,14 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     provider: '腾讯混元',
     colorVar: 'dsw-static-amber-400',
     price: { currency: 'CNY', input: 1, cacheHit: 0.25, output: 4 },
+  },
+  {
+    key: 'hunyuan-hy4-preview',
+    name: '混元 Hy4 Preview',
+    provider: '腾讯混元',
+    colorVar: 'dsw-static-amber-400',
+    // 官方刊例价（元 / 每百万 token）：输入 ¥6（未命中）/ ¥0.3（命中）/ 输出 ¥18（TokenHub 价目与新华网发布稿 2026-08-28）。
+    price: { currency: 'CNY', input: 6, cacheHit: 0.3, output: 18 },
   },
   {
     key: 'hunyuan-t1',
@@ -1254,8 +1270,9 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'Kimi K2.8 Preview',
     provider: '月之暗面',
     colorVar: 'dsw-static-cyan-400',
-    // 官方未公布按量单价：该型号是 kimi.com 会员侧的预览模型，开放平台未上架
-    // （官方文档索引只有 K3 / K2.7 Code / K2.6 / Moonshot V1）。按 K2.7 Code 同价估算。
+    // 官方未公布按量单价：K2.8 Preview 是 Kimi Code 会员侧模型（2026-09-11 全量
+    // 上线，会员 API 的模型 ID 为 kimi-for-coding），开放平台未上架（定价表只有
+    // K3 / K2.7 Code / K2.6）。按 K2.7 Code 同价估算。
     price: { currency: 'CNY', input: 6.5, cacheHit: 1.3, output: 27 },
     estimated: true,
   },
@@ -1334,6 +1351,8 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'glm-5-turbo': 'glm-5-turbo',
   'glm-5.1': 'glm-5.1',
   'glm-5.3-flash': 'glm-5.3-flash',
+  'glm-5.3-flashx': 'glm-5.3-flashx',
+  'glm-5.3-flash-x': 'glm-5.3-flashx',
   'glm-5v-turbo': 'glm-5v-turbo',
   'glm-5v.1': 'glm-5v-turbo',
   // Anthropic Claude / Mistral / Cohere：id 变体归一（点/横杠/短名）。
@@ -1358,6 +1377,11 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   // 国产新兴/开源模型 id 变体。
   // 腾讯混元 TokenHub 短 id（控制台/网关常用形态；价格口径 = hunyuan 条目）。
   'hy3': 'hunyuan',
+  // Hy4 preview（2026-08-28 发布）：官方 id `hy4-preview`，短名/带前缀形态归一到独立目录键。
+  'hy4-preview': 'hunyuan-hy4-preview',
+  'hy4': 'hunyuan-hy4-preview',
+  'hunyuan-hy4-preview': 'hunyuan-hy4-preview',
+  'hunyuan-hy4': 'hunyuan-hy4-preview',
   'longcat-2.0': 'longcat-2.0',
   'longcat-2': 'longcat-2.0',
   'minicpm-v-4.5': 'minicpm-v-4.5',
@@ -1390,6 +1414,9 @@ export const MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'glm-5.2f': 'glm-5.2-fast',
   'kimi-k3-fast': 'kimi-k3-fast',
   'kimi-k3f': 'kimi-k3-fast',
+  // Kimi Code 订阅通道的模型 ID 固定为 kimi-for-coding：2026-09-11 起该 ID
+  // 背后是 K2.8 Preview（此前是 K2.7 Code），日志里只会出现这个 ID。
+  'kimi-for-coding': 'kimi-k2.8-preview',
   'kimi-k2.7-code-fast': 'kimi-k2.7-code-fast',
   'kimi-k2.7-code-f': 'kimi-k2.7-code-fast',
   'kimi-k2.6-fast': 'kimi-k2.6-fast',

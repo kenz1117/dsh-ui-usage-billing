@@ -746,10 +746,18 @@ describe('applyUserModelAliases (config seam)', () => {
   })
 
   it('lets user aliases bind uncatalogued ids to catalog keys', () => {
-    applyUserModelAliases({ 'hy4-preview': 'hunyuan' })
-    expect(resolveCatalogKey('hy4-preview')).toBe('hunyuan')
+    // hy4-preview 已内置收录（hunyuan-hy4-preview），这里改用虚构占位 id 验证机制。
+    applyUserModelAliases({ 'totally-new-model-y': 'hunyuan' })
+    expect(resolveCatalogKey('totally-new-model-y')).toBe('hunyuan')
     // 清除后回退原样（未收录）。
     applyUserModelAliases(undefined)
-    expect(resolveCatalogKey('hy4-preview')).toBe('hy4-preview')
+    expect(resolveCatalogKey('totally-new-model-y')).toBe('totally-new-model-y')
+  })
+
+  it('hy4-preview 内置归一到独立目录键，不依赖用户别名', () => {
+    expect(resolveCatalogKey('hy4-preview')).toBe('hunyuan-hy4-preview')
+    expect(resolveCatalogKey('hy4')).toBe('hunyuan-hy4-preview')
+    expect(modelOf('glm-5.3-flashx')?.key).toBe('glm-5.3-flashx')
+    expect(modelOf('glm-5.3-flashx')?.price).toEqual({ currency: 'CNY', input: 2, cacheHit: 0.57, output: 7 })
   })
 })
