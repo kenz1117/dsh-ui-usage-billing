@@ -669,8 +669,16 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 安装/升级后的历史回放预热：宿主就绪即后台全量折叠一次（聚合器有 in-flight
   // 去重与账本幂等，与首次面板请求并发也无副作用）。不预热的话聚合只在前端轮询
   // 到达时触发，新用户首次打开面板要等一遍全量折叠，观感是「装完没数据」。
+  // 预热重放必须等首次价格拉取 settle：refreshPricing() 是 fire-and-forget，
+  // 而 WARMUP_DELAY_MS 只有 3s，冷启动时 models.dev（数 MB）几乎必然更慢。
+  // 一旦重放先跑，整份历史会以内置目录价折叠，而折叠复用键（stamp +
+  // configFingerprint）不含价格，价格随后到达也不会让它失效。
+  // 拉取失败同样继续（等价于现状的内置价回退），不会把预热卡住。
+  let pricingReady: Promise<void> | undefined
   const warmupTimer = setTimeout(() => {
-    void aggregator.aggregate()
+    void Promise.resolve(pricingReady)
+      .catch(() => {})
+      .then(() => aggregator.aggregate())
       .then(() => { console.info('[usage-billing] historical replay warmed up; ledger ready') })
       .catch((error: unknown) => {
         console.warn('[usage-billing] historical replay warmup failed; will fold on first dashboard request:', error)
@@ -918,7 +926,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     pricingSyncedAt = Date.now()
     applyLivePricing(live)
   }
-  void refreshPricing()
+  pricingReady = refreshPricing()
   ctx.effect(
     () => {
       const timer = setInterval(() => { void refreshPricing() }, PRICING_REFRESH_INTERVAL_MS)
