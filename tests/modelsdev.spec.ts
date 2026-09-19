@@ -42,4 +42,61 @@ describe('buildExtraModels', () => {
     expect(buildExtraModels(null)).toEqual([])
     expect(buildExtraModels('nope')).toEqual([])
   })
+
+  it('prefers the vendor listing over a reseller when both publish a price', () => {
+    const extras = buildExtraModels({
+      // 转售站排在前面：此前按遍历顺序会选中它。
+      reseller: { name: 'Reseller', models: { 'acme-1': { name: 'Acme 1', family: 'acme', cost: { input: 9, output: 9 } } } },
+      anthropic: { name: 'Anthropic', models: { 'acme-1': { name: 'Acme 1', family: 'acme', cost: { input: 5, output: 25, cache_read: 0.5 } } } },
+    })
+    expect(extras).toHaveLength(1)
+    expect(extras[0]?.price).toMatchObject({ input: 5, output: 25, cacheHit: 0.5 })
+  })
+
+  it('falls back to the price most providers publish when no vendor lists it', () => {
+    const cheap = { name: 'X', cost: { input: 0.05, output: 0.1 } }
+    const common = { name: 'X', cost: { input: 1, output: 3 } }
+    const extras = buildExtraModels({
+      outlier: { models: { 'x-1': cheap } },
+      a: { models: { 'x-1': common } },
+      b: { models: { 'x-1': common } },
+    })
+    expect(extras[0]?.price).toMatchObject({ input: 1, output: 3 })
+  })
+
+  it('takes the median listing when no two providers agree', () => {
+    const extras = buildExtraModels({
+      low: { models: { 'y-1': { name: 'Y', cost: { input: 0.1, output: 0.1 } } } },
+      mid: { models: { 'y-1': { name: 'Y', cost: { input: 1, output: 2 } } } },
+      high: { models: { 'y-1': { name: 'Y', cost: { input: 50, output: 90 } } } },
+    })
+    expect(extras[0]?.price).toMatchObject({ input: 1, output: 2 })
+  })
+
+  it('prefers a declared cache_read over the input*0.1 guess at equal standing', () => {
+    const extras = buildExtraModels({
+      guessy: { models: { 'z-1': { name: 'Z', cost: { input: 10, output: 50 } } } },
+      exact: { models: { 'z-1': { name: 'Z', cost: { input: 10, output: 50, cache_read: 0.25 } } } },
+    })
+    expect(extras[0]?.price.cacheHit).toBeCloseTo(0.25, 10)
+  })
+
+  it('emits one entry per catalog key', () => {
+    const extras = buildExtraModels({
+      a: { models: { 'dup-1': { name: 'D', cost: { input: 1, output: 2 } } } },
+      b: { models: { 'dup-1': { name: 'D', cost: { input: 1, output: 2 } } } },
+      c: { models: { 'dup-1': { name: 'D', cost: { input: 1, output: 2 } } } },
+    })
+    expect(extras.filter(e => e.key === 'dup-1')).toHaveLength(1)
+  })
+
+  it('names the model vendor rather than the winning price source', () => {
+    const extras = buildExtraModels({
+      tokengo: { name: 'TokenGo', models: { 'qwen/thing-1': { name: 'Thing', family: 'qwen', cost: { input: 1, output: 2 } } } },
+      alibaba: { name: 'Alibaba', models: { 'qwen-other': { name: 'Other', family: 'qwen', cost: { input: 3, output: 4, cache_read: 0.3 } } } },
+    })
+    // MODELS_DEV_PROVIDERS 的映射优先于 models.dev 自带的 provider name。
+    expect(extras.find(e => e.key === 'qwen/thing-1')?.provider).toBe('阿里通义')
+  })
+
 })
