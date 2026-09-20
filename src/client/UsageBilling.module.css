@@ -1750,6 +1750,15 @@ body {
   color: var(--ds-t-1);
 }
 
+/* 表头与模型名列允许折行：.ubTable 的 nowrap 会让超长表头（如
+   INPUT（CACHE MISS））自己撑开列宽，在宽度封顶的仪表盘里把档位列顶出可视区，
+   只能横向滚动才能看到（issue #59）。数据列仍继承 nowrap，
+   避免 ¥0.26 这类金额与档位值在值中间折行。 */
+.ubTable th,
+.ubTable td:first-child {
+  white-space: normal;
+}
+
 .ubTable tbody tr:last-child td { border-bottom: 0; }
 
 /* 表头整体居中（含挂 numCol 的数字列——双类右对齐规则 0,2,0 会压过
