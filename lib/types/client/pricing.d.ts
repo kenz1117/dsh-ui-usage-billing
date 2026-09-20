@@ -26,6 +26,8 @@ import type { LivePricing } from '../pricing-shared.ts';
  * live rate arrives the built-in value stays in force.
  */
 export declare const USD_TO_CNY = 6.79;
+/** 内置 EUR→CNY 汇率（实时汇率不可用时的兑底，与 USD_TO_CNY 同口径）。 */
+export declare const EUR_TO_CNY = 7.71;
 /**
  * 注入用户自定义模型别名（node 半区在插件启动时调用一次）。纯内存状态：
  * 聚合折叠与客户端渲染共用同一份（两侧一致性由同一注入点保证）。
@@ -137,6 +139,11 @@ export declare function getRateInfo(): {
     rate: number;
     live: boolean;
 };
+/** 欧元汇率与其是否为实时值（与 {@link getRateInfo} 同形）。 */
+export declare function getEurRateInfo(): {
+    rate: number;
+    live: boolean;
+};
 /** Default share of traffic assumed to fall in the peak band (0..1). */
 export declare const DEFAULT_PEAK_SHARE = 0.5;
 /**
@@ -165,7 +172,7 @@ export declare const FLASH_REPRICE_MS: number;
 /** 计费时段档位：高峰 / 空闲（官方 DeepSeek 刊例价：高峰 = 空闲 × 2）。 */
 export type PriceTierId = 'peak' | 'offPeak';
 /** 成本显示币种：人民币（国内模型直价）/ 美元（国外模型直价或换算显示）。 */
-export type CostCurrency = 'cny' | 'usd';
+export type CostCurrency = 'cny' | 'usd' | 'eur';
 /**
  * 工作日高峰时段判定（北京时间，UTC+8，无夏令时）：09:00–12:00、14:00–18:00。
  * 周末（周六/周日）北京全天为低谷，不调用本函数判定峰/平。
@@ -437,6 +444,14 @@ export declare function computeCostAt(entry: ModelEntry, buckets: TokenUsageBuck
  *  与计价链路的 `currentRate()` 同口径，避免实时汇率生效时 USD 显示与计价不一致。 */
 export declare function cnyToUsd(cny: number): number;
 /**
+ * 人民币金额换算到展示币种。目录以 CNY/USD 为原生币种，费用统一以
+ * 人民币累计，展示层再按所选币种换算——EUR 与 USD 同一口径，不改变存储与聚合。
+ * @param cny - 人民币金额。
+ * @param currency - 目标展示币种。
+ * @returns 换算后的金额（汇率不可用时原值返回）。
+ */
+export declare function convertFromCny(cny: number, currency: CostCurrency): number;
+/**
  * Format an amount with adaptive precision and the given currency symbol.
  * @param amount - the amount (CNY by default; pass `usd` for dollar display).
  * @param currency - display currency; default `cny`.
@@ -446,7 +461,7 @@ export declare function formatMoney(amount: number, currency?: CostCurrency): st
  * Format a per-1M-token price in its native currency (free when the rate is
  * zero): CNY for domestic models, USD for overseas ones.
  */
-export declare function formatUnitPrice(price: number, currency?: 'CNY' | 'USD'): string;
+export declare function formatUnitPrice(price: number, currency?: 'CNY' | 'USD' | 'EUR'): string;
 /**
  * 把一条「每百万 token」单价从原生币种换算到目标展示币种（按 USD→CNY 汇率）。
  * 汇率缺失/非法时回退原值，避免 0 汇率把价格算没。

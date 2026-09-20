@@ -121,6 +121,38 @@ export declare const DEFAULT_CURRENCY: CostCurrency;
 export declare function loadCurrency(): CostCurrency;
 /** 写入显示币种。失败静默（展示偏好非关键）。 */
 export declare function saveCurrency(currency: CostCurrency): void;
+/**
+ * 被固定的模型（峰谷指示点）：费率表里点击圆点固定，固定后在输入框旁常驻显示。
+ * 与币种偏好同一套做法：localStorage + CustomEvent，因为胶囊与弹窗分属两棵 React 树。
+ */
+export declare const PINNED_MODELS_STORAGE_KEY = "dsh.ui-usage-billing.pinned";
+/** 固定列表变更后派发的 CustomEvent 名。 */
+export declare const PINNED_MODELS_EVENT = "dsh.ui-usage-billing.pinned-pref";
+/** 读取固定模型列表（损坏/非数组/非字符串项一律丢弃）。 */
+export declare function loadPinnedModels(): string[];
+/** 写入固定模型列表。失败静默（展示偏好非关键）。 */
+export declare function savePinnedModels(keys: readonly string[]): void;
+/** 界面语言（与币种解耦后独立持久化）。 */
+export type BillingLanguage = 'zh' | 'en';
+/** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
+export declare const LANGUAGE_STORAGE_KEY = "dsh.ui-usage-billing.language";
+/** 语言切换后派发的 CustomEvent 名（另一棵树监听它即时重读）。 */
+export declare const LANGUAGE_PREF_EVENT = "dsh.ui-usage-billing.language-pref";
+/**
+ * 读取界面语言。**迁移关键**：历史版本的语言是从币种推导的（选 $ 就是英文），
+ * 因此当尚无语言偏好时，**从已存的币种播种一次**并写回；升级后没有任何人
+ * 的界面语言会静默改变，且播种只发生一次。
+ * @returns 界面语言。
+ */
+export declare function loadLanguage(): BillingLanguage;
+/** 写入界面语言。失败静默（展示偏好非关键）。 */
+export declare function saveLanguage(language: BillingLanguage): void;
+/**
+ * 切换某个模型的固定状态。
+ * @param key - 目录键。
+ * @returns 切换后的列表（已写入）。
+ */
+export declare function togglePinnedModel(key: string): string[];
 /** 用户自定义单价（与 client/pricing.ts 的 `UserPriceEntry` 同形；type import，无运行时依赖）。 */
 export type StoredUserPrice = UserPriceEntry;
 /** 自定义价表：模型（+可选来源）→ 单价，条目列表（支持同名模型绑定不同中转站 origin）。 */
