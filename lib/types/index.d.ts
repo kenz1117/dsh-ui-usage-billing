@@ -19,6 +19,16 @@ import type { SettingsProvider } from '@deepseek-ai/dsh-settings';
 import { type UsageLedgerStore, type UsagePersistence } from './aggregate.ts';
 import type { CustomBalanceConfig, DeclaredEndpointConfig, SubscriptionPlanConfig } from './pricing-shared.ts';
 import { type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts';
+/** 校验 Host 头是本机回环（精确 127.0.0.0/8 / ::1 / localhost 或空，供 curl 不带 Host 的极简请求）。
+ *  拒绝 `127.0.0.1.attacker.com` 这类以 `127.` 开头但解析到外部的 DNS rebinding 域名：
+ *  只用 `startsWith('127.')` 会被它穿透，必须精确匹配回环 IP 的字面量。 */
+/**
+ * 信任主机名归一化：去空白、去端口、转小写，丢弃空项。与请求侧
+ * `host.split(':')[0].toLowerCase()` 同口径，因此匹配忽略大小写与端口。
+ * @param hosts - 配置里的原始名单。
+ * @returns 归一化后的主机名集合（空集 = 与历史版本行为一致）。
+ */
+export declare function normalizeTrustedHosts(hosts: readonly string[] | undefined): ReadonlySet<string>;
 /**
  * 回环防护守卫：仅接受回环 GET 请求（peer socket 地址 + Host 头同时校验）。
  * 不满足时返回 403 并结束响应；调用方在 handler 顶部调用，返回 false 即已拒绝。
@@ -26,7 +36,7 @@ import { type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscr
  * @param res - 当前响应。
  * @returns 是否放行；false = 已拒绝并结束响应。
  */
-export declare function guardLoopback(req: IncomingMessage, res: ServerResponse): boolean;
+export declare function guardLoopback(req: IncomingMessage, res: ServerResponse, trustedHosts?: ReadonlySet<string>): boolean;
 /** Plugin configuration. */
 export interface UsageBillingConfig {
     /** Absolute path to a `.dsh-usage-stats.json` fallback file. */
@@ -60,6 +70,14 @@ export interface UsageBillingConfig {
      * 写死在 declarative.ts。缺省空。
      */
     declaredEndpoints?: readonly DeclaredEndpointConfig[];
+    /**
+     * 允许通过 Host 头校验的额外主机名（反向代理场景）；缺省空，行为与历史版本完全一致。
+     * 仅在 peer socket 已通过回环校验后才参考：socket 校验仍为强制且不受本字段影响，
+     * 本名单只放宽「纵深防御」的第二层。匹配为**精确主机名**，忽略大小写与端口；
+     * 不支持后缀 / 通配符，因此 `evil.com` 永远无法满足 `trusted.com`。
+     * 例：`['llm.example.com']`。
+     */
+    trustedHosts?: string[];
     /** `usage_stats` 工具注入的组合 base（默认 false：不注入）；与设置命名空间同字段，
      *  作为用户设置（设置 Tab 开关）的组合兜底。该工具占用每次请求的上下文，coding 场景多在仪表盘查看。 */
     enableUsageStatsTool?: boolean;

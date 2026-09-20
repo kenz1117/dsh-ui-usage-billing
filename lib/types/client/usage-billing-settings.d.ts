@@ -6,7 +6,7 @@
  * client 半区在「设置」Tab 渲染开关并写入同一命名空间。缺省的默认行为是关闭——
  * 避免该工具默认占用模型每次请求的上下文（coding 场景通常在仪表盘看用量）。
  */
-import type { UserPriceEntry } from './pricing.ts';
+import type { CostCurrency, UserPriceEntry } from './pricing.ts';
 /** 设置命名空间 id（小写 kebab-case）。 */
 export declare const BILLING_SETTINGS_NAMESPACE = "ui-usage-billing";
 /** 该命名空间下用户可编辑的字段名。 */
@@ -107,6 +107,20 @@ export declare const LIVE_COST_BAR_PREF_EVENT = "dsh.ui-usage-billing.livecost-p
 export declare function loadLiveCostBarPrefs(): LiveCostBarPrefs;
 /** 写入即时代费条偏好。失败静默（展示偏好非关键）。 */
 export declare function saveLiveCostBarPrefs(prefs: LiveCostBarPrefs): void;
+/**
+ * 显示币种（¥ / ≈$）。纯 client 偏好，存 localStorage；仪表盘、侧边栏卡片与
+ * 输入框胶囊分属不同 React 树，跨树同步走 localStorage + `CURRENCY_PREF_EVENT`
+ * CustomEvent（同文档即时生效，跨标签页靠 storage 事件）——与即时代费条偏好同一套做法。
+ */
+export declare const CURRENCY_STORAGE_KEY = "dsh.ui-usage-billing.currency";
+/** 币种切换后派发的 CustomEvent 名（另一棵树监听它即时重读）。 */
+export declare const CURRENCY_PREF_EVENT = "dsh.ui-usage-billing.currency-pref";
+/** 默认币种：人民币（保持历史行为）。 */
+export declare const DEFAULT_CURRENCY: CostCurrency;
+/** 读取显示币种（损坏/缺失/非法值一律回退默认）。仅在浏览器半区调用。 */
+export declare function loadCurrency(): CostCurrency;
+/** 写入显示币种。失败静默（展示偏好非关键）。 */
+export declare function saveCurrency(currency: CostCurrency): void;
 /** 用户自定义单价（与 client/pricing.ts 的 `UserPriceEntry` 同形；type import，无运行时依赖）。 */
 export type StoredUserPrice = UserPriceEntry;
 /** 自定义价表：模型（+可选来源）→ 单价，条目列表（支持同名模型绑定不同中转站 origin）。 */
