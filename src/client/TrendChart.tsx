@@ -11,6 +11,7 @@
 
 import { useMemo, useState } from 'react'
 import css from './UsageBilling.module.css'
+import { zh } from './locales.ts'
 import { cnyToUsd, formatMoney, type CostCurrency } from './pricing.ts'
 
 /** One model's legend identity: key, display name, and brand color. */
@@ -64,7 +65,7 @@ function tickIndexes(length: number, step: number): number[] {
 }
 
 /** Single-color fallback identity used when the stats carry no per-model detail. */
-const TOTAL_MODEL: TrendSeriesModel = { key: '__total__', name: '总计', color: '' }
+const TOTAL_MODEL: TrendSeriesModel = { key: '__total__', name: '', color: '' }
 
 /** One stacked segment: one model's cost inside one day's bar. */
 interface Bar {
@@ -90,7 +91,9 @@ export type TrendMetric = 'cost' | 'tokens'
  * @param props.currency - display currency for the cost labels.
  * @param props.metric - `cost` (stacked per-model CNY, default) or `tokens` (single-color total tokens).
  */
-export function TrendChart({ data, models = [], currency = 'cny', metric = 'cost' }: { data: readonly TrendPoint[]; models?: readonly TrendSeriesModel[]; currency?: CostCurrency; metric?: TrendMetric }): React.ReactNode {
+export function TrendChart({ data, models = [], currency = 'cny', metric = 'cost', t }: { data: readonly TrendPoint[]; models?: readonly TrendSeriesModel[]; currency?: CostCurrency; metric?: TrendMetric; t?: (key: 'trendEmpty' | 'trendTotal' | 'calls') => string }): React.ReactNode {
+  // 省略 t 时回落到中文词典，保持既有调用方（含测试）行为不变。
+  const tr = t ?? ((key: 'trendEmpty' | 'trendTotal' | 'calls'): string => zh[key])
   const [hover, setHover] = useState<number | null>(null)
   const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
   const axisOf = (value: number): string => metric === 'tokens' ? shortNumber(value) : money(value)
@@ -127,7 +130,7 @@ export function TrendChart({ data, models = [], currency = 'cny', metric = 'cost
       const x = inner(i) - barW / 2
       if (models.length === 0 || metric === 'tokens') {
         // 无模型明细或 Token 指标：单色总费用/总量柱兜底。
-        return [{ date: d.date, model: TOTAL_MODEL, x, base: 0, value: valueOf(d), topRounded: true }]
+        return [{ date: d.date, model: { ...TOTAL_MODEL, name: tr('trendTotal') }, x, base: 0, value: valueOf(d), topRounded: true }]
       }
       // 顶部圆角给当天最后一个有量的模型段。
       let topKey: string | null = null
@@ -154,7 +157,7 @@ export function TrendChart({ data, models = [], currency = 'cny', metric = 'cost
   }, [data, models, metric])
 
   if (layout === null) {
-    return <div className={css.chartEmpty}>暂无趋势数据</div>
+    return <div className={css.chartEmpty}>{tr('trendEmpty')}</div>
   }
 
   const { n, plotW, plotH, inner, yCost, yCalls, barW, bars, costTicks, callsTicks, linePath } = layout
@@ -270,11 +273,11 @@ export function TrendChart({ data, models = [], currency = 'cny', metric = 'cost
           ))}
           <div className={css.chartTooltipRow}>
             <span className={css.chartLegendBar} />
-            总计 <strong>{metric === 'tokens' ? shortNumber(activePoint.tokens ?? 0) : money(activePoint.cost)}</strong>
+            {tr('trendTotal')} <strong>{metric === 'tokens' ? shortNumber(activePoint.tokens ?? 0) : money(activePoint.cost)}</strong>
           </div>
           <div className={css.chartTooltipRow}>
             <span className={css.chartLegendLine} />
-            调用 <strong>{activePoint.calls.toLocaleString()}</strong>
+            {tr('calls')} <strong>{activePoint.calls.toLocaleString()}</strong>
           </div>
         </div>
       )}
@@ -290,7 +293,7 @@ export function TrendChart({ data, models = [], currency = 'cny', metric = 'cost
           ))}
           <span>
             <span className={css.chartLegendLine} />
-            调用
+            {tr('calls')}
           </span>
         </div>
       )}
