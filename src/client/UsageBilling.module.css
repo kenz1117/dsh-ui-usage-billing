@@ -1754,6 +1754,26 @@ body {
    INPUT（CACHE MISS））自己撑开列宽，在宽度封顶的仪表盘里把档位列顶出可视区，
    只能横向滚动才能看到（issue #59）。数据列仍继承 nowrap，
    避免 ¥0.26 这类金额与档位值在值中间折行。 */
+/* 峰谷指示点：空心 = 仅显示，实心 = 已固定到输入框。颜色取当前档位。 */
+.bandDots { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+
+.bandDot {
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  flex: none;
+  border-radius: 999px;
+  border: 1.5px solid currentColor;
+  background: transparent;
+  cursor: pointer;
+}
+
+.bandDotOn { background: currentColor; }
+.offPeak { color: var(--ds-blue); }
+.soon { color: var(--ds-amber); }
+.peak { color: var(--ds-red); }
+span.bandDot { cursor: default; }
+
 .ubTable th,
 .ubTable td:first-child {
   white-space: normal;

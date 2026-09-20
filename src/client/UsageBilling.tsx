@@ -28,6 +28,8 @@ import {
   type FloatWindowPrefs,
   loadFloatWindowPrefs,
   loadCurrency,
+  loadPinnedModels,
+  PINNED_MODELS_EVENT,
   loadLiveCostBarPrefs,
   loadSiteListPrefs,
   loadUserPrices,
@@ -35,6 +37,7 @@ import {
   saveFloatWindowPrefs,
   saveKpiRange,
   saveCurrency,
+  togglePinnedModel,
   saveLiveCostBarPrefs,
   saveSiteListPrefs,
   saveUserPrices,
@@ -53,11 +56,12 @@ import type { createBillingBudgetStore } from './budget-store.ts'
 import {
   applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, canonModelId, cnyToUsd, computeCost, convertUnitPrice,
   DEFAULT_PEAK_SHARE, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, getUserPrices, isPromoActive,
-  modelOf, normalizeOriginInput, rateChannelOf, resolveToken, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
+  channelCountdown, modelOf, normalizeOriginInput, rateChannelOf, resolveToken, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
+import { bandStateOf } from './band-dot.ts'
 import { localizeRowLabel } from './label-display.ts'
 import { localizeProviderName, channelDisplayName, directChannelRoute } from './provider-display.ts'
 import { tierInfoOf } from './plan-knowledge.ts'
@@ -1982,6 +1986,15 @@ function BillingDashboard({
   // 界面语言跟随币种：USD→英文，CNY→中文；厂商显示名据此本地化。
   const lang = currency === 'usd' ? 'en' : 'zh'
   const providerName = (name: string): string => localizeProviderName(name, lang)
+  // 峰谷指示点：只对真正有档位的模型渲染；固定列表跨树共享（胶囊在弹窗之外）。
+  const [pinnedModels, setPinnedModels] = useState<readonly string[]>(() => loadPinnedModels())
+  const [bandNow, setBandNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => { setBandNow(Date.now()) }, 30_000)
+    return () => { clearInterval(timer) }
+  }, [])
+  const hasBandPlan = quotas.some(q => q.displayName === 'Z.ai Coding Plan' && q.status === 'ok')
+  const bandLeadMs = peakConfig.leadMin * 60_000
 
   // 费率表单价：按用户所选币种换算后再格式化（原生币种 × 汇率）；0 价显示"免费"。
   // 切 USD 时把 ¥ 计价模型换算成 $，费率表不再固定显示人民币。
@@ -3748,6 +3761,26 @@ function BillingDashboard({
                           <tr>
                             <td>
                               <span className={css.ubModel}>
+                                {(() => {
+                                  const state = bandStateOf(channelCountdown(bandNow, rateChannelOf(entry.key, hasBandPlan)), bandLeadMs)
+                                  if (state === null) return null
+                                  const isPinned = pinnedModels.includes(entry.key)
+                                  const label = `${entry.name} · ${t(state === 'peak' ? 'peak' : 'offPeak')} · ${t('bandPinHint')}`
+                                  return (
+                                    <button
+                                      type="button"
+                                      className={clsx(css.bandDot, css[state], isPinned && css.bandDotOn)}
+                                      data-testid="billing-band-dot"
+                                      aria-pressed={isPinned}
+                                      aria-label={label}
+                                      title={label}
+                                      onClick={() => {
+                                        setPinnedModels(togglePinnedModel(entry.key))
+                                        window.dispatchEvent(new CustomEvent(PINNED_MODELS_EVENT))
+                                      }}
+                                    />
+                                  )
+                                })()}
                                 <VendorLogo provider={entry.provider} colorVar={resolveToken(entry.colorVar)} />
                                 <span className={css.ubModelName}>
                                   {entry.name}
