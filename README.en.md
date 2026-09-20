@@ -259,6 +259,8 @@ None. This plugin is a pure UI surface: it registers no tools, injects no system
 
 ## ❤️ Contributors
 
+- [@lucagiftzek](https://github.com/lucagiftzek) — rate-table CSS polish (PR #59), `trustedHosts` reverse-proxy support (PR #60), currency preference persistence (PR #58), rate-table search (PR #67), peak/off-peak indicator dots with pin-to-composer (PR #68), and the EUR display currency with language decoupling (PR #70)
+- [@hwangjunjie](https://github.com/hwangjunjie) — Tencent Cloud TokenHub / Token Plan subscription quota adaptation (`src/tc3.ts`), provider-first channel grouping with gateway badges, and the `routeAliases` / `modelKeyAliases` config (PR #35)
 - [@ciphoo](https://github.com/ciphoo) — MiniMax CN Token Plan quota support (PR #5), `minimax-cn` subscription key wiring (PR #12), a concurrent-ledger-write `MoveFileExW EPERM` fix on Windows (PR #11)
 - [@fabulousyuann-tech](https://github.com/fabulousyuann-tech) — durable ledger that retains usage after session deletion (PR #8)
 - [@hi-fangj](https://github.com/hi-fangj) — hover tooltip with the exact per-day token breakdown on the token daily chart (PR #21), the live-cost capsule toggle (PR #22), the per-model view and legend focus for the token daily chart (PR #23), and the per-model comparison curve in the perf panel (PR #24)

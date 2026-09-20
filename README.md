@@ -273,6 +273,7 @@ npm publish --access public
 
 ## ❤️ Contributors
 
+- [@lucagiftzek](https://github.com/lucagiftzek) — 费率表 CSS 修整（PR #59）、`trustedHosts` 反代支持（PR #60）、币种偏好持久化（PR #58）、费率表搜索（PR #67）、峰谷指示点与固定到输入框（PR #68）、EUR 展示币种与界面语言解耦（PR #70）
 - [@hwangjunjie](https://github.com/hwangjunjie) — 腾讯云 TokenHub / Token Plan 订阅额度适配（`src/tc3.ts`）、提供商优先通道分组与网关徽标、`routeAliases` / `modelKeyAliases` 配置（PR #35）
 - [@ciphoo](https://github.com/ciphoo) — MiniMax 国内域 Token Plan 订阅额度支持（PR #5）、`minimax-cn` 订阅凭据接线（PR #12）、Windows 下账本并发写入 `MoveFileExW EPERM` 修复（PR #11）
 - [@fabulousyuann-tech](https://github.com/fabulousyuann-tech) — 会话删除后用量保留的持久 ledger 功能（PR #8）
