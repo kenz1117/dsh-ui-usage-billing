@@ -57,4 +57,27 @@ describe('TrendChart', () => {
     fireEvent.mouseMove(svg!, { clientX: 300, clientY: 60 })
     fireEvent.mouseMove(svg!, { clientX: 340, clientY: 80 })
   })
+
+  it('renders the trend copy through the injected translator (issue: hardcoded Chinese)', () => {
+    const en = (key: 'trendEmpty' | 'trendTotal' | 'calls'): string =>
+      ({ trendEmpty: 'No trend data yet', trendTotal: 'Total', calls: 'Calls' })[key]
+    const { container } = render(<TrendChart data={DATA} models={MODELS} t={en} />)
+    const text = container.textContent ?? ''
+    expect(text).toContain('Calls')
+    expect(text).not.toContain('调用')
+    expect(text).not.toContain('总计')
+  })
+
+  it('falls back to the Chinese dictionary when no translator is given', () => {
+    const { container } = render(<TrendChart data={DATA} models={MODELS} />)
+    expect(container.textContent ?? '').toContain('调用')
+  })
+
+  it('localizes the empty state instead of hardcoding it', () => {
+    const en = (key: 'trendEmpty' | 'trendTotal' | 'calls'): string =>
+      ({ trendEmpty: 'No trend data yet', trendTotal: 'Total', calls: 'Calls' })[key]
+    const { container } = render(<TrendChart data={[]} models={[]} t={en} />)
+    expect(container.textContent).toContain('No trend data yet')
+  })
+
 })

@@ -62,7 +62,7 @@ export function RoundCostChart({ rounds, flags, currency, t }: {
   rounds: readonly RoundChartRow[]
   flags: readonly AnomalyFlag[]
   currency: CostCurrency
-  t: (key: 'model' | 'costAbbr') => string
+  t: (key: 'model' | 'costAbbr' | 'roundsUnit') => string
 }): React.ReactNode {
   const visible = useMemo(() => rounds.slice(-DISPLAY_LIMIT), [rounds])
   const flagKey = useMemo(() => new Set(flags.map(flag => `${flag.sessionId}:${flag.turn}`)), [flags])
@@ -98,7 +98,7 @@ export function RoundCostChart({ rounds, flags, currency, t }: {
       </div>
       <div className={css.roundsAxis}>
         <span>{t('costAbbr')} {money(maxCost)}</span>
-        <span>{visible.length} 轮</span>
+        <span>{visible.length} {t('roundsUnit')}</span>
       </div>
     </div>
   )

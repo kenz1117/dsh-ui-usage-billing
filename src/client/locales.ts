@@ -28,6 +28,11 @@ export type UsageBillingKey =
   | 'trendMetricCost'
   | 'trendMetricTokens'
   | 'trendEmpty'
+  | 'trendTotal'
+  | 'roundsUnit'
+  | 'healthModelsLive'
+  | 'healthVendorsDown'
+  | 'healthVendorsUnavailable'
   | 'budget'
   | 'budgetRemain'
   | 'budgetAmount'
@@ -317,6 +322,11 @@ export const zh: Record<UsageBillingKey, string> = {
   'trendMetricCost': '费用',
   'trendMetricTokens': 'Token',
   'trendEmpty': '暂无趋势数据',
+  'trendTotal': '总计',
+  'roundsUnit': '轮',
+  'healthModelsLive': '{n} 模型可用',
+  'healthVendorsDown': '{n} 厂商失效',
+  'healthVendorsUnavailable': '{n} 厂商不可用',
   'budget': '本月预算',
   'budgetRemain': '剩余预算',
   'budgetAmount': '预算金额',
@@ -606,6 +616,11 @@ export const en: Record<UsageBillingKey, string> = {
   'trendMetricCost': 'Cost',
   'trendMetricTokens': 'Tokens',
   'trendEmpty': 'No trend data yet',
+  'trendTotal': 'Total',
+  'roundsUnit': 'turns',
+  'healthModelsLive': '{n} models live',
+  'healthVendorsDown': '{n} vendors down',
+  'healthVendorsUnavailable': '{n} vendors unavailable',
   'budget': 'Monthly budget',
   'budgetRemain': 'Remaining',
   'budgetAmount': 'Budget amount',

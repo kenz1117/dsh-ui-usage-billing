@@ -2473,8 +2473,8 @@ function BillingDashboard({
               <span className={clsx(css.healthBadge, health.available ? css.healthBadgeOk : css.healthBadgeBad)}>
                 <span className={clsx(css.healthDot, health.available ? css.healthOk : css.healthBad)} aria-hidden="true" />
                 {health.available
-                  ? `${health.models} 模型可用${health.failures > 0 ? ` · ${health.failures} 厂商失效` : ''}`
-                  : `${health.failures} 厂商不可用`}
+                  ? `${t('healthModelsLive').replace('{n}', String(health.models))}${health.failures > 0 ? ` · ${t('healthVendorsDown').replace('{n}', String(health.failures))}` : ''}`
+                  : t('healthVendorsUnavailable').replace('{n}', String(health.failures))}
               </span>
             )}
             <button
@@ -3181,7 +3181,7 @@ function BillingDashboard({
                     {latestDate}
                   </span>
                 </div>
-                <TrendChart data={trend} models={chartModels} currency={currency} metric={trendMetric} />
+                <TrendChart data={trend} models={chartModels} currency={currency} metric={trendMetric} t={t} />
               </section>
 
               {/* 2. 每轮费用：ub-card —— 头部(标题 + 异常徽标) + 说明 + 柱状图。 */}
