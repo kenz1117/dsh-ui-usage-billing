@@ -20,8 +20,8 @@ import { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { formatMoney, formatSwitchCountdown, channelCountdown, rateChannelOf, tierCountdown, type RateChannel } from './pricing.ts'
-import { LIVE_COST_BAR_PREF_EVENT, loadLiveCostBarPrefs } from './usage-billing-settings.ts'
+import { cnyToUsd, formatMoney, formatSwitchCountdown, channelCountdown, rateChannelOf, tierCountdown, type CostCurrency, type RateChannel } from './pricing.ts'
+import { CURRENCY_PREF_EVENT, LIVE_COST_BAR_PREF_EVENT, loadCurrency, loadLiveCostBarPrefs } from './usage-billing-settings.ts'
 import type { LiveCostBarPrefs } from './usage-billing-settings.ts'
 import type { UsageBillingKey } from './locales.ts'
 import css from './UsageBilling.module.css'
@@ -178,6 +178,22 @@ export interface LiveCostBarProps {
 /** 胶囊位置偏好（设置 Tab 三选）。 */
 type CapsulePosition = LiveCostBarPrefs['position']
 
+/** 币种订阅：仪表盘（另一棵 React 树）切换后经 CustomEvent/storage 事件驱动重读；
+ *  胶囊渲染在弹窗之外，弹窗关闭后仍须跟随选择（issue #58）。 */
+function useCurrencyPref(): CostCurrency {
+  const [currency, setCurrency] = useState<CostCurrency>(() => loadCurrency())
+  useEffect(() => {
+    const reread = (): void => { setCurrency(loadCurrency()) }
+    window.addEventListener(CURRENCY_PREF_EVENT, reread)
+    window.addEventListener('storage', reread)
+    return () => {
+      window.removeEventListener(CURRENCY_PREF_EVENT, reread)
+      window.removeEventListener('storage', reread)
+    }
+  }, [])
+  return currency
+}
+
 /** 偏好订阅：显隐 + 位置。设置 Tab（另一棵 React 树）改动经 CustomEvent/storage 事件驱动重读。 */
 function useLiveCostPrefs(): { visible: boolean; position: CapsulePosition } {
   const [visible, setVisible] = useState(() => loadLiveCostBarPrefs().show)
@@ -249,7 +265,8 @@ export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode
   const { visible, position } = useLiveCostPrefs()
   const { sessionCost, turnCost, tier, chips } = useLiveCostData(sessionId)
 
-  const money = (cny: number): string => formatMoney(cny, 'cny')
+  const currency = useCurrencyPref()
+  const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
 
   const hasCost = sessionCost > 0 || turnCost > 0
   // 档位 chip 仅在当前会话模型涉及峰谷时渲染（tier 非 null）；倒计时随之隐藏。
@@ -309,6 +326,8 @@ export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode
  * @param props - framework session identity and locale.
  */
 export function LiveCostChip({ sessionId, t }: LiveCostBarProps): React.ReactNode {
+  const currency = useCurrencyPref()
+  const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
   const { visible, position } = useLiveCostPrefs()
   const { sessionCost, turnCost, tier, chips } = useLiveCostData(sessionId)
   // 非工具行位置时 chip 让位给 bar（同 id 双槽互斥由位置偏好门控）。
@@ -322,8 +341,8 @@ export function LiveCostChip({ sessionId, t }: LiveCostBarProps): React.ReactNod
     ...(tier !== null
       ? [`${formatSwitchCountdown(tier.nextSwitchInMs)} ${isPeak ? t('tierToOff') : t('tierToPeak')}`]
       : []),
-    `${t('liveTurn')} ${formatMoney(turnCost, 'cny')}`,
-    `${t('liveSession')} ${formatMoney(sessionCost, 'cny')}`,
+    `${t('liveTurn')} ${money(turnCost)}`,
+    `${t('liveSession')} ${money(sessionCost)}`,
     ...chips.map(chip => `${chip.name} ${t(windowLabelKey(chip.kind))} ${chip.pct}%`),
   ].join(' · ')
   return (
@@ -334,7 +353,7 @@ export function LiveCostChip({ sessionId, t }: LiveCostBarProps): React.ReactNod
             {isPeak ? t('tierPeak') : t('tierOff')}
           </span>
         )}
-        {sessionCost > 0 && <span className={css.feeInlineNum}>{formatMoney(sessionCost, 'cny')}</span>}
+        {sessionCost > 0 && <span className={css.feeInlineNum}>{money(sessionCost)}</span>}
       </span>
     </Tooltip>
   )

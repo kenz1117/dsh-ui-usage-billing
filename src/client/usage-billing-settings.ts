@@ -8,7 +8,7 @@
  */
 
 // type-only import：`UserPriceEntry` 是结构契约，运行时无依赖、不引入 node 侧耦合。
-import type { UserPriceEntry } from './pricing.ts'
+import type { CostCurrency, UserPriceEntry } from './pricing.ts'
 
 /** 设置命名空间 id（小写 kebab-case）。 */
 export const BILLING_SETTINGS_NAMESPACE = 'ui-usage-billing'
@@ -227,6 +227,38 @@ export function loadLiveCostBarPrefs(): LiveCostBarPrefs {
 export function saveLiveCostBarPrefs(prefs: LiveCostBarPrefs): void {
   try {
     localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, JSON.stringify(prefs))
+  } catch {
+    // ignore: storage full / unavailable — display preference is non-critical.
+  }
+}
+
+/**
+ * 显示币种（¥ / ≈$）。纯 client 偏好，存 localStorage；仪表盘、侧边栏卡片与
+ * 输入框胶囊分属不同 React 树，跨树同步走 localStorage + `CURRENCY_PREF_EVENT`
+ * CustomEvent（同文档即时生效，跨标签页靠 storage 事件）——与即时代费条偏好同一套做法。
+ */
+export const CURRENCY_STORAGE_KEY = 'dsh.ui-usage-billing.currency'
+
+/** 币种切换后派发的 CustomEvent 名（另一棵树监听它即时重读）。 */
+export const CURRENCY_PREF_EVENT = 'dsh.ui-usage-billing.currency-pref'
+
+/** 默认币种：人民币（保持历史行为）。 */
+export const DEFAULT_CURRENCY: CostCurrency = 'cny'
+
+/** 读取显示币种（损坏/缺失/非法值一律回退默认）。仅在浏览器半区调用。 */
+export function loadCurrency(): CostCurrency {
+  try {
+    const raw = localStorage.getItem(CURRENCY_STORAGE_KEY)
+    return raw === 'usd' || raw === 'cny' ? raw : DEFAULT_CURRENCY
+  } catch {
+    return DEFAULT_CURRENCY
+  }
+}
+
+/** 写入显示币种。失败静默（展示偏好非关键）。 */
+export function saveCurrency(currency: CostCurrency): void {
+  try {
+    localStorage.setItem(CURRENCY_STORAGE_KEY, currency)
   } catch {
     // ignore: storage full / unavailable — display preference is non-critical.
   }
