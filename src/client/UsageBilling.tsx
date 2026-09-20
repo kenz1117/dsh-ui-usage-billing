@@ -21,17 +21,20 @@ import {
   type BillingCardPrefs,
   DEFAULT_ENABLE_USAGE_STATS_TOOL,
   type LiveCostBarPrefs,
+  CURRENCY_PREF_EVENT,
   LIVE_COST_BAR_PREF_EVENT,
   loadBillingCardPrefs,
   loadKpiRange,
   type FloatWindowPrefs,
   loadFloatWindowPrefs,
+  loadCurrency,
   loadLiveCostBarPrefs,
   loadSiteListPrefs,
   loadUserPrices,
   saveBillingCardPrefs,
   saveFloatWindowPrefs,
   saveKpiRange,
+  saveCurrency,
   saveLiveCostBarPrefs,
   saveSiteListPrefs,
   saveUserPrices,
@@ -1201,6 +1204,8 @@ const providerCostOf = (group: ProviderBillingGroup): number =>
  */
 function UsageBillingTrigger(
   props: UsageBillingProps & {
+    /** 显示币种（与仪表盘同一选择）；usd 时先按汇率换算再格式化。 */
+    currency: CostCurrency
     onOpen: () => void
     monthCost: number
     todayCost: number
@@ -1234,6 +1239,8 @@ function UsageBillingTrigger(
   budgetPressure: 'none' | 'warn' | 'over'
   },
 ): React.ReactNode {
+  // 币种跟随仪表盘选择：与 heatmap / round-chart / TrendChart 同一句式，先换算再格式化。
+  const money = (cny: number): string => formatMoney(props.currency === 'usd' ? cnyToUsd(cny) : cny, props.currency)
   const {
     wide, t, onOpen, monthCost, todayCost, weekCost, days, vendorStatus, dash,
     floatPrefs, subscriptions, cardPrefs, monthTokens, todayTokens, weekTokens, budgetPressure,
@@ -1342,7 +1349,7 @@ function UsageBillingTrigger(
         )}
         data-testid="billing-rail-button"
         onClick={onOpen}
-        title={`${t('title')} · ${formatMoney(cardPrefs.span === 'day' ? todayCost : cardPrefs.span === 'week' ? weekCost : monthCost)}`}
+        title={`${t('title')} · ${money(cardPrefs.span === 'day' ? todayCost : cardPrefs.span === 'week' ? weekCost : monthCost)}`}
       >
         {cardIcon}
       </button>
@@ -1373,7 +1380,7 @@ function UsageBillingTrigger(
         )}
         data-testid="billing-trigger"
         onClick={onOpen}
-        title={`${t('title')} · ${formatMoney(cardPrefs.span === 'day' ? todayCost : cardPrefs.span === 'week' ? weekCost : monthCost)}`}
+        title={`${t('title')} · ${money(cardPrefs.span === 'day' ? todayCost : cardPrefs.span === 'week' ? weekCost : monthCost)}`}
       >
         <span
           className={clsx(css.triggerIcon, budgetPressure !== 'none' && css.triggerBudgetHot)}
@@ -1402,8 +1409,8 @@ function UsageBillingTrigger(
                 /* 币符与数值同行（issue #51 修正）：column 布局下需显式包横排行，
                    否则 ¥ 与数字被拆成两行堆叠。 */
                 <span className={css.triggerValueRow}>
-                  <span className={css.triggerYen} aria-hidden="true">{formatMoney(spanValue).charAt(0)}</span>
-                  <span className={css.triggerMetric} data-testid="billing-trigger-span-money">{formatMoney(spanValue).slice(1)}</span>
+                  <span className={css.triggerYen} aria-hidden="true">{money(spanValue).charAt(0)}</span>
+                  <span className={css.triggerMetric} data-testid="billing-trigger-span-money">{money(spanValue).slice(1)}</span>
                 </span>
               )
             })()}
@@ -1498,15 +1505,15 @@ function UsageBillingTrigger(
             <span className={css.metricGrid}>
               <span className={css.metricCell}>
                 <span className={css.metricLabel}>{t('floatPrimaryToday')}</span>
-                <span className={css.metricValue}>{formatMoney(todayCost)}</span>
+                <span className={css.metricValue}>{money(todayCost)}</span>
               </span>
               <span className={css.metricCell}>
                 <span className={css.metricLabel}>{t('floatPrimaryWeek')}</span>
-                <span className={css.metricValue}>{formatMoney(weekCost)}</span>
+                <span className={css.metricValue}>{money(weekCost)}</span>
               </span>
               <span className={css.metricCell}>
                 <span className={css.metricLabel}>{t('floatPrimaryMonth')}</span>
-                <span className={css.metricValue}>{formatMoney(monthCost)}</span>
+                <span className={css.metricValue}>{money(monthCost)}</span>
               </span>
               <span className={css.metricCell}>
                 <span className={css.metricLabel}>{t('input')}</span>
@@ -3956,7 +3963,14 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   // 订阅刷新是否失败：失败时保留上次成功快照并标记 stale（展示「缓存」）。
   const [quotasStale, setQuotasStale] = useState(false)
   const [relayQuotas, setRelayQuotas] = useState<readonly RelayQuota[]>([])
-  const [currency, setCurrency] = useState<CostCurrency>('cny')
+  // 币种选择：localStorage 持久化 + 跨树广播——侧边栏卡片与输入框胶囊
+  // 不在弹窗树内，弹窗关闭后仍需跟随选择（issue #58）。
+  const [currency, setCurrency] = useState<CostCurrency>(() => loadCurrency())
+  const updateCurrency = useCallback((next: CostCurrency): void => {
+    setCurrency(next)
+    saveCurrency(next)
+    window.dispatchEvent(new CustomEvent(CURRENCY_PREF_EVENT))
+  }, [])
   // 模型用量悬浮窗偏好：localStorage 持久化（修改即写回，仅 client 侧）。
   const [floatPrefs, setFloatPrefs] = useState<FloatWindowPrefs>(() => loadFloatWindowPrefs())
   const updateFloatPrefs = useCallback((next: FloatWindowPrefs): void => {
@@ -4359,6 +4373,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       <UsageBillingTrigger
         {...props}
         t={t}
+        currency={currency}
         onOpen={openDashboard}
         monthCost={monthCost}
         todayCost={todayCost}
@@ -4387,7 +4402,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           quotas={quotas}
           relayQuotas={relayQuotas}
           currency={currency}
-          onCurrency={setCurrency}
+          onCurrency={updateCurrency}
           turns={turns}
           renderSlot={renderSlot}
           budgetEnabled={budgetEnabled}
