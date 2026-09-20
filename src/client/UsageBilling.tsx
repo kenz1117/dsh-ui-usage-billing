@@ -59,6 +59,7 @@ import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, Re
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
 import { localizeRowLabel } from './label-display.ts'
+import { filterRateRows } from './rate-search.ts'
 import { localizeProviderName, channelDisplayName, directChannelRoute } from './provider-display.ts'
 import { tierInfoOf } from './plan-knowledge.ts'
 import { computePeakAlert, loadPeakAlertConfig, savePeakAlertConfig, type PeakAlertConfig, type PeakAlertHit } from './peak-alert.ts'
@@ -1990,6 +1991,8 @@ function BillingDashboard({
   // 界面语言跟随币种：USD→英文，CNY→中文；厂商显示名据此本地化。
   const lang = currency === 'usd' ? 'en' : 'zh'
   const providerName = (name: string): string => localizeProviderName(name, lang)
+  // 费率表搜索：不持久化——重开面板应当是完整表，而不是上次的过滤结果。
+  const [pricingQuery, setPricingQuery] = useState('')
 
   // 费率表单价：按用户所选币种换算后再格式化（原生币种 × 汇率）；0 价显示"免费"。
   // 切 USD 时把 ¥ 计价模型换算成 $，费率表不再固定显示人民币。
@@ -3735,6 +3738,15 @@ function BillingDashboard({
                 <div className={css.ubCardHead}>
                   <h3 className={css.ubCardTitle}>{t('pricing')}</h3>
                   <span className={css.ubCardSub}>{t('pricingUnit')}</span>
+                  <input
+                    className={css.ubSearch}
+                    type="search"
+                    value={pricingQuery}
+                    placeholder={t('pricingSearch')}
+                    aria-label={t('pricingSearch')}
+                    data-testid="billing-pricing-search"
+                    onChange={event => { setPricingQuery(event.target.value) }}
+                  />
                 </div>
                 <div className={css.ubTablewrap}>
                   <table className={css.ubTable}>
@@ -3748,7 +3760,7 @@ function BillingDashboard({
                       </tr>
                     </thead>
                     <tbody>
-                      {catalogEntries().map((entry) => {
+                      {filterRateRows(catalogEntries(), pricingQuery).map((entry) => {
                         const hasPrice = entry.price.input > 0 || entry.price.output > 0
                         return (
                           // Fragment 携 key：一个目录条目渲染主行 + 附加计价子行多个 tr。
