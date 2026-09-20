@@ -156,6 +156,8 @@ export type UsageBillingKey =
   | 'currency'
   | 'currencyCny'
   | 'currencyUsd'
+  | 'currencyEur'
+  | 'language'
   | 'heatmap'
   | 'rounds'
   | 'roundsHint'
@@ -449,6 +451,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'currency': '币种',
   'currencyCny': '人民币',
   'currencyUsd': '美元',
+  'currencyEur': '欧元',
+  'language': '界面语言',
   'heatmap': '用量热力图',
   'rounds': '每轮费用',
   'roundsHint': '最近 {count} 轮 · 柱顶为金额 · 底色为峰谷时段',
@@ -744,6 +748,8 @@ export const en: Record<UsageBillingKey, string> = {
   'currency': 'Currency',
   'currencyCny': 'CNY',
   'currencyUsd': 'USD',
+  'currencyEur': 'EUR',
+  'language': 'Interface language',
   'heatmap': 'Usage heatmap',
   'rounds': 'Cost per turn',
   'roundsHint': 'Last {count} rounds · bar tops show amount · fill = peak/off-peak',

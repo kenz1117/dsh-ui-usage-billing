@@ -162,6 +162,48 @@ async function fetchJson(url: string): Promise<unknown> {
 }
 
 /** Latest USD → CNY rate from the first working source, or undefined when none respond. */
+/**
+ * EUR → CNY 汇率源。与 USD 同一套降级约定：腾讯行情优先（免 key、国内可达），
+ * open.er-api.com 兑底；全部失败由调用方降级内置汇率，不阻塞其他价格拉取。
+ */
+const EUR_RATE_SOURCES: readonly { url: string; parse: (text: string) => number | undefined }[] = [
+  {
+    url: 'https://qt.gtimg.cn/q=whEURCNY',
+    parse: (text) => {
+      const match = /"([^"]*)"/.exec(text)
+      const price = match?.[1]?.split('~')[3]
+      return price !== undefined && price !== '' ? Number(price) : undefined
+    },
+  },
+  {
+    url: 'https://open.er-api.com/v6/latest/EUR',
+    parse: (text) => {
+      try {
+        const data = JSON.parse(text) as { rates?: Record<string, unknown> }
+        const cny = data.rates?.CNY
+        return typeof cny === 'number' && Number.isFinite(cny) && cny > 0 ? cny : undefined
+      } catch {
+        return undefined
+      }
+    },
+  },
+]
+
+/**
+ * 按顺序尝试汇率源，返回第一个合法正数。
+ * @param sources - 待尝试的汇率源。
+ * @returns 汇率；全部失败时 undefined。
+ */
+async function fetchRateFrom(sources: readonly { url: string; parse: (text: string) => number | undefined }[]): Promise<number | undefined> {
+  for (const source of sources) {
+    const text = await fetchText(source.url)
+    if (text === null) continue
+    const value = source.parse(text)
+    if (value !== undefined && Number.isFinite(value) && value > 0) return value
+  }
+  return undefined
+}
+
 async function fetchRate(): Promise<number | undefined> {
   for (const source of RATE_SOURCES) {
     const text = await fetchText(source.url)
@@ -393,13 +435,14 @@ export function buildExtraModels(data: unknown): ExtraModelPrice[] {
  * @returns the live pricing snapshot (builtin when everything failed).
  */
 export async function fetchLivePricing(): Promise<LivePricing> {
-  const [rate, models, modelsDev] = await Promise.all([fetchRate(), fetchRouterModels(), fetchJson(MODELS_DEV_URL)])
+  const [rate, rateEur, models, modelsDev] = await Promise.all([fetchRate(), fetchRateFrom(EUR_RATE_SOURCES), fetchRouterModels(), fetchJson(MODELS_DEV_URL)])
   const prices = models === undefined ? undefined : buildPrices(models)
   const extraModels = modelsDev === null ? undefined : buildExtraModels(modelsDev)
-  if (rate === undefined && prices === undefined && (extraModels === undefined || extraModels.length === 0)) return { source: 'builtin' }
+  if (rate === undefined && rateEur === undefined && prices === undefined && (extraModels === undefined || extraModels.length === 0)) return { source: 'builtin' }
   return {
     source: 'live',
     ...(rate !== undefined ? { rate } : {}),
+    ...(rateEur !== undefined ? { rateEur } : {}),
     ...(prices !== undefined ? { prices } : {}),
     ...(extraModels !== undefined && extraModels.length > 0 ? { extraModels } : {}),
   }

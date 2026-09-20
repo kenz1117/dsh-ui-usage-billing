@@ -11,7 +11,7 @@ import { useMemo } from 'react'
 import clsx from 'clsx'
 import type { AnomalyFlag } from './anomaly.ts'
 import css from './UsageBilling.module.css'
-import { cnyToUsd, formatMoney, tierAt, type CostCurrency } from './pricing.ts'
+import { convertFromCny, formatMoney, tierAt, type CostCurrency } from './pricing.ts'
 
 /** 每轮费用图的一行（TurnUsageRow 的展示子集）。 */
 export interface RoundChartRow {
@@ -68,7 +68,7 @@ export function RoundCostChart({ rounds, flags, currency, t }: {
   const flagKey = useMemo(() => new Set(flags.map(flag => `${flag.sessionId}:${flag.turn}`)), [flags])
   const maxCost = useMemo(() => Math.max(0.0001, ...visible.map(round => round.cost)), [visible])
   if (visible.length === 0) return <div className={css.roundsEmpty}>{t('model')} —</div>
-  const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
+  const money = (cny: number): string => formatMoney(convertFromCny(cny, currency), currency)
 
   return (
     <div className={css.rounds}>

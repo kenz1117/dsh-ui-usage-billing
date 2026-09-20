@@ -14,7 +14,7 @@
 
 import { useMemo, useState } from 'react'
 import css from './UsageBilling.module.css'
-import { cnyToUsd, formatMoney, formatTokens, type CostCurrency } from './pricing.ts'
+import { convertFromCny, formatMoney, formatTokens, type CostCurrency } from './pricing.ts'
 
 /** One heatmap day. */
 export interface HeatmapDay {
@@ -168,7 +168,7 @@ function buildYearWeeks(days: readonly HeatmapDay[], now: Date, weekCount = 52):
  */
 export function UsageHeatmap({ days, currency, now, t, range = 'month', unit = 'cost' }: { days: readonly HeatmapDay[]; currency: CostCurrency; now?: Date; range?: 'month' | 'half' | 'year'; unit?: 'cost' | 'tokens'; t: (key: 'costAbbr' | 'noData' | 'heatmapLess' | 'heatmapMore') => string }): React.ReactNode {
   const [hover, setHover] = useState<Cell | null>(null)
-  const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
+  const money = (cny: number): string => formatMoney(convertFromCny(cny, currency), currency)
   const fmt = (value: number): string => (unit === 'tokens' ? formatTokens(value) : money(value))
   // monthWeeks 无条件计算，保证跨 range 切换时 hooks 顺序稳定。
   const monthWeeks = useMemo(() => buildMonthWeeks(days, now ?? new Date()), [days, now])

@@ -58,16 +58,22 @@ describe('UsageBilling surface', () => {
     expect(usageStatsToggle.getAttribute('aria-checked')).toBe('false')
   })
 
-  it('switches the dashboard copy to English when the currency is set to USD (strict bilingual binding)', async () => {
+  it('drives the dashboard copy from the language toggle, independently of the currency (issue #69)', async () => {
     const { container } = render(<UsageBilling {...makeProps()} />)
     fireEvent.click(container.querySelector('button')!)
     await screen.findByText('使用统计')
-    // 默认 CNY：面板为中文文案。
+    // 首次打开：语言偏好由已存币种播种一次（默认 CNY → 中文）。
     expect(screen.getByText('概览')).toBeTruthy()
-    // 切到 USD：本插件文案联动为英文（「概览」→「Overview」），不动宿主全局语言。
+    // 切到 USD 不再改变语言：币种与语言已解耦（第三种币种 EUR 使旧绑定无解）。
     fireEvent.click(screen.getByTestId('billing-currency-usd'))
+    expect(screen.getByText('概览')).toBeTruthy()
+    // 语言开关是切换文案的唯一入口，且不动宿主全局语言。
+    fireEvent.click(screen.getByTestId('billing-language-en'))
     expect(await screen.findByText('Overview')).toBeTruthy()
     expect(screen.queryByText('概览')).toBeNull()
+    // 切回 CNY 也不会把文案拉回中文。
+    fireEvent.click(screen.getByTestId('billing-currency-cny'))
+    expect(screen.getByText('Overview')).toBeTruthy()
   })
 
   it('keeps the hover quick-view width fixed regardless of the trigger card (issue #45)', () => {

@@ -30,8 +30,13 @@ import { FALLBACK_RATES } from './plan-knowledge.ts'
  */
 export const USD_TO_CNY = 6.79
 
+/** 内置 EUR→CNY 汇率（实时汇率不可用时的兑底，与 USD_TO_CNY 同口径）。 */
+export const EUR_TO_CNY = 7.71
+
 /** 运行时实时覆盖：undefined = 用内置目录与内置汇率（默认值降级）。 */
 let liveRate: number | undefined
+/** 实时 EUR→CNY 汇率；undefined = 尚未拿到，走内置值。 */
+let liveEurRate: number | undefined
 let livePrices: Readonly<Record<string, LivePrice>> | undefined
 let liveExtraModels: readonly ExtraModelPrice[] | undefined
 let liveCatalogModels: readonly CatalogModel[] | undefined
@@ -198,6 +203,10 @@ export function applyLivePricing(pricing: LivePricing): void {
   liveRate = typeof pricing.rate === 'number' && Number.isFinite(pricing.rate) && pricing.rate > 0
     ? pricing.rate
     : undefined
+  // 欧元汇率同理：异常值一律保留内置值，不让展示币种把金额算成 0/NaN。
+  liveEurRate = typeof pricing.rateEur === 'number' && Number.isFinite(pricing.rateEur) && pricing.rateEur > 0
+    ? pricing.rateEur
+    : undefined
   livePrices = pricing.prices
   liveExtraModels = pricing.extraModels
 }
@@ -227,12 +236,22 @@ function currentRate(): number {
   return liveRate ?? USD_TO_CNY
 }
 
+/** 当前 EUR→CNY 汇率（实时值缺失时回退内置值）。 */
+function currentEurRate(): number {
+  return liveEurRate ?? EUR_TO_CNY
+}
+
 /**
  * 当前生效的 USD → CNY 汇率及其来源：live = 启动时实时拉取成功，
  * builtin = 实时拉取失败、正在用内置默认值。
  */
 export function getRateInfo(): { rate: number; live: boolean } {
   return { rate: currentRate(), live: liveRate !== undefined }
+}
+
+/** 欧元汇率与其是否为实时值（与 {@link getRateInfo} 同形）。 */
+export function getEurRateInfo(): { rate: number; live: boolean } {
+  return { rate: currentEurRate(), live: liveEurRate !== undefined }
 }
 
 /** Default share of traffic assumed to fall in the peak band (0..1). */
@@ -292,7 +311,7 @@ const LEGACY_DEEPSEEK_BANDS: Readonly<Record<string, PriceBand>> = {
 export type PriceTierId = 'peak' | 'offPeak'
 
 /** 成本显示币种：人民币（国内模型直价）/ 美元（国外模型直价或换算显示）。 */
-export type CostCurrency = 'cny' | 'usd'
+export type CostCurrency = 'cny' | 'usd' | 'eur'
 
 /**
  * 工作日高峰时段判定（北京时间，UTC+8，无夏令时）：09:00–12:00、14:00–18:00。
@@ -1029,6 +1048,22 @@ export function cnyToUsd(cny: number): number {
 }
 
 /**
+ * 人民币金额换算到展示币种。目录以 CNY/USD 为原生币种，费用统一以
+ * 人民币累计，展示层再按所选币种换算——EUR 与 USD 同一口径，不改变存储与聚合。
+ * @param cny - 人民币金额。
+ * @param currency - 目标展示币种。
+ * @returns 换算后的金额（汇率不可用时原值返回）。
+ */
+export function convertFromCny(cny: number, currency: CostCurrency): number {
+  if (currency === 'usd') return cnyToUsd(cny)
+  if (currency === 'eur') {
+    const rate = currentEurRate()
+    return rate > 0 ? cny / rate : cny
+  }
+  return cny
+}
+
+/**
  * Format an amount with adaptive precision and the given currency symbol.
  * @param amount - the amount (CNY by default; pass `usd` for dollar display).
  * @param currency - display currency; default `cny`.
@@ -1037,8 +1072,8 @@ export function formatMoney(amount: number, currency: CostCurrency = 'cny'): str
   // 外部统计 JSON 的数字字段可能被写成字符串/非法值：先归一化，避免
   // toFixed 抛 TypeError 把整个渲染树打崩（插件 surface 会被卸载）。
   const value = Number(amount)
-  if (!Number.isFinite(value)) return currency === 'cny' ? '¥0' : '$0'
-  const symbol = currency === 'cny' ? '¥' : '$'
+  const symbol = currency === 'usd' ? '$' : currency === 'eur' ? '€' : '¥'
+  if (!Number.isFinite(value)) return `${symbol}0`
   if (value <= 0) return `${symbol}0`
   if (value >= 1000) return `${symbol}${value.toFixed(0)}`
   if (value >= 10) return `${symbol}${value.toFixed(1)}`
@@ -1050,13 +1085,9 @@ export function formatMoney(amount: number, currency: CostCurrency = 'cny'): str
  * Format a per-1M-token price in its native currency (free when the rate is
  * zero): CNY for domestic models, USD for overseas ones.
  */
-export function formatUnitPrice(price: number, currency: 'CNY' | 'USD' = 'CNY'): string {
-  if (currency === 'USD') {
-    if (price >= 10) return `$${price.toFixed(1)}`
-    return `$${price.toFixed(2)}`
-  }
-  if (price >= 10) return `¥${price.toFixed(1)}`
-  return `¥${price.toFixed(2)}`
+export function formatUnitPrice(price: number, currency: 'CNY' | 'USD' | 'EUR' = 'CNY'): string {
+  const symbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '¥'
+  return `${symbol}${price.toFixed(price >= 10 ? 1 : 2)}`
 }
 
 /**
@@ -1070,9 +1101,12 @@ export function formatUnitPrice(price: number, currency: 'CNY' | 'USD' = 'CNY'):
  */
 export function convertUnitPrice(price: number, native: 'CNY' | 'USD', target: CostCurrency, rate: number): number {
   if (rate <= 0 || !Number.isFinite(rate)) return price
-  const targetCurrency: 'CNY' | 'USD' = target === 'usd' ? 'USD' : 'CNY'
-  if (native === targetCurrency) return price
-  return target === 'usd' ? price / rate : price * rate
+  // 先归一到人民币，再换算到目标币种；三种币种走同一条路径，避免两两组合的分支爆炸。
+  const cny = native === 'USD' ? price * rate : price
+  if (target === 'cny') return cny
+  if (target === 'usd') return cny / rate
+  const eur = getEurRateInfo().rate
+  return eur > 0 ? cny / eur : cny
 }
 
 /** Format a large token count with B/M/K suffix. */

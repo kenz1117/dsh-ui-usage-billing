@@ -20,7 +20,7 @@ import { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { cnyToUsd, formatMoney, formatSwitchCountdown, channelCountdown, rateChannelOf, tierCountdown, type CostCurrency, type RateChannel } from './pricing.ts'
+import { convertFromCny, formatMoney, formatSwitchCountdown, channelCountdown, rateChannelOf, tierCountdown, type CostCurrency, type RateChannel } from './pricing.ts'
 import { CURRENCY_PREF_EVENT, LIVE_COST_BAR_PREF_EVENT, loadCurrency, loadLiveCostBarPrefs } from './usage-billing-settings.ts'
 import type { LiveCostBarPrefs } from './usage-billing-settings.ts'
 import type { UsageBillingKey } from './locales.ts'
@@ -266,7 +266,7 @@ export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode
   const { sessionCost, turnCost, tier, chips } = useLiveCostData(sessionId)
 
   const currency = useCurrencyPref()
-  const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
+  const money = (cny: number): string => formatMoney(convertFromCny(cny, currency), currency)
 
   const hasCost = sessionCost > 0 || turnCost > 0
   // 档位 chip 仅在当前会话模型涉及峰谷时渲染（tier 非 null）；倒计时随之隐藏。
@@ -327,7 +327,7 @@ export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode
  */
 export function LiveCostChip({ sessionId, t }: LiveCostBarProps): React.ReactNode {
   const currency = useCurrencyPref()
-  const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
+  const money = (cny: number): string => formatMoney(convertFromCny(cny, currency), currency)
   const { visible, position } = useLiveCostPrefs()
   const { sessionCost, turnCost, tier, chips } = useLiveCostData(sessionId)
   // 非工具行位置时 chip 让位给 bar（同 id 双槽互斥由位置偏好门控）。

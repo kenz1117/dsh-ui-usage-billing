@@ -12,7 +12,7 @@
 import { useMemo, useState } from 'react'
 import css from './UsageBilling.module.css'
 import { zh } from './locales.ts'
-import { cnyToUsd, formatMoney, type CostCurrency } from './pricing.ts'
+import { convertFromCny, formatMoney, type CostCurrency } from './pricing.ts'
 
 /** One model's legend identity: key, display name, and brand color. */
 export interface TrendSeriesModel {
@@ -95,7 +95,7 @@ export function TrendChart({ data, models = [], currency = 'cny', metric = 'cost
   // 省略 t 时回落到中文词典，保持既有调用方（含测试）行为不变。
   const tr = t ?? ((key: 'trendEmpty' | 'trendTotal' | 'calls'): string => zh[key])
   const [hover, setHover] = useState<number | null>(null)
-  const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
+  const money = (cny: number): string => formatMoney(convertFromCny(cny, currency), currency)
   const axisOf = (value: number): string => metric === 'tokens' ? shortNumber(value) : money(value)
   // Column value source by metric: cost (stacked) vs total tokens (single color).
   const valueOf = (d: TrendPoint): number => metric === 'tokens' ? (d.tokens ?? 0) : d.cost

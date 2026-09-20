@@ -249,7 +249,7 @@ export const DEFAULT_CURRENCY: CostCurrency = 'cny'
 export function loadCurrency(): CostCurrency {
   try {
     const raw = localStorage.getItem(CURRENCY_STORAGE_KEY)
-    return raw === 'usd' || raw === 'cny' ? raw : DEFAULT_CURRENCY
+    return raw === 'usd' || raw === 'cny' || raw === 'eur' ? raw : DEFAULT_CURRENCY
   } catch {
     return DEFAULT_CURRENCY
   }
@@ -259,6 +259,42 @@ export function loadCurrency(): CostCurrency {
 export function saveCurrency(currency: CostCurrency): void {
   try {
     localStorage.setItem(CURRENCY_STORAGE_KEY, currency)
+  } catch {
+    // ignore: storage full / unavailable — display preference is non-critical.
+  }
+}
+
+/** 界面语言（与币种解耦后独立持久化）。 */
+export type BillingLanguage = 'zh' | 'en'
+
+/** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
+export const LANGUAGE_STORAGE_KEY = 'dsh.ui-usage-billing.language'
+
+/** 语言切换后派发的 CustomEvent 名（另一棵树监听它即时重读）。 */
+export const LANGUAGE_PREF_EVENT = 'dsh.ui-usage-billing.language-pref'
+
+/**
+ * 读取界面语言。**迁移关键**：历史版本的语言是从币种推导的（选 $ 就是英文），
+ * 因此当尚无语言偏好时，**从已存的币种播种一次**并写回；升级后没有任何人
+ * 的界面语言会静默改变，且播种只发生一次。
+ * @returns 界面语言。
+ */
+export function loadLanguage(): BillingLanguage {
+  try {
+    const raw = localStorage.getItem(LANGUAGE_STORAGE_KEY)
+    if (raw === 'en' || raw === 'zh') return raw
+    const seeded: BillingLanguage = loadCurrency() === 'usd' ? 'en' : 'zh'
+    saveLanguage(seeded)
+    return seeded
+  } catch {
+    return 'zh'
+  }
+}
+
+/** 写入界面语言。失败静默（展示偏好非关键）。 */
+export function saveLanguage(language: BillingLanguage): void {
+  try {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, language)
   } catch {
     // ignore: storage full / unavailable — display preference is non-critical.
   }

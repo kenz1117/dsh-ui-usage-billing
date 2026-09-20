@@ -28,13 +28,16 @@ import {
   type FloatWindowPrefs,
   loadFloatWindowPrefs,
   loadCurrency,
+  loadLanguage,
   loadLiveCostBarPrefs,
   loadSiteListPrefs,
   loadUserPrices,
   saveBillingCardPrefs,
   saveFloatWindowPrefs,
   saveKpiRange,
+  LANGUAGE_PREF_EVENT,
   saveCurrency,
+  saveLanguage,
   saveLiveCostBarPrefs,
   saveSiteListPrefs,
   saveUserPrices,
@@ -50,14 +53,15 @@ import { UsageHeatmap, type HeatmapDay } from './heatmap.tsx'
 import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
 import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv, siteRowsCsv } from './export.ts'
 import type { createBillingBudgetStore } from './budget-store.ts'
-import {
-  applyBuiltinCatalog, applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, canonModelId, cnyToUsd, computeCost, convertUnitPrice,
+import { convertFromCny,
+  applyBuiltinCatalog, applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, canonModelId, computeCost, convertUnitPrice,
   DEFAULT_PEAK_SHARE, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, getUserPrices, isPromoActive,
   modelOf, normalizeOriginInput, rateChannelOf, resolveToken, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type ModelEntry, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
+import type { BillingLanguage } from './usage-billing-settings.ts'
 import { localizeRowLabel } from './label-display.ts'
 import { filterRateRows } from './rate-search.ts'
 import { localizeProviderName, channelDisplayName, directChannelRoute } from './provider-display.ts'
@@ -1249,7 +1253,7 @@ function UsageBillingTrigger(
   },
 ): React.ReactNode {
   // 币种跟随仪表盘选择：与 heatmap / round-chart / TrendChart 同一句式，先换算再格式化。
-  const money = (cny: number): string => formatMoney(props.currency === 'usd' ? cnyToUsd(cny) : cny, props.currency)
+  const money = (cny: number): string => formatMoney(convertFromCny(cny, props.currency), props.currency)
   const {
     wide, t, onOpen, monthCost, todayCost, weekCost, days, vendorStatus, dash,
     floatPrefs, subscriptions, cardPrefs, monthTokens, todayTokens, weekTokens, budgetPressure,
@@ -1607,6 +1611,9 @@ interface BillingDashboardProps {
   /** 显示币种（成本金额按此币种换算显示）。 */
   currency: CostCurrency
   onCurrency: (currency: CostCurrency) => void
+  /** 界面语言（与币种解耦，独立持久化）。 */
+  language: BillingLanguage
+  onLanguage: (language: BillingLanguage) => void
   /** 每轮费用明细（服务端按起始时间倒序下发）。 */
   turns: readonly RoundChartRow[]
   renderSlot: DashboardRenderSlots['renderSlot']
@@ -1896,7 +1903,7 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
 }
 
 function BillingDashboard({
-  stats, t, onClose, userPrices, onUserPrices, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, turns,
+  stats, t, onClose, userPrices, onUserPrices, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, language, onLanguage, turns,
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
   peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, sitePrefs, onSitePrefs,
   liveCostPrefs, onLiveCostPrefs, quotasStale,
@@ -1986,10 +1993,12 @@ function BillingDashboard({
   const pricingSyncedAt = lastPricingSyncedAt
 
   // 显示币种换算：usd 时把 CNY 金额按当前汇率换算显示。
-  const money = (cny: number): string => formatMoney(currency === 'usd' ? cnyToUsd(cny) : cny, currency)
+  const money = (cny: number): string => formatMoney(convertFromCny(cny, currency), currency)
+  // 币种符号：单点推导，避免每个展示处各写一次三分支。
+  const currencySymbol = currency === 'usd' ? '$' : currency === 'eur' ? '€' : '¥'
 
   // 界面语言跟随币种：USD→英文，CNY→中文；厂商显示名据此本地化。
-  const lang = currency === 'usd' ? 'en' : 'zh'
+  const lang = language
   const providerName = (name: string): string => localizeProviderName(name, lang)
   // 费率表搜索：不持久化——重开面板应当是完整表，而不是上次的过滤结果。
   const [pricingQuery, setPricingQuery] = useState('')
@@ -1997,7 +2006,7 @@ function BillingDashboard({
   // 费率表单价：按用户所选币种换算后再格式化（原生币种 × 汇率）；0 价显示"免费"。
   // 切 USD 时把 ¥ 计价模型换算成 $，费率表不再固定显示人民币。
   const unitMoney = (price: number, native: 'CNY' | 'USD'): string =>
-    price === 0 ? t('free') : formatUnitPrice(convertUnitPrice(price, native, currency, rateInfo.rate), currency === 'usd' ? 'USD' : 'CNY')
+    price === 0 ? t('free') : formatUnitPrice(convertUnitPrice(price, native, currency, rateInfo.rate), currency === 'usd' ? 'USD' : currency === 'eur' ? 'EUR' : 'CNY')
 
   // 每轮成本异常标记：按起始时间升序传给 flagAnomalies（最近的在末尾）。
   const roundFlags: AnomalyFlag[] = useMemo(
@@ -2473,18 +2482,32 @@ function BillingDashboard({
             </p>
           </div>
           <div className={css.dashboardRight}>
+            <span className={css.currencyToggle} role="group" aria-label={t('language')}>
+              {(['en', 'zh'] as const).map(code => (
+                <button
+                  key={code}
+                  type="button"
+                  className={clsx(css.currencyButton, language === code && css.currencyButtonActive)}
+                  aria-pressed={language === code}
+                  data-testid={`billing-language-${code}`}
+                  onClick={() => { onLanguage(code) }}
+                >
+                  {code === 'en' ? 'EN' : '中'}
+                </button>
+              ))}
+            </span>
             <span className={css.currencyToggle} role="group" aria-label={t('currency')}>
-              {(['cny', 'usd'] as const).map(unit => (
+              {(['cny', 'usd', 'eur'] as const).map(unit => (
                 <button
                   key={unit}
                   type="button"
                   className={clsx(css.currencyButton, currency === unit && css.currencyButtonActive)}
                   aria-pressed={currency === unit}
                   data-testid={`billing-currency-${unit}`}
-                  title={unit === 'cny' ? t('currencyCny') : t('currencyUsd')}
+                  title={unit === 'cny' ? t('currencyCny') : unit === 'usd' ? t('currencyUsd') : t('currencyEur')}
                   onClick={() => { onCurrency(unit) }}
                 >
-                  {unit === 'cny' ? '¥ CNY' : '$ USD'}
+                  {unit === 'cny' ? '¥ CNY' : unit === 'usd' ? '$ USD' : '€ EUR'}
                 </button>
               ))}
             </span>
@@ -2573,7 +2596,7 @@ function BillingDashboard({
                       {t('monthCost')}
                     </span>
                     <div className={css.heroReadout}>
-                      <span className={css.heroCurrency} aria-hidden="true">{currency === 'usd' ? '$' : '¥'}</span>
+                      <span className={css.heroCurrency} aria-hidden="true">{currencySymbol}</span>
                       <span className={css.heroValue}>
                         {money(monthCost).slice(1)}
                       </span>
@@ -2605,7 +2628,7 @@ function BillingDashboard({
                         </svg>
                         <span className={css.heroGaugeCenter}>
                           <span className={clsx(css.heroGaugeRemain, heroGauge.over && css.heroGaugeRemainOver)}>
-                            {(currency === 'usd' ? '$' : '¥')}{(currency === 'usd' ? cnyToUsd(heroGauge.remainCny) : heroGauge.remainCny).toFixed(2)}
+                            {currencySymbol}{convertFromCny(heroGauge.remainCny, currency).toFixed(2)}
                           </span>
                           <span className={css.heroGaugeLabel}>{t('budgetRemain')}</span>
                         </span>
@@ -2825,8 +2848,8 @@ function BillingDashboard({
                           step={1}
                           value={budgetAmount === 0 ? '' : budgetAmount}
                           placeholder={stats.budget !== undefined ? String(stats.budget) : '0'}
-                          aria-label={`${t('budget')}（${currency === 'usd' ? 'USD' : 'CNY'}）`}
-                          title={`${t('budget')}（${currency === 'usd' ? 'USD' : 'CNY'}）`}
+                          aria-label={`${t('budget')}（${currency === 'usd' ? 'USD' : currency === 'eur' ? 'EUR' : 'CNY'}）`}
+                          title={`${t('budget')}（${currency === 'usd' ? 'USD' : currency === 'eur' ? 'EUR' : 'CNY'}）`}
                           onChange={(e) => { onBudgetAmount(e.target.valueAsNumber) }}
                         />
                       </span>
@@ -3986,6 +4009,13 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   // 币种选择：localStorage 持久化 + 跨树广播——侧边栏卡片与输入框胶囊
   // 不在弹窗树内，弹窗关闭后仍需跟随选择（issue #58）。
   const [currency, setCurrency] = useState<CostCurrency>(() => loadCurrency())
+  // 界面语言：与币种解耦（issue #69）；首次读取从已存币种播种一次，升级后不静默改变。
+  const [language, setLanguage] = useState<BillingLanguage>(() => loadLanguage())
+  const updateLanguage = useCallback((next: BillingLanguage): void => {
+    setLanguage(next)
+    saveLanguage(next)
+    window.dispatchEvent(new CustomEvent(LANGUAGE_PREF_EVENT))
+  }, [])
   const updateCurrency = useCallback((next: CostCurrency): void => {
     setCurrency(next)
     saveCurrency(next)
@@ -4032,7 +4062,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const displayStats = useMemo(() => recostWithUserPrices(stats), [stats, userPrices])
   // 严格联动（仅本插件，不影响宿主全局语言）：币种=USD 时面板文案切英文，CNY 时切中文。
   // 用本包自带 zh/en 字典构建本地 t；key 未覆盖时回退宿主 t。
-  const lang = currency === 'usd' ? 'en' : 'zh'
+  const lang = language
   const t = useCallback((key: Parameters<typeof hostT>[0], params?: Record<string, unknown>): string => {
     const dict = lang === 'en' ? en : zh
     // LocaleKeysOf 可能带额外 key，字典查找时收窄为本包声明的 UsageBillingKey。
@@ -4423,6 +4453,8 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           relayQuotas={relayQuotas}
           currency={currency}
           onCurrency={updateCurrency}
+          language={language}
+          onLanguage={updateLanguage}
           turns={turns}
           renderSlot={renderSlot}
           budgetEnabled={budgetEnabled}

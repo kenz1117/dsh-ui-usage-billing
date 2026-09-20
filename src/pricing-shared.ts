@@ -21,6 +21,8 @@ export interface LivePricing {
   source: 'live' | 'builtin'
   /** USD → CNY mid rate (present when the rate fetch succeeded). */
   rate?: number
+  /** EUR → CNY mid rate (present when the euro rate fetch succeeded). */
+  rateEur?: number
   /** Overrides keyed by built-in catalog key (present when router matches succeeded). */
   prices?: Record<string, LivePrice>
   /**

@@ -37,7 +37,8 @@ describe('display currency preference', () => {
   })
 
   it('falls back to the default on a corrupted or unknown value', () => {
-    localStorage.setItem(CURRENCY_STORAGE_KEY, 'eur')
+    // 'eur' 自 issue #69 起是合法币种，这里改用仍未支持的代码。
+    localStorage.setItem(CURRENCY_STORAGE_KEY, 'gbp')
     expect(loadCurrency()).toBe('cny')
     localStorage.setItem(CURRENCY_STORAGE_KEY, '{"not":"a currency"}')
     expect(loadCurrency()).toBe('cny')
