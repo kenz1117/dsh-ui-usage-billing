@@ -55,6 +55,7 @@ import {
 import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
+import { localizeRowLabel } from './label-display.ts'
 import { localizeProviderName, channelDisplayName, directChannelRoute } from './provider-display.ts'
 import { tierInfoOf } from './plan-knowledge.ts'
 import { computePeakAlert, loadPeakAlertConfig, savePeakAlertConfig, type PeakAlertConfig, type PeakAlertHit } from './peak-alert.ts'
@@ -3814,8 +3815,8 @@ function BillingDashboard({
                           {(entry.extraRows ?? []).map(row => (
                             <tr key={`${entry.key}:${row.label}`} className={css.ubExtraRow}>
                               <td>
-                                <span className={css.ubExtraName}>{row.label}</span>
-                                {row.note !== undefined && <span className={css.ubExtraNote}>{row.note}</span>}
+                                <span className={css.ubExtraName}>{localizeRowLabel(row.label, lang)}</span>
+                                {row.note !== undefined && <span className={css.ubExtraNote}>{localizeRowLabel(row.note, lang)}</span>}
                               </td>
                               <td className={css.numCol}>{row.input === undefined ? <span className={css.na}>—</span> : unitMoney(row.input, entry.price.currency)}</td>
                               <td className={css.numCol}><span className={css.na}>—</span></td>
