@@ -1,3 +1,10 @@
+import { applyBuiltinCatalog } from '../src/client/pricing.ts'
+import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from '../src/builtin-catalog.ts'
+
+// 测试套件承担宿主注入角色：目录与别名表在模块加载时全量注入（宿主 activate
+// 同一入口），否则聚合/计价消费方读到空目录。
+applyBuiltinCatalog(BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES)
+
 /**
  * 提供商（通道）优先分组（P2/P3 合并后）：厂商区块的一级归属是调用实际发生的
  * llm 入口（腾讯云 TokenHub / 腾讯云 Token Plan / 未知路由），模型品牌只是行内

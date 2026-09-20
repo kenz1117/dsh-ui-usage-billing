@@ -9,7 +9,7 @@
  */
 
 import type { ExtraModelPrice, LivePrice, LivePricing } from './pricing-shared.ts'
-import { MODEL_CATALOG, MODEL_KEY_ALIASES } from './client/pricing.ts'
+import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts'
 import { createCooldownGate, withRetry } from './resilience.ts'
 
 /** Abort a fetch when the upstream hangs beyond this budget. */
@@ -257,8 +257,8 @@ export function buildExtraModels(data: unknown): ExtraModelPrice[] {
   if (data === null || typeof data !== 'object') return []
   // 已在内置目录收录（含别名表归一化后的目录键）：跳过，走内置价/别名避免重复。
   const catalogKeys = new Set<string>([
-    ...MODEL_CATALOG.map(entry => entry.key.toLowerCase()),
-    ...Object.keys(MODEL_KEY_ALIASES).map(key => MODEL_KEY_ALIASES[key]?.toLowerCase() ?? key.toLowerCase()),
+    ...BUILTIN_MODEL_CATALOG.map(entry => entry.key.toLowerCase()),
+    ...Object.keys(BUILTIN_MODEL_KEY_ALIASES).map(key => BUILTIN_MODEL_KEY_ALIASES[key]?.toLowerCase() ?? key.toLowerCase()),
   ])
   // 同一目录键会被多个 provider 各收录一条。先全部收集，再按证据择优——
   // 此前按遍历顺序保留第一条，等于让 models.dev 的 JSON 字段顺序决定价格。
@@ -277,7 +277,7 @@ export function buildExtraModels(data: unknown): ExtraModelPrice[] {
     for (const [modelId, modelDoc] of Object.entries(models as Record<string, unknown>)) {
       // models.dev 的 key 是厂商原始 id（deepseek-v4-flash）；先按别名归一化为
       // 目录键（flash），命中内置目录则跳过。
-      const catalogKey = (MODEL_KEY_ALIASES[modelId] ?? modelId).toLowerCase()
+      const catalogKey = (BUILTIN_MODEL_KEY_ALIASES[modelId] ?? modelId).toLowerCase()
       if (catalogKeys.has(catalogKey)) continue
       const key = catalogKey
       if (modelDoc === null || typeof modelDoc !== 'object') continue

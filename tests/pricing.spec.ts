@@ -6,18 +6,23 @@
 
 import { describe, expect, it, afterEach } from 'vitest'
 import {
-  applyLiveCatalogModels, applyLivePricing, applyPromo, canonModelId, catalogEntries, cnyToUsd, computeCost,
+  applyBuiltinCatalog, applyLiveCatalogModels, applyLivePricing, applyPromo, canonModelId, catalogEntries, cnyToUsd, computeCost,
   computeCostAt, convertUnitPrice, formatMoney, formatPercent, formatTokens, formatUnitPrice,
   applyUserModelAliases,
-  getRateInfo, isPeakHour, isPromoActive, modelOf, MODEL_CATALOG, resolveCatalogKey, tierAt, tierCountdown,
+  getRateInfo, isPeakHour, isPromoActive, modelOf, resolveCatalogKey, tierAt, tierCountdown,
 } from '../src/client/pricing.ts'
+import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from '../src/builtin-catalog.ts'
 import { PROVIDER_ALIASES } from '../src/client/UsageBilling.tsx'
+
+// 目录与别名表改为宿主注入后，测试套件自身承担宿主角色：全量注入一次，
+// 与宿主 activate 的注入点同一入口（applyBuiltinCatalog）。
+applyBuiltinCatalog(BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES)
 
 describe('provider alias completeness', () => {
   it('maps every catalog provider display name to aliases (Custom exempt)', () => {
     // 一致性守卫：健康绿灯按 display name → 别名 → 实际 provider id 匹配。
     // 任何 catalog 厂商漏配别名都会让该厂商的模型行圆点永远落回灰色未连接。
-    const displayNames = [...new Set(MODEL_CATALOG.map(entry => entry.provider))]
+    const displayNames = [...new Set(BUILTIN_MODEL_CATALOG.map(entry => entry.provider))]
     for (const name of displayNames) {
       if (name === 'Custom') continue
       const aliases = PROVIDER_ALIASES[name]
@@ -760,5 +765,31 @@ describe('applyUserModelAliases (config seam)', () => {
     expect(resolveCatalogKey('hy4')).toBe('hunyuan-hy4-preview')
     expect(modelOf('glm-5.3-flashx')?.key).toBe('glm-5.3-flashx')
     expect(modelOf('glm-5.3-flashx')?.price).toEqual({ currency: 'CNY', input: 2, cacheHit: 0.57, output: 7 })
+  })
+})
+
+describe('unseeded client catalog degradation', () => {
+  afterEach(() => {
+    // 用例结束还原全量注入，避免模块级状态泄漏给后续 describe。
+    applyBuiltinCatalog(BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES)
+  })
+
+  it('modelOf falls back to the zero-price other entry when the catalog is unseeded', () => {
+    // 客户端在首个 pricing 响应前目录为空：未知模型不炸、不计费（零价兜底），
+    // 已知键也查不到内置条目（走零价 other），费率表渲染空列表而非抛错。
+    applyBuiltinCatalog([], {})
+    const entry = modelOf('glm-5.3-flashx')
+    expect(entry.key).toBe('other')
+    expect(entry.price.input).toBe(0)
+    expect(entry.price.output).toBe(0)
+    // 内置条目不出现（探活注入的 liveCatalogModels 条目仍会列出，属预期）。
+    expect(catalogEntries().some(e => e.key === 'glm-5.3-flashx')).toBe(false)
+  })
+
+  it('re-seeding rebuilds the canon index so normalized lookups work again', () => {
+    // 注入后重建归一化索引：归一化 id（大小写/分隔符差异）重新可解析。
+    applyBuiltinCatalog(BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES)
+    expect(resolveCatalogKey('DeepSeek_V4-Flash')).toBe('flash')
+    expect(modelOf('glm-5.3-flashx')?.price.input).toBe(2)
   })
 })

@@ -40,10 +40,11 @@ export type TrendMetric = 'cost' | 'tokens';
  * @param props.currency - display currency for the cost labels.
  * @param props.metric - `cost` (stacked per-model CNY, default) or `tokens` (single-color total tokens).
  */
-export declare function TrendChart({ data, models, currency, metric }: {
+export declare function TrendChart({ data, models, currency, metric, t }: {
     data: readonly TrendPoint[];
     models?: readonly TrendSeriesModel[];
     currency?: CostCurrency;
     metric?: TrendMetric;
+    t?: (key: 'trendEmpty' | 'trendTotal' | 'calls') => string;
 }): React.ReactNode;
 //# sourceMappingURL=TrendChart.d.ts.map

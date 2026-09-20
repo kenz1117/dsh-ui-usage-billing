@@ -51,9 +51,9 @@ import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
 import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv, siteRowsCsv } from './export.ts'
 import type { createBillingBudgetStore } from './budget-store.ts'
 import {
-  applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, canonModelId, cnyToUsd, computeCost, convertUnitPrice,
+  applyBuiltinCatalog, applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, canonModelId, cnyToUsd, computeCost, convertUnitPrice,
   DEFAULT_PEAK_SHARE, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, getUserPrices, isPromoActive,
-  modelOf, normalizeOriginInput, rateChannelOf, resolveToken, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
+  modelOf, normalizeOriginInput, rateChannelOf, resolveToken, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type ModelEntry, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
@@ -986,6 +986,14 @@ async function loadLivePricing(attempt = 0): Promise<void> {
     if (parsed === null || typeof parsed !== 'object' || !('source' in parsed)) {
       livePricingRetryPending = false
       return
+    }
+    // 内置目录与别名表随 pricing 文档下发：在任何 source 重试判定前注入，保证
+    // 每次成功响应都补种目录。未注入前客户端目录为空——modelOf 走零价兜底、
+    // 费率表为空列表，不视为错误。
+    const seeded = parsed as { catalog?: unknown; aliases?: unknown }
+    if (Array.isArray(seeded.catalog) && seeded.catalog.length > 0
+      && seeded.aliases !== null && typeof seeded.aliases === 'object') {
+      applyBuiltinCatalog(seeded.catalog as ModelEntry[], seeded.aliases as Record<string, string>)
     }
     const pricing = parsed as LivePricing
     if (pricing.source === 'builtin' && attempt < MAX_ATTEMPTS - 1) {

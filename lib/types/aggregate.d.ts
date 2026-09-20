@@ -13,8 +13,9 @@
 import { SessionLogOffset } from '@deepseek-ai/dsh-session/types';
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types';
 import type { TokenUsage } from '@deepseek-ai/dsh-llm';
-import { MODEL_KEY_ALIASES, resolveCatalogKey } from './client/pricing.ts';
-export { MODEL_KEY_ALIASES, resolveCatalogKey };
+import { resolveCatalogKey } from './client/pricing.ts';
+import { BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts';
+export { BUILTIN_MODEL_KEY_ALIASES, resolveCatalogKey };
 /**
  * 走订阅套餐（coding / token plan / opencode 订阅）的 provider id：这些通道的
  * 调用按套餐计费，不再按 token 计费，因此即使模型 id 与计费表撞名也一律豁免。

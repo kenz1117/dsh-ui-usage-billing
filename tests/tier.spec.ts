@@ -1,3 +1,10 @@
+import { applyBuiltinCatalog } from '../src/client/pricing.ts'
+import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from '../src/builtin-catalog.ts'
+
+// 测试套件承担宿主注入角色：目录与别名表在模块加载时全量注入（宿主 activate
+// 同一入口），否则聚合/计价消费方读到空目录。
+applyBuiltinCatalog(BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES)
+
 /**
  * Peak/off-peak countdown and switch-notice derivation tests. Beijing peak
  * windows are 09:00–12:00 / 14:00–18:00 on weekdays; Saturday/Sunday are
