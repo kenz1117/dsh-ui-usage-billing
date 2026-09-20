@@ -21,7 +21,9 @@ import clsx from 'clsx'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { convertFromCny, formatMoney, formatSwitchCountdown, channelCountdown, rateChannelOf, tierCountdown, type CostCurrency, type RateChannel } from './pricing.ts'
-import { CURRENCY_PREF_EVENT, LIVE_COST_BAR_PREF_EVENT, loadCurrency, loadLiveCostBarPrefs } from './usage-billing-settings.ts'
+import { bandStateOf } from './band-dot.ts'
+import { loadPeakAlertConfig } from './peak-alert.ts'
+import { CURRENCY_PREF_EVENT, LIVE_COST_BAR_PREF_EVENT, PINNED_MODELS_EVENT, loadCurrency, loadLiveCostBarPrefs, loadPinnedModels } from './usage-billing-settings.ts'
 import type { LiveCostBarPrefs } from './usage-billing-settings.ts'
 import type { UsageBillingKey } from './locales.ts'
 import css from './UsageBilling.module.css'
@@ -178,6 +180,39 @@ export interface LiveCostBarProps {
 /** 胶囊位置偏好（设置 Tab 三选）。 */
 type CapsulePosition = LiveCostBarPrefs['position']
 
+/**
+ * 被固定模型的峰谷指示点：在输入框旁常驻，不用打开仪表盘就能看到当前档位。
+ * 没有固定项（默认）时渲染 null，对未使用该功能的用户零开销。
+ */
+function PinnedBandDots({ hasBandPlan }: { hasBandPlan: boolean }): React.ReactNode {
+  const [keys, setKeys] = useState<readonly string[]>(() => loadPinnedModels())
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const reread = (): void => { setKeys(loadPinnedModels()) }
+    window.addEventListener(PINNED_MODELS_EVENT, reread)
+    window.addEventListener('storage', reread)
+    const timer = setInterval(() => { setNow(Date.now()) }, 30_000)
+    return () => {
+      window.removeEventListener(PINNED_MODELS_EVENT, reread)
+      window.removeEventListener('storage', reread)
+      clearInterval(timer)
+    }
+  }, [])
+  if (keys.length === 0) return null
+  const leadMs = loadPeakAlertConfig().leadMin * 60_000
+  const dots = keys
+    .map(key => ({ key, state: bandStateOf(channelCountdown(now, rateChannelOf(key, hasBandPlan)), leadMs) }))
+    .filter((d): d is { key: string; state: NonNullable<ReturnType<typeof bandStateOf>> } => d.state !== null)
+  if (dots.length === 0) return null
+  return (
+    <span className={css.bandDots} data-testid="billing-pinned-dots">
+      {dots.map(d => (
+        <span key={d.key} className={clsx(css.bandDot, css.bandDotOn, css[d.state])} role="img" aria-label={d.key} title={d.key} />
+      ))}
+    </span>
+  )
+}
+
 /** 币种订阅：仪表盘（另一棵 React 树）切换后经 CustomEvent/storage 事件驱动重读；
  *  胶囊渲染在弹窗之外，弹窗关闭后仍须跟随选择（issue #58）。 */
 function useCurrencyPref(): CostCurrency {
@@ -219,6 +254,8 @@ function useLiveCostData(sessionId: SessionId): {
   turnCost: number
   tier: ReturnType<typeof tierCountdown> | null
   chips: ReturnType<typeof lowQuotaChips>
+  /** 是否持有 Z.ai Coding Plan（决定智谱模型是否适用积分分时）。 */
+  hasBandPlan: boolean
 } {
   const [stats, setStats] = useState<LiveStats | null>(null)
   const [quotas, setQuotas] = useState<readonly QuotaSlice[]>([])
@@ -254,7 +291,8 @@ function useLiveCostData(sessionId: SessionId): {
     [stats, sessionId, quotas],
   )
   const tier = useMemo(() => channelCountdown(nowMs, channel), [nowMs, channel])
-  return { sessionCost, turnCost, tier, chips }
+  const hasBandPlan = quotas.some(q => q.displayName === 'Z.ai Coding Plan' && q.status === 'ok')
+  return { sessionCost, turnCost, tier, chips, hasBandPlan }
 }
 
 /**
@@ -263,7 +301,7 @@ function useLiveCostData(sessionId: SessionId): {
  */
 export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode {
   const { visible, position } = useLiveCostPrefs()
-  const { sessionCost, turnCost, tier, chips } = useLiveCostData(sessionId)
+  const { sessionCost, turnCost, tier, chips, hasBandPlan } = useLiveCostData(sessionId)
 
   const currency = useCurrencyPref()
   const money = (cny: number): string => formatMoney(convertFromCny(cny, currency), currency)
@@ -282,6 +320,7 @@ export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode
       className={position === 'above' ? clsx(css.feeBar, css.feeBarAbove) : css.feeBar}
       data-testid="billing-live-cost-bar"
     >
+      <PinnedBandDots hasBandPlan={hasBandPlan} />
       {tier !== null && (
         <>
           <span className={isPeak ? css.feeChipPrimary : css.feeChipOff} data-testid="billing-live-tier">
@@ -329,7 +368,7 @@ export function LiveCostChip({ sessionId, t }: LiveCostBarProps): React.ReactNod
   const currency = useCurrencyPref()
   const money = (cny: number): string => formatMoney(convertFromCny(cny, currency), currency)
   const { visible, position } = useLiveCostPrefs()
-  const { sessionCost, turnCost, tier, chips } = useLiveCostData(sessionId)
+  const { sessionCost, turnCost, tier, chips, hasBandPlan } = useLiveCostData(sessionId)
   // 非工具行位置时 chip 让位给 bar（同 id 双槽互斥由位置偏好门控）。
   if (!visible || position !== 'toolbar') return null
   // 档位小徽章仅在当前会话模型涉及峰谷时渲染；额度预警压到 chip 上：
@@ -348,6 +387,7 @@ export function LiveCostChip({ sessionId, t }: LiveCostBarProps): React.ReactNod
   return (
     <Tooltip label={title} side="top" delayMs={500}>
       <span className={cls} data-testid="billing-live-cost-chip" role="note" aria-label={title}>
+        <PinnedBandDots hasBandPlan={hasBandPlan} />
         {tier !== null && (
           <span className={isPeak ? css.feeChipPrimary : css.feeChipOff} data-testid="billing-live-tier">
             {isPeak ? t('tierPeak') : t('tierOff')}

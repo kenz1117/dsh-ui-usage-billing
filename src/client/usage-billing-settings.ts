@@ -264,6 +264,34 @@ export function saveCurrency(currency: CostCurrency): void {
   }
 }
 
+/**
+ * 被固定的模型（峰谷指示点）：费率表里点击圆点固定，固定后在输入框旁常驻显示。
+ * 与币种偏好同一套做法：localStorage + CustomEvent，因为胶囊与弹窗分属两棵 React 树。
+ */
+export const PINNED_MODELS_STORAGE_KEY = 'dsh.ui-usage-billing.pinned'
+
+/** 固定列表变更后派发的 CustomEvent 名。 */
+export const PINNED_MODELS_EVENT = 'dsh.ui-usage-billing.pinned-pref'
+
+/** 读取固定模型列表（损坏/非数组/非字符串项一律丢弃）。 */
+export function loadPinnedModels(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PINNED_MODELS_STORAGE_KEY) ?? '[]') as unknown
+    return Array.isArray(raw) ? raw.filter((k): k is string => typeof k === 'string' && k !== '') : []
+  } catch {
+    return []
+  }
+}
+
+/** 写入固定模型列表。失败静默（展示偏好非关键）。 */
+export function savePinnedModels(keys: readonly string[]): void {
+  try {
+    localStorage.setItem(PINNED_MODELS_STORAGE_KEY, JSON.stringify(keys))
+  } catch {
+    // ignore: storage full / unavailable — display preference is non-critical.
+  }
+}
+
 /** 界面语言（与币种解耦后独立持久化）。 */
 export type BillingLanguage = 'zh' | 'en'
 
@@ -298,6 +326,18 @@ export function saveLanguage(language: BillingLanguage): void {
   } catch {
     // ignore: storage full / unavailable — display preference is non-critical.
   }
+}
+
+/**
+ * 切换某个模型的固定状态。
+ * @param key - 目录键。
+ * @returns 切换后的列表（已写入）。
+ */
+export function togglePinnedModel(key: string): string[] {
+  const current = loadPinnedModels()
+  const next = current.includes(key) ? current.filter(k => k !== key) : [...current, key]
+  savePinnedModels(next)
+  return next
 }
 
 /** 用户自定义单价（与 client/pricing.ts 的 `UserPriceEntry` 同形；type import，无运行时依赖）。 */

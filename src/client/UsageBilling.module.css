@@ -1770,6 +1770,26 @@ body {
   outline: none;
 }
 
+/* 峰谷指示点：空心 = 仅显示，实心 = 已固定到输入框。颜色取当前档位。 */
+.bandDots { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+
+.bandDot {
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  flex: none;
+  border-radius: 999px;
+  border: 1.5px solid currentColor;
+  background: transparent;
+  cursor: pointer;
+}
+
+.bandDotOn { background: currentColor; }
+.offPeak { color: var(--ds-blue); }
+.soon { color: var(--ds-amber); }
+.peak { color: var(--ds-red); }
+span.bandDot { cursor: default; }
+
 .ubTable th,
 .ubTable td:first-child {
   white-space: normal;
