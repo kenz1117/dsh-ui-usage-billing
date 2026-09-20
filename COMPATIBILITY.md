@@ -59,6 +59,7 @@
 - [x] 稳定线冻结：终版 v1.1.17，`stable` 标签永久保留；正式 EOL 待宿主首个正式 tag
 - [x] v1.4.1：`dshReleases` 补 0.1.6-alpha.1——host latest 仍在 0.1.5-rc.1、alpha 前移 0.1.6；插件五个依赖包逐包 diff 零代码变更，对插件零影响
 - [x] v1.4.1（追加，watch-dsh-releases 报警后补）：`dshReleases` 补 0.1.6-alpha.2（2026-09-18 发布，五包 diff 仍为零代码变更）；宿主 `latest` 前移至 0.1.5-rc.2，文档同步
+- [x] v1.4.2（核查后撤销）：此前的「宿主已发 alpha.3/.4」为误报（npm 上宿主本体仅到 alpha.2，`alpha` 标签即 alpha.2；深仓内部 tag 未发 npm）——不需要声明，2026-09-20 已验证 check-compat 无漂移
 - [ ] 宿主侧把 profile 逐版本 `minimumReleaseAgeExclude` 改为包级豁免（待与宿主作者沟通）
 
 ---
