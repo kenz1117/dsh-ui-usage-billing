@@ -104,7 +104,7 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 - **真实用量聚合**：服务端增量聚合（只重算写过的会话），单会话损坏容错、快照落盘回退；`usage_stats` 工具让模型自查今天 / 本月 / 当前会话 / 累计费用，还可查 `bySite`（按站点归组）与 `relay`（只看中转站）汇总。
 - **模型健康 + 未收录标注**：厂商接入状态圆点（绿 / 红 / 灰）；未收录模型显著标注、按兜底价估算、厂商自动推断（如 `mi-mimo-2.5` → 小米）；估算价模型标注「估算价」。
 - **多语种 + 双币种**：¥ / $ 切换随币种双语（USD→英文、CNY→中文，仅本插件生效）；费率表按所选币种换算。
-- **安全加固**：全部 HTTP 端点强制回环访问——peer socket 地址 + Host 头精确匹配双重校验，拒绝 `127.0.0.1.evil.com` 形式的 DNS rebinding；写操作额外校验 Origin 回环与 Content-Type 并限制 body 上限，杜绝跨站改写；余额 / 订阅 / 定价拉取带有限重试与按上游维度熔断（鉴权失败属配置问题、不计入熔断）。
+- **安全加固**：全部 HTTP 端点强制回环访问——peer socket 地址 + Host 头精确匹配双重校验，拒绝 `127.0.0.1.evil.com` 形式的 DNS rebinding（反向代理部署可用 `trustedHosts` 显式放行特定主机名，peer socket 校验仍为强制）；写操作额外校验 Origin 回环与 Content-Type 并限制 body 上限，杜绝跨站改写；余额 / 订阅 / 定价拉取带有限重试与按上游维度熔断（鉴权失败属配置问题、不计入熔断）。
 - **导出防注入**：CSV 对 `=` / `+` / `-` / `@` 开头单元格前置单引号并完整转义，防止在 Excel / WPS 中被当作公式执行。
 - **隐私底线**：纯 UI surface，不注册工具、不注入系统提示、不向会话日志写模型可见事件；仅从既有会话日志聚合，日志内容由其他包负责。
 
@@ -225,6 +225,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | `declaredEndpoints`     | 未设置                                  | 声明端点（`{ displayName, origin, path, fields?, windows?, raw? }`）：为内置表没有的供应商自声明余额/额度接口，只写「数字在哪里」的点路径、无表达式；请求由匹配到同源 provider 的 origin 构造，安全边界（单斜杠绝对路径、仅 GET、拒绝跨源重定向、响应体/超时上限、凭据只取匹配 provider 自有的 apiKeyEnv）由 `src/declarative.ts` 强制执行 |
 | `reconcilePath`         | `<harness home>/.dsh-usage-reconcile.json` | 余额差对账基准的绝对路径（默认根同样跟随 `DSH_HOME` / `~/.dsh`）；用官方（仅 DeepSeek 官方方向）余额当日变动与本地账本当日的官方渠道费用做交叉校验，偏差超阈值（0.3 元且 >15%）时提示核对；充值/授信/币种变化重置基准而非告警 |
 | `searchCallEstimateCny` | `0.02`                               | 联网搜索请求（`web/deepseek-search-llm-request`，日志无用量事件）的单次费用估算（人民币元）；设 0 关闭估算（调用仍计数、不计费）                            |
+| `trustedHosts`          | 未设置                                  | 反向代理场景下允许通过 Host 头校验的额外主机名（如 `['llm.example.com']`）；**缺省空 = 与历史版本行为完全一致**。仅在 peer socket 回环校验通过后才参考，只放宽「纵深防御」的第二层；精确主机名匹配（忽略大小写与端口），无后缀 / 通配符语义 |
 
 ## 🛠 开发
 

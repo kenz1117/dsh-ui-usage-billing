@@ -65,12 +65,30 @@ function isLoopbackPeer(req: IncomingMessage): boolean {
 /** 校验 Host 头是本机回环（精确 127.0.0.0/8 / ::1 / localhost 或空，供 curl 不带 Host 的极简请求）。
  *  拒绝 `127.0.0.1.attacker.com` 这类以 `127.` 开头但解析到外部的 DNS rebinding 域名：
  *  只用 `startsWith('127.')` 会被它穿透，必须精确匹配回环 IP 的字面量。 */
-function isLoopbackHost(req: IncomingMessage): boolean {
+/**
+ * 信任主机名归一化：去空白、去端口、转小写，丢弃空项。与请求侧
+ * `host.split(':')[0].toLowerCase()` 同口径，因此匹配忽略大小写与端口。
+ * @param hosts - 配置里的原始名单。
+ * @returns 归一化后的主机名集合（空集 = 与历史版本行为一致）。
+ */
+export function normalizeTrustedHosts(hosts: readonly string[] | undefined): ReadonlySet<string> {
+  if (hosts === undefined) return new Set()
+  const names = hosts
+    .filter((host): host is string => typeof host === 'string')
+    .map(host => host.trim().split(':')[0]?.toLowerCase() ?? '')
+    .filter(host => host !== '')
+  return new Set(names)
+}
+
+function isLoopbackHost(req: IncomingMessage, trustedHosts: ReadonlySet<string> = new Set()): boolean {
   const host = req.headers.host
   if (host === undefined || host === '') return true
   const name = host.split(':')[0]
   // 精确匹配：localhost、IPv6 回环、或字面量 IPv4 回环地址（127.0.0.0/8）。
-  return name === 'localhost' || name === '::1' || (name !== undefined && /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(name))
+  if (name === 'localhost' || name === '::1' || (name !== undefined && /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(name))) return true
+  // 反向代理场景：仅当用户显式列入 trustedHosts 才放行，且已经过 peer socket 校验。
+  // 精确匹配（已去端口、转小写），无后缀 / 通配符语义。
+  return name !== undefined && trustedHosts.has(name.toLowerCase())
 }
 
 /** 校验 Origin 头是否回环（写操作用，防止跨站表单/fetch 改写设置）。Origin 缺失
@@ -93,12 +111,20 @@ function isLoopbackOrigin(origin: string | undefined): boolean {
  * @param res - 当前响应。
  * @returns 是否放行；false = 已拒绝并结束响应。
  */
-export function guardLoopback(req: IncomingMessage, res: ServerResponse): boolean {
+export function guardLoopback(req: IncomingMessage, res: ServerResponse, trustedHosts: ReadonlySet<string> = new Set()): boolean {
   // GET 读取 + POST（usage-tool 的开关写入）都在回环内允许；其他方法一律拒绝。
   const methodOk = req.method === 'GET' || req.method === 'POST'
-  if (!methodOk || !isLoopbackPeer(req) || !isLoopbackHost(req)) {
+  const peerOk = isLoopbackPeer(req)
+  const hostOk = isLoopbackHost(req, trustedHosts)
+  if (!methodOk || !peerOk || !hostOk) {
     res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
-    res.end(JSON.stringify({ error: 'forbidden: loopback only' }))
+    // peer 已是回环、仅 Host 被拒时给出可诊断提示：这是反向代理场景的典型失败
+    // 形态（界面能渲染但数字全是 0），不给提示只能靠猜。长度截断，避免回显超长头。
+    const host = req.headers.host
+    const hint = methodOk && peerOk && typeof host === 'string' && host !== ''
+      ? ` (host "${host.slice(0, 80)}" not in trustedHosts)`
+      : ''
+    res.end(JSON.stringify({ error: `forbidden: loopback only${hint}` }))
     return false
   }
   return true
@@ -163,6 +189,14 @@ export interface UsageBillingConfig {
    * 写死在 declarative.ts。缺省空。
    */
   declaredEndpoints?: readonly DeclaredEndpointConfig[]
+  /**
+   * 允许通过 Host 头校验的额外主机名（反向代理场景）；缺省空，行为与历史版本完全一致。
+   * 仅在 peer socket 已通过回环校验后才参考：socket 校验仍为强制且不受本字段影响，
+   * 本名单只放宽「纵深防御」的第二层。匹配为**精确主机名**，忽略大小写与端口；
+   * 不支持后缀 / 通配符，因此 `evil.com` 永远无法满足 `trusted.com`。
+   * 例：`['llm.example.com']`。
+   */
+  trustedHosts?: string[]
   /** `usage_stats` 工具注入的组合 base（默认 false：不注入）；与设置命名空间同字段，
    *  作为用户设置（设置 Tab 开关）的组合兜底。该工具占用每次请求的上下文，coding 场景多在仪表盘查看。 */
   enableUsageStatsTool?: boolean
@@ -602,6 +636,8 @@ export function adaptSessionPersistence(raw: unknown): UsagePersistence {
  * @param config - optional statsPath override.
  */
 export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
+  // 反向代理主机名白名单：归一化一次，所有端点共用同一守卫路径（含 POST 写入）。
+  const trustedHosts = normalizeTrustedHosts(config.trustedHosts)
   // usage_stats 工具开关的设置命名空间 scope：settings 服务就绪后注册；HTTP 路由据此读写。
   let usageSettingsScope: SettingsScope<UsageBillingSettings> | undefined
   const cwd = process.cwd()
@@ -742,7 +778,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       kind: 'exact',
       path: '/api/billing/notify-claim',
       handler: async (req, res) => {
-        if (!guardLoopback(req, res)) return
+        if (!guardLoopback(req, res, trustedHosts)) return
         if (req.method !== 'POST') {
           res.writeHead(405, { 'content-type': 'application/json; charset=utf-8' })
           res.end(JSON.stringify({ error: 'method not allowed' }))
@@ -940,7 +976,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       kind: 'exact',
       path: '/api/billing/pricing',
       handler: async (req, res) => {
-        if (!guardLoopback(req, res)) return
+        if (!guardLoopback(req, res, trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         res.end(JSON.stringify({ ...live, syncedAt: pricingSyncedAt }))
       },
@@ -955,7 +991,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       kind: 'exact',
       path: '/api/billing/pricing/refresh',
       handler: async (req, res) => {
-        if (!guardLoopback(req, res)) return
+        if (!guardLoopback(req, res, trustedHosts)) return
         if (req.method !== 'POST') {
           res.writeHead(405, { 'content-type': 'application/json; charset=utf-8' })
           res.end(JSON.stringify({ error: 'method not allowed' }))
@@ -985,7 +1021,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       kind: 'exact',
       path: '/api/billing/balance',
       handler: async (req, res) => {
-        if (!guardLoopback(req, res)) return
+        if (!guardLoopback(req, res, trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         // 余额 key 复用 llm-pi-ai 的 providers（同订阅）：部署为某 provider 配一次即可。
         // DeepSeek 保留 `balanceApiKeyEnv` 特例：llm-pi-ai 未配 deepseek key 时仍可用该 env 查余额。
@@ -1052,7 +1088,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       kind: 'exact',
       path: '/api/billing/usage-tool',
       handler: async (req, res) => {
-        if (!guardLoopback(req, res)) return
+        if (!guardLoopback(req, res, trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         const enabled = usageSettingsScope?.get().enableUsageStatsTool ?? DEFAULT_ENABLE_USAGE_STATS_TOOL
         if (req.method === 'GET') {
@@ -1151,7 +1187,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       kind: 'exact',
       path: '/api/billing/subscriptions',
       handler: async (req, res) => {
-        if (!guardLoopback(req, res)) return
+        if (!guardLoopback(req, res, trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         if (Date.now() - quotaCache.at >= SUBSCRIPTION_CACHE_MS) {
           try {
@@ -1194,7 +1230,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       kind: 'exact',
       path: '/api/billing/relay-quotas',
       handler: async (req, res) => {
-        if (!guardLoopback(req, res)) return
+        if (!guardLoopback(req, res, trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         if (Date.now() - relayCache.at >= SUBSCRIPTION_CACHE_MS) {
           try {
@@ -1217,7 +1253,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       kind: 'exact',
       path: '/api/billing/usage-stats',
       handler: async (req, res) => {
-        if (!guardLoopback(req, res)) return
+        if (!guardLoopback(req, res, trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         // 宿主配置（月度预算 / 余额告警阈值）与插件版本不是聚合产物：在响应边界
         // 注入，实时与快照两条路径一致。
