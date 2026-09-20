@@ -15,12 +15,14 @@ import { stat } from 'node:fs/promises'
 import { SessionLogOffset } from '@deepseek-ai/dsh-session/types'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
-import { isPriced, MODEL_KEY_ALIASES, resolveCatalogKey, computeCostAt, modelOf, tierAt } from './client/pricing.ts'
+import { isPriced, resolveCatalogKey, computeCostAt, modelOf, tierAt } from './client/pricing.ts'
+import { BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts'
 import { isSubscriptionProviderId } from './subscriptions.ts'
 
-// 模型别名（真实 provider id → 计费目录键）统一定义在 client/pricing.ts，
-// 聚合层折叠与客户端渲染共用同一张表，避免两侧不一致导致「未收录」。
-export { MODEL_KEY_ALIASES, resolveCatalogKey }
+// 模型别名（真实 provider id → 计费目录键）数据本体在 builtin-catalog.ts，
+// 注入与消费逻辑在 client/pricing.ts；聚合层折叠与客户端渲染共用同一张表，
+// 避免两侧不一致导致「未收录」。
+export { BUILTIN_MODEL_KEY_ALIASES, resolveCatalogKey }
 
 /**
  * 走订阅套餐（coding / token plan / opencode 订阅）的 provider id：这些通道的

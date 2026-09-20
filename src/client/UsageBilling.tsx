@@ -54,15 +54,16 @@ import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
 import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv, siteRowsCsv } from './export.ts'
 import type { createBillingBudgetStore } from './budget-store.ts'
 import {
-  applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, canonModelId, cnyToUsd, computeCost, convertUnitPrice,
+  applyBuiltinCatalog, applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, canonModelId, cnyToUsd, computeCost, convertUnitPrice,
   DEFAULT_PEAK_SHARE, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, getUserPrices, isPromoActive,
-  channelCountdown, modelOf, normalizeOriginInput, rateChannelOf, resolveToken, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type TokenUsageBuckets,
+  channelCountdown, modelOf, normalizeOriginInput, rateChannelOf, resolveToken, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type ModelEntry, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
 import { NS, zh, en, type UsageBillingKey } from './locales.ts'
 import { bandStateOf } from './band-dot.ts'
 import { localizeRowLabel } from './label-display.ts'
+import { filterRateRows } from './rate-search.ts'
 import { localizeProviderName, channelDisplayName, directChannelRoute } from './provider-display.ts'
 import { tierInfoOf } from './plan-knowledge.ts'
 import { computePeakAlert, loadPeakAlertConfig, savePeakAlertConfig, type PeakAlertConfig, type PeakAlertHit } from './peak-alert.ts'
@@ -990,6 +991,14 @@ async function loadLivePricing(attempt = 0): Promise<void> {
     if (parsed === null || typeof parsed !== 'object' || !('source' in parsed)) {
       livePricingRetryPending = false
       return
+    }
+    // 内置目录与别名表随 pricing 文档下发：在任何 source 重试判定前注入，保证
+    // 每次成功响应都补种目录。未注入前客户端目录为空——modelOf 走零价兜底、
+    // 费率表为空列表，不视为错误。
+    const seeded = parsed as { catalog?: unknown; aliases?: unknown }
+    if (Array.isArray(seeded.catalog) && seeded.catalog.length > 0
+      && seeded.aliases !== null && typeof seeded.aliases === 'object') {
+      applyBuiltinCatalog(seeded.catalog as ModelEntry[], seeded.aliases as Record<string, string>)
     }
     const pricing = parsed as LivePricing
     if (pricing.source === 'builtin' && attempt < MAX_ATTEMPTS - 1) {
@@ -1986,6 +1995,8 @@ function BillingDashboard({
   // 界面语言跟随币种：USD→英文，CNY→中文；厂商显示名据此本地化。
   const lang = currency === 'usd' ? 'en' : 'zh'
   const providerName = (name: string): string => localizeProviderName(name, lang)
+  // 费率表搜索：不持久化——重开面板应当是完整表，而不是上次的过滤结果。
+  const [pricingQuery, setPricingQuery] = useState('')
   // 峰谷指示点：只对真正有档位的模型渲染；固定列表跨树共享（胶囊在弹窗之外）。
   const [pinnedModels, setPinnedModels] = useState<readonly string[]>(() => loadPinnedModels())
   const [bandNow, setBandNow] = useState(() => Date.now())
@@ -3740,6 +3751,15 @@ function BillingDashboard({
                 <div className={css.ubCardHead}>
                   <h3 className={css.ubCardTitle}>{t('pricing')}</h3>
                   <span className={css.ubCardSub}>{t('pricingUnit')}</span>
+                  <input
+                    className={css.ubSearch}
+                    type="search"
+                    value={pricingQuery}
+                    placeholder={t('pricingSearch')}
+                    aria-label={t('pricingSearch')}
+                    data-testid="billing-pricing-search"
+                    onChange={event => { setPricingQuery(event.target.value) }}
+                  />
                 </div>
                 <div className={css.ubTablewrap}>
                   <table className={css.ubTable}>
@@ -3753,7 +3773,7 @@ function BillingDashboard({
                       </tr>
                     </thead>
                     <tbody>
-                      {catalogEntries().map((entry) => {
+                      {filterRateRows(catalogEntries(), pricingQuery).map((entry) => {
                         const hasPrice = entry.price.input > 0 || entry.price.output > 0
                         return (
                           // Fragment 携 key：一个目录条目渲染主行 + 附加计价子行多个 tr。

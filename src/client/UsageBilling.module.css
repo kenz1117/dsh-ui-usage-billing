@@ -1754,6 +1754,22 @@ body {
    INPUT（CACHE MISS））自己撑开列宽，在宽度封顶的仪表盘里把档位列顶出可视区，
    只能横向滚动才能看到（issue #59）。数据列仍继承 nowrap，
    避免 ¥0.26 这类金额与档位值在值中间折行。 */
+/* 费率表搜索框：右对齐于卡片表头，用与卡片内其他输入一致的色板。 */
+.ubSearch {
+  margin-left: auto;
+  align-self: center;
+  width: 200px;
+  max-width: 45%;
+  padding: 5px 9px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-1);
+  background: transparent;
+  color: var(--ds-t-1);
+  font-size: 12px;
+  line-height: 18px;
+  outline: none;
+}
+
 /* 峰谷指示点：空心 = 仅显示，实心 = 已固定到输入框。颜色取当前档位。 */
 .bandDots { display: inline-flex; align-items: center; gap: 5px; flex: none; }
 

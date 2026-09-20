@@ -37,7 +37,8 @@ import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { SettingsProvider, SettingsScope } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { createUsageAggregator, dayStamp, type UsageLedgerStore, type UsagePersistence } from './aggregate.ts'
-import { applyLivePricing, applyUserModelAliases, formatMoney, formatTokens } from './client/pricing.ts' 
+import { applyBuiltinCatalog, applyLivePricing, applyUserModelAliases, formatMoney, formatTokens } from './client/pricing.ts'
+import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts'
 import { queryBalances, queryCustomBalances } from './balance.ts'
 import { queryDeclaredEndpoints } from './declarative.ts'
 import { reconcileBalanceDelta, type BalanceRef, type ReconcileEvent } from './reconcile.ts'
@@ -684,6 +685,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 项目归属用工作区标题（host workspaceRegistry 可选；缺失时 resolver 为 undefined，回退目录名）。
   const workspaceTitleResolver = buildWorkspaceTitleResolver(ctx)
   // 用户自定义模型别名：聚合启动前注入（与客户端渲染共用一张表，见 pricing.ts）。
+  applyBuiltinCatalog(BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES)
   applyUserModelAliases(config.modelKeyAliases)
   const aggregator = createUsageAggregator(adaptSessionPersistence(ctx.sessionPersistence), {
     ...(config.subscriptionProviders === undefined
@@ -961,6 +963,23 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     live = await fetchLivePricing()
     pricingSyncedAt = Date.now()
     applyLivePricing(live)
+    // 响应体缓存失效：live 变了，pricing 响应须重新序列化（含内置目录与别名表）。
+    pricingBodyCache = undefined
+  }
+  // /api/billing/pricing 响应体缓存：内置目录与别名表在 activate 注入后不变，
+  // 只有 live/syncedAt 随 refresh 变化；缓存整个响应体避免每请求重复序列化
+  // 约 40 KiB 的目录数据。
+  let pricingBodyCache: string | undefined
+  const pricingBody = (): string => {
+    if (pricingBodyCache === undefined) {
+      pricingBodyCache = JSON.stringify({
+        ...live,
+        syncedAt: pricingSyncedAt,
+        catalog: BUILTIN_MODEL_CATALOG,
+        aliases: BUILTIN_MODEL_KEY_ALIASES,
+      })
+    }
+    return pricingBodyCache
   }
   pricingReady = refreshPricing()
   ctx.effect(
@@ -978,7 +997,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       handler: async (req, res) => {
         if (!guardLoopback(req, res, trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-        res.end(JSON.stringify({ ...live, syncedAt: pricingSyncedAt }))
+        res.end(pricingBody())
       },
     }),
     'usage-billing: pricing route',
@@ -1009,7 +1028,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
         }
         await refreshPricing()
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-        res.end(JSON.stringify({ ...live, syncedAt: pricingSyncedAt }))
+        res.end(pricingBody())
       },
     }),
     'usage-billing: pricing refresh route',

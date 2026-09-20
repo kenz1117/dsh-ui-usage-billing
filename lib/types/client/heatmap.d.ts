@@ -20,18 +20,24 @@ export interface HeatmapDay {
     value: number;
 }
 /**
- * Render the month or year heatmap.
- * @param props.days - daily cost rows (keys are `YYYY-MM-DD`).
- * @param props.currency - display currency for the hover amount.
+ * Render the month or week-column heatmap.
+ * @param props.days - daily value rows (keys are `YYYY-MM-DD`); the value's
+ *   meaning follows `props.unit` (CNY cost or raw token count).
+ * @param props.currency - display currency for the hover amount (cost unit).
  * @param props.now - anchor date (defaults to today); injectable for tests.
  * @param props.t - locale function (used for the legend labels).
- * @param props.range - `month` (calendar month) or `year` (last 52 weeks, GitHub style).
+ * @param props.range - `month` (calendar month), `half` (last 26 weeks, large
+ *   cells — the screenshot-friendly Codex-style view) or `year` (last 52
+ *   weeks, GitHub style).
+ * @param props.unit - value metric: `cost` (default, money formatting) or
+ *   `tokens` (compact token formatting).
  */
-export declare function UsageHeatmap({ days, currency, now, t, range }: {
+export declare function UsageHeatmap({ days, currency, now, t, range, unit }: {
     days: readonly HeatmapDay[];
     currency: CostCurrency;
     now?: Date;
-    range?: 'month' | 'year';
+    range?: 'month' | 'half' | 'year';
+    unit?: 'cost' | 'tokens';
     t: (key: 'costAbbr' | 'noData' | 'heatmapLess' | 'heatmapMore') => string;
 }): React.ReactNode;
 //# sourceMappingURL=heatmap.d.ts.map
