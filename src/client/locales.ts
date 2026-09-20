@@ -28,6 +28,7 @@ export type UsageBillingKey =
   | 'trendMetricCost'
   | 'trendMetricTokens'
   | 'pricingSearch'
+  | 'bandPinHint'
   | 'trendEmpty'
   | 'trendTotal'
   | 'roundsUnit'
@@ -323,6 +324,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'trendMetricCost': '费用',
   'trendMetricTokens': 'Token',
   'pricingSearch': '搜索模型 / 厂商',
+  'bandPinHint': '点击固定到输入框',
   'trendEmpty': '暂无趋势数据',
   'trendTotal': '总计',
   'roundsUnit': '轮',
@@ -618,6 +620,7 @@ export const en: Record<UsageBillingKey, string> = {
   'trendMetricCost': 'Cost',
   'trendMetricTokens': 'Tokens',
   'pricingSearch': 'Search model or vendor',
+  'bandPinHint': 'click to pin to the composer',
   'trendEmpty': 'No trend data yet',
   'trendTotal': 'Total',
   'roundsUnit': 'turns',
