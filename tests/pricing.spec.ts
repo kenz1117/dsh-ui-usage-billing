@@ -195,7 +195,8 @@ describe('live pricing overrides', () => {
 
 describe('display formatters', () => {
   it('labels a zero unit price as free', () => {
-    expect(formatUnitPrice(0)).toBe('免费')
+    // 0 价由调用方用 t('free') 兜住（UsageBilling.tsx），此处只做纯格式化。
+    expect(formatUnitPrice(0)).toBe('¥0.00')
   })
 
   it('formats prices in their native currency', () => {

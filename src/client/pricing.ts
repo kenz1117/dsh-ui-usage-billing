@@ -1894,7 +1894,6 @@ export function formatMoney(amount: number, currency: CostCurrency = 'cny'): str
  * zero): CNY for domestic models, USD for overseas ones.
  */
 export function formatUnitPrice(price: number, currency: 'CNY' | 'USD' = 'CNY'): string {
-  if (price === 0) return '免费'
   if (currency === 'USD') {
     if (price >= 10) return `$${price.toFixed(1)}`
     return `$${price.toFixed(2)}`
