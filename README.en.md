@@ -170,11 +170,11 @@ cost (CNY) = (missInput × p_input + cacheHit × p_cacheHit + output × p_output
 | Provider  | Models                                                                                       |
 | -------- | ------------------------------------------------------------------------------------------- |
 | DeepSeek | V4.1 Flash, V4 Pro (priced per official change boundary: base tier → peak/off-peak v1 → weekend off-peak) |
-| Zhipu AI  | GLM-5.3, GLM-5.2, GLM-5.1, GLM-5-Turbo, GLM-4.7, GLM-4.6, GLM-4.5-Air, GLM-5V-Turbo                                       |
-| Aliyun    | Qwen3.8 Max, Qwen3.7-Max, Qwen3.5-Plus, Qwen3.5-Flash                                        |
+| Zhipu AI  | GLM-5.3, GLM-5.2, GLM-5.1, GLM-5, GLM-5-Turbo, GLM-4.7, GLM-4.6, GLM-4.5-Air, GLM-5V-Turbo                     |
+| Aliyun    | Qwen3.8 Max, Qwen3.7-Max, Qwen3.7-Plus, Qwen3.7-Flash, Qwen3.5-Plus, Qwen3.5-Flash, Qwen3-Coder 480B            |
 | Doubao    | Seed-2.0 Pro, Seed-2.0 Mini, Seed-1.6                                                         |
 | Moonshot  | Kimi K3, K2.7 Code, K2.7 Code HighSpeed, K2.6, K2.8 Preview                                  |
-| Xiaomi    | MiMo V2.5 (exempt when billed via a token-plan subscription channel)¹                         |
+| Xiaomi    | MiMo V2.6 Pro, MiMo V2.6 Flash, MiMo V2.6 Pro UltraSpeed                                       |
 | MiniMax   | MiniMax-M3, MiniMax-M2.7, MiniMax-M2.7-highspeed                                            |
 | Baidu     | ERNIE-5.1                                                                                   |
 | Tencent   | Hunyuan T1, Hunyuan Hy3                                                                     |
@@ -185,13 +185,13 @@ cost (CNY) = (missInput × p_input + cacheHit × p_cacheHit + output × p_output
 | Baichuan  | Baichuan M3-Plus                                                                            |
 | OpenAI    | GPT-6 Astra, GPT-5.6 Sol / Terra / Luna                                                     |
 | Google    | Gemini 3.1 Pro, 3.6 Flash (Standard / Flex two-band, Flex = −50%)                            |
-| xAI       | Grok 4.6, Grok 4.3                                                                          |
+| xAI       | Grok 4.7, Grok 4.6, Grok 4.3                                                                 |
 | Meta      | Llama 4 Maverick, Scout                                                                     |
 | Other     | Unified fallback pricing for uncatalogued models                                             |
 
-> ¹ iFlytek, SenseTime and Xiaomi have not published per-token prices — the table shows estimates; cost is 0 when these models go through a subscription channel (coding / token plan / opencode), and recalibrates automatically when official pricing is published. Subscription channels align with pi-ai built-in providers (kimi-coding, zai-coding-cn, opencode, opencode-go, qwen/xiaomi token-plan regional variants), overridable via `subscriptionProviders`.
+> ¹ iFlytek and SenseTime have not published per-token prices — the table shows estimates; cost is 0 when these models go through a subscription channel (coding / token plan / opencode), and recalibrates automatically when official pricing is published. Subscription channels align with pi-ai built-in providers (kimi-coding, zai-coding-cn, opencode, opencode-go, qwen/xiaomi token-plan regional variants), overridable via `subscriptionProviders`.
 
-To add a model: append an entry to `MODEL_CATALOG` and map its real id in `MODEL_KEY_ALIASES` in `src/client/pricing.ts` (shared by the aggregation layer and the client renderer).
+To add a model: append an entry to `BUILTIN_MODEL_CATALOG` in `src/builtin-catalog.ts` (key aliases live in `BUILTIN_MODEL_KEY_ALIASES` in the same file; the catalog is built only into the node half and served to the client from the host via `/api/billing/pricing`).
 
 ## 🔌 HTTP API
 

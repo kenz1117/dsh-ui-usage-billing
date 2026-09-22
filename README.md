@@ -176,11 +176,11 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | 厂商       | 代表模型                                        |
 | -------- | -------------------------------------------- |
 | DeepSeek | V4.1 Flash、V4 Pro（等 3 款；按官方变更节点分段计价：基础价 → 峰谷 v1 → 周末全谷） |
-| 智谱 AI    | GLM-5.3、GLM-5.2（等 11 款）                     |
-| 阿里通义     | Qwen3.8 Max、Qwen3-Coder 480B（等 8 款）         |
+| 智谱 AI    | GLM-5.3、GLM-5.2（等 12 款）                     |
+| 阿里通义     | Qwen3.8 Max、Qwen3-Coder 480B（等 10 款）        |
 | 字节豆包     | Doubao Seed-2.1 Pro、Doubao-Seed-Evolving（等 8 款） |
 | 月之暗面     | Kimi K3、Kimi K2.7 Code（等 10 款）              |
-| 小米       | MiMo V2.5（等 2 款）¹                            |
+| 小米       | MiMo V2.6 Pro（等 4 款）                         |
 | MiniMax  | MiniMax-M3、MiniMax-M2.7（等 3 款）              |
 | 百度文心     | ERNIE-5.1、ERNIE-4.5 300B（等 2 款）             |
 | 腾讯混元     | 混元 T1、混元 Hy3（等 2 款）                       |
@@ -189,7 +189,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | Cohere    | Command A、Command R（等 2 款）                 |
 | OpenAI   | GPT-6 Astra、GPT-5.6 Sol / Terra / Luna（等 4 款） |
 | Google   | Gemini 3.1 Pro、Gemini 3.6 Flash（等 2 款）      |
-| xAI      | Grok 4.6（等 2 款）                             |
+| xAI      | Grok 4.7（等 2 款）                             |
 | Meta     | Llama 4 Maverick（等 2 款）                     |
 | 美团       | LongCat 2.0（估算价）                             |
 | 面壁智能     | MiniCPM-V 4.5（估算价）                           |
@@ -201,9 +201,9 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | 百川智能     | Baichuan M3-Plus                              |
 | 其他       | 未收录模型的统一回退定价（费用记 0）                      |
 
-> ¹ 讯飞、商汤、小米及美团 / 面壁智能 / 小红书等未公布官方按量单价的模型，表内为估算价（`estimated`）；这些模型走订阅通道（coding / token plan / opencode）时费用记 0。订阅通道与 pi-ai 内置提供方对齐（kimi-coding、zai-coding-cn、opencode、opencode-go、qwen / xiaomi 的 token-plan 各区域变体），可按 `subscriptionProviders` 配置覆盖。
+> ¹ 讯飞、商汤及美团 / 面壁智能 / 小红书等未公布官方按量单价的模型，表内为估算价（`estimated`）；这些模型走订阅通道（coding / token plan / opencode）时费用记 0。订阅通道与 pi-ai 内置提供方对齐（kimi-coding、zai-coding-cn、opencode、opencode-go、qwen / xiaomi 的 token-plan 各区域变体），可按 `subscriptionProviders` 配置覆盖。
 
-新增模型：在 `MODEL_CATALOG` 追加条目，并在 `src/client/pricing.ts` 的 `MODEL_KEY_ALIASES` 中映射真实模型 id（聚合层与客户端渲染共用同一张表）。
+新增模型：在 `src/builtin-catalog.ts` 的 `BUILTIN_MODEL_CATALOG` 追加条目（别名表 `BUILTIN_MODEL_KEY_ALIASES` 同文件维护；目录只随 node 半构建，经 `/api/billing/pricing` 由宿主下发注入客户端）。
 
 ## 🔌 HTTP API
 

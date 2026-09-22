@@ -315,6 +315,28 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
   },
   // 小米 MiMo (OpenAI-compatible; token plan 通道 model id 为 mimo-v2.5，
   // 按订阅豁免计费；按量单价 2026-08 官方公布：命中缓存 / 未命中 / 输出).
+  // V2.6 系列 2026-09-22 发布（同价延续 V2.5 官方定价）；V2.5 将于 2026-10-21 下线，过渡期保留.
+  {
+    key: 'mimo-v2.6-pro',
+    name: 'MiMo V2.6 Pro',
+    provider: '小米',
+    colorVar: 'dsw-static-green-400',
+    price: { currency: 'CNY', input: 3, cacheHit: 0.025, output: 6 },
+  },
+  {
+    key: 'mimo-v2.6-flash',
+    name: 'MiMo V2.6 Flash',
+    provider: '小米',
+    colorVar: 'dsw-static-green-400',
+    price: { currency: 'CNY', input: 1, cacheHit: 0.02, output: 2 },
+  },
+  {
+    key: 'mimo-v2.6-pro-ultraspeed',
+    name: 'MiMo V2.6 Pro UltraSpeed',
+    provider: '小米',
+    colorVar: 'dsw-static-green-400',
+    price: { currency: 'CNY', input: 30, cacheHit: 0.25, output: 60 },
+  },
   {
     key: 'mimo-v2.5',
     name: 'MiMo V2.5',
@@ -500,7 +522,14 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     peakHours: GEMINI_PEAK_HOURS,
     tierSemantics: 'latency',
   },
-  // xAI — current Grok family (docs.x.ai 2026-08).
+  // xAI — current Grok family (docs.x.ai 2026-08; Grok 4.7 2026-09-21 与 4.6 同价).
+  {
+    key: 'grok-4.7',
+    name: 'Grok 4.7',
+    provider: 'xAI',
+    colorVar: 'dsw-static-neutral-bluish-700',
+    price: { currency: 'USD', input: 2, cacheHit: 0.5, output: 6 },
+  },
   {
     key: 'grok',
     name: 'Grok 4.6',
@@ -636,6 +665,36 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
   },
   // 主流厂商缺失/新增模型：国内统一按官方 CNY 价；无公开价的按家族口径估算并标记 estimated。
   {
+    key: 'qwen3.7-plus',
+    name: 'Qwen3.7 Plus',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-500',
+    // 2026-05-26 发布；官方刊例价（元 / 每百万 token，≤256K 档）：输入 ¥2 / 命中 ¥0.4 / 输出 ¥8（256K-1M 档 6 / 1.2 / 24）。
+    price: { currency: 'CNY', input: 2, cacheHit: 0.4, output: 8 },
+    // 附加计价维度（纯展示，估算计费仍走主价三桶；≤256K 档官方价目，help.aliyun.com 2026-09-20）：
+    // 显式缓存创建 ¥2.5 / 命中 ¥0.2；Batch File 长期半价；Batch Chat 与标准价一致。
+    extraRows: [
+      { label: '显式缓存创建', input: 2.5 },
+      { label: '显式缓存命中', input: 0.2 },
+      { label: 'Batch File', input: 1, output: 4, note: '长期半价' },
+    ],
+  },
+  {
+    key: 'qwen3.7-flash',
+    name: 'Qwen3.7 Flash',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    // 2026-07-15 发布；官方刊例价（元 / 每百万 token，≤32K 档）：输入 ¥0.2 / 命中 ¥0.02 / 输出 ¥0.8（32K-256K 档 0.6 / 0.06 / 2.4）。
+    price: { currency: 'CNY', input: 0.2, cacheHit: 0.02, output: 0.8 },
+    // 附加计价维度（纯展示，估算计费仍走主价三桶；≤32K 档官方价目，help.aliyun.com 2026-09-14）：
+    // 显式缓存创建 ¥0.25 / 命中 ¥0.02；Batch File 长期半价；Batch Chat 与标准价一致。
+    extraRows: [
+      { label: '显式缓存创建', input: 0.25 },
+      { label: '显式缓存命中', input: 0.02 },
+      { label: 'Batch File', input: 0.1, output: 0.4, note: '长期半价' },
+    ],
+  },
+  {
     key: 'qwen3.6-max',
     name: 'Qwen3.6 Max',
     provider: '阿里通义',
@@ -680,12 +739,21 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     estimated: true,
   },
   {
+    key: 'glm-5',
+    name: 'GLM-5',
+    provider: '智谱 AI',
+    colorVar: 'dsw-static-blue-400',
+    // 官方刊例价（元 / 每百万 token，≤32K 档，腾讯云 TokenHub 代销价目 2026-09）：输入 ¥4 / 命中 ¥1 / 输出 ¥18（32K+ 档 6 / 1.5 / 22）。
+    // GLM-5 将于 2026-10-09 从 TokenHub 下线；bigmodel 开放平台未见独立按量条目，过渡期日志仍会出现该 id。
+    price: { currency: 'CNY', input: 4, cacheHit: 1, output: 18 },
+  },
+  {
     key: 'glm-5.2-fast',
     name: 'GLM-5.2 Fast',
     provider: '智谱 AI',
     colorVar: 'dsw-static-blue-300',
-    price: { currency: 'CNY', input: 6, cacheHit: 1.2, output: 24 },
-    estimated: true,
+    // 阿里百炼代销官方价（元 / 每百万 token，北京档，help.aliyun.com 2026-09-14）：输入 ¥16 / 隐式缓存 ¥4 / 输出 ¥56。
+    price: { currency: 'CNY', input: 16, cacheHit: 4, output: 56 },
   },
   {
     key: 'kimi-k3-fast',
