@@ -847,6 +847,8 @@ export interface UsageStats {
   perf?: ClientPerf
   /** 旧版算法账本行兜底的会话数（模型归属可能失真）；0 或缺省 = 全部数据可信。 */
   staleLedgerSessions?: number
+  /** 读时迁移拒读而未统计的会话数；0 或缺省 = 全部会话已统计。 */
+  unreadableSessions?: number
   /** 插件版本号（服务端读自包 package.json；旧快照缺失）。 */
   pluginVersion?: string
 }
@@ -947,6 +949,7 @@ async function loadUsageStats(): Promise<UsageStats | null> {
       ...(isObj(candidate.byTool) ? { byTool: candidate.byTool } : {}),
       ...(Array.isArray(candidate.unpricedModels) ? { unpricedModels: candidate.unpricedModels } : {}),
       ...(typeof candidate.staleLedgerSessions === 'number' ? { staleLedgerSessions: candidate.staleLedgerSessions } : {}),
+      ...(typeof candidate.unreadableSessions === 'number' ? { unreadableSessions: candidate.unreadableSessions } : {}),
       // 联网搜索估算：旧快照缺失；数值存在才透传（渲染处据 searchCalls 判定显示）。
       ...(typeof candidate.searchCallEstimateCny === 'number' ? { searchCallEstimateCny: candidate.searchCallEstimateCny } : {}),
       // 角色归因：旧快照缺失；仅接受对象形状（durable 边界，字段值由渲染处数值化兜底）。
@@ -2699,6 +2702,14 @@ function BillingDashboard({
                   {t('searchEstimateHint')
                     .replace('{count}', String(stats.total.searchCalls ?? 0))
                     .replace('{each}', money(stats.searchCallEstimateCny ?? 0))}
+                </div>
+              )}
+
+              {/* 数据完整性提示：读时迁移拒读的会话未计入统计（原始日志未动，
+                  上游兼容修复后自动恢复）——让今日/累计偏低可自助归因。 */}
+              {(stats.unreadableSessions ?? 0) > 0 && (
+                <div className={css.staleNotice} data-testid="billing-sessions-unreadable">
+                  {t('unreadableNotice').replace('{count}', String(stats.unreadableSessions))}
                 </div>
               )}
 

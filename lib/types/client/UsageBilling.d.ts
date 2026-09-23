@@ -313,6 +313,8 @@ export interface UsageStats {
     perf?: ClientPerf;
     /** 旧版算法账本行兜底的会话数（模型归属可能失真）；0 或缺省 = 全部数据可信。 */
     staleLedgerSessions?: number;
+    /** 读时迁移拒读而未统计的会话数；0 或缺省 = 全部会话已统计。 */
+    unreadableSessions?: number;
     /** 插件版本号（服务端读自包 package.json；旧快照缺失）。 */
     pluginVersion?: string;
 }

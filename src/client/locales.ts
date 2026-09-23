@@ -135,6 +135,7 @@ export type UsageBillingKey =
   | 'triggerWeekTokens'
   | 'subscriptionsStale'
   | 'staleLedgerNotice'
+  | 'unreadableNotice'
   | 'tokenCacheWrite'
   | 'toolRank'
   | 'toolName'
@@ -431,6 +432,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'floatNoTargetsHint': '暂无可选的订阅通道。',
   'subscriptionsStale': '订阅额度刷新失败，以下为缓存数据',
   'staleLedgerNotice': '{count} 个会话出自旧版算法存档（日志已删，无法重算），模型归属可能有误差',
+  'unreadableNotice': '{count} 个会话因会话格式版本较新暂未统计（原始数据仍在，升级 dsh 兼容修复后自动恢复）',
   'tokenCacheWrite': '写入',
   'toolRank': '工具排行',
   'toolName': '工具',
@@ -729,6 +731,7 @@ export const en: Record<UsageBillingKey, string> = {
   'floatNoTargetsHint': 'No subscription channel available.',
   'subscriptionsStale': 'Subscription refresh failed — showing cached data',
   'staleLedgerNotice': '{count} sessions use legacy-algorithm archives (logs deleted); attribution may be off',
+  'unreadableNotice': '{count} sessions are not counted yet (newer session format; data is intact and restores automatically after a dsh fix)',
   'tokenCacheWrite': 'written',
   'toolRank': 'Tool calls',
   'toolName': 'Tool',

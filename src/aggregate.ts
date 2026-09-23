@@ -408,6 +408,8 @@ export interface UsageStatsDocument {
   perf?: PerfStats
   /** 只存在于账本、且缺 foldVersion 的旧会话数；无旧行时省略。 */
   staleLedgerSessions?: number
+  /** 读时迁移拒读而未统计的会话数（原始日志未动，上游修复后自动恢复）；无拒读时省略。 */
+  unreadableSessions?: number
 }
 
 /** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
@@ -2087,6 +2089,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         ...(searchEstimate > 0 ? { searchCallEstimateCny: searchEstimate } : {}),
         ...(perf === undefined ? {} : { perf }),
         ...(staleLedgerSessions > 0 ? { staleLedgerSessions } : {}),
+        // 读时迁移拒读的会话数：费用缺失的可诊断性信号（插件 issue #71）——
+        // 数据未丢，上游修复后自动恢复，面板据此明示「未统计」而非今日费用静默为空。
+        ...(skipped.length > 0 ? { unreadableSessions: skipped.length } : {}),
         // 角色归因：输出成本为实测；输入成本按 user/tool 消息字符占比摊分
         //（无任何消息内容的日志按五五均分兜底，整体属估算口径）。
         byRole: (() => {

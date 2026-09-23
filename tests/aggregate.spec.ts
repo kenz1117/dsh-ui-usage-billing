@@ -1572,6 +1572,28 @@ describe('ledger foldVersion / stale confidence', () => {
   })
 })
 
+describe('unreadable sessions visibility', () => {
+  it('counts migration-refused sessions into unreadableSessions for the UI notice', async () => {
+    // 拒读场景：readFrom 抛出（如上游读时迁移拒绝旧世代 descriptor，插件 issue #71）——
+    // 会话被跳过，但计数进入文档供面板明示「未统计」，而不是让今日费用静默为空。
+    const failing = {
+      list: async () => [{ id: 'broken-session' }],
+      readFrom: async () => { throw new Error('SessionFormatUnsupportedError: unsupported descriptor version 2') },
+    } as unknown as UsagePersistence
+    const stats = await aggregateUsage(failing)
+
+    expect(stats.unreadableSessions).toBe(1)
+    expect(stats.bySession).toHaveLength(0)
+  })
+
+  it('omits unreadableSessions when every session folds', async () => {
+    const stats = await aggregateUsage(fakePersistence({ s1: [message(0, 1, USAGE)] }))
+
+    // exactOptionalPropertyTypes：无拒读时不带 key，UI 判空逻辑不必区分 0 与缺省。
+    expect(Object.hasOwn(stats, 'unreadableSessions')).toBe(false)
+  })
+})
+
 describe('hostTimeZone', () => {
   it('reports a non-empty IANA name and a formatted UTC offset', () => {
     const tz = hostTimeZone()

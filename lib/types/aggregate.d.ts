@@ -274,6 +274,8 @@ export interface UsageStatsDocument {
     perf?: PerfStats;
     /** 只存在于账本、且缺 foldVersion 的旧会话数；无旧行时省略。 */
     staleLedgerSessions?: number;
+    /** 读时迁移拒读而未统计的会话数（原始日志未动，上游修复后自动恢复）；无拒读时省略。 */
+    unreadableSessions?: number;
 }
 /** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
 export interface RoleCost {
