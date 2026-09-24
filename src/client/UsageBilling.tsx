@@ -11,11 +11,13 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react'
+import type { ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
-import { IconChevronDownOutline14, Menu, Modal, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Menu, Modal, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import * as BillingPrimitives from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   type BillingCardPrefs,
@@ -73,6 +75,19 @@ import { tierInfoOf } from './plan-knowledge.ts'
 import { computePeakAlert, loadPeakAlertConfig, savePeakAlertConfig, type PeakAlertConfig, type PeakAlertHit } from './peak-alert.ts'
 import { PeakAlertBanner } from './PeakAlertBanner.tsx'
 import css from './UsageBilling.module.css'
+
+// 宿主 0.1.7 起把 IconChevronDownOutline14 拆为 Regular/Medium/Artwork 三个变体，旧名不再导出
+// （issue #72：缺失名经宿主注入表解析为 undefined，渲染时抛 React #130 并被 sidebar.footer.action
+// 槽位错误边界弹出）。bundle 对 primitives 的 import 编译为运行时查表，缺失名不抛错，因此两个
+// 世代的名字都能同时引用：0.1.6 宿主只有旧名，0.1.7+ 宿主只有新名，按宿主世代取用。Medium 的
+// 默认 size 为 14，与旧组件渲染尺寸一致。导出名横跨两个宿主世代，单一类型版本无法同时声明，
+// 两个名字都按记录类型断言取用（图标无 props 渲染，本地结构类型即可）。
+type BillingIcon = () => ReactElement | null
+const BillingChevronDownIcons = BillingPrimitives as unknown as Record<
+  'IconChevronDownOutline14' | 'IconChevronDownOutlineMedium',
+  BillingIcon | undefined
+>
+const BillingChevronDown = BillingChevronDownIcons.IconChevronDownOutlineMedium ?? BillingChevronDownIcons.IconChevronDownOutline14
 
 /** Model-connectivity health reported by the host model directory probe. */
 export interface ModelHealth {
@@ -4027,7 +4042,9 @@ function PositionMenu({ liveCostPrefs, onLiveCostPrefs, t }: {
         >
           <span>{labels[liveCostPrefs.position]}</span>
           <span className={clsx(css.rdoChevron, open && css.rdoChevronOpen)} aria-hidden>
-            <IconChevronDownOutline14 />
+            {/* 双世代图标解析（见文件顶部 BillingChevronDown 注释）；都缺失时跳过渲染，
+                避免装饰性箭头把整个槽位拖崩。 */}
+            {BillingChevronDown ? <BillingChevronDown /> : null}
           </span>
         </button>
       }

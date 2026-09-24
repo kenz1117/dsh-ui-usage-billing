@@ -15,10 +15,18 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials';
-import type { SettingsProvider } from '@deepseek-ai/dsh-settings';
 import { type UsageLedgerStore, type UsagePersistence } from './aggregate.ts';
 import type { CustomBalanceConfig, DeclaredEndpointConfig, SubscriptionPlanConfig } from './pricing-shared.ts';
 import { type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts';
+/** 设置服务的读取面：两代宿主运行时都提供 describe（条目键为 profile entry id）。 */
+interface SettingsReader {
+    describe(options?: {
+        redactSecrets?: boolean;
+    }): readonly {
+        ns: string;
+        value: unknown;
+    }[];
+}
 /** 校验 Host 头是本机回环（精确 127.0.0.0/8 / ::1 / localhost 或空，供 curl 不带 Host 的极简请求）。
  *  拒绝 `127.0.0.1.attacker.com` 这类以 `127.` 开头但解析到外部的 DNS rebinding 域名：
  *  只用 `startsWith('127.')` 会被它穿透，必须精确匹配回环 IP 的字面量。 */
@@ -127,7 +135,7 @@ export interface PiAiProviderRoute {
  * @param settings - the settings service (reads the llm-pi-ai namespace).
  * @returns `<route> → { baseURL? }`；命名空间不可读时返回空。
  */
-export declare function readPiAiProviderRoutes(settings: SettingsProvider): Readonly<Record<string, {
+export declare function readPiAiProviderRoutes(settings: SettingsReader): Readonly<Record<string, {
     baseURL?: string;
 }>>;
 /**
@@ -137,7 +145,7 @@ export declare function readPiAiProviderRoutes(settings: SettingsProvider): Read
  * @param settings - the settings service (reads the llm-pi-ai namespace).
  * @param credentials - the credentials service (resolves the env refs).
  */
-export declare function resolveSubscriptionKeys(settings: SettingsProvider, credentials: CredentialProvider): Promise<{
+export declare function resolveSubscriptionKeys(settings: SettingsReader, credentials: CredentialProvider): Promise<{
     keys: SubscriptionKeys;
     identified: IdentifiedSubscriptionPlan[];
 }>;
@@ -159,4 +167,5 @@ export declare function adaptSessionPersistence(raw: unknown): UsagePersistence;
  * @param config - optional statsPath override.
  */
 export declare function apply(ctx: Context, config?: UsageBillingConfig): void;
+export {};
 //# sourceMappingURL=index.d.ts.map

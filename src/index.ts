@@ -34,7 +34,6 @@ import { writeFileAtomic, withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
-import type { SettingsProvider, SettingsScope } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { createUsageAggregator, dayStamp, type UsageLedgerStore, type UsagePersistence } from './aggregate.ts'
 import { applyBuiltinCatalog, applyLivePricing, applyUserModelAliases, formatMoney, formatTokens } from './client/pricing.ts'
@@ -47,6 +46,21 @@ import type { CustomBalanceConfig, DeclaredEndpointConfig, LivePricing, RelayQuo
 import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts'
 import { isOfficialBaseUrl, queryRelayQuotas, type RelayRoute } from './relay.ts'
 import { planTypeOf, subscriptionFeeCnyOf } from './client/plan-knowledge.ts'
+
+// 宿主 0.1.7 重构 dsh-settings：SettingsProvider/SettingsScope 类型不再导出（服务类
+// 更名 SettingsForms，describe 表单面保留；register 从运行时移除，命名空间持久化
+// 改走 plugin config 投影）。插件运行时横跨 0.1.2（register 可用）与 0.1.7+（仅
+// describe）两代宿主，按结构本地声明，不 import 任何世代的宿主类型名。
+/** 设置服务的读取面：两代宿主运行时都提供 describe（条目键为 profile entry id）。 */
+interface SettingsReader {
+  describe(options?: { redactSecrets?: boolean }): readonly { ns: string; value: unknown }[]
+}
+
+/** 旧世代（≤0.1.6 宿主）`settings.register` 返回的命名空间 scope。 */
+interface SettingsNamespaceScope<T> {
+  get(): T
+  update(patch: Partial<T>): Promise<void>
+}
 import {
   BILLING_SETTINGS_NAMESPACE,
   DEFAULT_ENABLE_USAGE_STATS_TOOL,
@@ -138,8 +152,8 @@ export function guardLoopback(req: IncomingMessage, res: ServerResponse, trusted
  */
 const SETTINGS_NAMESPACE_PATTERN = /^[a-z][a-z0-9-]*$/
 
-/** 从宿主 `SettingsProvider.register` 签名反推命名空间参数类型（跟随宿主版本，不 import 已移除的 branded 名）。 */
-type NamespaceArg = Parameters<SettingsProvider['register']>[0]
+/** 设置命名空间 id：register 已从 0.1.7 运行时移除，按 string 探测调用，宿主 branded 名不再引用。 */
+type NamespaceArg = string
 
 /** 校验并透过合法命名空间 id；非法值 fail-loud（与上游原行为一致）。 */
 function validateSettingsNamespace(value: string): NamespaceArg {
@@ -395,7 +409,7 @@ export interface PiAiProviderRoute {
  * @param settings - the settings service (reads the llm-pi-ai namespace).
  * @returns the providers dict; empty when the namespace is unreadable.
  */
-async function readPiAiProviders(settings: SettingsProvider): Promise<Readonly<Record<string, PiAiProviderRoute>>> {
+async function readPiAiProviders(settings: SettingsReader): Promise<Readonly<Record<string, PiAiProviderRoute>>> {
   try {
     const descriptors = settings.describe({ redactSecrets: true })
     const pi = descriptors.find(descriptor => descriptor.ns === 'llm-pi-ai')?.value
@@ -424,7 +438,7 @@ async function readPiAiProviders(settings: SettingsProvider): Promise<Readonly<R
  * @param settings - the settings service (reads the llm-pi-ai namespace).
  * @returns `<route> → { baseURL? }`；命名空间不可读时返回空。
  */
-export function readPiAiProviderRoutes(settings: SettingsProvider): Readonly<Record<string, { baseURL?: string }>> {
+export function readPiAiProviderRoutes(settings: SettingsReader): Readonly<Record<string, { baseURL?: string }>> {
   try {
     const descriptors = settings.describe({ redactSecrets: true })
     const pi = descriptors.find(descriptor => descriptor.ns === 'llm-pi-ai')?.value
@@ -484,7 +498,7 @@ function buildWorkspaceTitleResolver(ctx: Context): ((cwd: string) => string | u
  * @param credentials - the credentials service (resolves the env refs).
  */
 export async function resolveSubscriptionKeys(
-  settings: SettingsProvider,
+  settings: SettingsReader,
   credentials: CredentialProvider,
 ): Promise<{ keys: SubscriptionKeys; identified: IdentifiedSubscriptionPlan[] }> {
   const keys: SubscriptionKeys = { ...EMPTY_SUBSCRIPTION_KEYS }
@@ -640,7 +654,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 反向代理主机名白名单：归一化一次，所有端点共用同一守卫路径（含 POST 写入）。
   const trustedHosts = normalizeTrustedHosts(config.trustedHosts)
   // usage_stats 工具开关的设置命名空间 scope：settings 服务就绪后注册；HTTP 路由据此读写。
-  let usageSettingsScope: SettingsScope<UsageBillingSettings> | undefined
+  let usageSettingsScope: SettingsNamespaceScope<UsageBillingSettings> | undefined
   const cwd = process.cwd()
   // 持久化文件的默认根跟随宿主 harness home：DSH_HOME 环境变量优先，回退
   // `~/.dsh`（resolveDshHome 的解析语义与宿主一致）。自定义 DSH_HOME 的多套
@@ -845,7 +859,16 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 用户可在「设置」Tab 切换；工具注入是启动期决策，改开关后重载应用生效。
   // cordis.yml 的 `enableUsageStatsTool` config 作为组合 base 兜底。
   ctx.inject(['settings'], (sctx) => {
-    const scope = sctx.settings.register(usageBillingSettingsNs, UsageBillingSettingsSchema, {
+    // 宿主 ≤0.1.6：settings.register 可用（注册命名空间并返回读写 scope）。
+    // 宿主 0.1.7+：register 从运行时移除（SettingsForms 只保留 describe/update 等
+    // 表单面，命名空间持久化改走 plugin config 投影），此时跳过注册——开关降级为
+    // 只读：读取回退 cordis.yml config 兜底，写入返回 settings unavailable
+    // （HTTP 路由对 scope 缺席已有防御）。
+    const legacy = sctx.settings as unknown as SettingsReader & {
+      register?: (ns: string, schema: unknown, options?: { base?: unknown }) => SettingsNamespaceScope<UsageBillingSettings>
+    }
+    if (typeof legacy.register !== 'function') return
+    const scope = legacy.register(usageBillingSettingsNs, UsageBillingSettingsSchema, {
       base: { enableUsageStatsTool: config.enableUsageStatsTool ?? DEFAULT_ENABLE_USAGE_STATS_TOOL },
     })
     usageSettingsScope = scope
