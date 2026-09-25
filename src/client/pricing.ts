@@ -10,7 +10,8 @@
  * Google-style two-band billing is modeled per model: Gemini's Flex tier
  * prices spare-capacity traffic at -50%; DeepSeek splits peak
  * (weekdays 09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate —
- * weekends (Sat/Sun, Beijing) are charged at the off-peak rate all day.
+ * weekends (Sat/Sun, Beijing) and Chinese statutory holidays are charged at
+ * the off-peak rate all day (see {@link CHINA_HOLIDAYS}).
  * The estimator mixes both bands by a configured peak share ({@link DEFAULT_PEAK_SHARE}).
  *
  * Time-limited launch promos ({@link PricePromo}) never mutate the catalog:
@@ -325,17 +326,23 @@ export function isPeakHour(beijingHour: number): boolean {
 /**
  * 由时刻（epoch 毫秒）推断计费时段；时刻未知/非法时按高峰计（保守：未知
  * 时刻不低估成本，与社区 dsh-usage-chart 的 tierAt 语义一致）。
- * 周末（北京时间周六/周日）全天不区分峰谷，统一按低谷价。
+ * 周末（北京时间周六/周日）与中国法定节假日全天不区分峰谷，统一按低谷价
+ * （官方 2026-09-19 口径：调休上班的周末、法定节假日全天均按空闲时段计费；
+ * 调休上班日全部落在周末，故由周末分支覆盖，无需单列）。
  * @param timeMs - Unix epoch 毫秒；null/undefined/NaN 视为未知。
  */
 export function tierAt(timeMs: number | null | undefined): PriceTierId {
   if (timeMs === null || timeMs === undefined || !Number.isFinite(timeMs)) return 'peak'
-  return tierAtWithBounds(timeMs, TIER_BOUNDARY_MINUTES)
+  return tierAtWithBounds(timeMs, TIER_BOUNDARY_MINUTES, true)
 }
 
-/** 按给定峰段边界判档：周末全天低谷；工作日分钟数落在任一 [b(i), b(i+1)) 峰段即为高峰。 */
-function tierAtWithBounds(timeMs: number, bounds: readonly number[]): PriceTierId {
-  if (isBeijingWeekend(timeMs)) return 'offPeak'
+/**
+ * 按给定峰段边界判档：低谷日全天低谷；工作日分钟数落在任一 [b(i), b(i+1)) 峰段即为高峰。
+ * @param holidays - 是否把中国法定节假日并入低谷日。该官方口径只适用于 DeepSeek 按量分时；
+ *   智谱 Coding Plan 的积分口径未见节假日说明，故默认不启用，由调用点显式传入。
+ */
+function tierAtWithBounds(timeMs: number, bounds: readonly number[], holidays = false): PriceTierId {
+  if (isBeijingWeekend(timeMs) || (holidays && isBeijingHoliday(timeMs))) return 'offPeak'
   const minute = Math.floor(beijingMillisOfDay(timeMs) / 60_000)
   for (let i = 0; i + 1 < bounds.length; i += 2) {
     const start = bounds[i] ?? 0
@@ -349,6 +356,32 @@ function tierAtWithBounds(timeMs: number, bounds: readonly number[]): PriceTierI
 function isBeijingWeekend(timeMs: number): boolean {
   const day = new Date(timeMs + 8 * 3_600_000).getUTCDay()
   return day === 0 || day === 6
+}
+
+/**
+ * 中国法定节假日 —— **生成块，勿手改**。数据源
+ * [NateScarlet/holiday-cn](https://github.com/NateScarlet/holiday-cn)（逐年抓取国务院公告；
+ * 2026 年依据 https://www.gov.cn/zhengce/zhengceku/202511/content_7047091.htm）。
+ *
+ * 只收录峰谷计费起点（{@link WEEKEND_OFFPEAK_START_MS}，北京时间 2026-08-23 00:00）之后的日期：
+ * 更早的调用由 v1 规则定价，不涉及节假日。表中没有的年份退化为「仅周末低谷」，
+ * 国务院公布下一年安排后在此追加一条即可。
+ *
+ * 编码为空格分隔的 `YYYYMMDD` 列表（按年分组、同年日期连续排列，便于逐年追加）：
+ * 每个键长度固定为 8，故 `includes` 不会跨键误匹配；相比「区间 + 运行时展开」
+ * 省掉一段解析代码——client / index 两个 face 都要过 256 KiB 单文件上限。
+ */
+const CHINA_HOLIDAYS =
+  '20260925 20260926 20260927 20261001 20261002 20261003 20261004 20261005 20261006 20261007'
+
+/** 北京日期键 YYYYMMDD（与宿主时区无关）。 */
+function beijingDateKey(timeMs: number): string {
+  return new Date(timeMs + 8 * 3_600_000).toISOString().slice(0, 10).replace(/-/g, '')
+}
+
+/** 时刻是否落在北京时间法定节假日（仅覆盖 {@link CHINA_HOLIDAYS} 内已收录的年份）。 */
+function isBeijingHoliday(timeMs: number): boolean {
+  return CHINA_HOLIDAYS.includes(beijingDateKey(timeMs))
 }
 
 /** 峰谷切换边界（北京时间的当日分钟数）：09:00 / 12:00 / 14:00 / 18:00。 */
@@ -370,32 +403,38 @@ function beijingMillisOfDay(timeMs: number): number {
  *
  * 下一切换点统一定义为档位真正变化的最近边界：自当前时刻起逐天扫描工作日的
  * 09:00 / 12:00 / 14:00 / 18:00，候选时刻的档位由 {@link tierAt} 判定——
- * 周末（周六/周日）北京全天低谷、没有边界，扫描自然跳过；工作日深夜跨周末
- * 时落到周一 09:00 而非周末伪边界（issue #33）。
- * 最坏情形（周五 18:00 后 → 周一 09:00）约 63h，7 天窗口必然覆盖。
+ * 周末（周六/周日）与法定节假日北京全天低谷、没有边界，扫描自然跳过；工作日
+ * 深夜跨周末时落到周一 09:00 而非周末伪边界（issue #33）。
+ * 最坏情形是「长假 + 相邻周末」：最长连休 8 天（2025-10-01 ~ 10-08 型）时，
+ * 假期前最后一个工作日深夜的下一切换可落在约 9.4 天之后——故扫描窗口取
+ * 10 天。原实现取 7 天（注释记「最坏 63h」），在连休下会扫不到真边界而落进
+ * 兜底伪边界。
  * @param nowMs - 当前时刻（epoch 毫秒）。
  * @returns 当前档位与到下一切换边界的毫秒数。
  */
 export function tierCountdown(nowMs: number): { tier: PriceTierId; nextSwitchInMs: number } {
-  return tierCountdownWithBounds(nowMs, TIER_BOUNDARY_MINUTES)
+  return tierCountdownWithBounds(nowMs, TIER_BOUNDARY_MINUTES, true)
 }
 
-/** 按给定峰段边界计算当前档位与距下一切换的时长（扫描结构与 tierCountdown 相同）。 */
-function tierCountdownWithBounds(nowMs: number, bounds: readonly number[]): { tier: PriceTierId; nextSwitchInMs: number } {
-  const tier = tierAtWithBounds(nowMs, bounds)
+/**
+ * 按给定峰段边界计算当前档位与距下一切换的时长（扫描结构与 tierCountdown 相同）。
+ * @param holidays - 是否把法定节假日并入低谷日（见 {@link tierAtWithBounds}）。
+ */
+function tierCountdownWithBounds(nowMs: number, bounds: readonly number[], holidays = false): { tier: PriceTierId; nextSwitchInMs: number } {
+  const tier = tierAtWithBounds(nowMs, bounds, holidays)
   const dayMs = beijingMillisOfDay(nowMs)
-  for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+  for (let dayOffset = 0; dayOffset < 10; dayOffset++) {
     const dayStart = dayOffset * 86_400_000 - dayMs
     for (const boundary of bounds) {
       const inMs = dayStart + boundary * 60_000
       // 当天已过的边界不是候选；未来的边界按同一边界集判档位是否真变化。
       if (inMs <= 0) continue
-      if (tierAtWithBounds(nowMs + inMs, bounds) !== tier) {
+      if (tierAtWithBounds(nowMs + inMs, bounds, holidays) !== tier) {
         return { tier, nextSwitchInMs: inMs }
       }
     }
   }
-  // 不可达兜底：7 天窗口内必有档位切换（任一工作日至少一对边界）。
+  // 不可达兜底：10 天窗口覆盖最长连休（8 天）加相邻周末，窗口内必有档位切换。
   const firstBoundary = bounds[0] ?? 0
   return { tier, nextSwitchInMs: 86_400_000 - dayMs + firstBoundary * 60_000 }
 }
@@ -407,16 +446,19 @@ function tierCountdownWithBounds(nowMs: number, bounds: readonly number[]): { ti
  * @param leadMs - 提前量（毫秒）。
  */
 export function upcomingTierSwitch(nowMs: number, leadMs: number): { entering: PriceTierId; atMs: number } | null {
-  return upcomingSwitchWithBounds(nowMs, TIER_BOUNDARY_MINUTES, leadMs)
+  return upcomingSwitchWithBounds(nowMs, TIER_BOUNDARY_MINUTES, leadMs, true)
 }
 
-/** 按给定峰段边界的切换预告（扫描结构与 upcomingTierSwitch 相同）。 */
-function upcomingSwitchWithBounds(nowMs: number, bounds: readonly number[], leadMs: number): { entering: PriceTierId; atMs: number } | null {
-  const { nextSwitchInMs } = tierCountdownWithBounds(nowMs, bounds)
+/**
+ * 按给定峰段边界的切换预告（扫描结构与 upcomingTierSwitch 相同）。
+ * @param holidays - 是否把法定节假日并入低谷日（见 {@link tierAtWithBounds}）。
+ */
+function upcomingSwitchWithBounds(nowMs: number, bounds: readonly number[], leadMs: number, holidays = false): { entering: PriceTierId; atMs: number } | null {
+  const { nextSwitchInMs } = tierCountdownWithBounds(nowMs, bounds, holidays)
   if (nextSwitchInMs > leadMs) return null
   const atMs = nowMs + nextSwitchInMs
   // 边界另一侧的档位即即将进入的档位（边界时刻本身按新档位计）。
-  return { entering: tierAtWithBounds(atMs, bounds), atMs }
+  return { entering: tierAtWithBounds(atMs, bounds, holidays), atMs }
 }
 
 /** 计费通道的峰谷窗口：无窗口 / DeepSeek 按量分时 / 智谱 Coding Plan 积分分时。 */
@@ -443,7 +485,7 @@ export function rateChannelOf(modelKey: string | undefined, hasZhipuPlan: boolea
 /** 按计费通道的峰谷倒计时：none 返回 null（调用方据此隐藏档位 UI 与切换预告）。 */
 export function channelCountdown(nowMs: number, channel: RateChannel): { tier: PriceTierId; nextSwitchInMs: number } | null {
   switch (channel) {
-    case 'deepseek-metered': return tierCountdownWithBounds(nowMs, TIER_BOUNDARY_MINUTES)
+    case 'deepseek-metered': return tierCountdownWithBounds(nowMs, TIER_BOUNDARY_MINUTES, true)
     case 'zhipu-coding-plan': return tierCountdownWithBounds(nowMs, ZHIPU_CODING_PLAN_BOUNDARY_MINUTES)
     case 'none': return null
   }
@@ -452,7 +494,7 @@ export function channelCountdown(nowMs: number, channel: RateChannel): { tier: P
 /** 按计费通道的切换预告：语义同 upcomingTierSwitch，窗口取自通道；none 恒 null。 */
 export function channelUpcomingSwitch(nowMs: number, channel: RateChannel, leadMs: number): { entering: PriceTierId; atMs: number } | null {
   switch (channel) {
-    case 'deepseek-metered': return upcomingSwitchWithBounds(nowMs, TIER_BOUNDARY_MINUTES, leadMs)
+    case 'deepseek-metered': return upcomingSwitchWithBounds(nowMs, TIER_BOUNDARY_MINUTES, leadMs, true)
     case 'zhipu-coding-plan': return upcomingSwitchWithBounds(nowMs, ZHIPU_CODING_PLAN_BOUNDARY_MINUTES, leadMs)
     case 'none': return null
   }
