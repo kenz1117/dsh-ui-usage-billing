@@ -10,7 +10,8 @@
  * Google-style two-band billing is modeled per model: Gemini's Flex tier
  * prices spare-capacity traffic at -50%; DeepSeek splits peak
  * (weekdays 09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate —
- * weekends (Sat/Sun, Beijing) are charged at the off-peak rate all day.
+ * weekends (Sat/Sun, Beijing) and Chinese statutory holidays are charged at
+ * the off-peak rate all day (see {@link CHINA_HOLIDAYS}).
  * The estimator mixes both bands by a configured peak share ({@link DEFAULT_PEAK_SHARE}).
  *
  * Time-limited launch promos ({@link PricePromo}) never mutate the catalog:
@@ -182,7 +183,9 @@ export declare function isPeakHour(beijingHour: number): boolean;
 /**
  * 由时刻（epoch 毫秒）推断计费时段；时刻未知/非法时按高峰计（保守：未知
  * 时刻不低估成本，与社区 dsh-usage-chart 的 tierAt 语义一致）。
- * 周末（北京时间周六/周日）全天不区分峰谷，统一按低谷价。
+ * 周末（北京时间周六/周日）与中国法定节假日全天不区分峰谷，统一按低谷价
+ * （官方 2026-09-19 口径：调休上班的周末、法定节假日全天均按空闲时段计费；
+ * 调休上班日全部落在周末，故由周末分支覆盖，无需单列）。
  * @param timeMs - Unix epoch 毫秒；null/undefined/NaN 视为未知。
  */
 export declare function tierAt(timeMs: number | null | undefined): PriceTierId;
@@ -191,9 +194,12 @@ export declare function tierAt(timeMs: number | null | undefined): PriceTierId;
  *
  * 下一切换点统一定义为档位真正变化的最近边界：自当前时刻起逐天扫描工作日的
  * 09:00 / 12:00 / 14:00 / 18:00，候选时刻的档位由 {@link tierAt} 判定——
- * 周末（周六/周日）北京全天低谷、没有边界，扫描自然跳过；工作日深夜跨周末
- * 时落到周一 09:00 而非周末伪边界（issue #33）。
- * 最坏情形（周五 18:00 后 → 周一 09:00）约 63h，7 天窗口必然覆盖。
+ * 周末（周六/周日）与法定节假日北京全天低谷、没有边界，扫描自然跳过；工作日
+ * 深夜跨周末时落到周一 09:00 而非周末伪边界（issue #33）。
+ * 最坏情形是「长假 + 相邻周末」：最长连休 8 天（2025-10-01 ~ 10-08 型）时，
+ * 假期前最后一个工作日深夜的下一切换可落在约 9.4 天之后——故扫描窗口取
+ * 10 天。原实现取 7 天（注释记「最坏 63h」），在连休下会扫不到真边界而落进
+ * 兜底伪边界。
  * @param nowMs - 当前时刻（epoch 毫秒）。
  * @returns 当前档位与到下一切换边界的毫秒数。
  */
