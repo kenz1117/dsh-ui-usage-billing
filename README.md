@@ -278,6 +278,8 @@ npm publish --access public
 - [@ciphoo](https://github.com/ciphoo) — MiniMax 国内域 Token Plan 订阅额度支持（PR #5）、`minimax-cn` 订阅凭据接线（PR #12）、Windows 下账本并发写入 `MoveFileExW EPERM` 修复（PR #11）
 - [@fabulousyuann-tech](https://github.com/fabulousyuann-tech) — 会话删除后用量保留的持久 ledger 功能（PR #8）
 - [@hi-fangj](https://github.com/hi-fangj) — Token 每日图悬停精确明细（PR #21）、平价消耗胶囊开关（PR #22）、Token 每日图按模型视角与图例聚焦（PR #23）、性能面板按模型对比曲线（PR #24）
+- [@aizhimoran](https://github.com/aizhimoran) — 峰谷分档支持中国法定节假日与调休：DeepSeek 按量分时把法定节假日全天按空闲时段计费（官方 2026-09-19 口径），含 10 天倒计时扫描窗（issue #73、PR #74）
+- [@gitfangj](https://github.com/gitfangj) — `sync.sh` 在 macOS 缺省 bash 3.2 下的花括号变量兼容修复
 
 ## 📄 许可证
 
