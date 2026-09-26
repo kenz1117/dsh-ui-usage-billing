@@ -231,7 +231,7 @@ describe('collectSubscriptions MiniMax baseUrl routing', () => {
     expect(url).toBe('https://www.minimaxi.com/v1/token_plan/remains')
   })
 
-  it('honors an explicit per-plan baseUrl over the region default', async () => {
+  it('honors an explicit per-plan baseUrl origin over the region default', async () => {
     const fetchSpy = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -243,7 +243,9 @@ describe('collectSubscriptions MiniMax baseUrl routing', () => {
       [{ provider: 'minimax-token-plan-cn', baseUrl: 'https://staging.example.com/minimax-cn' }],
     )
     const [url] = fetchSpy.mock.calls[0] as unknown as [string]
-    expect(url).toBe('https://staging.example.com/minimax-cn/v1/token_plan/remains')
+    // issue #75：显式 origin 仍覆盖 region 默认，但 chat 网关风格的路径前缀
+    // （/minimax-cn）不再进订阅端点——版本段由 miniMaxEndpoint 自行补齐。
+    expect(url).toBe('https://staging.example.com/v1/token_plan/remains')
   })
 })
 
@@ -588,5 +590,61 @@ describe('commandcode adapter (5h/weekly windows + monthly credits)', () => {
     expect(quotas[0]).toMatchObject({ status: 'not-configured' })
     expect(quotas[0]?.hint).toContain('user_')
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('keeps the chat path prefix out of the billing endpoint (issue #75)', async () => {
+    // 用户在 chat 路由上配的 baseUrl 带网关前缀（/provider/v1）；订阅端点挂在
+    // origin 下，整段拼接会打出 /provider/v1/alpha/... 而 404。
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ windowLimits: { fiveHour: { used: 10, cap: 100 } } }),
+    }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, commandcodeApiKey: 'user_abc' },
+      [{ provider: 'commandcode', baseUrl: 'https://api.commandcode.ai/provider/v1' }],
+    )
+    expect(quotas[0]).toMatchObject({ status: 'ok' })
+    const [url] = fetchSpy.mock.calls[0] as unknown as [string]
+    expect(url).toBe('https://api.commandcode.ai/alpha/billing/credits')
+  })
+
+  it('falls back to the official origin when baseUrl is not a valid URL', async () => {
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ windowLimits: { weekly: { used: 5, cap: 100 } } }),
+    }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, commandcodeApiKey: 'user_abc' },
+      [{ provider: 'commandcode', baseUrl: 'not a url' }],
+    )
+    expect(quotas[0]).toMatchObject({ status: 'ok' })
+    const [url] = fetchSpy.mock.calls[0] as unknown as [string]
+    expect(url).toBe('https://api.commandcode.ai/alpha/billing/credits')
+  })
+
+  it('applies the same origin rule to the other subscription adapters (kimi)', async () => {
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          plan: 'Kimi For Coding',
+          limits: [{ detail: { limit: 100, remaining: 50 } }],
+          usage: { limit: 100, remaining: 50 },
+        },
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, kimiApiKey: 'kimi-key' },
+      [{ provider: 'kimi-coding', baseUrl: 'https://api.kimi.com/v1' }],
+    )
+    expect(quotas[0]).toMatchObject({ status: 'ok' })
+    const [url] = fetchSpy.mock.calls[0] as unknown as [string]
+    expect(url).toBe('https://api.kimi.com/coding/v1/usages')
   })
 })

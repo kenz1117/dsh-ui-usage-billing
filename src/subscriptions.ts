@@ -223,6 +223,22 @@ async function requestJson(url: string, init: RequestInit, timeoutMs: number): P
   return await withRetry(doFetch, { retries: 1, baseDelayMs: 250, maxDelayMs: 2000 })
 }
 
+/**
+ * 订阅端点挂在服务 origin 下（/coding、/zen、/api、/alpha 前缀），而用户在
+ * chat 路由上配置的 baseUrl 通常带路径前缀（如 CommandCode 网关的
+ * `https://api.commandcode.ai/provider/v1`，issue #75）——整段拼接会把 chat
+ * 前缀带进订阅端点导致 404。只取 origin；未配置回退官方默认，非法值同样
+ * 回退（订阅查询走「未读出」兜底而非抛错）。
+ */
+function subscriptionOrigin(configBaseUrl: string | undefined, fallback: string): string {
+  if (configBaseUrl === undefined || configBaseUrl.trim() === '') return fallback
+  try {
+    return new URL(configBaseUrl).origin
+  } catch {
+    return fallback
+  }
+}
+
 // ── Kimi For Coding ──────────────────────────────────────────────────────────
 
 /** Parse one Kimi limit window entry. */
@@ -273,7 +289,7 @@ function parseKimi(body: unknown): { plan?: string; windows: SubscriptionWindow[
 /** Collect the Kimi For Coding quota. */
 async function collectKimi(keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number): Promise<SubscriptionQuota> {
   const apiKey = keys.kimiApiKey.trim()
-  const base = config.baseUrl ?? 'https://api.kimi.com'
+  const base = subscriptionOrigin(config.baseUrl, 'https://api.kimi.com')
   if (apiKey === '') {
     return { provider: config.provider, displayName: 'Kimi For Coding', status: 'not-configured', windows: [] }
   }
@@ -463,7 +479,7 @@ function parseOpenCodeGoApi(body: unknown): SubscriptionWindow[] {
 /** Collect the OpenCode Go quota. */
 async function collectOpenCodeGo(keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number): Promise<SubscriptionQuota> {
   const apiKey = keys.opencodeApiKey.trim()
-  const base = config.baseUrl ?? 'https://opencode.ai'
+  const base = subscriptionOrigin(config.baseUrl, 'https://opencode.ai')
   if (apiKey === '') {
     return { provider: config.provider, displayName: 'OpenCode Go', status: 'not-configured', windows: [], hint: '未配置 key；可在 llm-pi-ai 里给 opencode(opencode-go) 配 apiKeyEnv，或让本机 OpenCode 凭据（~/.local/share/opencode/auth.json）可用' }
   }
@@ -538,18 +554,20 @@ export function parseMiniMaxRemains(body: unknown): SubscriptionWindow[] {
  * Resolve the MiniMax API host based on the configured provider id.
  *
  * 国内开发者走 MiniMax（`api.minimaxi.com`），海外走 MiniMax（`minimaxi.com`）。
- * User-explicit `config.baseUrl` wins when set, so deployments in either
- * region can still override the auto-pick (e.g. proxies / staging).
+ * User-explicit `config.baseUrl` wins by origin when set, so deployments in
+ * either region can still override the auto-pick (e.g. proxies / staging);
+ * chat path prefixes (e.g. `/v1`) are dropped — `miniMaxEndpoint` re-adds the
+ * version segment itself.
  */
 function resolveMiniMaxBaseUrl(config: SubscriptionPlanConfig): string {
-  if (typeof config.baseUrl === 'string' && config.baseUrl.trim() !== '') return config.baseUrl
+  const fallback = config.provider === 'minimax-cn' || config.provider === 'minimax-token-plan-cn'
+    ? 'https://api.minimaxi.com'
+    : 'https://www.minimaxi.com'
   // Both `minimax-cn` (DSH pi-ai official domestic id) and
   // `minimax-token-plan-cn` (this plugin's earlier chosen name) are CN
   // routes against api.minimaxi.com. Everything else (international) keeps
   // the www.minimaxi.com default.
-  return config.provider === 'minimax-cn' || config.provider === 'minimax-token-plan-cn'
-    ? 'https://api.minimaxi.com'
-    : 'https://www.minimaxi.com'
+  return subscriptionOrigin(config.baseUrl, fallback)
 }
 
 /** Display name for a MiniMax quota row, aligned with the display-name map. */
@@ -636,7 +654,7 @@ export function parseOpenRouterCredits(body: unknown): SubscriptionWindow[] {
 /** Collect the OpenRouter prepaid credits usage. */
 async function collectOpenRouter(keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number): Promise<SubscriptionQuota> {
   const apiKey = keys.openrouterApiKey.trim()
-  const base = config.baseUrl ?? 'https://openrouter.ai'
+  const base = subscriptionOrigin(config.baseUrl, 'https://openrouter.ai')
   if (apiKey === '') {
     return { provider: config.provider, displayName: 'OpenRouter', status: 'not-configured', windows: [], hint: '未配置 key；OpenRouter 的额度接口只认 Management Key，用推理 key 会 401' }
   }
@@ -696,7 +714,7 @@ export function parseAnthropicUsage(body: unknown): SubscriptionWindow[] {
 /** Collect the Claude Pro/Max subscription usage via the OAuth usage endpoint. */
 async function collectAnthropic(keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number): Promise<SubscriptionQuota> {
   const token = keys.anthropicApiKey.trim()
-  const base = config.baseUrl ?? 'https://api.anthropic.com'
+  const base = subscriptionOrigin(config.baseUrl, 'https://api.anthropic.com')
   const displayName = 'Claude (Anthropic)'
   if (token === '') {
     return {
@@ -763,7 +781,7 @@ export function parseCommandCodeCredits(body: unknown): SubscriptionWindow[] {
 /** Collect the CommandCode quota (5h/weekly windows + monthly credits). */
 async function collectCommandCode(keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number): Promise<SubscriptionQuota> {
   const apiKey = keys.commandcodeApiKey.trim()
-  const base = config.baseUrl ?? 'https://api.commandcode.ai'
+  const base = subscriptionOrigin(config.baseUrl, 'https://api.commandcode.ai')
   const displayName = SUBSCRIPTION_DISPLAY_NAMES['commandcode'] ?? 'CommandCode'
   if (apiKey === '') {
     return {
