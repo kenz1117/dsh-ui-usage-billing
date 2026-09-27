@@ -98,6 +98,9 @@ body {
   width: 100%;
   /* 允许卡片在 footer 横向 flex 行（无 wrap）里收缩，不靠 nowrap 金额撑开兄弟按钮。 */
   min-width: 0;
+  /* 容器查询锚点：同槽位多插件并排挤压时（issue #76），按实际可用宽度降级，
+     而不是让内容被 overflow:hidden 裁成残块。 */
+  container-type: inline-size;
   padding: 10px 14px;
   overflow: hidden;
   border: 1px solid var(--ds-border);
@@ -3870,5 +3873,46 @@ span.bandDot { cursor: default; }
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
   color: var(--ds-t-1);
+}
+
+/* ── 触发卡挤压降级（issue #76）：同槽位多插件并排时换装宿主原生行 ──
+   footer.action 是宿主的横向按钮行（.footerActions{display:flex}，无 wrap），
+   多插件同槽注入时卡片会被压缩，被动裁剪会丢成残块（issue #76 截图：只剩半个金额）。
+   改为按实际宽度主动降级，形态向宿主 panelRow 行看齐：
+   ≤230px：弃玻璃卡容器（背景/边框/阴影/模糊全去），收起趋势图与标题，
+           以「仪表 + 金额」的透明行贴侧栏，hover 用宿主原生交互底色；
+   ≤150px：再收金额，只留仪表图标（与窄栏 rail 图标形态一致）。 */
+
+@container (max-width: 230px) {
+  .trigger {
+    padding: 7px 8px;
+    border: none;
+    border-radius: 12px;
+    background: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .trigger::before,
+  .trigger::after {
+    display: none;
+  }
+  .trigger:hover,
+  .trigger:focus-visible {
+    background: var(--dsw-alias-interactive-bg-hover);
+    border-color: transparent;
+    box-shadow: none;
+    transform: none;
+  }
+  .triggerSpark,
+  .triggerLabel {
+    display: none;
+  }
+}
+
+@container (max-width: 150px) {
+  .triggerMain {
+    display: none;
+  }
 }
 
