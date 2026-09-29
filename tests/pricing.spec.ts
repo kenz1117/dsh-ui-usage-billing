@@ -357,15 +357,15 @@ describe('computeCostAt (P0-1)', () => {
   })
 
   it('recognizes Kimi K2.8 Preview id variants as one catalog entry', () => {
-    // 会员侧预览模型（开放平台未上架），日志里的 id 形态因通道而异；按 K2.7 Code
-    // 同价估算并标 estimated，费率表据此提示而非误当正式定价。
+    // 会员侧预览模型，日志里的 id 形态因通道而异；2026-09 起 TokenHub 已上架
+    // 按量条目（6.5 / 1.7 / 27），费率表按官方价展示，不再标 estimated。
     for (const id of ['kimi-k2.8-preview', 'kimi-k2.8', 'kimi-k2-8-preview', 'k2.8-preview', 'k2.8']) {
       expect(resolveCatalogKey(id)).toBe('kimi-k2.8-preview')
     }
     const entry = modelOf('k2.8')
     expect(entry.name).toBe('Kimi K2.8 Preview')
-    expect(entry.estimated).toBe(true)
-    expect(entry.price).toMatchObject({ input: 6.5, cacheHit: 1.3, output: 27 })
+    expect(entry.estimated).toBeUndefined()
+    expect(entry.price).toMatchObject({ input: 6.5, cacheHit: 1.7, output: 27 })
   })
 
   it('recognizes GPT-6 Astra and prices it at the official USD standard rates', () => {
@@ -674,18 +674,17 @@ describe('Qwen3.8 Flash list price with extra pricing rows', () => {
   const entry = modelOf('qwen3.8-flash')
 
   it('uses the official CNY list price', () => {
-    // 人民币刊例：输入 1 / 缓存命中 0.1 / 输出 3。
+    // 人民币刊例（官方价目页 2026-09-08 更新）：输入 0.8 / 缓存命中 0.1 / 输出 2.7。
     expect(entry.key).toBe('qwen-3.8-flash')
-    expect(entry.price).toMatchObject({ currency: 'CNY', input: 1, cacheHit: 0.1, output: 3 })
+    expect(entry.price).toMatchObject({ currency: 'CNY', input: 0.8, cacheHit: 0.1, output: 2.7 })
   })
 
   it('carries batch and explicit-cache rows as display-only reference prices', () => {
     const rows = entry.extraRows ?? []
-    // 四个附加维度齐全：显式缓存创建/命中 + Batch File + Batch Chat。
-    expect(rows.map(row => row.label)).toEqual(['显式缓存创建', '显式缓存命中', 'Batch File', 'Batch Chat'])
-    // Batch File 长期半价档：输入 0.5 / 输出 1.5；Batch Chat 与标准价一致。
-    expect(rows.find(row => row.label === 'Batch File')).toMatchObject({ input: 0.5, output: 1.5 })
-    expect(rows.find(row => row.label === 'Batch Chat')).toMatchObject({ input: 1, output: 3 })
+    // 官方能力表标注「批量推理 不支持」：只保留显式缓存创建/命中两行。
+    expect(rows.map(row => row.label)).toEqual(['显式缓存创建', '显式缓存命中'])
+    expect(rows.find(row => row.label === '显式缓存创建')).toMatchObject({ input: 1.25 })
+    expect(rows.find(row => row.label === '显式缓存命中')).toMatchObject({ input: 0.1 })
     expect(entry.promo).toBeUndefined()
   })
 })

@@ -6,15 +6,13 @@
 import type { ModelEntry } from './client/pricing.ts'
 
 /**
- * Built-in catalog of current mainstream models as of 2026-08-16, priced from
+ * Built-in catalog of current mainstream models as of 2026-09-29, priced from
  * each provider's official price page. Domestic providers are OpenAI-API
  * compatible and publish RMB prices directly; overseas providers publish USD
  * and convert through the exchange rate at estimate time. Retired models
  * (GPT-4o family, Gemini 2.x, GLM-4.x-lite, older Qwen) are deliberately
- * absent, as are Anthropic Claude models (their native API is not
- * OpenAI-compatible, so the harness cannot drive them directly). DeepSeek
- * keys match the harness stats file so real usage prices from the catalog;
- * unknown keys fall back to `other`.
+ * absent. DeepSeek keys match the harness stats file so real usage prices
+ * from the catalog; unknown keys fall back to `other`.
  *
  * Time-of-day billing (peak/off-peak) is now real: DeepSeek V4 officially
  * splits peak (09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate
@@ -81,7 +79,7 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     },
     peakHours: DEEPSEEK_PEAK_HOURS,
   },
-  // 智谱 GLM (OpenAI-compatible, 腾讯云 TokenHub 官方价 2026-08-14).
+  // 智谱 GLM (OpenAI-compatible, 腾讯云 TokenHub 官方价 2026-09).
   {
     key: 'glm',
     name: 'GLM-5.2',
@@ -150,7 +148,8 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'GLM-5.1',
     provider: '智谱 AI',
     colorVar: 'dsw-static-blue-600',
-    price: { currency: 'CNY', input: 6, cacheHit: 1.2, output: 24 },
+    // 腾讯云 TokenHub 价目 2026-09-24（≤32K 档）：输入 ¥6 / 命中 ¥1.3 / 输出 ¥24。
+    price: { currency: 'CNY', input: 6, cacheHit: 1.3, output: 24 },
   },
   {
     key: 'glm-5v-turbo',
@@ -181,16 +180,22 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'Qwen3.8 Flash',
     provider: '阿里通义',
     colorVar: 'dsw-static-blue-400',
-    // 人民币刊例：输入 1 / 缓存命中 0.1 / 输出 3。
-    price: { currency: 'CNY', input: 1, cacheHit: 0.1, output: 3 },
-    // 附加计价维度（纯展示，估算计费仍走主价三桶）：
-    // Batch File 为长期半价档；Batch Chat 原价与标准价一致。
+    // 人民币刊例（官方价目页 2026-09-08 更新）：输入 0.8 / 缓存命中 0.1 / 输出 2.7。
+    price: { currency: 'CNY', input: 0.8, cacheHit: 0.1, output: 2.7 },
+    // 附加计价维度（纯展示，估算计费仍走主价三桶）：显式缓存创建 1.25 / 命中 0.1。
+    // 官方能力表标注「批量推理 不支持」，无 Batch 档可列。
     extraRows: [
       { label: '显式缓存创建', input: 1.25 },
       { label: '显式缓存命中', input: 0.1 },
-      { label: 'Batch File', input: 0.5, output: 1.5, note: '长期半价' },
-      { label: 'Batch Chat', input: 1, output: 3, note: '与标准价一致' },
     ],
+  },
+  {
+    key: 'qwen-3.8-27b',
+    name: 'Qwen3.8 27B',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-blue-300',
+    // 27B dense 视觉语言开源模型（官方价目 2026-09）。
+    price: { currency: 'CNY', input: 3, cacheHit: 0.6, output: 12 },
   },
   {
     key: 'qwen-max',
@@ -253,7 +258,8 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'Doubao Seed-2.0 Mini',
     provider: '字节豆包',
     colorVar: 'dsw-static-red-300',
-    price: { currency: 'CNY', input: 0.2, cacheHit: 0.02, output: 2 },
+    // 官方 2.0-mini 价目（2026-09 核对）：缓存命中 ¥0.04（旧值 0.02 已过时）。
+    price: { currency: 'CNY', input: 0.2, cacheHit: 0.04, output: 2 },
   },
   {
     key: 'doubao-1.6',
@@ -283,6 +289,14 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     provider: '字节豆包',
     colorVar: 'dsw-static-red-300',
     price: { currency: 'CNY', input: 3, cacheHit: 0.6, output: 15 },
+  },
+  {
+    key: 'doubao-seed-2.1-lite',
+    name: 'Doubao Seed-2.1 Lite',
+    provider: '字节豆包',
+    colorVar: 'dsw-static-red-300',
+    // 1M 上下文三模态（火山方舟官方价目 2026-09）。
+    price: { currency: 'CNY', input: 0.8, cacheHit: 0.16, output: 2.7 },
   },
   // 月之暗面 Kimi (OpenAI-compatible, 腾讯云 TokenHub 官方价 2026-08-14).
   {
@@ -459,6 +473,22 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     price: { currency: 'USD', input: 10, cacheHit: 1, output: 50 },
   },
   {
+    key: 'gpt-6-sol',
+    name: 'GPT-6 Sol',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    // 2026-09-22 发布（官方 id gpt-6-sol）：标准档 $2 / $0.2 / $10。
+    price: { currency: 'USD', input: 2, cacheHit: 0.2, output: 10 },
+  },
+  {
+    key: 'gpt-6-luna',
+    name: 'GPT-6 Luna',
+    provider: 'OpenAI',
+    colorVar: 'dsw-static-green-400',
+    // 2026-09-22 发布（官方 id gpt-6-luna）：$0.1 / $0.01 / $0.5，官方明确缓存输入按 0.1× 计价。
+    price: { currency: 'USD', input: 0.1, cacheHit: 0.01, output: 0.5 },
+  },
+  {
     key: 'gpt-5.6-sol',
     name: 'GPT-5.6 Sol',
     provider: 'OpenAI',
@@ -487,7 +517,7 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'ds-green',
     price: { currency: 'USD', input: 0.2, cacheHit: 0.02, output: 1.2 },
   },
-  // Google — Gemini 3.x (ai.google.dev/gemini-api/docs/pricing 2026-08).
+  // Google — Gemini 3.x (ai.google.dev/gemini-api/docs/pricing 2026-09).
   // Google does NOT bill by time of day: Standard is the real-time full
   // price, while the Flex tier prices spare-capacity traffic at exactly -50%
   // (1-15 min latency). The estimator treats Standard as the peak band and
@@ -508,6 +538,41 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     tierSemantics: 'latency',
   },
   {
+    key: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
+    provider: 'Google',
+    colorVar: 'ds-blue',
+    price: {
+      currency: 'USD',
+      input: 1.5,
+      cacheHit: 0.15,
+      output: 7.5,
+      offPeak: { input: 0.75, cacheHit: 0.075, output: 3.75 },
+    },
+    // 3.6 / 3.7 / 3.8 Flash 均享官方 introductory 促销（整单 5 折，含 Flex 档），
+    // 至 2026-12-31（UTC 收尾 = 北京 2027-01-01 00:00），到期自动恢复刊例价。
+    promo: { factor: 0.5, endsAtMs: Date.UTC(2026, 11, 31, 16, 0, 0), note: 'introductory 促销至 2026-12-31' },
+    peakHours: GEMINI_PEAK_HOURS,
+    tierSemantics: 'latency',
+  },
+  {
+    key: 'gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-300',
+    // 与 3.8 Flash 完全同价同促销结构。
+    price: {
+      currency: 'USD',
+      input: 1.5,
+      cacheHit: 0.15,
+      output: 7.5,
+      offPeak: { input: 0.75, cacheHit: 0.075, output: 3.75 },
+    },
+    promo: { factor: 0.5, endsAtMs: Date.UTC(2026, 11, 31, 16, 0, 0), note: 'introductory 促销至 2026-12-31' },
+    peakHours: GEMINI_PEAK_HOURS,
+    tierSemantics: 'latency',
+  },
+  {
     key: 'gemini-flash',
     name: 'Gemini 3.6 Flash',
     provider: 'Google',
@@ -519,10 +584,11 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
       output: 7.5,
       offPeak: { input: 0.75, cacheHit: 0.075, output: 3.75 },
     },
+    promo: { factor: 0.5, endsAtMs: Date.UTC(2026, 11, 31, 16, 0, 0), note: 'introductory 促销至 2026-12-31' },
     peakHours: GEMINI_PEAK_HOURS,
     tierSemantics: 'latency',
   },
-  // xAI — current Grok family (docs.x.ai 2026-08; Grok 4.7 2026-09-21 与 4.6 同价).
+  // xAI — current Grok family (docs.x.ai 2026-09; Grok 4.7 2026-09-21 与 4.6 同价).
   {
     key: 'grok-4.7',
     name: 'Grok 4.7',
@@ -544,6 +610,14 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'dsw-static-neutral-bluish-500',
     price: { currency: 'USD', input: 1.25, cacheHit: 0.2, output: 2.5 },
   },
+  {
+    key: 'grok-build-0.1',
+    name: 'Grok Build 0.1',
+    provider: 'xAI',
+    colorVar: 'dsw-static-neutral-bluish-500',
+    // 256K 上下文编码专用（docs.x.ai 2026-09）。
+    price: { currency: 'USD', input: 1, cacheHit: 0.2, output: 2 },
+  },
   // Meta — Llama 4 (Together/OpenRouter list rates 2026-08).
   {
     key: 'llama',
@@ -559,7 +633,8 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'dsw-static-red-400',
     price: { currency: 'USD', input: 0.1, cacheHit: 0.025, output: 0.3 },
   },
-  // Anthropic Claude / Mistral / Cohere：models.dev 公开美元价（USD / 每百万 token）。
+  // Anthropic Claude（platform.claude.com 官方价目 2026-09）/ Mistral / Cohere：
+  // models.dev 公开美元价（USD / 每百万 token）。
   {
     key: 'claude-opus-4-6',
     name: 'Claude Opus 4.6',
@@ -593,6 +668,29 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'Claude Sonnet 5',
     provider: 'Anthropic',
     colorVar: 'dsw-static-red-400',
+    price: { currency: 'USD', input: 2, cacheHit: 0.2, output: 10 },
+  },
+  {
+    key: 'claude-fable-5-1',
+    name: 'Claude Fable 5.1',
+    provider: 'Anthropic',
+    colorVar: 'ds-red',
+    // 2026-09 新旗舰；同期同价发布的 Mythos 5.1（$10 / $0.25 / $50）不单列。
+    price: { currency: 'USD', input: 10, cacheHit: 0.25, output: 50 },
+  },
+  {
+    key: 'claude-opus-5-5',
+    name: 'Claude Opus 5.5',
+    provider: 'Anthropic',
+    colorVar: 'ds-red',
+    price: { currency: 'USD', input: 4, cacheHit: 0.2, output: 20 },
+  },
+  {
+    key: 'claude-sonnet-5-5',
+    name: 'Claude Sonnet 5.5',
+    provider: 'Anthropic',
+    colorVar: 'dsw-static-red-400',
+    // 约 2026-09-28 发布；Haiku 5.5 官方称即将推出，上架后补录。
     price: { currency: 'USD', input: 2, cacheHit: 0.2, output: 10 },
   },
   {
@@ -776,11 +874,9 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'Kimi K2.8 Preview',
     provider: '月之暗面',
     colorVar: 'dsw-static-cyan-400',
-    // 官方未公布按量单价：K2.8 Preview 是 Kimi Code 会员侧模型（2026-09-11 全量
-    // 上线，会员 API 的模型 ID 为 kimi-for-coding），开放平台未上架（定价表只有
-    // K3 / K2.7 Code / K2.6）。按 K2.7 Code 同价估算。
-    price: { currency: 'CNY', input: 6.5, cacheHit: 1.3, output: 27 },
-    estimated: true,
+    // 官方按量价（元 / 每百万 token，TokenHub 已上架按量条目 2026-09）：
+    // 输入 ¥6.5（未命中）/ ¥1.7（命中）/ 输出 ¥27。
+    price: { currency: 'CNY', input: 6.5, cacheHit: 1.7, output: 27 },
   },
   {
     key: 'kimi-k2.6-fast',
@@ -870,6 +966,14 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'claude-haiku-4.5': 'claude-haiku-4-5',
   'claude-opus-5': 'claude-opus-5',
   'claude-sonnet-5': 'claude-sonnet-5',
+  // Claude 5.x 新模型（2026-09）：点/横杠/短名变体归一。
+  'claude-fable-5-1': 'claude-fable-5-1',
+  'claude-fable-5.1': 'claude-fable-5-1',
+  'claude-fable': 'claude-fable-5-1',
+  'claude-opus-5-5': 'claude-opus-5-5',
+  'claude-opus-5.5': 'claude-opus-5-5',
+  'claude-sonnet-5-5': 'claude-sonnet-5-5',
+  'claude-sonnet-5.5': 'claude-sonnet-5-5',
   'mistral-large-2512': 'mistral-large-2512',
   'mistral-large-3': 'mistral-large-2512',
   'mistral-small-2603': 'mistral-small-2603',
@@ -905,8 +1009,12 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'doubao-seed-2.1-pro-290000': 'doubao-seed-2.1-pro',
   'doubao-seed-2.1-turbo': 'doubao-seed-2.1-turbo',
   'doubao-seed-2-1-turbo': 'doubao-seed-2.1-turbo',
+  'doubao-seed-2.1-lite': 'doubao-seed-2.1-lite',
+  'doubao-seed-2-1-lite': 'doubao-seed-2.1-lite',
   'qwen3.8-max': 'qwen-3.8-max',
   'qwen3.8-flash': 'qwen-3.8-flash',
+  'qwen3.8-27b': 'qwen-3.8-27b',
+  'qwen-3.8-27b': 'qwen-3.8-27b',
   'qwen3.7-max': 'qwen-max',
   // 主流缺失/新增模型别名（点/横杠/短名）。
   'qwen3.6-max': 'qwen3.6-max',
@@ -961,4 +1069,15 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   // OpenAI GPT-6 Astra：官方 id 为 `gpt-6-astra`（2026-09-03 发布），短名形态一并归一。
   'gpt-6': 'gpt-6-astra',
   'gpt-6-astra': 'gpt-6-astra',
+  // GPT-6 Sol / Luna（2026-09-22 发布）：官方 id 与目录键一致，收录即覆盖归一。
+  'gpt-6-sol': 'gpt-6-sol',
+  'gpt-6-luna': 'gpt-6-luna',
+  // Google Gemini 3.7 / 3.8 Flash：点/横杠变体归一。
+  'gemini-3.8-flash': 'gemini-3.8-flash',
+  'gemini-3-8-flash': 'gemini-3.8-flash',
+  'gemini-3.7-flash': 'gemini-3.7-flash',
+  'gemini-3-7-flash': 'gemini-3.7-flash',
+  // xAI Grok Build：短名归一。
+  'grok-build-0.1': 'grok-build-0.1',
+  'grok-build': 'grok-build-0.1',
 }
