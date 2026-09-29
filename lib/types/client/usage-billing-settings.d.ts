@@ -132,6 +132,22 @@ export declare const PINNED_MODELS_EVENT = "dsh.ui-usage-billing.pinned-pref";
 export declare function loadPinnedModels(): string[];
 /** 写入固定模型列表。失败静默（展示偏好非关键）。 */
 export declare function savePinnedModels(keys: readonly string[]): void;
+/**
+ * 厂商（提供商）组的展开集合与「仅看今日」过滤（issue #77）。
+ * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
+ */
+/** localStorage key：当前展开的厂商组名列表（默认收起，仅记录用户展开过的组）。 */
+export declare const PROVIDER_EXPANDED_STORAGE_KEY = "dsh.ui-usage-billing.provider-expanded";
+/** 读取展开的厂商组名列表（损坏/非数组/非字符串项一律丢弃）。 */
+export declare function loadProviderExpanded(): string[];
+/** 写入展开的厂商组名列表。失败静默（展示偏好非关键）。 */
+export declare function saveProviderExpanded(names: readonly string[]): void;
+/** localStorage key：「仅看今日」开关（默认关）。 */
+export declare const PROVIDERS_TODAY_STORAGE_KEY = "dsh.ui-usage-billing.providers-today";
+/** 读取「仅看今日」开关。 */
+export declare function loadProvidersTodayOnly(): boolean;
+/** 写入「仅看今日」开关。失败静默（展示偏好非关键）。 */
+export declare function saveProvidersTodayOnly(enabled: boolean): void;
 /** 界面语言（与币种解耦后独立持久化）。 */
 export type BillingLanguage = 'zh' | 'en';
 /** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */

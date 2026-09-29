@@ -296,6 +296,9 @@ export type UsageBillingKey =
   | 'relayKindNewApi'
   | 'relayKindSub2Api'
   | 'relayKindUnknown'
+  | 'expandAll'
+  | 'collapseAll'
+  | 'todayOnly'
 
 export const NS = 'usageBilling'
 
@@ -596,6 +599,9 @@ export const zh: Record<UsageBillingKey, string> = {
   'relayKindNewApi': 'New API',
   'relayKindSub2Api': 'Sub2API',
   'relayKindUnknown': '未识别',
+  'expandAll': '全部展开',
+  'collapseAll': '全部收起',
+  'todayOnly': '仅看今日',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -895,4 +901,7 @@ export const en: Record<UsageBillingKey, string> = {
   'relayKindNewApi': 'New API',
   'relayKindSub2Api': 'Sub2API',
   'relayKindUnknown': 'Unknown',
+  'expandAll': 'Expand all',
+  'collapseAll': 'Collapse all',
+  'todayOnly': 'Today only',
 }

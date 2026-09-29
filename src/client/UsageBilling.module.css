@@ -2694,6 +2694,39 @@ span.bandDot { cursor: default; }
   margin-bottom: 10px;
 }
 
+/* 可折叠厂商组头（issue #77）：整行可点；箭头由伪元素绘制（体积考量不放 span），
+   展开态旋转 90°，手感与会话折叠（issue #42）一致。 */
+.providerGroupCollapsible {
+  cursor: pointer;
+}
+
+.providerGroupCollapsible .providerGroupTitle::before {
+  content: '›';
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--ds-t-3);
+}
+
+.providerGroupCollapsible[aria-expanded='true'] .providerGroupTitle::before {
+  transform: rotate(90deg);
+}
+
+/* 厂商组控制行（issue #77）：一键展开/收起按钮 + 仅看今日开关，置于组列表上方。 */
+.providerCtlRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.providerTodayToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--ds-t-3);
+}
+
 .providerGroupTitle {
   display: inline-flex;
   align-items: center;

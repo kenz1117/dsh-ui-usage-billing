@@ -80,6 +80,8 @@ describe('provider-first channel grouping', () => {
     const groups = screen.getAllByTestId('billing-provider-group')
     const tokenhub = groups.find(group => group.textContent?.includes('腾讯云 TokenHub'))
     expect(tokenhub).toBeDefined()
+    // 厂商组默认收起（issue #77）：点击组头展开后才能断言模型明细与费用行。
+    fireEvent.click(tokenhub!.querySelector('[data-testid="billing-provider-group-head"]')!)
     expect(tokenhub!.textContent).toContain('GLM-5.3-Flash')
     expect(tokenhub!.textContent).toContain('¥1.00')
   })
@@ -137,6 +139,8 @@ describe('subscription channel shows catalog-price estimate (P3)', () => {
     const groups = screen.getAllByTestId('billing-provider-group')
     const plan = groups.find(group => group.textContent?.includes('腾讯云 Token Plan'))
     expect(plan).toBeDefined()
+    // 厂商组默认收起（issue #77）：展开后模型行才渲染。
+    fireEvent.click(plan!.querySelector('[data-testid="billing-provider-group-head"]')!)
     expect(plan!.textContent).toContain('GLM-5.3')
     // 订阅通道行：金额在前 + 「订阅」短标签在后（glm-5.3：输入 ¥8 / 输出 ¥28 → 0.22 元）。
     const badge = plan!.querySelector('[data-testid="billing-plan-badge"]')

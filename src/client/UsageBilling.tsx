@@ -32,6 +32,10 @@ import {
   loadCurrency,
   loadPinnedModels,
   PINNED_MODELS_EVENT,
+  loadProviderExpanded,
+  loadProvidersTodayOnly,
+  saveProviderExpanded,
+  saveProvidersTodayOnly,
   loadLanguage,
   loadLiveCostBarPrefs,
   loadSiteListPrefs,
@@ -1693,7 +1697,12 @@ function BalanceDetailPopover({
   const granted = fmt(balance.grantedBalance)
   const topped = fmt(balance.toppedUpBalance)
   return (
-    <span className={css.balanceDetailPop} data-testid="billing-balance-detail-pop">
+    <span
+      className={css.balanceDetailPop}
+      data-testid="billing-balance-detail-pop"
+      /* 弹窗点击不冒泡到厂商组头：否则切换折叠会连带收起弹窗（issue #77）。 */
+      onClick={event => { event.stopPropagation() }}
+    >
       <span className={css.balanceDetailHead}>
         <span className={css.balanceDetailTitle}>{balance.displayName}</span>
         <button type="button" className={css.balanceDetailClose} aria-label={t('close')} onClick={onClose}>×</button>
@@ -1983,6 +1992,29 @@ function BillingDashboard({
     })
   }, [])
 
+  // 厂商（提供商）组展开状态（issue #77）：默认收起，点击组头展开模型明细与
+  // 订阅额度。组名作 key，展开集合 localStorage 持久化——重开面板保持上次状态。
+  const [expandedProviders, setExpandedProviders] = useState<ReadonlySet<string>>(() => new Set(loadProviderExpanded()))
+  const toggleProvider = useCallback((name: string) => {
+    setExpandedProviders(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      saveProviderExpanded([...next])
+      return next
+    })
+  }, [])
+  // 「仅看今日」（issue #77）：只保留当日有消耗的厂商组与模型行，花费小计按
+  // 当日计；余额与订阅额度是账户状态，数值本身不受过滤影响。localStorage 持久化。
+  const [providersTodayOnly, setProvidersTodayOnly] = useState(() => loadProvidersTodayOnly())
+  const toggleProvidersTodayOnly = useCallback(() => {
+    setProvidersTodayOnly(prev => {
+      const next = !prev
+      saveProvidersTodayOnly(next)
+      return next
+    })
+  }, [])
+
 
   // usage_stats 工具开关：经插件自带的 HTTP 接口读写（不依赖宿主浏览器设置白名单）。
   // 挂载时读一次当前值；点按乐观切换并回写，写失败回滚。工具注入是启动期决策，重启生效。
@@ -2090,7 +2122,11 @@ function BillingDashboard({
             data-testid="billing-balance-days-badge"
             title={t('balanceDays').replace('{days}', String(days))}
             aria-label={`${balance.displayName} ${t('balanceDays').replace('{days}', String(days))}`}
-            onClick={() => { setBalanceDetailFor(balanceDetailFor === balance.provider ? undefined : balance.provider) }}
+            /* 圆圈点击切换余额详情，不冒泡到厂商组头的折叠切换（issue #77）。 */
+            onClick={event => {
+              event.stopPropagation()
+              setBalanceDetailFor(balanceDetailFor === balance.provider ? undefined : balance.provider)
+            }}
           >
             ?
           </button>
@@ -2258,8 +2294,15 @@ function BillingDashboard({
   // 哪家的模型」。数据源：byDayModelsSite 模型×日×通道三维（FOLD_VERSION 8 起
   // 全量快照必含；旧快照缺失时模型统一落「未知路由」组，首次聚合后即恢复）。
   const providerGroups: ProviderBillingGroup[] = useMemo(() => {
+    // 仅看今日（issue #77）：数据源收缩到当日（本地时区）一个桶——模型行与花费
+    // 小计随之按当日计；余额与订阅额度是账户状态，数值本身不参与按日过滤。
+    let siteSource = stats.byDayModelsSite
+    if (providersTodayOnly) {
+      const today = localDayStamp()
+      siteSource = { [today]: stats.byDayModelsSite?.[today] ?? {} }
+    }
     const cells = new Map<string, Map<string, { calls: number; input: number; output: number; cacheHit: number; cacheMiss: number; cost: number }>>()
-    for (const models of Object.values(stats.byDayModelsSite ?? {})) {
+    for (const models of Object.values(siteSource ?? {})) {
       for (const [modelKey, sites] of Object.entries(models)) {
         for (const [siteKey, usage] of Object.entries(sites)) {
           let bucket = cells.get(siteKey)
@@ -2395,7 +2438,9 @@ function BillingDashboard({
         })
       }
     }
-    return groups
+    // 仅看今日：无当日模型消耗的组（纯订阅 / 纯余额组）一并隐藏。
+    const visible = providersTodayOnly ? groups.filter(group => group.models.length > 0) : groups
+    return visible
       .sort((a, b) => {
         const diff = providerCostOf(b) - providerCostOf(a)
         if (diff !== 0) return diff
@@ -2405,7 +2450,21 @@ function BillingDashboard({
         if (a.models.length === 0) return 1
         return a.name.localeCompare(b.name, 'zh')
       })
-  }, [stats.byDayModelsSite, stats.byModel, quotas, balances, health, lang, t])
+  }, [stats.byDayModelsSite, stats.byModel, quotas, balances, health, lang, t, providersTodayOnly])
+
+  // 一键展开/收起（issue #77）：只作用于有明细可展开的组（模型行或订阅卡）；
+  // 纯余额组无内容可折叠，不参与计数与按钮文案判定。
+  const collapsibleProviderNames = useMemo(
+    () => providerGroups.filter(group => group.models.length > 0 || group.subscriptions.length > 0).map(group => group.name),
+    [providerGroups],
+  )
+  const providersAllExpanded = collapsibleProviderNames.length > 0
+    && collapsibleProviderNames.every(name => expandedProviders.has(name))
+  const toggleAllProviders = (): void => {
+    const next = new Set(providersAllExpanded ? [] : collapsibleProviderNames)
+    setExpandedProviders(next)
+    saveProviderExpanded([...next])
+  }
 
   // 厂商视图与通道视图共用模型表（同列结构）：表头与模型名单元格各只保留一份
   // JSX，控制 bundle 体积（Store 256KiB 单文件门禁）。showTags 时才渲染估算价
@@ -3392,16 +3451,46 @@ function BillingDashboard({
                     {t('subscriptionsStale')}
                   </div>
                 )}
+                {/* 控制行恒常显示（issue #77 反馈）：仅看今日过滤后组可能为空，
+                控制行若随之落入空态分支，开关会被藏掉而关不回去。 */}
+                <div className={css.providerCtlRow} data-testid="billing-provider-controls">
+                  <button type="button" className={css.exportButton} onClick={toggleAllProviders}>
+                    {providersAllExpanded ? t('collapseAll') : t('expandAll')}
+                  </button>
+                  <span className={css.providerTodayToggle}>
+                    <span>{t('todayOnly')}</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={providersTodayOnly}
+                      data-testid="billing-provider-today-toggle"
+                      className={clsx(css.switch, providersTodayOnly && css.switchOn)}
+                      onClick={toggleProvidersTodayOnly}
+                    >
+                      <span className={css.switchKnob} />
+                    </button>
+                  </span>
+                </div>
                 {providerGroups.length === 0 ? (
                   <div className={css.emptyRow} data-testid="billing-provider-empty">
                     {t('noData')}
                   </div>
                 ) : (
                   <div className={css.providerGroupList} data-testid="billing-provider-groups">
-                    {providerGroups.map(group => (
+                    {providerGroups.map(group => {
+                      // 折叠交互（issue #77）：有明细（模型行或订阅卡）的组默认收起，
+                      // 点击组头切换；纯余额组无内容可展开，头部不可点、不显示箭头。
+                      const collapsible = group.models.length > 0 || group.subscriptions.length > 0
+                      const open = collapsible && expandedProviders.has(group.name)
+                      return (
                       <div key={group.name} className={css.providerGroup} data-testid="billing-provider-group">
                         {/* 厂商组头部：健康点 + 入口种类徽章 + 厂商名 + 订阅套数；费用/余额在右侧固定槽。 */}
-                        <div className={css.providerGroupHead}>
+                        <div
+                          className={clsx(css.providerGroupHead, collapsible && css.providerGroupCollapsible)}
+                          data-testid="billing-provider-group-head"
+                          aria-expanded={collapsible ? open : undefined}
+                          onClick={collapsible ? () => { toggleProvider(group.name) } : undefined}
+                        >
                           <span className={css.providerGroupTitle}>
                             <span className={clsx(css.healthDot, group.dot)} aria-hidden="true" />
                             {(() => {
@@ -3469,6 +3558,8 @@ function BillingDashboard({
                                 rel="noreferrer"
                                 title={t('rechargeHint')}
                                 aria-label={`${providerName(group.name)} ${t('recharge')}`}
+                                /* 点充值外链不触发组头折叠切换。 */
+                                onClick={event => { event.stopPropagation() }}
                               >
                                 {t('recharge')}
                               </a>
@@ -3478,6 +3569,8 @@ function BillingDashboard({
                             )}
                           </span>
                         </div>
+                        {/* 展开明细（issue #77）：模型行与订阅卡收在组头之下，展开才渲染。 */}
+                        {open && (<>
                         {/* 模型用量子表：无余额列（余额已在厂商头部显示一次）。 */}
                         {group.models.length > 0 && (
                           <div className={clsx(css.tableScroll, css.modelTableScroll)} data-testid="billing-table-scroll">
@@ -3607,8 +3700,11 @@ function BillingDashboard({
                             })}
                           </div>
                         )}
+                        </>
+                        )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </section>

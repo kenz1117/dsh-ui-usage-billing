@@ -312,6 +312,8 @@ describe('UsageBilling real-data surface', () => {
     const groups = await screen.findAllByTestId('billing-provider-group')
     const deepseek = groups.find(group => group.textContent?.includes('DeepSeek 官方'))
     expect(deepseek).toBeDefined()
+    // 厂商组默认收起（issue #77）：点击组头展开后模型用量表才渲染。
+    fireEvent.click(deepseek!.querySelector('[data-testid="billing-provider-group-head"]')!)
     const table = deepseek!.querySelector('[data-testid="billing-table-scroll"]')
     expect(table).not.toBeNull()
     await waitFor(() => { expect(table!.textContent).toContain('mi-mimo-2.5') })
@@ -408,12 +410,15 @@ describe('UsageBilling real-data surface', () => {
     // 月之暗面组：订阅卡片 + 套数徽标，无模型用量表（无该厂商模型）。
     const kimi = groups.find(group => group.textContent?.includes('月之暗面'))
     expect(kimi).toBeDefined()
+    // 厂商组默认收起（issue #77）：订阅卡片与模型表都收在组头之下，展开后断言。
+    fireEvent.click(kimi!.querySelector('[data-testid="billing-provider-group-head"]')!)
     expect(kimi!.querySelector('[data-testid="billing-subscription-card"]')).not.toBeNull()
     expect(kimi!.querySelector('[data-testid="billing-provider-sub-count"]')?.textContent).toContain('1')
     expect(kimi!.querySelector('[data-testid="billing-table-scroll"]')).toBeNull()
     // DeepSeek 组：模型用量表，无订阅卡片。
     const deepseek = groups.find(group => group.textContent?.includes('DeepSeek'))
     expect(deepseek).toBeDefined()
+    fireEvent.click(deepseek!.querySelector('[data-testid="billing-provider-group-head"]')!)
     expect(deepseek!.querySelector('[data-testid="billing-table-scroll"]')).not.toBeNull()
     expect(deepseek!.querySelector('[data-testid="billing-subscription-card"]')).toBeNull()
   })
@@ -448,11 +453,13 @@ describe('UsageBilling real-data surface', () => {
     fireEvent.click(container.querySelector('button')!)
     fireEvent.click(await screen.findByTestId('billing-tab-providers'))
     const groups = await screen.findAllByTestId('billing-provider-group')
-    const xiaomi = groups.find(group => group.textContent?.includes('mi-mimo-2.5'))
+    // 组头按模型名匹配改路由名：厂商组默认收起（issue #77）后模型行不在组内文本中。
+    const xiaomi = groups.find(group => group.textContent?.includes('xiaomi-token-plan-cn'))
     expect(xiaomi).toBeDefined()
     // 直连组头：「直连」徽章 + 拆出的路由名（direct:xiaomi-token-plan-cn 无前缀直呼）。
     expect(xiaomi!.querySelector('[data-testid="billing-kind-badge"]')?.textContent).toBe('直连')
-    // 同一直连通道组：既有模型用量表（非订阅模型显示费用），又有订阅卡片。
+    // 厂商组默认收起（issue #77）：展开后断言模型用量表与订阅卡片同组共存。
+    fireEvent.click(xiaomi!.querySelector('[data-testid="billing-provider-group-head"]')!)
     expect(xiaomi!.querySelector('[data-testid="billing-table-scroll"]')).not.toBeNull()
     expect(xiaomi!.querySelector('[data-testid="billing-subscription-card"]')).not.toBeNull()
     // 非订阅模型显示实际费用（0.40 元），不挂「订阅」标签（订阅包含胶囊只出现在订阅通道行）。

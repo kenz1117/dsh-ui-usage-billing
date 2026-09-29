@@ -292,6 +292,54 @@ export function savePinnedModels(keys: readonly string[]): void {
   }
 }
 
+/**
+ * 厂商（提供商）组的展开集合与「仅看今日」过滤（issue #77）。
+ * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
+ */
+
+/** localStorage key：当前展开的厂商组名列表（默认收起，仅记录用户展开过的组）。 */
+export const PROVIDER_EXPANDED_STORAGE_KEY = 'dsh.ui-usage-billing.provider-expanded'
+
+/** 读取展开的厂商组名列表（损坏/非数组/非字符串项一律丢弃）。 */
+export function loadProviderExpanded(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PROVIDER_EXPANDED_STORAGE_KEY) ?? '[]') as unknown
+    return Array.isArray(raw) ? raw.filter((k): k is string => typeof k === 'string' && k !== '') : []
+  } catch {
+    return []
+  }
+}
+
+/** 写入展开的厂商组名列表。失败静默（展示偏好非关键）。 */
+export function saveProviderExpanded(names: readonly string[]): void {
+  try {
+    localStorage.setItem(PROVIDER_EXPANDED_STORAGE_KEY, JSON.stringify(names))
+  } catch {
+    // ignore: storage full / unavailable — display preference is non-critical.
+  }
+}
+
+/** localStorage key：「仅看今日」开关（默认关）。 */
+export const PROVIDERS_TODAY_STORAGE_KEY = 'dsh.ui-usage-billing.providers-today'
+
+/** 读取「仅看今日」开关。 */
+export function loadProvidersTodayOnly(): boolean {
+  try {
+    return localStorage.getItem(PROVIDERS_TODAY_STORAGE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** 写入「仅看今日」开关。失败静默（展示偏好非关键）。 */
+export function saveProvidersTodayOnly(enabled: boolean): void {
+  try {
+    localStorage.setItem(PROVIDERS_TODAY_STORAGE_KEY, enabled ? '1' : '0')
+  } catch {
+    // ignore: storage full / unavailable — display preference is non-critical.
+  }
+}
+
 /** 界面语言（与币种解耦后独立持久化）。 */
 export type BillingLanguage = 'zh' | 'en'
 
