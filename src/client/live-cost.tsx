@@ -261,7 +261,16 @@ function useLiveCostData(sessionId: SessionId): {
   const [quotas, setQuotas] = useState<readonly QuotaSlice[]>([])
   // 峰谷倒计时独立跳动（30 秒粒度足够，与数据轮询同频但无数据时也刷新）。
   const [nowMs, setNowMs] = useState(() => Date.now())
+  // 审计 S3：后台标签页暂停轮询（与主面板同一策略），可见时立即补一次再回节拍。
+  const [visible, setVisible] = useState(() => typeof document === 'undefined' || !document.hidden)
   useEffect(() => {
+    if (typeof document === 'undefined') return
+    const onVisibility = (): void => { setVisible(!document.hidden) }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { document.removeEventListener('visibilitychange', onVisibility) }
+  }, [])
+  useEffect(() => {
+    if (!visible) return
     let cancelled = false
     const load = (): void => {
       void loadLiveStats().then((data) => {
@@ -279,7 +288,7 @@ function useLiveCostData(sessionId: SessionId): {
       clearInterval(timer)
     }
     // sessionId 变化时重新订阅，以对齐当前会话。
-  }, [sessionId])
+  }, [sessionId, visible])
   // 当前会话累计费用与当前轮费用：由纯函数派生，便于测试。
   const sessionCost = useMemo(() => sessionCostOf(stats, sessionId), [stats, sessionId])
   const turnCost = useMemo(() => turnCostOf(stats, sessionId), [stats, sessionId])

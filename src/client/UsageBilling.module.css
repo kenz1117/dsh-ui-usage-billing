@@ -1205,6 +1205,17 @@ body {
   outline: none;
 }
 
+/* 审计 S5：无可折叠组时按钮降透明度且不可点。 */
+.exportButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.exportButton:disabled:hover {
+  border-color: var(--ds-border);
+  color: var(--ds-t-2);
+}
+
 /* ── 峰谷时段占比（趋势 Tab） ───────────────────────────────────────── */
 
 .shareTrack {
@@ -1977,6 +1988,12 @@ span.bandDot { cursor: default; }
   transform: rotate(90deg);
 }
 
+/* 审计 U1：键盘聚焦折叠行时的可见焦点环。 */
+.sessionGroupRow:focus-visible {
+  outline: 2px solid var(--ds-border-strong);
+  outline-offset: -2px;
+}
+
 .sessionChildRow td:first-child {
   padding-left: 30px;
 }
@@ -2709,6 +2726,13 @@ span.bandDot { cursor: default; }
 
 .providerGroupCollapsible[aria-expanded='true'] .providerGroupTitle::before {
   transform: rotate(90deg);
+}
+
+/* 审计 U1：键盘聚焦组头时给可见焦点环（鼠标点击不显示，由 :focus-visible 保证）。 */
+.providerGroupCollapsible:focus-visible {
+  outline: 2px solid var(--ds-border-strong);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 /* 厂商组控制行（issue #77）：一键展开/收起按钮 + 仅看今日开关，置于组列表上方。 */

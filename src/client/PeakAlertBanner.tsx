@@ -21,10 +21,11 @@ export interface PeakAlertBannerProps {
 
 /** 渲染一个切档前提醒状态条。 */
 export function PeakAlertBanner({ hit, config, t, onDismiss }: PeakAlertBannerProps): React.ReactNode {
-  // 每秒刷新剩余分钟；越过切换点后自动卸载。
+  // 每 30 秒刷新剩余分钟（审计 S6）：展示粒度是 Math.round 分钟，秒级 tick 只产生
+  // 无效重渲染；越过切换点后自动卸载，30s 内的 dismiss 延迟对提醒无实际影响。
   const [nowMs, setNowMs] = useState(() => Date.now())
   useEffect(() => {
-    const timer = setInterval(() => setNowMs(Date.now()), 1000)
+    const timer = setInterval(() => setNowMs(Date.now()), 30_000)
     return () => clearInterval(timer)
   }, [])
 

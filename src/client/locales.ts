@@ -299,6 +299,7 @@ export type UsageBillingKey =
   | 'expandAll'
   | 'collapseAll'
   | 'todayOnly'
+  | 'todayNoConsumption'
 
 export const NS = 'usageBilling'
 
@@ -602,6 +603,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'expandAll': '全部展开',
   'collapseAll': '全部收起',
   'todayOnly': '仅看今日',
+  'todayNoConsumption': '今日暂无消耗',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -904,4 +906,5 @@ export const en: Record<UsageBillingKey, string> = {
   'expandAll': 'Expand all',
   'collapseAll': 'Collapse all',
   'todayOnly': 'Today only',
+  'todayNoConsumption': 'No usage today',
 }

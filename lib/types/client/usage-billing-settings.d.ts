@@ -138,7 +138,12 @@ export declare function savePinnedModels(keys: readonly string[]): void;
  */
 /** localStorage key：当前展开的厂商组名列表（默认收起，仅记录用户展开过的组）。 */
 export declare const PROVIDER_EXPANDED_STORAGE_KEY = "dsh.ui-usage-billing.provider-expanded";
-/** 读取展开的厂商组名列表（损坏/非数组/非字符串项一律丢弃）。 */
+/**
+ * 读取展开的厂商组 id 列表（审计 S2）。
+ * 持久化内容是带前缀的稳定 id（`ch:` / `sub:` / `bal:`）；v1.4.14 前存的是
+ * 本地化显示名（无冒号前缀），切语言即失效——这里直接丢弃旧格式，用户重新
+ * 展开一次即可，不做不可逆的名称猜测迁移。
+ */
 export declare function loadProviderExpanded(): string[];
 /** 写入展开的厂商组名列表。失败静默（展示偏好非关键）。 */
 export declare function saveProviderExpanded(names: readonly string[]): void;

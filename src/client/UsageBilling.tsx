@@ -1214,6 +1214,12 @@ type ProviderChannelKind = 'direct' | 'site' | 'unknown' | 'vendor'
  * 余额与健康点只挂在厂商组头部（同厂商只显示一次），不再随每行重复。
  */
 interface ProviderBillingGroup {
+  /**
+   * 跨语言/显示名稳定的组标识，用于展开状态持久化（issue #77 审计 S2）：
+   * 通道组 `ch:<siteKey>`、纯订阅组 `sub:<vendorId>`、纯余额组 `bal:<providerId>`。
+   * name 会随语言切换变化，不能做持久化 key。
+   */
+  id: string
   /** 厂商显示名（模型厂商；订阅通道无厂商时用订阅名/自身 id）。 */
   name: string
   /** 该厂商下的模型用量行（按费用降序，已过滤 calls>0）。 */
@@ -1330,10 +1336,11 @@ function UsageBillingTrigger(
     if (!popOpen) return
     // 侧栏内部滚动（capture 捕获非 window 的滚动容器）与窗口缩放都会移动触发卡。
     const onScroll = (): void => updatePopPos()
-    window.addEventListener('scroll', onScroll, true)
+    /* 审计 S6：仅读取滚动位置，passive 让浏览器不必等待主线程即可滚动。 */
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true })
     window.addEventListener('resize', onScroll)
     return () => {
-      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('scroll', onScroll, { capture: true } as EventListenerOptions)
       window.removeEventListener('resize', onScroll)
     }
   }, [popOpen, updatePopPos])
@@ -1993,13 +2000,13 @@ function BillingDashboard({
   }, [])
 
   // 厂商（提供商）组展开状态（issue #77）：默认收起，点击组头展开模型明细与
-  // 订阅额度。组名作 key，展开集合 localStorage 持久化——重开面板保持上次状态。
+  // 订阅额度。按稳定组 id 作 key（不随语言变），展开集合 localStorage 持久化。
   const [expandedProviders, setExpandedProviders] = useState<ReadonlySet<string>>(() => new Set(loadProviderExpanded()))
-  const toggleProvider = useCallback((name: string) => {
+  const toggleProvider = useCallback((id: string) => {
     setExpandedProviders(prev => {
       const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       saveProviderExpanded([...next])
       return next
     })
@@ -2358,6 +2365,8 @@ function BillingDashboard({
     // 优先级高者（官方直连组由 direct 与 site 两桶合并而成，按 direct 显示徽章）。
     const mergedByChannel = new Map<string, ModelRow[]>()
     const kindByChannel = new Map<string, ProviderChannelKind>()
+    // 显示名 → 稳定 siteKey：同名多桶合并时跟随 kind 提升同步替换（审计 S2）。
+    const idByChannel = new Map<string, string>()
     const kindOfSiteKey = (siteKey: string): ProviderChannelKind =>
       siteKey.startsWith('direct:') ? 'direct' : siteKey.startsWith('site:') ? 'site' : 'unknown'
     const kindRank: Record<ProviderChannelKind, number> = { direct: 2, site: 1, unknown: 0, vendor: 0 }
@@ -2367,13 +2376,17 @@ function BillingDashboard({
       if (existing === undefined) {
         mergedByChannel.set(name, [...rows])
         kindByChannel.set(name, kindOfSiteKey(siteKey))
+        idByChannel.set(name, siteKey)
       }
       else {
         existing.push(...rows)
         existing.sort((a, b) => (b.actual ?? b.estimated) - (a.actual ?? a.estimated))
         const prevKind = kindByChannel.get(name) ?? 'unknown'
         const nextKind = kindOfSiteKey(siteKey)
-        if (kindRank[nextKind] > kindRank[prevKind]) kindByChannel.set(name, nextKind)
+        if (kindRank[nextKind] > kindRank[prevKind]) {
+          kindByChannel.set(name, nextKind)
+          idByChannel.set(name, siteKey)
+        }
       }
     }
     // 订阅挂接：显示名命中通道名（腾讯云 Token Plan）优先；否则 direct:<provider id>
@@ -2399,6 +2412,7 @@ function BillingDashboard({
     const groups: ProviderBillingGroup[] = []
     for (const [name, rows] of mergedByChannel) {
       groups.push({
+        id: `ch:${idByChannel.get(name) ?? name}`,
         name,
         models: rows,
         subscriptions: subscriptionsByChannel.get(name) ?? [],
@@ -2411,6 +2425,7 @@ function BillingDashboard({
     for (const [groupKey, name] of subGroupNames) {
       if (mergedByChannel.has(groupKey)) continue
       groups.push({
+        id: groupKey,
         name,
         models: [],
         subscriptions: subscriptionsByChannel.get(groupKey) ?? [],
@@ -2429,6 +2444,7 @@ function BillingDashboard({
       if (claimed.has(normalizeProvider(balance.provider))) continue
       if (balance.error === undefined || balance.provider.startsWith('custom:')) {
         groups.push({
+          id: `bal:${balance.provider}`,
           name: balance.displayName,
           models: [],
           subscriptions: [],
@@ -2454,14 +2470,14 @@ function BillingDashboard({
 
   // 一键展开/收起（issue #77）：只作用于有明细可展开的组（模型行或订阅卡）；
   // 纯余额组无内容可折叠，不参与计数与按钮文案判定。
-  const collapsibleProviderNames = useMemo(
-    () => providerGroups.filter(group => group.models.length > 0 || group.subscriptions.length > 0).map(group => group.name),
+  const collapsibleProviderIds = useMemo(
+    () => providerGroups.filter(group => group.models.length > 0 || group.subscriptions.length > 0).map(group => group.id),
     [providerGroups],
   )
-  const providersAllExpanded = collapsibleProviderNames.length > 0
-    && collapsibleProviderNames.every(name => expandedProviders.has(name))
+  const providersAllExpanded = collapsibleProviderIds.length > 0
+    && collapsibleProviderIds.every(id => expandedProviders.has(id))
   const toggleAllProviders = (): void => {
-    const next = new Set(providersAllExpanded ? [] : collapsibleProviderNames)
+    const next = new Set(providersAllExpanded ? [] : collapsibleProviderIds)
     setExpandedProviders(next)
     saveProviderExpanded([...next])
   }
@@ -3454,7 +3470,13 @@ function BillingDashboard({
                 {/* 控制行恒常显示（issue #77 反馈）：仅看今日过滤后组可能为空，
                 控制行若随之落入空态分支，开关会被藏掉而关不回去。 */}
                 <div className={css.providerCtlRow} data-testid="billing-provider-controls">
-                  <button type="button" className={css.exportButton} onClick={toggleAllProviders}>
+                  <button
+                    type="button"
+                    className={css.exportButton}
+                    /* 审计 S5：没有可折叠组（全部纯余额 / 今日过滤为 0 组）时禁用，避免空点。 */
+                    disabled={collapsibleProviderIds.length === 0}
+                    onClick={toggleAllProviders}
+                  >
                     {providersAllExpanded ? t('collapseAll') : t('expandAll')}
                   </button>
                   <span className={css.providerTodayToggle}>
@@ -3473,7 +3495,8 @@ function BillingDashboard({
                 </div>
                 {providerGroups.length === 0 ? (
                   <div className={css.emptyRow} data-testid="billing-provider-empty">
-                    {t('noData')}
+                    {/* 审计 S4：今日过滤导致的空列表与「压根没数据」区分文案，避免误判丢数据。 */}
+                    {providersTodayOnly ? t('todayNoConsumption') : t('noData')}
                   </div>
                 ) : (
                   <div className={css.providerGroupList} data-testid="billing-provider-groups">
@@ -3481,15 +3504,24 @@ function BillingDashboard({
                       // 折叠交互（issue #77）：有明细（模型行或订阅卡）的组默认收起，
                       // 点击组头切换；纯余额组无内容可展开，头部不可点、不显示箭头。
                       const collapsible = group.models.length > 0 || group.subscriptions.length > 0
-                      const open = collapsible && expandedProviders.has(group.name)
+                      const open = collapsible && expandedProviders.has(group.id)
                       return (
-                      <div key={group.name} className={css.providerGroup} data-testid="billing-provider-group">
+                      <div key={group.id} className={css.providerGroup} data-testid="billing-provider-group">
                         {/* 厂商组头部：健康点 + 入口种类徽章 + 厂商名 + 订阅套数；费用/余额在右侧固定槽。 */}
                         <div
                           className={clsx(css.providerGroupHead, collapsible && css.providerGroupCollapsible)}
                           data-testid="billing-provider-group-head"
                           aria-expanded={collapsible ? open : undefined}
-                          onClick={collapsible ? () => { toggleProvider(group.name) } : undefined}
+                          /* 审计 U1：div 模拟折叠按钮时补齐键盘可达性（Tab 聚焦，Enter/Space 切换）。 */
+                          role={collapsible ? 'button' : undefined}
+                          tabIndex={collapsible ? 0 : undefined}
+                          onClick={collapsible ? () => { toggleProvider(group.id) } : undefined}
+                          onKeyDown={collapsible ? (event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              toggleProvider(group.id)
+                            }
+                          } : undefined}
                         >
                           <span className={css.providerGroupTitle}>
                             <span className={clsx(css.healthDot, group.dot)} aria-hidden="true" />
@@ -3804,7 +3836,16 @@ function BillingDashboard({
                               <tr
                                 className={isGroup ? css.sessionGroupRow : undefined}
                                 aria-expanded={isGroup ? open : undefined}
+                                /* 审计 U1：折叠行键盘可达（Tab 聚焦，Enter/Space 切换）；
+                                保留 tr 的 row 语义，不改 role 以免破坏表格结构。 */
+                                tabIndex={isGroup ? 0 : undefined}
                                 onClick={isGroup ? () => { toggleSession(row.id) } : undefined}
+                                onKeyDown={isGroup ? (event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault()
+                                    toggleSession(row.id)
+                                  }
+                                } : undefined}
                               >
                                 <td>
                                   {/* 无标题会话可读化（issue #42）：短 id 前补「未命名会话」提示。 */}
