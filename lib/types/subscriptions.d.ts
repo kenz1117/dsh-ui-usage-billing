@@ -44,7 +44,8 @@ export interface SubscriptionKeys {
  * 识别不出返回空串，绝不抛错——这只是一次便利回退。
  */
 export declare function parseOpenCodeAuthDocument(document: unknown): string;
-/** 空凭据：全部未配置时的初始值。 */ export declare const EMPTY_SUBSCRIPTION_KEYS: SubscriptionKeys;
+/** 空凭据：全部未配置时的初始值。 */
+export declare const EMPTY_SUBSCRIPTION_KEYS: SubscriptionKeys;
 /** 已识别的一个订阅套餐（用户在 llm-pi-ai 里配置了 key 的订阅类 provider）。 */
 export interface IdentifiedSubscriptionPlan {
     /** llm-pi-ai 的 provider id（如 kimi-coding、xiaomi-token-plan-cn）。 */

@@ -69,7 +69,8 @@ export function parseOpenCodeAuthDocument(document: unknown): string {
   return ''
 }
 
-/** 空凭据：全部未配置时的初始值。 */export const EMPTY_SUBSCRIPTION_KEYS: SubscriptionKeys = {
+/** 空凭据：全部未配置时的初始值。 */
+export const EMPTY_SUBSCRIPTION_KEYS: SubscriptionKeys = {
   kimiApiKey: '',
   zaiApiKey: '',
   zaiCnApiKey: '',
@@ -375,7 +376,8 @@ function zaiWindow(limit: Record<string, unknown>, kind: 'session' | 'weekly' | 
   }
 }
 
-/** Parse Z.ai quota + subscription bodies into windows. */function parseZai(quotaBody: unknown, subscriptionBody: unknown): { plan: string; windows: SubscriptionWindow[] } {
+/** Parse Z.ai quota + subscription bodies into windows. */
+function parseZai(quotaBody: unknown, subscriptionBody: unknown): { plan: string; windows: SubscriptionWindow[] } {
   const quota = (quotaBody ?? {}) as Record<string, unknown>
   const limits = Array.isArray((quota.data as Record<string, unknown> | undefined)?.limits)
     ? ((quota.data as Record<string, unknown>).limits as unknown[])
@@ -466,6 +468,8 @@ async function collectZai(keys: SubscriptionKeys, config: SubscriptionPlanConfig
     let subscription: unknown = null
     try {
       subscription = await requestJson(`${host}/api/biz/subscription/list`, init, timeoutMs)
+      // 订阅端点同样可能回 200 信封错误；plan 标签是可选增强，信封错当作无数据（与下方 catch 同语义）。
+      if (zaiEnvelopeStatus(subscription) !== undefined) subscription = null
     } catch {
       // Plan label/reset metadata is optional when quota succeeded.
     }

@@ -773,6 +773,36 @@ describe('Z.ai 200-enveloped business errors (found in source-host verification)
     )
     expect(quotas[0]).toMatchObject({ status: 'invalid-response' })
   })
+
+  it('treats an enveloped subscription body as absent data, keeping quota windows', async () => {
+    // quota 正常但订阅端点回 200 信封错误：plan 标签是可选增强，降级为 quota 的
+    // level 字段，额度窗解析不受影响（与订阅请求的网络失败同语义）。
+    const ZAI_QUOTA_BODY = {
+      code: 200,
+      msg: 'Operation successful',
+      data: {
+        limits: [
+          { type: 'TOKENS_LIMIT', unit: 3, number: 5, percentage: 56, nextResetTime: 1790963959375 },
+          { type: 'TOKENS_LIMIT', unit: 6, number: 1, percentage: 11, nextResetTime: 1791550732999 },
+        ],
+        level: 'lite',
+      },
+      success: true,
+    }
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => ({
+      ok: true,
+      status: 200,
+      json: async () => (String(url).includes('/api/biz/subscription')
+        ? { code: 500, msg: 'internal error', success: false }
+        : ZAI_QUOTA_BODY),
+    })))
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, zaiApiKey: 'good-key' },
+      [{ provider: 'zai-coding' }],
+    )
+    expect(quotas[0]).toMatchObject({ status: 'ok', plan: 'lite' })
+    expect(quotas[0]?.windows.map(window => window.usedPercent)).toEqual([56, 11])
+  })
 })
 
 describe('parseOpenCodeAuthDocument', () => {
