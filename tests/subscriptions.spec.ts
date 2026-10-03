@@ -648,3 +648,97 @@ describe('commandcode adapter (5h/weekly windows + monthly credits)', () => {
     expect(url).toBe('https://api.kimi.com/coding/v1/usages')
   })
 })
+
+describe('Z.ai Coding Plan (zai-coding / zai-coding-cn)', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  // 真实响应结构（抓包自 z.ai coding plan 账号）：5 小时 / 周两个 TOKENS_LIMIT
+  // 窗（percentage 直给），外加一条 TIME_LIMIT 计费窗。
+  const ZAI_QUOTA_BODY = {
+    code: 200,
+    msg: 'Operation successful',
+    data: {
+      limits: [
+        { type: 'TOKENS_LIMIT', unit: 3, number: 5, percentage: 56, nextResetTime: 1790963959375 },
+        { type: 'TOKENS_LIMIT', unit: 6, number: 1, percentage: 11, nextResetTime: 1791550732999 },
+        { type: 'TIME_LIMIT', unit: 5, number: 1, usage: 100, currentValue: 1, remaining: 99, percentage: 1, nextResetTime: 1791452191983 },
+      ],
+      level: 'lite',
+    },
+    success: true,
+  }
+  const ZAI_SUBSCRIPTION_BODY = {
+    code: 200,
+    msg: 'Operation successful',
+    data: [{ product_name: 'GLM Coding Pro', next_renew_time: 1791550732999 }],
+    success: true,
+  }
+
+  /** Answer quota requests per host so both regions can share one spy. */
+  function stubZaiFetch(): ReturnType<typeof vi.fn> {
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => ({
+      ok: true,
+      status: 200,
+      json: async () => (String(url).includes('/api/biz/subscription') ? ZAI_SUBSCRIPTION_BODY : ZAI_QUOTA_BODY),
+    }))
+    vi.stubGlobal('fetch', fetchSpy)
+    return fetchSpy
+  }
+
+  it('identifies both Z.ai routes as adapter-backed plans with fixed regions', () => {
+    const identified = identifySubscriptionPlans({
+      'zai-coding-cn': { apiKeyEnv: 'ZAI_CN_API_KEY' },
+      'zai-coding': { apiKeyEnv: 'ZAI_API_KEY' },
+    })
+    expect(identified).toEqual([
+      { provider: 'zai-coding-cn', displayName: 'Z.ai Coding Plan（国内）', adapter: true, region: 'bigmodel-cn' },
+      { provider: 'zai-coding', displayName: 'Z.ai Coding Plan', adapter: true, region: 'global' },
+    ])
+  })
+
+  it('queries api.z.ai with the raw international key and parses three windows', async () => {
+    const fetchSpy = stubZaiFetch()
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, zaiApiKey: 'intl-key' },
+      [{ provider: 'zai-coding' }],
+    )
+    expect(quotas[0]).toMatchObject({
+      provider: 'zai-coding',
+      displayName: 'Z.ai Coding Plan',
+      plan: 'GLM Coding Pro',
+      status: 'ok',
+    })
+    expect(quotas[0]?.windows.map(window => window.usedPercent)).toEqual([56, 11, 1])
+    const urls = fetchSpy.mock.calls.map(call => String(call[0]))
+    expect(urls[0]).toBe('https://api.z.ai/api/monitor/usage/quota/limit')
+    expect(urls[1]).toBe('https://api.z.ai/api/biz/subscription/list')
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit]
+    // Coding Plan 端点要求裸 key（非 Bearer 前缀）。
+    expect((init.headers as Record<string, string>).authorization).toBe('intl-key')
+  })
+
+  it('routes domestic and international keys to their own hosts (no cross-talk)', async () => {
+    // 不同于 MiniMax 的同 key 双域：Z.ai 国内 / 国际是两个平台的独立 key，
+    // 各 route 打各的 host、带各的 key。
+    const fetchSpy = stubZaiFetch()
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, zaiCnApiKey: 'cn-key', zaiApiKey: 'intl-key' },
+      [
+        { provider: 'zai-coding-cn', region: 'bigmodel-cn' },
+        { provider: 'zai-coding', region: 'global' },
+      ],
+    )
+    expect(quotas.map(quota => quota.displayName)).toEqual(['Z.ai Coding Plan（国内）', 'Z.ai Coding Plan'])
+    const authByUrl = new Map(fetchSpy.mock.calls.map(call => [String(call[0]), ((call[1] as RequestInit).headers as Record<string, string>).authorization]))
+    expect(authByUrl.get('https://open.bigmodel.cn/api/monitor/usage/quota/limit')).toBe('cn-key')
+    expect(authByUrl.get('https://api.z.ai/api/monitor/usage/quota/limit')).toBe('intl-key')
+  })
+
+  it('reports not-configured for an empty key without touching the network', async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const quotas = await collectSubscriptions({ ...EMPTY_SUBSCRIPTION_KEYS }, [{ provider: 'zai-coding' }])
+    expect(quotas[0]).toMatchObject({ provider: 'zai-coding', status: 'not-configured' })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})

@@ -25,8 +25,10 @@ const subscriptionGate = createCooldownGate({ failures: 3, cooldownMs: 60_000 })
 export interface SubscriptionKeys {
   /** Kimi For Coding API key。 */
   kimiApiKey: string
-  /** Z.ai API key。 */
+  /** Z.ai Coding Plan API key（国际域 api.z.ai）。 */
   zaiApiKey: string
+  /** Z.ai（智谱国内域）Coding Plan API key——国内 / 国际是两个平台，key 不通用（不同于 MiniMax 的同 key 双域）。 */
+  zaiCnApiKey: string
   /** OpenCode Go API key。 */
   opencodeApiKey: string
   /** MiniMax Token Plan API key。 */
@@ -47,6 +49,7 @@ export interface SubscriptionKeys {
 export const EMPTY_SUBSCRIPTION_KEYS: SubscriptionKeys = {
   kimiApiKey: '',
   zaiApiKey: '',
+  zaiCnApiKey: '',
   opencodeApiKey: '',
   minmaxApiKey: '',
   openrouterApiKey: '',
@@ -64,7 +67,7 @@ export interface IdentifiedSubscriptionPlan {
   displayName: string
   /** 是否有额度查询适配器。 */
   adapter: boolean
-  /** 适配器区域覆盖（zai-coding-cn → bigmodel-cn）。 */
+  /** 适配器区域覆盖：两个 Z.ai 路由各自固定区域，互不跟随 keys.zaiRegion。 */
   region?: 'global' | 'bigmodel-cn'
 }
 
@@ -125,6 +128,7 @@ const SUBSCRIPTION_ADAPTERS: Readonly<Record<string, {
 }>> = {
   'kimi-coding': { collect: collectKimi },
   'zai-coding-cn': { collect: collectZai },
+  'zai-coding': { collect: collectZai },
   'opencode': { collect: collectOpenCodeGo },
   'opencode-go': { collect: collectOpenCodeGo },
   'minimax': { collect: collectMiniMax },
@@ -157,6 +161,7 @@ export function identifySubscriptionPlans(
       displayName: SUBSCRIPTION_DISPLAY_NAMES[id] ?? id,
       adapter: ADAPTER_PROVIDER_IDS.has(id),
       ...(id === 'zai-coding-cn' ? { region: 'bigmodel-cn' as const } : {}),
+      ...(id === 'zai-coding' ? { region: 'global' as const } : {}),
     })
   }
   return out
@@ -402,11 +407,15 @@ function parseZai(quotaBody: unknown, subscriptionBody: unknown): { plan: string
 
 /** Collect the Z.ai Coding Plan quota. */
 async function collectZai(keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number): Promise<SubscriptionQuota> {
-  const apiKey = keys.zaiApiKey.trim()
   const region = config.region ?? keys.zaiRegion ?? 'global'
+  // 不同于 MiniMax 的同 key 双域：Z.ai 国内（bigmodel）与国际（z.ai）是两个
+  // 平台的独立账号，各取各的 key——单字段会被后解析的一条覆盖，另一域就会
+  // 拿错账号的 key。
+  const apiKey = (region === 'bigmodel-cn' ? keys.zaiCnApiKey : keys.zaiApiKey).trim()
   const host = region === 'bigmodel-cn' ? 'https://open.bigmodel.cn' : 'https://api.z.ai'
+  const displayName = region === 'bigmodel-cn' ? 'Z.ai Coding Plan（国内）' : 'Z.ai Coding Plan'
   if (apiKey === '') {
-    return { provider: config.provider, displayName: 'Z.ai Coding Plan', status: 'not-configured', windows: [] }
+    return { provider: config.provider, displayName, status: 'not-configured', windows: [] }
   }
   try {
     // The Coding Plan endpoints expect the RAW API key as the authorization header.
@@ -421,13 +430,13 @@ async function collectZai(keys: SubscriptionKeys, config: SubscriptionPlanConfig
     const parsed = parseZai(quota, subscription)
     return {
       provider: config.provider,
-      displayName: 'Z.ai Coding Plan',
+      displayName,
       plan: parsed.plan,
       status: parsed.windows.length > 0 ? 'ok' : 'invalid-response',
       windows: parsed.windows,
     }
   } catch (error) {
-    return { provider: config.provider, displayName: 'Z.ai Coding Plan', status: statusOf(error), windows: [] }
+    return { provider: config.provider, displayName, status: statusOf(error), windows: [] }
   }
 }
 

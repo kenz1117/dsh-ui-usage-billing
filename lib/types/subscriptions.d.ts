@@ -16,8 +16,10 @@ import type { SubscriptionPlanConfig, SubscriptionQuota, SubscriptionWindow } fr
 export interface SubscriptionKeys {
     /** Kimi For Coding API key。 */
     kimiApiKey: string;
-    /** Z.ai API key。 */
+    /** Z.ai Coding Plan API key（国际域 api.z.ai）。 */
     zaiApiKey: string;
+    /** Z.ai（智谱国内域）Coding Plan API key——国内 / 国际是两个平台，key 不通用（不同于 MiniMax 的同 key 双域）。 */
+    zaiCnApiKey: string;
     /** OpenCode Go API key。 */
     opencodeApiKey: string;
     /** MiniMax Token Plan API key。 */
@@ -43,7 +45,7 @@ export interface IdentifiedSubscriptionPlan {
     displayName: string;
     /** 是否有额度查询适配器。 */
     adapter: boolean;
-    /** 适配器区域覆盖（zai-coding-cn → bigmodel-cn）。 */
+    /** 适配器区域覆盖：两个 Z.ai 路由各自固定区域，互不跟随 keys.zaiRegion。 */
     region?: 'global' | 'bigmodel-cn';
 }
 /** 是否是订阅类 provider id（如 kimi-coding、xiaomi-token-plan-cn）。 */
