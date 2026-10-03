@@ -8,6 +8,12 @@
 
 > **版本序列说明**：自 v1.2.0 起预览线序列恒高于稳定线 1.1.x——消除此前 1.0.x < 1.1.x 的版本号倒挂（pnpm `minimumReleaseAge` 冷静期会把刚发布的 latest 跳过、回退到旧稳定线，issue #40 有实测案例）。安装建议钉具体版本号。
 
+### v1.4.18（2026-10-03）
+
+- 变更：声明宿主 **0.2.1-alpha.1** 兼容（隔离环境真机验收：v1.4.17 零适配通过——全部 API 端点、仪表盘六标签、LiveCost chip、样式注入、页面零错误；上游两条 breaking 均无影响：运行时 invariant 插件移除不涉及我们的空壳伴生模块，composer 统计拆 `activity`/`usage` 两入口不影响我们的 dock 座位 id）
+- 变更：客户端 bundle 工厂的模块种子镜像补齐宿主 0.2.1 新增的 `@deepseek-ai/dsh-client-ui-dockkit`（仅构建期外部表，产物零变化）
+- devDependencies pin 保持 0.1.7-rc.1：registry 上 0.2.1 系子包未发布，无可升级目标
+
 ### v1.4.17（2026-10-03）
 
 - 修复：**Gemini 延迟档不再被套用 DeepSeek 的北京峰谷窗口**——`tierSemantics: 'latency'` 此前是死字段：北京工作日高峰时段的 Gemini 调用被计成 Standard 全价，中国法定节假日（Google 不遵守）反而半价，单笔最多偏 2 倍；现 Standard/Flex 两档按比例混合估算，与目录声明口径一致
