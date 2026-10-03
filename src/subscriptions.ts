@@ -45,8 +45,31 @@ export interface SubscriptionKeys {
   zaiRegion: 'global' | 'bigmodel-cn'
 }
 
-/** 空凭据：全部未配置时的初始值。 */
-export const EMPTY_SUBSCRIPTION_KEYS: SubscriptionKeys = {
+/**
+ * 解析 OpenCode 客户端凭据文档（~/.local/share/opencode/auth.json）里的
+ * OpenCode Go token。两种形态都收：
+ * - 平铺：`{"token": "..."}` / `{"key": "..."}` / `{"apiKey": "..."}` / 裸字符串；
+ * - 按 provider 分桶（实测形态）：`{"opencode-go": {"type": "api", "key": "..."}}`，
+ *   桶序 opencode-go → opencode → zen 即优先序。
+ * 识别不出返回空串，绝不抛错——这只是一次便利回退。
+ */
+export function parseOpenCodeAuthDocument(document: unknown): string {
+  if (typeof document === 'string' && document.trim() !== '') return document.trim()
+  if (document === null || typeof document !== 'object') return ''
+  const record = document as Record<string, unknown>
+  const topToken = record['token'] ?? record['key'] ?? record['apiKey']
+  if (typeof topToken === 'string' && topToken !== '') return topToken
+  for (const bucket of ['opencode-go', 'opencode', 'zen']) {
+    const entry = record[bucket]
+    if (entry === null || typeof entry !== 'object') continue
+    const entryRecord = entry as Record<string, unknown>
+    const bucketToken = entryRecord['key'] ?? entryRecord['token'] ?? entryRecord['apiKey']
+    if (typeof bucketToken === 'string' && bucketToken !== '') return bucketToken
+  }
+  return ''
+}
+
+/** 空凭据：全部未配置时的初始值。 */export const EMPTY_SUBSCRIPTION_KEYS: SubscriptionKeys = {
   kimiApiKey: '',
   zaiApiKey: '',
   zaiCnApiKey: '',
@@ -352,8 +375,7 @@ function zaiWindow(limit: Record<string, unknown>, kind: 'session' | 'weekly' | 
   }
 }
 
-/** Parse Z.ai quota + subscription bodies into windows. */
-function parseZai(quotaBody: unknown, subscriptionBody: unknown): { plan: string; windows: SubscriptionWindow[] } {
+/** Parse Z.ai quota + subscription bodies into windows. */function parseZai(quotaBody: unknown, subscriptionBody: unknown): { plan: string; windows: SubscriptionWindow[] } {
   const quota = (quotaBody ?? {}) as Record<string, unknown>
   const limits = Array.isArray((quota.data as Record<string, unknown> | undefined)?.limits)
     ? ((quota.data as Record<string, unknown>).limits as unknown[])
@@ -405,6 +427,21 @@ function parseZai(quotaBody: unknown, subscriptionBody: unknown): { plan: string
   }
 }
 
+/**
+ * Z.ai 用 HTTP 200 包裹业务错误（实测假 key 回 `{"code":401,"msg":...,"success":false}`），
+ * 只看 HTTP 层会把鉴权失败误报成 invalid-response。这里识别信封错误并归类；
+ * 非 success=false 的信封（含缺字段的旧形态）交回常规解析。
+ */
+function zaiEnvelopeStatus(body: unknown): SubscriptionStatus | undefined {
+  if (body === null || typeof body !== 'object') return undefined
+  const record = body as Record<string, unknown>
+  if (record['success'] !== false) return undefined
+  const code = numberOrNull(record['code'])
+  if (code === 401 || code === 403) return 'unauthorized'
+  if (code === 429) return 'rate-limited'
+  return undefined
+}
+
 /** Collect the Z.ai Coding Plan quota. */
 async function collectZai(keys: SubscriptionKeys, config: SubscriptionPlanConfig, timeoutMs: number): Promise<SubscriptionQuota> {
   const region = config.region ?? keys.zaiRegion ?? 'global'
@@ -421,6 +458,11 @@ async function collectZai(keys: SubscriptionKeys, config: SubscriptionPlanConfig
     // The Coding Plan endpoints expect the RAW API key as the authorization header.
     const init = { headers: { authorization: apiKey, accept: 'application/json' } }
     const quota = await requestJson(`${host}/api/monitor/usage/quota/limit`, init, timeoutMs)
+    // 200 包裹的业务错误优先归类，不让鉴权失败伪装成"响应异常"。
+    const envelope = zaiEnvelopeStatus(quota)
+    if (envelope !== undefined) {
+      return { provider: config.provider, displayName, status: envelope, windows: [] }
+    }
     let subscription: unknown = null
     try {
       subscription = await requestJson(`${host}/api/biz/subscription/list`, init, timeoutMs)

@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, parseAnthropicUsage, parseCommandCodeCredits, parseMiniMaxRemains, parseOpenRouterCredits } from '../src/subscriptions.ts'
+import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, parseAnthropicUsage, parseCommandCodeCredits, parseMiniMaxRemains, parseOpenCodeAuthDocument, parseOpenRouterCredits } from '../src/subscriptions.ts'
 
 /** A stubbed fetch answering one JSON body with the given status. */
 function stubFetch(body: unknown, status = 200): void {
@@ -740,5 +740,57 @@ describe('Z.ai Coding Plan (zai-coding / zai-coding-cn)', () => {
     const quotas = await collectSubscriptions({ ...EMPTY_SUBSCRIPTION_KEYS }, [{ provider: 'zai-coding' }])
     expect(quotas[0]).toMatchObject({ provider: 'zai-coding', status: 'not-configured' })
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('Z.ai 200-enveloped business errors (found in source-host verification)', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('classifies a 200-wrapped 401 envelope as unauthorized, not invalid-response', async () => {
+    // 实测 api.z.ai 对坏 key 回 HTTP 200 + {"code":401,"msg":...,"success":false}，
+    // 只看 HTTP 层会把它误报成 invalid-response，用户拿不到"检查 key"的定向提示。
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ code: 401, msg: 'token expired or incorrect', success: false }),
+    })))
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, zaiApiKey: 'bad-key' },
+      [{ provider: 'zai-coding' }],
+    )
+    expect(quotas[0]).toMatchObject({ provider: 'zai-coding', status: 'unauthorized' })
+  })
+
+  it('keeps parsing normal envelopes untouched', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ code: 200, msg: 'Operation successful', data: { limits: [], level: 'lite' }, success: true }),
+    })))
+    const quotas = await collectSubscriptions(
+      { ...EMPTY_SUBSCRIPTION_KEYS, zaiApiKey: 'good-key' },
+      [{ provider: 'zai-coding' }],
+    )
+    expect(quotas[0]).toMatchObject({ status: 'invalid-response' })
+  })
+})
+
+describe('parseOpenCodeAuthDocument', () => {
+  it('reads the provider-bucketed auth.json OpenCode actually writes', () => {
+    // 实测形态（issue：回退一直读不到）：{"opencode-go": {"type": "api", "key": "..."}}
+    const token = parseOpenCodeAuthDocument({
+      'opencode-go': { type: 'api', key: 'oc-go-token' },
+      'minimax-cn-coding-plan': { type: 'api', key: 'other-provider-key' },
+    })
+    expect(token).toBe('oc-go-token')
+  })
+
+  it('still accepts the flat shapes and rejects unusable documents', () => {
+    expect(parseOpenCodeAuthDocument({ token: 'flat-token' })).toBe('flat-token')
+    expect(parseOpenCodeAuthDocument({ key: 'flat-key' })).toBe('flat-key')
+    expect(parseOpenCodeAuthDocument('bare-string-token')).toBe('bare-string-token')
+    expect(parseOpenCodeAuthDocument({})).toBe('')
+    expect(parseOpenCodeAuthDocument(null)).toBe('')
+    expect(parseOpenCodeAuthDocument({ 'opencode-go': { type: 'api' } })).toBe('')
   })
 })

@@ -43,7 +43,7 @@ import { queryDeclaredEndpoints } from './declarative.ts'
 import { reconcileBalanceDelta, type BalanceRef, type ReconcileEvent } from './reconcile.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
 import type { CustomBalanceConfig, DeclaredEndpointConfig, LivePricing, RelayQuota, SubscriptionPlanConfig, SubscriptionQuota } from './pricing-shared.ts'
-import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts'
+import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, parseOpenCodeAuthDocument, type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts'
 import { isOfficialBaseUrl, queryRelayQuotas, type RelayRoute } from './relay.ts'
 import { planTypeOf, subscriptionFeeCnyOf } from './client/plan-knowledge.ts'
 
@@ -551,12 +551,7 @@ export async function resolveSubscriptionKeys(
 async function readOpenCodeToken(): Promise<string> {
   try {
     const auth = JSON.parse(await readFile(join(homedir(), '.local', 'share', 'opencode', 'auth.json'), 'utf8')) as unknown
-    if (typeof auth === 'string' && auth !== '') return auth
-    if (auth !== null && typeof auth === 'object') {
-      const record = auth as Record<string, unknown>
-      const token = record.token ?? record.key ?? record.apiKey
-      if (typeof token === 'string' && token !== '') return token
-    }
+    return parseOpenCodeAuthDocument(auth)
   } catch {
     // 文件不存在 / 读不动 / JSON 解析失败 → 视为没有凭据，不报错。
   }
