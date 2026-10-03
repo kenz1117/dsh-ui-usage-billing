@@ -25,6 +25,40 @@ export interface UsageBillingSettings {
 /** 默认值：工具不注入（贴合 issue 诉求）。 */
 export const DEFAULT_ENABLE_USAGE_STATS_TOOL = false
 
+/**
+ * localStorage 读写的统一出口（各偏好对的脚手架此前逐对重复）：
+ * 失败一律静默——这些都是展示偏好，storage 满/私聊禁用不该拖垮面板。
+ */
+
+/** 写入一个字符串值。失败静默。 */
+function writeStored(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // ignore: storage full / unavailable — display preference is non-critical.
+  }
+}
+
+/** 读原始字符串；缺失/不可用返回 undefined。 */
+function readRaw(key: string): string | undefined {
+  try {
+    return localStorage.getItem(key) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** 读并 JSON 解析；缺失/损坏返回 undefined（各 loader 的默认值/校验在调用方）。 */
+function readJson(key: string): unknown {
+  const raw = readRaw(key)
+  if (raw === undefined) return undefined
+  try {
+    return JSON.parse(raw) as unknown
+  } catch {
+    return undefined
+  }
+}
+
 /** 模型用量悬浮窗的展示模式。 */
 export type FloatWindowMode = 'combined' | 'subscription'
 
@@ -49,28 +83,20 @@ export const FLOAT_WINDOW_STORAGE_KEY = 'dsh.ui-usage-billing.float'
  *  返回全新对象（含 targets 数组拷贝），避免调用方就地修改污染共享默认值。 */
 export function loadFloatWindowPrefs(): FloatWindowPrefs {
   const fallback = (): FloatWindowPrefs => ({ ...DEFAULT_FLOAT_WINDOW_PREFS, targets: [...DEFAULT_FLOAT_WINDOW_PREFS.targets] })
-  try {
-    const raw = localStorage.getItem(FLOAT_WINDOW_STORAGE_KEY)
-    if (raw === null) return fallback()
-    const parsed = JSON.parse(raw) as Partial<FloatWindowPrefs>
-    return {
-      mode: parsed.mode === 'subscription' ? 'subscription' : 'combined',
-      targets: Array.isArray(parsed.targets)
-        ? parsed.targets.filter((entry): entry is string => typeof entry === 'string')
-        : [],
-    }
-  } catch {
-    return fallback()
+  const parsed = readJson(FLOAT_WINDOW_STORAGE_KEY)
+  if (parsed === null || typeof parsed !== 'object') return fallback()
+  const prefs = parsed as Partial<FloatWindowPrefs>
+  return {
+    mode: prefs.mode === 'subscription' ? 'subscription' : 'combined',
+    targets: Array.isArray(prefs.targets)
+      ? prefs.targets.filter((entry): entry is string => typeof entry === 'string')
+      : [],
   }
 }
 
 /** 写入浮窗偏好。失败静默（展示偏好非关键）。 */
 export function saveFloatWindowPrefs(prefs: FloatWindowPrefs): void {
-  try {
-    localStorage.setItem(FLOAT_WINDOW_STORAGE_KEY, JSON.stringify(prefs))
-  } catch {
-    // ignore: storage full / unavailable — display preference is non-critical.
-  }
+  writeStored(FLOAT_WINDOW_STORAGE_KEY, JSON.stringify(prefs))
 }
 
 /** 左下角计费卡的主指标视角。 */
@@ -98,26 +124,18 @@ export const BILLING_CARD_STORAGE_KEY = 'dsh.ui-usage-billing.card'
 
 /** 读取计费卡偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
 export function loadBillingCardPrefs(): BillingCardPrefs {
-  try {
-    const raw = localStorage.getItem(BILLING_CARD_STORAGE_KEY)
-    if (raw === null) return { ...DEFAULT_BILLING_CARD_PREFS }
-    const parsed = JSON.parse(raw) as Partial<BillingCardPrefs>
-    return {
-      metric: parsed.metric === 'tokens' ? 'tokens' : 'money',
-      span: parsed.span === 'week' || parsed.span === 'month' ? parsed.span : 'day',
-    }
-  } catch {
-    return { ...DEFAULT_BILLING_CARD_PREFS }
+  const parsed = readJson(BILLING_CARD_STORAGE_KEY)
+  if (parsed === null || typeof parsed !== 'object') return { ...DEFAULT_BILLING_CARD_PREFS }
+  const prefs = parsed as Partial<BillingCardPrefs>
+  return {
+    metric: prefs.metric === 'tokens' ? 'tokens' : 'money',
+    span: prefs.span === 'week' || prefs.span === 'month' ? prefs.span : 'day',
   }
 }
 
 /** 写入计费卡偏好。失败静默（展示偏好非关键）。 */
 export function saveBillingCardPrefs(prefs: BillingCardPrefs): void {
-  try {
-    localStorage.setItem(BILLING_CARD_STORAGE_KEY, JSON.stringify(prefs))
-  } catch {
-    // ignore: storage full / unavailable — display preference is non-critical.
-  }
+  writeStored(BILLING_CARD_STORAGE_KEY, JSON.stringify(prefs))
 }
 
 /** 概览 KPI 全局统计范围（今日/近7天/本周/本月/累计），与组件内 AvgCostRange 同构。 */
@@ -128,21 +146,13 @@ export const KPI_RANGE_STORAGE_KEY = 'dsh.ui-usage-billing.kpi-range'
 
 /** 读取 KPI 全局范围偏好（损坏/越界回退「累计」）。仅在浏览器半区调用。 */
 export function loadKpiRange(): KpiRangePref {
-  try {
-    const raw = localStorage.getItem(KPI_RANGE_STORAGE_KEY)
-    return raw === 'today' || raw === '7d' || raw === 'week' || raw === 'month' || raw === 'all' ? raw : 'all'
-  } catch {
-    return 'all'
-  }
+  const raw = readRaw(KPI_RANGE_STORAGE_KEY)
+  return raw === 'today' || raw === '7d' || raw === 'week' || raw === 'month' || raw === 'all' ? raw : 'all'
 }
 
 /** 写入 KPI 全局范围偏好。失败静默（展示偏好非关键）。 */
 export function saveKpiRange(range: KpiRangePref): void {
-  try {
-    localStorage.setItem(KPI_RANGE_STORAGE_KEY, range)
-  } catch {
-    // ignore: storage full / unavailable — display preference is non-critical.
-  }
+  writeStored(KPI_RANGE_STORAGE_KEY, range)
 }
 
 /**
@@ -162,23 +172,14 @@ export const SITE_LIST_STORAGE_KEY = 'dsh.ui-usage-billing.sites'
 
 /** 读取站点列表偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
 export function loadSiteListPrefs(): SiteListPrefs {
-  try {
-    const raw = localStorage.getItem(SITE_LIST_STORAGE_KEY)
-    if (raw === null) return { ...DEFAULT_SITE_LIST_PREFS }
-    const parsed = JSON.parse(raw) as Partial<SiteListPrefs>
-    return { hideUnidentified: parsed.hideUnidentified !== false }
-  } catch {
-    return { ...DEFAULT_SITE_LIST_PREFS }
-  }
+  const parsed = readJson(SITE_LIST_STORAGE_KEY)
+  if (parsed === null || typeof parsed !== 'object') return { ...DEFAULT_SITE_LIST_PREFS }
+  return { hideUnidentified: (parsed as Partial<SiteListPrefs>).hideUnidentified !== false }
 }
 
 /** 写入站点列表偏好。失败静默（展示偏好非关键）。 */
 export function saveSiteListPrefs(prefs: SiteListPrefs): void {
-  try {
-    localStorage.setItem(SITE_LIST_STORAGE_KEY, JSON.stringify(prefs))
-  } catch {
-    // ignore: storage full / unavailable — display preference is non-critical.
-  }
+  writeStored(SITE_LIST_STORAGE_KEY, JSON.stringify(prefs))
 }
 
 /**
@@ -205,31 +206,23 @@ export const LIVE_COST_BAR_PREF_EVENT = 'dsh.ui-usage-billing.livecost-pref'
 
 /** 读取即时代费条偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
 export function loadLiveCostBarPrefs(): LiveCostBarPrefs {
-  try {
-    const raw = localStorage.getItem(LIVE_COST_BAR_STORAGE_KEY)
-    if (raw === null) return { ...DEFAULT_LIVE_COST_BAR_PREFS }
-    const parsed = JSON.parse(raw) as Partial<LiveCostBarPrefs>
-    // 只有显式 false 才隐藏，其余（缺字段/非法值）一律按显示兜底；
-    // position 仅认显式合法值，缺字段/非法值回默认（issue #47 起默认 toolbar，
-    // 老用户已存的 below/above 不受影响）。
-    return {
-      show: parsed.show !== false,
-      position: parsed.position === 'above' || parsed.position === 'toolbar' || parsed.position === 'below'
-        ? parsed.position
-        : DEFAULT_LIVE_COST_BAR_PREFS.position,
-    }
-  } catch {
-    return { ...DEFAULT_LIVE_COST_BAR_PREFS }
+  const parsed = readJson(LIVE_COST_BAR_STORAGE_KEY)
+  if (parsed === null || typeof parsed !== 'object') return { ...DEFAULT_LIVE_COST_BAR_PREFS }
+  const prefs = parsed as Partial<LiveCostBarPrefs>
+  // 只有显式 false 才隐藏，其余（缺字段/非法值）一律按显示兜底；
+  // position 仅认显式合法值，缺字段/非法值回默认（issue #47 起默认 toolbar，
+  // 老用户已存的 below/above 不受影响）。
+  return {
+    show: prefs.show !== false,
+    position: prefs.position === 'above' || prefs.position === 'toolbar' || prefs.position === 'below'
+      ? prefs.position
+      : DEFAULT_LIVE_COST_BAR_PREFS.position,
   }
 }
 
 /** 写入即时代费条偏好。失败静默（展示偏好非关键）。 */
 export function saveLiveCostBarPrefs(prefs: LiveCostBarPrefs): void {
-  try {
-    localStorage.setItem(LIVE_COST_BAR_STORAGE_KEY, JSON.stringify(prefs))
-  } catch {
-    // ignore: storage full / unavailable — display preference is non-critical.
-  }
+  writeStored(LIVE_COST_BAR_STORAGE_KEY, JSON.stringify(prefs))
 }
 
 /**
@@ -247,21 +240,13 @@ export const DEFAULT_CURRENCY: CostCurrency = 'cny'
 
 /** 读取显示币种（损坏/缺失/非法值一律回退默认）。仅在浏览器半区调用。 */
 export function loadCurrency(): CostCurrency {
-  try {
-    const raw = localStorage.getItem(CURRENCY_STORAGE_KEY)
-    return raw === 'usd' || raw === 'cny' || raw === 'eur' ? raw : DEFAULT_CURRENCY
-  } catch {
-    return DEFAULT_CURRENCY
-  }
+  const raw = readRaw(CURRENCY_STORAGE_KEY)
+  return raw === 'usd' || raw === 'cny' || raw === 'eur' ? raw : DEFAULT_CURRENCY
 }
 
 /** 写入显示币种。失败静默（展示偏好非关键）。 */
 export function saveCurrency(currency: CostCurrency): void {
-  try {
-    localStorage.setItem(CURRENCY_STORAGE_KEY, currency)
-  } catch {
-    // ignore: storage full / unavailable — display preference is non-critical.
-  }
+  writeStored(CURRENCY_STORAGE_KEY, currency)
 }
 
 /**
@@ -275,21 +260,13 @@ export const PINNED_MODELS_EVENT = 'dsh.ui-usage-billing.pinned-pref'
 
 /** 读取固定模型列表（损坏/非数组/非字符串项一律丢弃）。 */
 export function loadPinnedModels(): string[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(PINNED_MODELS_STORAGE_KEY) ?? '[]') as unknown
-    return Array.isArray(raw) ? raw.filter((k): k is string => typeof k === 'string' && k !== '') : []
-  } catch {
-    return []
-  }
+  const raw = readJson(PINNED_MODELS_STORAGE_KEY)
+  return Array.isArray(raw) ? raw.filter((k): k is string => typeof k === 'string' && k !== '') : []
 }
 
 /** 写入固定模型列表。失败静默（展示偏好非关键）。 */
 export function savePinnedModels(keys: readonly string[]): void {
-  try {
-    localStorage.setItem(PINNED_MODELS_STORAGE_KEY, JSON.stringify(keys))
-  } catch {
-    // ignore: storage full / unavailable — display preference is non-critical.
-  }
+  writeStored(PINNED_MODELS_STORAGE_KEY, JSON.stringify(keys))
 }
 
 /**
@@ -307,22 +284,14 @@ export const PROVIDER_EXPANDED_STORAGE_KEY = 'dsh.ui-usage-billing.provider-expa
  * 展开一次即可，不做不可逆的名称猜测迁移。
  */
 export function loadProviderExpanded(): string[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(PROVIDER_EXPANDED_STORAGE_KEY) ?? '[]') as unknown
-    if (!Array.isArray(raw)) return []
-    return raw.filter((k): k is string => typeof k === 'string' && /^(ch|sub|bal):/.test(k))
-  } catch {
-    return []
-  }
+  const raw = readJson(PROVIDER_EXPANDED_STORAGE_KEY)
+  if (!Array.isArray(raw)) return []
+  return raw.filter((k): k is string => typeof k === 'string' && /^(ch|sub|bal):/.test(k))
 }
 
 /** 写入展开的厂商组名列表。失败静默（展示偏好非关键）。 */
 export function saveProviderExpanded(names: readonly string[]): void {
-  try {
-    localStorage.setItem(PROVIDER_EXPANDED_STORAGE_KEY, JSON.stringify(names))
-  } catch {
-    // ignore: storage full / unavailable — display preference is non-critical.
-  }
+  writeStored(PROVIDER_EXPANDED_STORAGE_KEY, JSON.stringify(names))
 }
 
 /** localStorage key：「仅看今日」开关（默认关）。 */
@@ -330,20 +299,12 @@ export const PROVIDERS_TODAY_STORAGE_KEY = 'dsh.ui-usage-billing.providers-today
 
 /** 读取「仅看今日」开关。 */
 export function loadProvidersTodayOnly(): boolean {
-  try {
-    return localStorage.getItem(PROVIDERS_TODAY_STORAGE_KEY) === '1'
-  } catch {
-    return false
-  }
+  return readRaw(PROVIDERS_TODAY_STORAGE_KEY) === '1'
 }
 
 /** 写入「仅看今日」开关。失败静默（展示偏好非关键）。 */
 export function saveProvidersTodayOnly(enabled: boolean): void {
-  try {
-    localStorage.setItem(PROVIDERS_TODAY_STORAGE_KEY, enabled ? '1' : '0')
-  } catch {
-    // ignore: storage full / unavailable — display preference is non-critical.
-  }
+  writeStored(PROVIDERS_TODAY_STORAGE_KEY, enabled ? '1' : '0')
 }
 
 /** 界面语言（与币种解耦后独立持久化）。 */
@@ -362,24 +323,16 @@ export const LANGUAGE_PREF_EVENT = 'dsh.ui-usage-billing.language-pref'
  * @returns 界面语言。
  */
 export function loadLanguage(): BillingLanguage {
-  try {
-    const raw = localStorage.getItem(LANGUAGE_STORAGE_KEY)
-    if (raw === 'en' || raw === 'zh') return raw
-    const seeded: BillingLanguage = loadCurrency() === 'usd' ? 'en' : 'zh'
-    saveLanguage(seeded)
-    return seeded
-  } catch {
-    return 'zh'
-  }
+  const raw = readRaw(LANGUAGE_STORAGE_KEY)
+  if (raw === 'en' || raw === 'zh') return raw
+  const seeded: BillingLanguage = loadCurrency() === 'usd' ? 'en' : 'zh'
+  saveLanguage(seeded)
+  return seeded
 }
 
 /** 写入界面语言。失败静默（展示偏好非关键）。 */
 export function saveLanguage(language: BillingLanguage): void {
-  try {
-    localStorage.setItem(LANGUAGE_STORAGE_KEY, language)
-  } catch {
-    // ignore: storage full / unavailable — display preference is non-critical.
-  }
+  writeStored(LANGUAGE_STORAGE_KEY, language)
 }
 
 /**
@@ -409,67 +362,57 @@ export const USER_PRICES_STORAGE_KEY = 'dsh.ui-usage-billing.prices'
  * 迁移为「条目列表」（origin 缺省 = 该模型默认价）。仅在浏览器半区调用。
  */
 export function loadUserPrices(): UserPriceMap {
-  try {
-    const raw = localStorage.getItem(USER_PRICES_STORAGE_KEY)
-    if (raw === null) return []
-    const parsed = JSON.parse(raw) as unknown
-    if (parsed === null) return []
-    const out: UserPriceMap = []
-    const push = (key: string, value: unknown): void => {
-      if (value === null || typeof value !== 'object') return
-      const row = value as Record<string, unknown>
-      const input = Number(row.input)
-      const cacheHit = Number(row.cacheHit)
-      const output = Number(row.output)
-      if (![input, cacheHit, output].every(v => Number.isFinite(v) && v >= 0)) return
-      // 低谷档三桶（可选）：全部有效才保留，任一缺失/非法回落平档。
-      const off = row.offPeak
-      let offPeak: { input: number; cacheHit: number; output: number } | undefined
-      if (off !== null && typeof off === 'object') {
-        const offRow = off as Record<string, unknown>
-        const offInput = Number(offRow.input)
-        const offCacheHit = Number(offRow.cacheHit)
-        const offOutput = Number(offRow.output)
-        if ([offInput, offCacheHit, offOutput].every(v => Number.isFinite(v) && v >= 0)) {
-          offPeak = { input: offInput, cacheHit: offCacheHit, output: offOutput }
-        }
-      }
-      out.push({
-        key,
-        ...(typeof row.origin === 'string' && row.origin !== '' ? { origin: row.origin } : {}),
-        input,
-        cacheHit,
-        output,
-        ...(offPeak !== undefined ? { offPeak } : {}),
-        ...(row.currency === 'USD' ? { currency: 'USD' as const } : {}),
-      })
-    }
-    if (Array.isArray(parsed)) {
-      for (const entry of parsed) {
-        if (entry === null || typeof entry !== 'object') continue
-        const row = entry as Record<string, unknown>
-        if (typeof row.key !== 'string' || row.key === '') continue
-        push(row.key, entry)
-      }
-    } else if (typeof parsed === 'object') {
-      // 旧版单行对象：`{ [目录键]: 价 }` → 转条目列表（origin 缺省）。
-      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-        push(key, value)
+  const parsed = readJson(USER_PRICES_STORAGE_KEY)
+  if (parsed === undefined || parsed === null) return []
+  const out: UserPriceMap = []
+  const push = (key: string, value: unknown): void => {
+    if (value === null || typeof value !== 'object') return
+    const row = value as Record<string, unknown>
+    const input = Number(row.input)
+    const cacheHit = Number(row.cacheHit)
+    const output = Number(row.output)
+    if (![input, cacheHit, output].every(v => Number.isFinite(v) && v >= 0)) return
+    // 低谷档三桶（可选）：全部有效才保留，任一缺失/非法回落平档。
+    const off = row.offPeak
+    let offPeak: { input: number; cacheHit: number; output: number } | undefined
+    if (off !== null && typeof off === 'object') {
+      const offRow = off as Record<string, unknown>
+      const offInput = Number(offRow.input)
+      const offCacheHit = Number(offRow.cacheHit)
+      const offOutput = Number(offRow.output)
+      if ([offInput, offCacheHit, offOutput].every(v => Number.isFinite(v) && v >= 0)) {
+        offPeak = { input: offInput, cacheHit: offCacheHit, output: offOutput }
       }
     }
-    return out
-  } catch {
-    return []
+    out.push({
+      key,
+      ...(typeof row.origin === 'string' && row.origin !== '' ? { origin: row.origin } : {}),
+      input,
+      cacheHit,
+      output,
+      ...(offPeak !== undefined ? { offPeak } : {}),
+      ...(row.currency === 'USD' ? { currency: 'USD' as const } : {}),
+    })
   }
+  if (Array.isArray(parsed)) {
+    for (const entry of parsed) {
+      if (entry === null || typeof entry !== 'object') continue
+      const row = entry as Record<string, unknown>
+      if (typeof row.key !== 'string' || row.key === '') continue
+      push(row.key, entry)
+    }
+  } else if (typeof parsed === 'object') {
+    // 旧版单行对象：`{ [目录键]: 价 }` → 转条目列表（origin 缺省）。
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      push(key, value)
+    }
+  }
+  return out
 }
 
 /** 写入用户自定义价。失败静默（展示偏好非关键）。 */
 export function saveUserPrices(prices: UserPriceMap): void {
-  try {
-    localStorage.setItem(USER_PRICES_STORAGE_KEY, JSON.stringify(prices))
-  } catch {
-    // ignore: storage full / unavailable — display preference is non-critical.
-  }
+  writeStored(USER_PRICES_STORAGE_KEY, JSON.stringify(prices))
 }
 
 /** 性能曲线的指标视角。 */
@@ -494,25 +437,17 @@ export const PERF_VIEW_STORAGE_KEY = 'dsh.ui-usage-billing.perf'
 
 /** 读取性能视图偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
 export function loadPerfViewPrefs(): PerfViewPrefs {
-  try {
-    const raw = localStorage.getItem(PERF_VIEW_STORAGE_KEY)
-    if (raw === null) return { ...DEFAULT_PERF_VIEW_PREFS }
-    const parsed = JSON.parse(raw) as Partial<PerfViewPrefs>
-    return {
-      metric: parsed.metric === 'tps' ? 'tps' : 'ttft',
-      // models 缺省 = 从未碰过图例（跟随默认前 5）；空数组 = 用户显式全关，需保留。
-      ...(Array.isArray(parsed.models) ? { models: parsed.models.filter(entry => typeof entry === 'string') } : {}),
-    }
-  } catch {
-    return { ...DEFAULT_PERF_VIEW_PREFS }
+  const parsed = readJson(PERF_VIEW_STORAGE_KEY)
+  if (parsed === null || typeof parsed !== 'object') return { ...DEFAULT_PERF_VIEW_PREFS }
+  const prefs = parsed as Partial<PerfViewPrefs>
+  return {
+    metric: prefs.metric === 'tps' ? 'tps' : 'ttft',
+    // models 缺省 = 从未碰过图例（跟随默认前 5）；空数组 = 用户显式全关，需保留。
+    ...(Array.isArray(prefs.models) ? { models: prefs.models.filter(entry => typeof entry === 'string') } : {}),
   }
 }
 
 /** 写入性能视图偏好。失败静默（展示偏好非关键）。 */
 export function savePerfViewPrefs(prefs: PerfViewPrefs): void {
-  try {
-    localStorage.setItem(PERF_VIEW_STORAGE_KEY, JSON.stringify(prefs))
-  } catch {
-    // ignore: storage full / unavailable — display preference is non-critical.
-  }
+  writeStored(PERF_VIEW_STORAGE_KEY, JSON.stringify(prefs))
 }

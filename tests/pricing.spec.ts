@@ -172,12 +172,22 @@ describe('live pricing overrides', () => {
   })
 
   it('overrides a matched model price with the live USD table', () => {
-    applyLivePricing({ source: 'live', prices: { flash: { input: 2, cacheHit: 0.2, output: 8 } } })
-    const row = modelOf('flash')
+    // 平档模型（无峰谷分档）才整表替换：路由器单价本身无时段区分，语义一致。
+    applyLivePricing({ source: 'live', prices: { kimi: { input: 2, cacheHit: 0.2, output: 8 } } })
+    const row = modelOf('kimi')
     expect(row.price.currency).toBe('USD')
     const cost = computeCost(row, { input: MILLION, cacheHit: 0, cacheMiss: MILLION, output: MILLION }, 1)
     // 美元单价 × 内置汇率 6.79（未给 rate 时）。
     expect(cost).toBeCloseTo((1_000_000 * 2 + 1_000_000 * 8) / MILLION * 6.79, 10)
+  })
+
+  it('keeps the official peak/off-peak bands when a live price matches a tiered model', () => {
+    // 分档条目（flash 峰 = 谷 × 2）不套实时平档：整表替换会把官方峰谷口径抹平，
+    // 高峰时段的事件会被少算一半。实时价只对平档条目生效。
+    applyLivePricing({ source: 'live', prices: { flash: { input: 2, cacheHit: 0.2, output: 8 } } })
+    const row = modelOf('flash')
+    expect(row.price.currency).toBe('CNY')
+    expect(row.price.offPeak).toBeDefined()
   })
 
   it('keeps the built-in catalog when no live data applies', () => {
@@ -303,6 +313,17 @@ describe('computeCostAt (P0-1)', () => {
   it('reprices flash-vision-exp identically to flash', () => {
     expect(computeCostAt(modelOf('flash-vision-exp'), buckets, postAt(13)))
       .toBe(computeCostAt(modelOf('flash'), buckets, postAt(13)))
+  })
+
+  it('mixes latency-tier models (Gemini Standard/Flex) by share, not by Beijing windows', () => {
+    // 延迟档语义与时刻无关：北京高峰与低谷时刻的费用必须一致，且等于 50/50 混合
+    // （此前错误套用 DeepSeek 的北京峰谷窗口，高峰时段 Gemini 被计成 2 倍价）。
+    const entry = modelOf('gemini-pro')
+    expect(entry.tierSemantics).toBe('latency')
+    const atPeak = computeCostAt(entry, buckets, postAt(10))
+    const atOff = computeCostAt(entry, buckets, postAt(13))
+    expect(atPeak).toBeCloseTo(atOff, 10)
+    expect(atPeak).toBeCloseTo(computeCost(entry, buckets, 0.5, postAt(10)), 10)
   })
 
   it('prices V4 Pro at its own peak list rate', () => {

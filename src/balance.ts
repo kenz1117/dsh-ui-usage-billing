@@ -401,7 +401,10 @@ async function queryTencentTokenPlan(ctx: Context, apiKeyEnv: string): Promise<P
   }
   const credential = parseTencentCredential(hit.value)
   if (credential === undefined) {
-    return { provider, displayName: provider, error: 'unauthorized' }
+    // 凭据不是 `<SecretId>:<SecretKey>` 云 API 密钥对：常见情形是用户在 tencent /
+    // tokenhub 命名的推理路由里配了混元推理 key——那对 TokenHub 管控面是「未配置」，
+    // 不是「上游拒绝」。标 unauthorized 会让 warnAuthOnce 每 30 分钟误报一次有效 key。
+    return { provider, displayName: provider, error: 'unconfigured' }
   }
   const doRequest = async (): Promise<ProviderBalance> => {
     const list = await callTokenHub(credential.secretId, credential.secretKey, 'DescribeTokenPlanList', {})

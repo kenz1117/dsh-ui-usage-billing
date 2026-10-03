@@ -85,6 +85,22 @@ export declare function siteRefOf(provider: string, routes: Readonly<Record<stri
 }): SiteRef;
 /** 站点桶的稳定 key：`site:<origin>` 与 `direct:<provider>` 分开，`unknown` 单一桶。 */
 export declare function siteBucketKey(ref: SiteRef): string;
+/**
+ * 站点桶按范围求和（usage_stats 工具的 bySite/relay 口径）：bySite 全量累计；
+ * relay 只计中转站桶（`site:<origin>` 键）——`direct:*` 与 `unknown` 不计入，
+ * 否则 relay 总额与 all 相同，中转站费用被高估。
+ */
+export declare function sumSiteBuckets(bySite: Readonly<Record<string, {
+    cost: number;
+    calls: number;
+    input: number;
+    output: number;
+}>>, range: 'bySite' | 'relay'): {
+    cost: number;
+    calls: number;
+    input: number;
+    output: number;
+};
 /** Aggregation tuning options. */
 export interface AggregateOptions {
     /** 订阅制 provider id 列表；缺省按订阅卡同款 id 判定（`isSubscriptionProviderId`）。 */
@@ -155,8 +171,11 @@ export declare function emptyUsage(): ModelUsage;
  * @param subscription - whether the call went through a subscription plan; such calls never cost money.
  * @param timeMs - the call's wall-clock time (epoch ms); drives peak/off-peak pricing.
  * @param official - whether the call went through the official DeepSeek channel (vs a third-party relay).
+ * @param pricedCost - 调用方预算好的本次费用（同一条消息折叠进多个桶时计价结果相同，
+ *   逐桶重算会让最热路径付出 N 倍常数）；提供时跳过内部的计价闸门与计算，
+ *   调用方保证其已按 `!subscription && isPriced(key)` 判定。
  */
-export declare function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number, official?: boolean): void;
+export declare function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number, official?: boolean, pricedCost?: number): void;
 /**
  * 联网搜索辅助请求的单次费用估算默认值（人民币元）。DeepSeek 官方对搜索请求
  * （web_search 服务端工具注入上下文）照常计费，实测每次约 0.01~0.03 元，取中值；

@@ -22,7 +22,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import {
   aggregateUsage, createUsageAggregator, configFingerprint, dayStamp, foldSession, foldUsage, emptyUsage, workspaceNameOf, hostTimeZone,
-  siteBucketKey, siteOriginOf, siteRefOf, runLedgerMigrations, FOLD_VERSION, foldSearchCall, DEFAULT_SEARCH_CALL_ESTIMATE_CNY,
+  siteBucketKey, siteOriginOf, siteRefOf, sumSiteBuckets, runLedgerMigrations, FOLD_VERSION, foldSearchCall, DEFAULT_SEARCH_CALL_ESTIMATE_CNY,
   DEFAULT_SUBSCRIPTION_PROVIDERS,
   type LedgerMigration, type UsageLedgerDocument, type UsageLedgerSession,
   AGGREGATE_TTL_MS, LEDGER_SAVE_INTERVAL_MS, SESSION_ROW_LIMIT, type UsagePersistence,
@@ -216,6 +216,26 @@ describe('foldUsage', () => {
     foldUsage(acc, { inputTokens: 100, outputTokens: 500, reasoningTokens: 200 } as TokenUsage, 'flash', false, 1_000)
     expect(acc.output).toBe(500)
     expect(acc.reasoning).toBe(200)
+  })
+})
+
+describe('sumSiteBuckets (usage_stats 工具的站点口径)', () => {
+  const cell = (cost: number): { cost: number; calls: number; input: number; output: number } => ({ cost, calls: 1, input: 10, output: 5 })
+  const bySite = {
+    'site:https://relay.example.com': cell(2),
+    'direct:deepseek': cell(3),
+    unknown: cell(1),
+  }
+
+  it('sums every bucket for bySite', () => {
+    expect(sumSiteBuckets(bySite, 'bySite').cost).toBe(6)
+  })
+
+  it('counts only relay-site buckets for relay (direct/unknown excluded)', () => {
+    // 此前 relay 与 bySite 共用无过滤循环：直连/未知桶全被计入，relay ≈ all。
+    const sum = sumSiteBuckets(bySite, 'relay')
+    expect(sum.cost).toBe(2)
+    expect(sum.calls).toBe(1)
   })
 })
 

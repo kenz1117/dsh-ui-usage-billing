@@ -13,6 +13,7 @@ import { useMemo, useState } from 'react'
 import css from './UsageBilling.module.css'
 import { zh } from './locales.ts'
 import { convertFromCny, formatMoney, type CostCurrency } from './pricing.ts'
+import { shortNumber } from './TokenPanel.tsx'
 
 /** One model's legend identity: key, display name, and brand color. */
 export interface TrendSeriesModel {
@@ -49,12 +50,7 @@ function shortDate(iso: string): string {
   return `${Number(month)}/${Number(day)}`
 }
 
-/** Compact tick label for the calls axis: `1.2K` / `3.4M`. */
-function shortNumber(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
-  return String(Math.round(value))
-}
+/* shortNumber 复用 TokenPanel 的实现（同一 bundle，避免两份重复定义）。 */
 
 /** Ticks every `step` items for sparse axis labels. */
 function tickIndexes(length: number, step: number): number[] {
@@ -130,7 +126,8 @@ export function TrendChart({ data, models = [], currency = 'cny', metric = 'cost
       const x = inner(i) - barW / 2
       if (models.length === 0 || metric === 'tokens') {
         // 无模型明细或 Token 指标：单色总费用/总量柱兜底。
-        return [{ date: d.date, model: { ...TOTAL_MODEL, name: tr('trendTotal') }, x, base: 0, value: valueOf(d), topRounded: true }]
+        //（柱体只读 model.color/key；name 从不渲染，不再按 locale 生成。）
+        return [{ date: d.date, model: TOTAL_MODEL, x, base: 0, value: valueOf(d), topRounded: true }]
       }
       // 顶部圆角给当天最后一个有量的模型段。
       let topKey: string | null = null

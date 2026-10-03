@@ -65,7 +65,7 @@ import type { createBillingBudgetStore } from './budget-store.ts'
 import { convertFromCny,
   applyBuiltinCatalog, applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, canonModelId, computeCost, convertUnitPrice,
   DEFAULT_PEAK_SHARE, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, getUserPrices, isPromoActive,
-  channelCountdown, modelOf, normalizeOriginInput, rateChannelOf, resolveToken, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type ModelEntry, type TokenUsageBuckets,
+  channelCountdown, localDayStamp, modelOf, normalizeOriginInput, rateChannelOf, resolveToken, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type ModelEntry, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
@@ -443,7 +443,7 @@ export function recostWithUserPrices(stats: UsageStats): UsageStats {
       const originFallback = priceDefault ?? userOriginPriceEntryOf(key)
       const originEntry = hasOriginData && hasOriginEntry(key)
       let cost: number
-      if ((originFallback !== undefined || originEntry) && originEntry && stats.byDayModelsSite?.[date]?.[key] !== undefined) {
+      if (originEntry && stats.byDayModelsSite?.[date]?.[key] !== undefined) {
         // 按「模型×站点」分布逐来源重算：带 origin 价宽松命中，其余回落默认价或内置。
         let siteCost = 0
         for (const [siteKey, siteCell] of Object.entries(stats.byDayModelsSite[date][key])) {
@@ -723,6 +723,42 @@ function subscriptionStatusText(status: SubscriptionQuota['status'], t: (key: Us
 }
 
 /** 订阅额度窗口的类型标签（本次 / 本周 / 本月 / 计费周期）。 */
+/** 订阅窗口行（已用比例进度条 + 剩余文案 + 重置时刻）：悬浮速览与订阅卡共用。 */
+function SubscriptionWindowRow({ window, t }: { window: SubscriptionQuota['windows'][number]; t: (key: UsageBillingKey) => string }): React.ReactNode {
+  const used = Math.min(100, Math.max(0, window.usedPercent))
+  const remaining = Math.min(100, Math.max(0, window.remainingPercent))
+  const exhausted = remaining <= 0
+  return (
+    <div className={css.subscriptionWindow}>
+      <span className={css.subscriptionWindowLabel}>{subscriptionWindowLabel(window.kind, t)}</span>
+      <span className={css.subscriptionTrack} aria-hidden="true">
+        {/* 进度条按「已用」比例填充（与预算条同语义）：用尽时满格红，行恒可见。 */}
+        <span
+          className={clsx(
+            css.subscriptionFill,
+            used >= 100 && css.subscriptionFillOver,
+            used >= 80 && used < 100 && css.subscriptionFillWarn,
+          )}
+          style={{ width: `${used}%` }}
+        />
+      </span>
+      <span className={css.subscriptionMeta}>
+        <span className={clsx(css.subscriptionPct, exhausted && css.subscriptionExhausted)}>
+          {exhausted
+            ? t('subscriptionExhausted')
+            : t('subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
+        </span>
+        {window.resetsAt !== undefined && (
+          <span className={css.subscriptionReset}>
+            {/* 重置时间完整显示（本地时区）；与「剩余%」上下排布，不再横挤进度条。 */}
+            {t('subscriptionReset').replace('{date}', `${localDayStamp(new Date(window.resetsAt).getTime())} ${formatClock(new Date(window.resetsAt).getTime())}`)}
+          </span>
+        )}
+      </span>
+    </div>
+  )
+}
+
 function subscriptionWindowLabel(kind: SubscriptionQuota['windows'][number]['kind'], t: (key: UsageBillingKey) => string): string {
   switch (kind) {
     case 'session': return t('subscriptionSession')
@@ -901,12 +937,6 @@ const STATS_REFRESH_CLOSED_MS = 300_000
  * 本地时区（北京时间）日期戳：与服务端聚合的 dayStamp 一致。不要用
  * `toISOString()`——那是 UTC，北京时间的凌晨 0-8 点会取到前一天。
  */
-function localDayStamp(time = Date.now()): string {
-  const date = new Date(time)
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-}
-
 /** 本地时区时钟：`HH:MM:SS`。 */
 function formatClock(time: number): string {
   const date = new Date(time)
@@ -1301,12 +1331,6 @@ function UsageBillingTrigger(
   const [subIndex, setSubIndex] = useState(0)
   const effectiveSubIndex = targetSubs.length === 0 ? 0 : Math.min(subIndex, targetSubs.length - 1)
   const currentSub = targetSubs[effectiveSubIndex]
-  // 浮窗 pointer-events:none 无法点击切换；多张订阅卡时每 1.5s 自动轮播。
-  useEffect(() => {
-    if (floatPrefs.mode !== 'subscription' || targetSubs.length < 2) return
-    const timer = setInterval(() => setSubIndex((index) => (index + 1) % targetSubs.length), 1500)
-    return () => clearInterval(timer)
-  }, [floatPrefs.mode, targetSubs.length])
 
   // 速览卡 fixed 定位（issue #37）：桌面壳/宿主的侧栏容器可能 overflow:hidden，
   // absolute 弹层向上弹出会被几何裁剪（z-index 救不了裁剪）。改为 hover 时用
@@ -1314,6 +1338,13 @@ function UsageBillingTrigger(
   const wrapRef = useRef<HTMLSpanElement>(null)
   const [popOpen, setPopOpen] = useState(false)
   const [popPos, setPopPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 })
+  // 浮窗 pointer-events:none 无法点击切换；多张订阅卡时每 1.5s 自动轮播。
+  // 只在浮窗打开时轮播：此前常开后台标签页也每 1.5s 重渲染一次触发卡。
+  useEffect(() => {
+    if (!popOpen || floatPrefs.mode !== 'subscription' || targetSubs.length < 2) return
+    const timer = setInterval(() => setSubIndex((index) => (index + 1) % targetSubs.length), 1500)
+    return () => clearInterval(timer)
+  }, [popOpen, floatPrefs.mode, targetSubs.length])
   // hover 桥接：弹层 portal 到 body 后不再是触发卡的 DOM 后代，鼠标从触发卡
   // 移向弹层会先触发触发卡的 mouseleave；延迟 120ms 关闭，期间进入弹层即取消。
   const popCloseTimer = useRef<number | undefined>(undefined)
@@ -1499,38 +1530,9 @@ function UsageBillingTrigger(
                       <span className={css.floatSubName}>{currentSub.displayName}</span>
                       {currentSub.plan !== undefined && <span className={css.floatSubPlan}>{currentSub.plan}</span>}
                     </div>
-                    {currentSub.windows.map(window => (() => {
-                      const used = Math.min(100, Math.max(0, window.usedPercent))
-                      const remaining = Math.min(100, Math.max(0, window.remainingPercent))
-                      const exhausted = remaining <= 0
-                      return (
-                        <div key={window.kind} className={css.subscriptionWindow}>
-                          <span className={css.subscriptionWindowLabel}>{subscriptionWindowLabel(window.kind, t)}</span>
-                          <span className={css.subscriptionTrack} aria-hidden="true">
-                            <span
-                              className={clsx(
-                                css.subscriptionFill,
-                                used >= 100 && css.subscriptionFillOver,
-                                used >= 80 && used < 100 && css.subscriptionFillWarn,
-                              )}
-                              style={{ width: `${used}%` }}
-                            />
-                          </span>
-                          <span className={css.subscriptionMeta}>
-                            <span className={clsx(css.subscriptionPct, exhausted && css.subscriptionExhausted)}>
-                              {exhausted
-                                ? t('subscriptionExhausted')
-                                : t('subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
-                            </span>
-                            {window.resetsAt !== undefined && (
-                              <span className={css.subscriptionReset}>
-                                {t('subscriptionReset').replace('{date}', `${localDayStamp(new Date(window.resetsAt).getTime())} ${formatClock(new Date(window.resetsAt).getTime())}`)}
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                      )
-                    })())}
+                    {currentSub.windows.map(window => (
+                      <SubscriptionWindowRow key={window.kind} window={window} t={t} />
+                    ))}
                   </div>
                 )}
                 {targetSubs.length > 1 && (
@@ -1774,7 +1776,15 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
   const setOffPeak = (i: number, field: 'input' | 'cacheHit' | 'output', raw: string): void =>
     setDrafts(list => list.map((row, idx) => {
       if (idx !== i) return row
-      const next = { ...offPeakOf(i), [field]: raw }
+      // 从 updater 的当前行派生（而非渲染作用域的 drafts）：批量/连续输入时
+      // 读到的是最新草稿，不丢同拍编辑的兄弟字段。
+      const off = row.offPeak
+      const next = {
+        input: off === undefined ? '' : String(off.input),
+        cacheHit: off === undefined ? '' : String(off.cacheHit),
+        output: off === undefined ? '' : String(off.output),
+        [field]: raw,
+      }
       const touched = [next.input, next.cacheHit, next.output].some(v => v.trim() !== '')
       const values = [next.input, next.cacheHit, next.output].map(v => Number(v))
       const valid = touched && values.every(v => Number.isFinite(v) && v >= 0) && values.some(v => v > 0)
@@ -1877,44 +1887,32 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
               </div>
             </div>
             </div>
-            <div className={css.userPricePriceLine} data-testid="billing-user-price-normal">
-              <span className={css.ctlLabel}>{t('userPriceNormal')}</span>
-              {(['input', 'cacheHit', 'output'] as const).map(kind => (
-                <input
-                  key={kind}
-                  className={css.userPriceInputNum}
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  placeholder={kind === 'input' ? t('tokenMiss') : kind === 'cacheHit' ? t('tokenHit') : t('tokenOutput')}
-                  aria-label={`${t('userPriceNormal')} ${kind === 'input' ? t('tokenMiss') : kind === 'cacheHit' ? t('tokenHit') : t('tokenOutput')}`}
-                  value={num(row[kind])}
-                  onChange={e => setNum(i, kind, e.target.value)}
-                />
-              ))}
-            </div>
-            {(() => {
+            {/* 主档/低谷档共用同一三桶输入行（标签、取值、回填不同，结构一致）。 */}
+            {([
+              { label: t('userPriceNormal'), testid: 'billing-user-price-normal', valueOf: (kind: 'input' | 'cacheHit' | 'output') => num(row[kind]), onChange: (kind: 'input' | 'cacheHit' | 'output', raw: string) => setNum(i, kind, raw) },
               // 低谷价子行：三桶留空 = 平档；三值有效即按峰/谷混合估算（issue #18）。
-              const off = offPeakOf(i)
-              return (
-                <div className={css.userPricePriceLine} data-testid="billing-user-price-offpeak">
-                  <span className={css.ctlLabel}>{t('userPriceOffPeak')}</span>
-                  {(['input', 'cacheHit', 'output'] as const).map(kind => (
+              { label: t('userPriceOffPeak'), testid: 'billing-user-price-offpeak', valueOf: (kind: 'input' | 'cacheHit' | 'output') => offPeakOf(i)[kind], onChange: (kind: 'input' | 'cacheHit' | 'output', raw: string) => setOffPeak(i, kind, raw) },
+            ]).map(line => (
+              <div key={line.testid} className={css.userPricePriceLine} data-testid={line.testid}>
+                <span className={css.ctlLabel}>{line.label}</span>
+                {(['input', 'cacheHit', 'output'] as const).map(kind => {
+                  const kindLabel = kind === 'input' ? t('tokenMiss') : kind === 'cacheHit' ? t('tokenHit') : t('tokenOutput')
+                  return (
                     <input
                       key={kind}
                       className={css.userPriceInputNum}
                       type="number"
                       min={0}
                       step={0.01}
-                      placeholder={kind === 'input' ? t('tokenMiss') : kind === 'cacheHit' ? t('tokenHit') : t('tokenOutput')}
-                      aria-label={`${t('userPriceOffPeak')} ${kind === 'input' ? t('tokenMiss') : kind === 'cacheHit' ? t('tokenHit') : t('tokenOutput')}`}
-                      value={off[kind]}
-                      onChange={e => setOffPeak(i, kind, e.target.value)}
+                      placeholder={kindLabel}
+                      aria-label={`${line.label} ${kindLabel}`}
+                      value={line.valueOf(kind)}
+                      onChange={e => line.onChange(kind, e.target.value)}
                     />
-                  ))}
-                </div>
-              )
-            })()}
+                  )
+                })}
+              </div>
+            ))}
             </div>
           </div>
         ))}
@@ -1998,6 +1996,8 @@ function BillingDashboard({
       return next
     })
   }, [])
+  // 同名会话合并行一次计算（此前渲染期调用两次：空态判断 + 行渲染各一遍全量排序）。
+  const mergedSessions = useMemo(() => mergeSessionRows(stats.bySession ?? []), [stats.bySession])
 
   // 厂商（提供商）组展开状态（issue #77）：默认收起，点击组头展开模型明细与
   // 订阅额度。按稳定组 id 作 key（不随语言变），展开集合 localStorage 持久化。
@@ -3693,40 +3693,9 @@ function BillingDashboard({
                                   {quota.windows.length === 0 && statusText === '' && (
                                     <div className={css.subscriptionStatus}>{t('subscriptionNoApi')}</div>
                                   )}
-                                  {quota.windows.map(window => (() => {
-                                    const used = Math.min(100, Math.max(0, window.usedPercent))
-                                    const remaining = Math.min(100, Math.max(0, window.remainingPercent))
-                                    const exhausted = remaining <= 0
-                                    return (
-                                      <div key={window.kind} className={css.subscriptionWindow}>
-                                        <span className={css.subscriptionWindowLabel}>{subscriptionWindowLabel(window.kind, t)}</span>
-                                        <span className={css.subscriptionTrack} aria-hidden="true">
-                                          {/* 进度条按「已用」比例填充（与预算条同语义）：用尽时满格红，行恒可见。 */}
-                                          <span
-                                            className={clsx(
-                                              css.subscriptionFill,
-                                              used >= 100 && css.subscriptionFillOver,
-                                              used >= 80 && used < 100 && css.subscriptionFillWarn,
-                                            )}
-                                            style={{ width: `${used}%` }}
-                                          />
-                                        </span>
-                                        <span className={css.subscriptionMeta}>
-                                          <span className={clsx(css.subscriptionPct, exhausted && css.subscriptionExhausted)}>
-                                            {exhausted
-                                              ? t('subscriptionExhausted')
-                                              : t('subscriptionRemaining').replace('{pct}', String(window.remainingPercent))}
-                                          </span>
-                                          {window.resetsAt !== undefined && (
-                                            <span className={css.subscriptionReset}>
-                                              {/* 重置时间完整显示（本地时区）；与「剩余%」上下排布，不再横挤进度条。 */}
-                                              {t('subscriptionReset').replace('{date}', `${localDayStamp(new Date(window.resetsAt).getTime())} ${formatClock(new Date(window.resetsAt).getTime())}`)}
-                                            </span>
-                                          )}
-                                        </span>
-                                      </div>
-                                    )
-                                  })())}
+                                  {quota.windows.map(window => (
+                                    <SubscriptionWindowRow key={window.kind} window={window} t={t} />
+                                  ))}
                                 </div>
                               )
                             })}
@@ -3813,12 +3782,12 @@ function BillingDashboard({
                         </tr>
                       </thead>
                       <tbody>
-                        {mergeSessionRows(stats.bySession ?? []).length === 0 && (
+                        {mergedSessions.length === 0 && (
                           <tr>
                             <td colSpan={4} className={css.emptyRow}>{t('noData')}</td>
                           </tr>
                         )}
-                        {mergeSessionRows(stats.bySession ?? []).slice(0, SESSION_DISPLAY_LIMIT).map(row => {
+                        {mergedSessions.slice(0, SESSION_DISPLAY_LIMIT).map(row => {
                           // 折叠态与数值列提取为局部闭包：一/二级行多处共用，收敛渲染重复。
                           const isGroup = row.children !== undefined
                           const open = isGroup && expandedSessions.has(row.id)
@@ -4276,8 +4245,10 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   // 重新拉取统计与余额：初次挂载、打开弹窗、弹窗期间轮询共用同一入口。
   const reloadStats = useCallback(() => {
     void loadUsageStats().then((data) => {
-      // 用户自定义价显示重估：宿主按内置目录计价，客户端按用户价覆盖显示成本。
-      if (data !== null) setStats(recostWithUserPrices(data))
+      // 存服务端原始文档：用户价显示重估的唯一出口是下方 displayStats memo。
+      // 此前这里预存重估结果，memo 又重估一次——删除用户价后 recost 原样返回
+      // 旧值，已重估的费用会粘到下一次轮询（最长 5 分钟）才被覆盖。
+      if (data !== null) setStats(data)
     })
     void fetchBalanceDoc().then(({ balances, reconcile }) => {
       // 余额服务端恒返回内置行（空=失败），失败时保留旧快照。
@@ -4360,33 +4331,34 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   }, [checkModels])
 
   const today = localDayStamp()
-  // 触发胶囊的主数字：当月累计（byDay 按 YYYY-MM 前缀归并）。
-  const monthCost = Object.entries(stats.byDay)
+  // 触发层的费用/token 数字一律读 displayStats（用户价重估后的视图），
+  // 与服务端原始文档 stats 区分——删价/改价即时生效，不等下一次轮询。
+  const monthCost = Object.entries(displayStats.byDay)
     .filter(([date]) => date.startsWith(today.slice(0, 7)))
     .reduce((sum, [, day]) => sum + day.cost, 0)
-  const todayCost = stats.byDay[today]?.cost ?? 0
+  const todayCost = displayStats.byDay[today]?.cost ?? 0
   // 触发卡 hover 速览：本周累计 + 近 7 天迷你柱。
   // 「本周」按自然周（周一起算，与标签语义一致，issue #39）：周一时它 ≈ 当日，
   // 不再是「近 7 天」把上周用量卷进来、与当月几乎相等的错位。
-  const weekCost = sinceMondayOf(stats.byDay, today)
+  const weekCost = sinceMondayOf(displayStats.byDay, today)
   // 近 7 天柱状数据（费用 + 当日 token 合并一份，供 trigger 按视角取列）。
   // token 口径与悬浮窗「总 Token」一致：input + output（缓存读单列，不并入）。
   const last7 = useMemo(
-    () => lastSevenDays(stats.byDay).map((day) => {
-      const row = stats.byDay[day.date]
+    () => lastSevenDays(displayStats.byDay).map((day) => {
+      const row = displayStats.byDay[day.date]
       return { date: day.date, cost: day.cost, tokens: row === undefined ? 0 : row.input + row.output }
     }),
-    [stats.byDay],
+    [displayStats.byDay],
   )
   // tokens 视角的主副行数字：当月/今日/本周 累计 token（本周 = 自然周，issue #39）。
-  const monthTokens = Object.entries(stats.byDay)
+  const monthTokens = Object.entries(displayStats.byDay)
     .filter(([date]) => date.startsWith(today.slice(0, 7)))
     .reduce((sum, [, day]) => sum + day.input + day.output, 0)
   const todayTokens = (() => {
-    const row = stats.byDay[today]
+    const row = displayStats.byDay[today]
     return row === undefined ? 0 : row.input + row.output
   })()
-  const weekTokens = sinceMondayOf(stats.byDay, today, (row) => row.input + row.output)
+  const weekTokens = sinceMondayOf(displayStats.byDay, today, (row) => row.input + row.output)
 
   // 预算偏好：开关与金额经框架 store 读取；用户金额优先，宿主 monthlyBudget
   //（stats.budget）兜底为默认值。
@@ -4403,9 +4375,12 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   // 配置变更时算一次）。
   const [nowMs, setNowMs] = useState(() => Date.now())
   useEffect(() => {
+    // 峰谷提醒未开启（默认关闭）时不起墙钟 tick——它唯一驱动的 computePeakAlert
+    // 在 disabled 时恒返回 null，常开 tick 只会每 30s 空转整棵组件树。
+    if (!peakConfig.enabled) return
     const timer = setInterval(() => setNowMs(Date.now()), STATS_REFRESH_INTERVAL_MS)
     return () => { clearInterval(timer) }
-  }, [])
+  }, [peakConfig.enabled])
   const updatePeakConfig = useCallback((config: PeakAlertConfig) => {
     setPeakConfig(config)
     savePeakAlertConfig(config)
@@ -4480,15 +4455,16 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       .replace('{minutes}', String(minutes))
     // 认领失败 = 另一实例刚发过同一切换点提醒，本实例跳过（issue #44）。
     notifyAcrossInstances(`peak:${upcoming.atMs}`, () => { new Notification(title, { body }) })
-  }, [nowMs, lastTierSwitchAt, peakConfig, currentChannel, quotas, stats.byTurn, actions, t])
+    // quotas/stats.byTurn 已经由 currentChannel 捕获，不重复列入依赖。
+  }, [nowMs, lastTierSwitchAt, peakConfig, currentChannel, actions, t])
 
   // 余额不足告警：任一提供方余额低于阈值（折算人民币）时每天提醒一次；
   // 与预算开关无关——余额是硬性约束，无论是否开启预算都要提醒。
   const lastBalanceAlertDay = useStore(s => s.lastBalanceAlertDay)
-  const lowThreshold = stats.lowBalanceThreshold ?? DEFAULT_LOW_BALANCE_THRESHOLD
+  const lowThreshold = displayStats.lowBalanceThreshold ?? DEFAULT_LOW_BALANCE_THRESHOLD
   const lowBalanceRow = useMemo(() => {
     if (balances.length === 0) return undefined
-    const burn = dailyBurnRate(stats.byDay, today)
+    const burn = dailyBurnRate(displayStats.byDay, today)
     const rate = getRateInfo().rate
     for (const balance of balances) {
       if (balance.totalBalance === undefined || balance.error !== undefined) continue
@@ -4500,7 +4476,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       return { name: balance.displayName, cny, days }
     }
     return undefined
-  }, [balances, stats.lowBalanceThreshold, stats.byDay, today])
+  }, [balances, displayStats.lowBalanceThreshold, displayStats.byDay, today])
   useEffect(() => {
     if (lowBalanceRow === undefined) return
     if (lastBalanceAlertDay === today) return
@@ -4520,12 +4496,12 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const vendorStatus = useMemo(() => {
     const prefix = today.slice(0, 7)
     const vendor = new Map<string, { cost: number; plan: boolean }>()
-    for (const [date, models] of Object.entries(stats.byDayModels ?? {})) {
+    for (const [date, models] of Object.entries(displayStats.byDayModels ?? {})) {
       if (!date.startsWith(prefix)) continue
       for (const [modelKey, usage] of Object.entries(models)) {
         if (usage.cost <= 0) continue
         const provider = modelOf(modelKey).provider
-        const isPlan = stats.byModel?.[modelKey]?.plan === true
+        const isPlan = displayStats.byModel?.[modelKey]?.plan === true
         const cur = vendor.get(provider) ?? { cost: 0, plan: isPlan }
         cur.cost += usage.cost
         // 混合计费（部分订阅）视为存在按量 → 归直联桶。
@@ -4590,11 +4566,11 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
         : { name: directEntry[0], ...directStatus },
       sub: subEntry === undefined ? undefined : { name: subEntry[0], ...quotaStatus(subEntry[0]) },
     }
-  }, [stats.byDayModels, stats.byModel, stats.lowBalanceThreshold, balances, quotas, today])
+  }, [displayStats.byDayModels, displayStats.byModel, displayStats.lowBalanceThreshold, balances, quotas, today, t])
 
   // hover 速览「数据卡」数值：全量累计用量（参考图风格）。
   const dash = useMemo(() => {
-    const total = stats.total
+    const total = displayStats.total
     return {
       input: total.input,
       output: total.output,
@@ -4602,7 +4578,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       cacheMiss: total.cacheMiss,
       calls: total.calls,
     }
-  }, [stats])
+  }, [displayStats])
 
   // 费用摘要始终写入计费指标服务：服务与槽位一样按「无消费者即空转」设计，
   // 主题插件（如 StickerPad）存在时自行读取，缺席时发布无害。

@@ -35,7 +35,7 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import z from '@deepseek-ai/schemastery'
-import { createUsageAggregator, dayStamp, type UsageLedgerStore, type UsagePersistence } from './aggregate.ts'
+import { createUsageAggregator, dayStamp, sumSiteBuckets, type UsageLedgerStore, type UsagePersistence } from './aggregate.ts'
 import { applyBuiltinCatalog, applyLivePricing, applyUserModelAliases, formatMoney, formatTokens } from './client/pricing.ts'
 import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts'
 import { queryBalances, queryCustomBalances } from './balance.ts'
@@ -81,8 +81,23 @@ function isLoopbackPeer(req: IncomingMessage): boolean {
  *  拒绝 `127.0.0.1.attacker.com` 这类以 `127.` 开头但解析到外部的 DNS rebinding 域名：
  *  只用 `startsWith('127.')` 会被它穿透，必须精确匹配回环 IP 的字面量。 */
 /**
- * 信任主机名归一化：去空白、去端口、转小写，丢弃空项。与请求侧
- * `host.split(':')[0].toLowerCase()` 同口径，因此匹配忽略大小写与端口。
+ * Host 头/名单条目的主机名部分：IPv6 字面量带方括号（`[::1]:3080`），整体去括号；
+ * 裸 IPv6（多个冒号、无方括号）整体是字面量；其余按首个冒号去端口。统一小写。
+ * （此前一律 `split(':')[0]`：`[::1]:3080` 截成 `[`，IPv6 回环请求被误拒，
+ * trustedHosts 也配不进去——fail-closed 无安全暴露，但本机 IPv6 场景功能失效。）
+ */
+function hostNameOf(host: string): string {
+  const trimmed = host.trim()
+  const bracket = /^\[([0-9a-fA-F:]+)\](?::\d+)?$/.exec(trimmed)
+  if (bracket !== null) return (bracket[1] ?? '').toLowerCase()
+  // 两个及以上冒号且无方括号 = 裸 IPv6 字面量（无端口语义），整体保留。
+  if ((trimmed.match(/:/g) ?? []).length > 1) return trimmed.toLowerCase()
+  return trimmed.split(':')[0]?.toLowerCase() ?? ''
+}
+
+/**
+ * 信任主机名归一化：去空白、去端口、转小写，丢弃空项（IPv6 经 {@link hostNameOf}
+ * 去方括号）。与请求侧 Host 头解析同口径，因此匹配忽略大小写与端口。
  * @param hosts - 配置里的原始名单。
  * @returns 归一化后的主机名集合（空集 = 与历史版本行为一致）。
  */
@@ -90,7 +105,7 @@ export function normalizeTrustedHosts(hosts: readonly string[] | undefined): Rea
   if (hosts === undefined) return new Set()
   const names = hosts
     .filter((host): host is string => typeof host === 'string')
-    .map(host => host.trim().split(':')[0]?.toLowerCase() ?? '')
+    .map(host => hostNameOf(host))
     .filter(host => host !== '')
   return new Set(names)
 }
@@ -98,12 +113,12 @@ export function normalizeTrustedHosts(hosts: readonly string[] | undefined): Rea
 function isLoopbackHost(req: IncomingMessage, trustedHosts: ReadonlySet<string> = new Set()): boolean {
   const host = req.headers.host
   if (host === undefined || host === '') return true
-  const name = host.split(':')[0]
+  const name = hostNameOf(host)
   // 精确匹配：localhost、IPv6 回环、或字面量 IPv4 回环地址（127.0.0.0/8）。
-  if (name === 'localhost' || name === '::1' || (name !== undefined && /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(name))) return true
+  if (name === 'localhost' || name === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(name)) return true
   // 反向代理场景：仅当用户显式列入 trustedHosts 才放行，且已经过 peer socket 校验。
   // 精确匹配（已去端口、转小写），无后缀 / 通配符语义。
-  return name !== undefined && trustedHosts.has(name.toLowerCase())
+  return name !== '' && trustedHosts.has(name)
 }
 
 /** 校验 Origin 头是否回环（写操作用，防止跨站表单/fetch 改写设置）。Origin 缺失
@@ -112,7 +127,9 @@ function isLoopbackHost(req: IncomingMessage, trustedHosts: ReadonlySet<string> 
 function isLoopbackOrigin(origin: string | undefined): boolean {
   if (origin === undefined || origin === '') return true
   try {
-    const host = new URL(origin).hostname
+    // WHATWG URL 的 hostname 对 IPv6 保留方括号（`[::1]`）：先去括号再比对。
+    const raw = new URL(origin).hostname
+    const host = raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw
     return host === 'localhost' || host === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
   } catch {
     return false
@@ -914,19 +931,9 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
           }
         }
         if (args.range === 'bySite' || args.range === 'relay') {
-          // 按站点归组：bySite 维度（中转站/直连/未知路由）累计；relay 只看中转站部分。
-          const bySite = stats.bySite ?? {}
-          let cost = 0
-          let calls = 0
-          let input = 0
-          let output = 0
-          for (const usage of Object.values(bySite)) {
-            cost += usage.cost
-            calls += usage.calls
-            input += usage.input
-            output += usage.output
-          }
-          return { range: args.range, cost, calls, input, output }
+          // 按站点归组：bySite 全量；relay 只计中转站桶（site:<origin> 键），
+          // direct/unknown 不计入（口径实现见 sumSiteBuckets）。
+          return { range: args.range, ...sumSiteBuckets(stats.bySite ?? {}, args.range) }
         }
         if (args.range === 'today') {
           const day = stats.byDay[dayStamp(Date.now())]
@@ -1090,9 +1097,13 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
           }
           // 余额差对账：用官方余额当日变动反推消费，与本地账本今日官方费用比对。
           // 只对 DeepSeek 官方余额行做（订阅/第三方不动官方余额）；取不到余额时不打扰。
+          // 币种口径：余额差是原生币种，账本费用是人民币——USD 账户直接比对会永久
+          // 虚报漂移（约 6.8 倍差），只在人民币（或未标注币种的历史形状）下对账。
           const official = balances.find(row => row.provider === 'deepseek')
           let reconcile: ReconcileEvent | undefined
-          if (official !== undefined && official.totalBalance !== undefined) {
+          const reconcilable = official !== undefined && official.totalBalance !== undefined
+            && (official.currency === undefined || official.currency.toUpperCase() === 'CNY')
+          if (official !== undefined && reconcilable) {
             const now = Date.now()
             const today = dayStamp(now)
             let todayOfficialCost = 0
@@ -1103,9 +1114,13 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
               // 聚合失败时不阻塞余额查询；对账基准确认可用后仍返回（消费计 0 下次再核）。
             }
             const result = reconcileBalanceDelta(reconcileRef, official, todayOfficialCost, today, now)
+            const refChanged = result.ref !== null && result.ref !== reconcileRef
             reconcileRef = result.ref
-            if (result.event !== null && result.event.kind !== 'flat') reconcile = { ...result.event, provider: official.displayName }
-            if (result.ref !== null) persistReconcileRef()
+            if (result.event !== null && result.event.kind !== 'flat') {
+              reconcile = { ...result.event, provider: official.displayName, ...(official.currency === undefined ? {} : { currency: official.currency }) }
+            }
+            // 基准未变（ok/flat 保早间基线）不重复落盘；只在基准真正前移时写。
+            if (refChanged) persistReconcileRef()
           }
           const doc = { balances: [...balances, ...custom, ...declared], ...(reconcile === undefined ? {} : { reconcile }) }
           balanceCache = { at: Date.now(), doc }
@@ -1128,15 +1143,17 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       path: '/api/billing/usage-tool',
       handler: async (req, res) => {
         if (!guardLoopback(req, res, trustedHosts)) return
+        // 方法分派必须先于状态行：此前 200 无条件先写，405 分支成为死代码
+        // （guardLoopback 已拦截非 GET/POST），且到达时会二次 writeHead 抛错。
+        if (req.method !== 'GET' && req.method !== 'POST') {
+          res.writeHead(405, { 'content-type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'method not allowed' }))
+          return
+        }
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         const enabled = usageSettingsScope?.get().enableUsageStatsTool ?? DEFAULT_ENABLE_USAGE_STATS_TOOL
         if (req.method === 'GET') {
           res.end(JSON.stringify({ enabled }))
-          return
-        }
-        if (req.method !== 'POST') {
-          res.writeHead(405, { 'content-type': 'application/json; charset=utf-8' })
-          res.end(JSON.stringify({ error: 'method not allowed' }))
           return
         }
         // 跨站写保护：POST 是写操作（改写设置命名空间），必须校验 Origin 头是回环，

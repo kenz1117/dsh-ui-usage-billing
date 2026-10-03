@@ -478,6 +478,9 @@ export declare function formatUnitPrice(price: number, currency?: 'CNY' | 'USD' 
  * @returns 换算到目标币种的单价；同币种或汇率不可用时原值。
  */
 export declare function convertUnitPrice(price: number, native: 'CNY' | 'USD', target: CostCurrency, rate: number): number;
+/** 本地时区日期戳 `YYYY-MM-DD`（与服务端 aggregate.ts 的 dayStamp 同口径）；
+ *  触发卡/热力图/Token 面板共用一个实现（此前三处各抄一份）。 */
+export declare function localDayStamp(time?: number): string;
 /** Format a large token count with B/M/K suffix. */
 export declare function formatTokens(value: number): string;
 /** Format a percentage. */

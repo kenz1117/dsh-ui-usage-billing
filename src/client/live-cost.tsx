@@ -248,8 +248,10 @@ function useLiveCostPrefs(): { visible: boolean; position: CapsulePosition } {
   return { visible, position }
 }
 
-/** 即时代费数据：挂载/会话切换时拉取 + 周期刷新，派生会话/本轮费用、峰谷档与额度预警。 */
-function useLiveCostData(sessionId: SessionId): {
+/** 即时代费数据：挂载/会话切换时拉取 + 周期刷新，派生会话/本轮费用、峰谷档与额度预警。
+ *  @param active - 调用方实际渲染与否：dock 条与工具行 chip 按位置互斥，
+ *  不渲染的座位（渲染 null）不应各跑一条 30s 双端点轮询。 */
+function useLiveCostData(sessionId: SessionId, active: boolean): {
   sessionCost: number
   turnCost: number
   tier: ReturnType<typeof tierCountdown> | null
@@ -270,7 +272,7 @@ function useLiveCostData(sessionId: SessionId): {
     return () => { document.removeEventListener('visibilitychange', onVisibility) }
   }, [])
   useEffect(() => {
-    if (!visible) return
+    if (!visible || !active) return
     let cancelled = false
     const load = (): void => {
       void loadLiveStats().then((data) => {
@@ -288,7 +290,7 @@ function useLiveCostData(sessionId: SessionId): {
       clearInterval(timer)
     }
     // sessionId 变化时重新订阅，以对齐当前会话。
-  }, [sessionId, visible])
+  }, [sessionId, visible, active])
   // 当前会话累计费用与当前轮费用：由纯函数派生，便于测试。
   const sessionCost = useMemo(() => sessionCostOf(stats, sessionId), [stats, sessionId])
   const turnCost = useMemo(() => turnCostOf(stats, sessionId), [stats, sessionId])
@@ -310,7 +312,7 @@ function useLiveCostData(sessionId: SessionId): {
  */
 export function LiveCostBar({ sessionId, t }: LiveCostBarProps): React.ReactNode {
   const { visible, position } = useLiveCostPrefs()
-  const { sessionCost, turnCost, tier, chips, hasBandPlan } = useLiveCostData(sessionId)
+  const { sessionCost, turnCost, tier, chips, hasBandPlan } = useLiveCostData(sessionId, visible && position !== 'toolbar')
 
   const currency = useCurrencyPref()
   const money = (cny: number): string => formatMoney(convertFromCny(cny, currency), currency)
@@ -377,7 +379,7 @@ export function LiveCostChip({ sessionId, t }: LiveCostBarProps): React.ReactNod
   const currency = useCurrencyPref()
   const money = (cny: number): string => formatMoney(convertFromCny(cny, currency), currency)
   const { visible, position } = useLiveCostPrefs()
-  const { sessionCost, turnCost, tier, chips, hasBandPlan } = useLiveCostData(sessionId)
+  const { sessionCost, turnCost, tier, chips, hasBandPlan } = useLiveCostData(sessionId, visible && position === 'toolbar')
   // 非工具行位置时 chip 让位给 bar（同 id 双槽互斥由位置偏好门控）。
   if (!visible || position !== 'toolbar') return null
   // 档位小徽章仅在当前会话模型涉及峰谷时渲染；额度预警压到 chip 上：

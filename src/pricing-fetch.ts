@@ -205,13 +205,7 @@ async function fetchRateFrom(sources: readonly { url: string; parse: (text: stri
 }
 
 async function fetchRate(): Promise<number | undefined> {
-  for (const source of RATE_SOURCES) {
-    const text = await fetchText(source.url)
-    if (text === null) continue
-    const value = source.parse(text)
-    if (value !== undefined && Number.isFinite(value) && value > 0) return value
-  }
-  return undefined
+  return fetchRateFrom(RATE_SOURCES)
 }
 
 /** OpenRouter model rows with usable USD unit prices, or undefined on failure. */
@@ -236,14 +230,19 @@ async function fetchRouterModels(): Promise<readonly RouterModel[] | undefined> 
   return models
 }
 
-/** Match one catalog key's candidates: exact id first, then a single strong substring hit. */
+/** Match one catalog key's candidates: exact id first, then per-hint unique strong substring. */
 function matchRouterModel(hints: readonly string[], models: readonly RouterModel[]): RouterModel | undefined {
   const exact = models.find(model => hints.some(hint => model.id === hint))
   if (exact !== undefined) return exact
-  // 强子串：hint 足够具体（≥8 字符）且唯一命中，避免同前缀模型误配。
-  const strong = models.filter(model => hints.some(hint => hint.length >= 8 && model.id.includes(hint)))
-  if (strong.length !== 1) return undefined
-  return strong[0]
+  // 强子串按 hint 声明顺序逐条判定（≥8 字符且唯一命中）：此前把全部 hint 池化
+  // 取并集，宽泛的兜底 hint（如 'deepseek-v4'）会把同族模型全拉进候选集，
+  // 具体 hint（'deepseek-v4-flash'）因此永远判「不唯一」跳过，实时价静默落空。
+  for (const hint of hints) {
+    if (hint.length < 8) continue
+    const strong = models.filter(model => model.id.includes(hint))
+    if (strong.length === 1) return strong[0]
+  }
+  return undefined
 }
 
 /** Map router matches onto catalog keys; undefined when nothing matched. */

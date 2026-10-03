@@ -707,6 +707,41 @@ function canonIndex(): ReadonlyMap<string, string> {
 }
 
 /**
+ * models.dev 补充条目的索引（归一化键 / 精确键各一份）：补充列表可达数千条，
+ * 聚合折叠每条事件都查一次（此前是逐元素跑正则归一化的线性扫描），索引把
+ * 单次查询降到 O(1)。惰性构建，`applyLivePricing` 替换数组后按引用失效重建。
+ */
+let extraIndexSource: readonly ExtraModelPrice[] | undefined
+let extraCanonCache: ReadonlyMap<string, ExtraModelPrice> | undefined
+let extraKeyCache: ReadonlyMap<string, ExtraModelPrice> | undefined
+
+function buildExtraIndex(): void {
+  if (extraIndexSource === liveExtraModels) return
+  const byCanon = new Map<string, ExtraModelPrice>()
+  const byKey = new Map<string, ExtraModelPrice>()
+  for (const item of liveExtraModels ?? []) {
+    if (!byKey.has(item.key)) byKey.set(item.key, item)
+    const canon = canonModelId(item.key)
+    if (canon !== '' && !byCanon.has(canon)) byCanon.set(canon, item)
+  }
+  extraIndexSource = liveExtraModels
+  extraCanonCache = byCanon
+  extraKeyCache = byKey
+}
+
+/** 补充条目的归一化键索引（宽松匹配日志模型 id）。 */
+function extraModelByCanon(): ReadonlyMap<string, ExtraModelPrice> {
+  buildExtraIndex()
+  return extraCanonCache ?? new Map()
+}
+
+/** 补充条目的精确键索引（目录键直查）。 */
+function extraModelByKey(): ReadonlyMap<string, ExtraModelPrice> {
+  buildExtraIndex()
+  return extraKeyCache ?? new Map()
+}
+
+/**
  * 解析真实日志模型 id → 计费目录键。先精确别名映射（既有行为）；未命中时做
  * 归一化匹配（忽略大小写/分隔符/括号附注），命中内置目录 / 别名目标 / 兜底键 /
  * models.dev 补充键即返回其真实键；完全未知时保持原样（回退 other，不计费）。
@@ -754,8 +789,7 @@ function lookupCandidate(candidate: string): string | undefined {
   if (canon === '') return undefined
   const hit = canonIndex().get(canon)
   if (hit !== undefined) return hit
-  const extraHit = (liveExtraModels ?? []).find(item => canonModelId(item.key) === canon)
-  return extraHit?.key
+  return extraModelByCanon().get(canon)?.key
 }
 
 export function resolveCatalogKey(id: string): string {
@@ -766,7 +800,7 @@ export function resolveCatalogKey(id: string): string {
     if (canon !== '') {
       const hit = canonIndex().get(canon)
       if (hit !== undefined) return hit
-      const extraHit = (liveExtraModels ?? []).find(item => canonModelId(item.key) === canon)
+      const extraHit = extraModelByCanon().get(canon)
       if (extraHit !== undefined) return extraHit.key
     }
     // 派生候选（剥组织前缀 / 尾部日期段）按同一口径匹配；全部未命中保持原样
@@ -795,8 +829,8 @@ export function modelOf(key: string): ModelEntry {
   const resolved = resolveCatalogKey(key)
   const found = modelCatalog().find(entry => entry.key === resolved)
   // 目录未命中时查 models.dev 补充条目（与宿主预制提供方对齐的实时价）。
-  const extra = liveExtraModels?.find(item => item.key === resolved)
-  const base = found ?? (extra !== undefined ? extraEntryOf(extra) : modelCatalog().at(-1) ?? UNSEEDED_OTHER)
+  const extra = extraModelByKey().get(resolved)
+  const base = found ?? (extra !== undefined ? extraEntryOf(extra) : modelCatalog().find(entry => entry.key === 'other') ?? UNSEEDED_OTHER)
   // 用户自定义价优先级最高：整表替换；带 offPeak 时保留峰谷分档，否则平档。
   const user = userPriceOf(resolved)
   if (user !== undefined) {
@@ -814,6 +848,9 @@ export function modelOf(key: string): ModelEntry {
   }
   const live = livePriceOf(resolved)
   if (live === undefined) return base
+  // 分档条目（峰谷/延迟档）不适用实时平档：路由器美元单价无时段区分，整表替换
+  // 会把官方峰谷规则抹平（峰档 = 谷档 × 2 的计费口径丢失）。平档条目才整表替换。
+  if (base.price.offPeak !== undefined) return base
   // 实时价是路由器的美元单价（平档、无时段区分）：整表替换并走汇率换算。
   return { ...base, price: { currency: 'USD', input: live.input, cacheHit: live.cacheHit, output: live.output } }
 }
@@ -841,7 +878,7 @@ function extraEntryOf(extra: ExtraModelPrice): ModelEntry {
 export function isPriced(key: string): boolean {
   const resolved = resolveCatalogKey(key)
   if (modelCatalog().some(entry => entry.key === resolved)) return true
-  if ((liveExtraModels ?? []).some(item => item.key === resolved)) return true
+  if (extraModelByKey().has(resolved)) return true
   return FALLBACK_RATES.some(rate => rate.key.toLowerCase() === resolved.toLowerCase())
 }
 
@@ -918,7 +955,7 @@ export function catalogEntries(nowMs: number = Date.now()): readonly ModelEntry[
     if (known.has(rawKey) || (idCanon !== '' && knownCanon.has(idCanon))) continue
     // 目录外但有 models.dev 价：直接复用其 USD 价（按归一化 id 匹配），否则走
     // dsh-spend 官方价兜底；两者都没有才标「未收录」。
-    const extra = (liveExtraModels ?? []).find(item => canonModelId(item.key) === idCanon)
+    const extra = extraModelByCanon().get(idCanon)
     let entry: ModelEntry
     if (extra !== undefined) {
       entry = extraEntryOf(extra)
@@ -1076,6 +1113,14 @@ export function computeCostAt(
     return priceBandCost(band, buckets, 'CNY')
   }
   if (priced.price.offPeak === undefined) return priceBandCost(priced.price, buckets, priced.price.currency)
+  // 延迟档语义（Gemini Standard/Flex）与调用时刻无关：逐调用档位从日志不可判定，
+  // 两档按 peakShare 混合估算——不套 DeepSeek 的北京时段窗口与中国法定节假日
+  // （Google 不遵守这些窗口，套用会把高峰时段的 Gemini 流量虚抬到 2 倍价）。
+  if (entry.tierSemantics === 'latency') {
+    const peak = priceBandCost(priced.price, buckets, priced.price.currency)
+    const off = priceBandCost(priced.price.offPeak, buckets, priced.price.currency)
+    return peak * peakShare + off * (1 - peakShare)
+  }
   // 档位判定按事件时刻分段适用规则：v1 窗口不豁免周末，分界起周末全谷。
   const tier = timeMs < WEEKEND_OFFPEAK_START_MS ? tariffV1At(timeMs) : tierAt(timeMs)
   const band = tier === 'peak' ? priced.price : priced.price.offPeak
@@ -1149,6 +1194,14 @@ export function convertUnitPrice(price: number, native: 'CNY' | 'USD', target: C
   if (target === 'usd') return cny / rate
   const eur = getEurRateInfo().rate
   return eur > 0 ? cny / eur : cny
+}
+
+/** 本地时区日期戳 `YYYY-MM-DD`（与服务端 aggregate.ts 的 dayStamp 同口径）；
+ *  触发卡/热力图/Token 面板共用一个实现（此前三处各抄一份）。 */
+export function localDayStamp(time = Date.now()): string {
+  const date = new Date(time)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
 /** Format a large token count with B/M/K suffix. */

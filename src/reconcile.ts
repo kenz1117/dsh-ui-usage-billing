@@ -34,6 +34,8 @@ export interface ReconcileEvent {
   kind: ReconcileKind
   /** 余额提供商显示名（如 DeepSeek）；仅 `ok`/`drift`。 */
   provider?: string
+  /** 余额币种（CNY / USD）；仅 `ok`/`drift` 且上游标注币种时携带，供界面标注金额单位。 */
+  currency?: string
   /** 按余额差反推的当日消费（CNY/USD 按余额币种）；仅 `ok`/`drift`。 */
   spent?: number
   /** 本地账本当日的官方渠道费用；仅 `ok`/`drift`。 */

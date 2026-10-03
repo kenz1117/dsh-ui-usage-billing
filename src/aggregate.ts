@@ -154,6 +154,29 @@ export function siteBucketKey(ref: SiteRef): string {
   return 'unknown'
 }
 
+/**
+ * 站点桶按范围求和（usage_stats 工具的 bySite/relay 口径）：bySite 全量累计；
+ * relay 只计中转站桶（`site:<origin>` 键）——`direct:*` 与 `unknown` 不计入，
+ * 否则 relay 总额与 all 相同，中转站费用被高估。
+ */
+export function sumSiteBuckets(
+  bySite: Readonly<Record<string, { cost: number; calls: number; input: number; output: number }>>,
+  range: 'bySite' | 'relay',
+): { cost: number; calls: number; input: number; output: number } {
+  let cost = 0
+  let calls = 0
+  let input = 0
+  let output = 0
+  for (const [bucket, usage] of Object.entries(bySite)) {
+    if (range === 'relay' && !bucket.startsWith('site:')) continue
+    cost += usage.cost
+    calls += usage.calls
+    input += usage.input
+    output += usage.output
+  }
+  return { cost, calls, input, output }
+}
+
 /** Aggregation tuning options. */
 export interface AggregateOptions {
   /** 订阅制 provider id 列表；缺省按订阅卡同款 id 判定（`isSubscriptionProviderId`）。 */
@@ -230,8 +253,11 @@ export function emptyUsage(): ModelUsage {
  * @param subscription - whether the call went through a subscription plan; such calls never cost money.
  * @param timeMs - the call's wall-clock time (epoch ms); drives peak/off-peak pricing.
  * @param official - whether the call went through the official DeepSeek channel (vs a third-party relay).
+ * @param pricedCost - 调用方预算好的本次费用（同一条消息折叠进多个桶时计价结果相同，
+ *   逐桶重算会让最热路径付出 N 倍常数）；提供时跳过内部的计价闸门与计算，
+ *   调用方保证其已按 `!subscription && isPriced(key)` 判定。
  */
-export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number, official = false): void {
+export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number, official = false, pricedCost?: number): void {
   const cacheHit = usage.cacheReadTokens ?? 0
   const cacheMiss = usage.inputTokens + (usage.cacheWriteTokens ?? 0)
   acc.calls += 1
@@ -247,6 +273,11 @@ export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subsc
   // 订阅套餐不计费；未定价的模型（目录与 models.dev 补充条目都没有）记 0。
   // 费用按本次调用增量累加（计价是线性的）：同一桶内混入订阅/未知调用时，
   // 后面免费调用不再把整个桶的 cost 覆盖成 0。时段按本次调用的实际时刻精确判定。
+  if (pricedCost !== undefined) {
+    acc.cost += pricedCost
+    if (official) acc.officialCost += pricedCost
+    return
+  }
   if (!subscription && isPriced(key)) {
     const thisCost = computeCostAt(modelOf(key), {
       input: cacheHit + cacheMiss,
@@ -1331,16 +1362,26 @@ function foldInto(
     const modelKey = key
     const day = dayStamp(event.time)
     // 不可计价模型（目录外/无价，且非订阅通道）收集到 unpriced 集合，供聚合层暴露给用户提示。
-    if (!subscription && !isPriced(modelKey)) fold.unpricedModels.add(modelKey)
-    foldUsage(fold.total, usage, modelKey, subscription, event.time, official)
-    foldUsage(usageCell(fold.byModel, modelKey), usage, modelKey, subscription, event.time, official)
-    foldUsage(usageCell(fold.byDay, day), usage, modelKey, subscription, event.time, official)
-    foldUsage(modelDayCell(fold.byDayModels, day, modelKey), usage, modelKey, subscription, event.time, official)
+    const priced = !subscription && isPriced(modelKey)
+    if (!subscription && !priced) fold.unpricedModels.add(modelKey)
+    // 本条消息折叠进 7 个桶 + 每轮明细，各桶费用完全相同：一次计价全程复用
+    // （此前逐桶重算 computeCostAt/modelOf，折叠最热路径付出 9 倍计价常数）。
+    const entry = priced ? modelOf(modelKey) : undefined
+    const thisCost = entry === undefined ? undefined : computeCostAt(entry, {
+      input: (usage.cacheReadTokens ?? 0) + usage.inputTokens + (usage.cacheWriteTokens ?? 0),
+      cacheHit: usage.cacheReadTokens ?? 0,
+      cacheMiss: usage.inputTokens + (usage.cacheWriteTokens ?? 0),
+      output: usage.outputTokens,
+    }, event.time)
+    foldUsage(fold.total, usage, modelKey, subscription, event.time, official, thisCost)
+    foldUsage(usageCell(fold.byModel, modelKey), usage, modelKey, subscription, event.time, official, thisCost)
+    foldUsage(usageCell(fold.byDay, day), usage, modelKey, subscription, event.time, official, thisCost)
+    foldUsage(modelDayCell(fold.byDayModels, day, modelKey), usage, modelKey, subscription, event.time, official, thisCost)
     // 模型×日期×站点三维（issue #16）：供「按 origin 绑定自定义价」的显示层重估。
-    foldUsage(modelDaySiteCell(fold.byDayModelsSite, day, modelKey, siteBucket), usage, modelKey, subscription, event.time, official)
-    foldUsage(usageCell(fold.bySite, siteBucket), usage, modelKey, subscription, event.time, official)
+    foldUsage(modelDaySiteCell(fold.byDayModelsSite, day, modelKey, siteBucket), usage, modelKey, subscription, event.time, official, thisCost)
+    foldUsage(usageCell(fold.bySite, siteBucket), usage, modelKey, subscription, event.time, official, thisCost)
     // 峰谷分桶：与计费同口径逐调用判档（tierAt），峰谷占比因此是真实数据。
-    foldUsage(usageCell(fold.byTier, tierAt(event.time)), usage, modelKey, subscription, event.time, official)
+    foldUsage(usageCell(fold.byTier, tierAt(event.time)), usage, modelKey, subscription, event.time, official, thisCost)
     if (subscription) fold.planCalls.set(modelKey, (fold.planCalls.get(modelKey) ?? 0) + 1)
     // 每轮明细：同一轮内的调用累加进该轮状态（模型取最近一次的归属）。
     const turn = (event.data as { turn?: number }).turn ?? -1
@@ -1350,20 +1391,13 @@ function foldInto(
     state.output += usage.outputTokens
     state.cacheHit += usage.cacheReadTokens ?? 0
     state.cacheMiss += usage.inputTokens + (usage.cacheWriteTokens ?? 0)
-    if (!subscription && isPriced(modelKey)) {
-      const buckets = {
-        input: (usage.cacheReadTokens ?? 0) + usage.inputTokens + (usage.cacheWriteTokens ?? 0),
-        cacheHit: usage.cacheReadTokens ?? 0,
-        cacheMiss: usage.inputTokens + (usage.cacheWriteTokens ?? 0),
-        output: usage.outputTokens,
-      }
-      const fullCost = computeCostAt(modelOf(modelKey), buckets, event.time)
-      state.cost += fullCost
+    if (thisCost !== undefined && entry !== undefined) {
+      state.cost += thisCost
       // 角色归因：输出成本实测计价；输入成本 = 整次成本 - 输出部分，合并时
       // 再按 user/tool 消息字符占比摊分。
-      const outputCost = computeCostAt(modelOf(modelKey), { input: 0, cacheHit: 0, cacheMiss: 0, output: usage.outputTokens }, event.time)
+      const outputCost = computeCostAt(entry, { input: 0, cacheHit: 0, cacheMiss: 0, output: usage.outputTokens }, event.time)
       fold.roles.outputCost += outputCost
-      fold.roles.inputCost += fullCost - outputCost
+      fold.roles.inputCost += thisCost - outputCost
     }
     if (state.startedAt === Number.MAX_SAFE_INTEGER) state.startedAt = event.time
     // 性能样本：该 step 的 TTFT / 生成速度 / 总延迟；无效样本不入集。

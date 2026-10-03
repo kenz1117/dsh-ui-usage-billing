@@ -33,6 +33,13 @@ describe('normalizeTrustedHosts', () => {
     expect(normalizeTrustedHosts(['', '   ', ':8080']).size).toBe(0)
     expect(normalizeTrustedHosts(undefined).size).toBe(0)
   })
+
+  it('normalizes IPv6 entries, bracketed or bare, dropping the port', () => {
+    // 此前 split(':')[0] 把 '[::1]' 截成 '['：IPv6 条目永远配不进去。
+    expect([...normalizeTrustedHosts(['[fd00::1]'])]).toEqual(['fd00::1'])
+    expect([...normalizeTrustedHosts(['[fd00::1]:3080'])]).toEqual(['fd00::1'])
+    expect([...normalizeTrustedHosts(['fd00::1'])]).toEqual(['fd00::1'])
+  })
 })
 
 describe('guardLoopback', () => {
@@ -93,5 +100,16 @@ describe('guardLoopback', () => {
     const r = res()
     guardLoopback(req('llm.example.com', '203.0.113.9'), r.res, normalizeTrustedHosts(['llm.example.com']))
     expect(r.body()).toBe(JSON.stringify({ error: 'forbidden: loopback only' }))
+  })
+
+  it('accepts IPv6 loopback Host headers (bracketed, with or without port)', () => {
+    // Host '[::1]:3080' 此前被 split(':')[0] 截成 '[' 误拒（fail-closed）。
+    expect(guardLoopback(req('[::1]:3080', '::1'), res().res)).toBe(true)
+    expect(guardLoopback(req('[::1]', '::1'), res().res)).toBe(true)
+  })
+
+  it('allows a listed IPv6 host through the allowlist', () => {
+    const allow = normalizeTrustedHosts(['[fd00::1]'])
+    expect(guardLoopback(req('[fd00::1]:3080', '127.0.0.1'), res().res, allow)).toBe(true)
   })
 })

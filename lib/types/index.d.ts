@@ -27,12 +27,9 @@ interface SettingsReader {
         value: unknown;
     }[];
 }
-/** 校验 Host 头是本机回环（精确 127.0.0.0/8 / ::1 / localhost 或空，供 curl 不带 Host 的极简请求）。
- *  拒绝 `127.0.0.1.attacker.com` 这类以 `127.` 开头但解析到外部的 DNS rebinding 域名：
- *  只用 `startsWith('127.')` 会被它穿透，必须精确匹配回环 IP 的字面量。 */
 /**
- * 信任主机名归一化：去空白、去端口、转小写，丢弃空项。与请求侧
- * `host.split(':')[0].toLowerCase()` 同口径，因此匹配忽略大小写与端口。
+ * 信任主机名归一化：去空白、去端口、转小写，丢弃空项（IPv6 经 {@link hostNameOf}
+ * 去方括号）。与请求侧 Host 头解析同口径，因此匹配忽略大小写与端口。
  * @param hosts - 配置里的原始名单。
  * @returns 归一化后的主机名集合（空集 = 与历史版本行为一致）。
  */

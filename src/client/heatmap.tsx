@@ -14,7 +14,7 @@
 
 import { useMemo, useState } from 'react'
 import css from './UsageBilling.module.css'
-import { convertFromCny, formatMoney, formatTokens, type CostCurrency } from './pricing.ts'
+import { convertFromCny, formatMoney, formatTokens, localDayStamp, type CostCurrency } from './pricing.ts'
 
 /** One heatmap day. */
 export interface HeatmapDay {
@@ -47,10 +47,7 @@ const LEVEL_COLORS: readonly string[] = [
 const MONTH_ABBR: readonly string[] = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** Local-time `YYYY-MM-DD` stamp (matches the dashboard's day keys). */
-function dayStamp(date: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-}
+const dayStamp = (date: Date): string => localDayStamp(date.getTime())
 
 /**
  * Build the current-month cells arranged in week rows (Sunday-first).
@@ -222,6 +219,9 @@ export function UsageHeatmap({ days, currency, now, t, range = 'month', unit = '
                   style={{ background: LEVEL_COLORS[cell.level] }}
                   title={`${cell.date} · ${fmt(cell.value)}`}
                   aria-label={`${cell.date}: ${fmt(cell.value)}`}
+                  /* 无 onClick 的纯展示格：移出 Tab 序列（半年/年视图 371 个格子，
+                  否则逐格都是无操作停留点）；屏幕阅读器经 role=img 容器读汇总。 */
+                  tabIndex={-1}
                 />
               ))}
             </div>

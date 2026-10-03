@@ -18,16 +18,12 @@ import { useMemo, useState } from 'react'
 import clsx from 'clsx'
 import css from './UsageBilling.module.css'
 import type { UsageBillingKey } from './locales.ts'
-import { formatTokens, modelOf } from './pricing.ts'
+import { formatTokens, localDayStamp, modelOf } from './pricing.ts'
+import { downloadText } from './export.ts'
 import type { TrendSeriesModel } from './TrendChart.tsx'
 import type { UsageStats } from './UsageBilling.tsx'
 
-/** 本地时区 `YYYY-MM-DD`（与服务端 dayStamp 一致）。 */
-function localStamp(time = Date.now()): string {
-  const d = new Date(time)
-  const p = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
+
 
 /** 短数字刻度：`1.2M` / `3.4K`。导出供概览 KPI 峰值日卡复用。 */
 export function shortNumber(v: number): string {
@@ -163,7 +159,7 @@ export function TokenPanel(props: {
     for (let offset = trendDays - 1; offset >= 0; offset -= 1) {
       const d = new Date()
       d.setDate(d.getDate() - offset)
-      const date = localStamp(d.getTime())
+      const date = localDayStamp(d.getTime())
       const day = byDay[date]
       out.push({
         date,
@@ -182,7 +178,7 @@ export function TokenPanel(props: {
     for (let offset = trendDays - 1; offset >= 0; offset -= 1) {
       const d = new Date()
       d.setDate(d.getDate() - offset)
-      const date = localStamp(d.getTime())
+      const date = localDayStamp(d.getTime())
       const cells = stats.byDayModels?.[date]
       const models: Record<string, ModelDayCell> = {}
       let dayTotal = 0
@@ -295,20 +291,10 @@ export function TokenPanel(props: {
 
   // 导出：按日 token CSV（结构口径，保持不变）+ 全量 JSON（含按日 × 模型明细）。
   const exportTokenCsv = (): void => {
-    const blob = new Blob([tokenDayCsv(days)], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `token-daily-${localStamp()}.csv`
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(a.href), 0)
+    downloadText(`token-daily-${localDayStamp()}.csv`, tokenDayCsv(days), 'text/csv')
   }
   const exportTokenJson = (): void => {
-    const blob = new Blob([tokenDailyJson(days, models, modelDays, total)], { type: 'application/json' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `token-${localStamp()}.json`
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(a.href), 0)
+    downloadText(`token-${localDayStamp()}.json`, tokenDailyJson(days, models, modelDays, total), 'application/json')
   }
 
   // 悬停日的明细（tooltip 数据源）；未悬停或索引越界时不显示。
@@ -572,6 +558,15 @@ export function TokenPanel(props: {
                     className={clsx(modelViewAvailable && css.modelRowFocusable, activeFocus === m.key && css.modelRowActive)}
                     aria-selected={modelViewAvailable ? activeFocus === m.key : undefined}
                     onClick={modelViewAvailable ? () => { toggleFocus(m.key) } : undefined}
+                    /* 与会话折叠行同一 U1 键盘模式：Tab 聚焦，Enter/Space 切换聚焦模型；
+                    保留 tr 的 row 语义，不加 role 以免破坏表格结构。 */
+                    tabIndex={modelViewAvailable ? 0 : undefined}
+                    onKeyDown={modelViewAvailable ? (event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        toggleFocus(m.key)
+                      }
+                    } : undefined}
                   >
                     <td><span className={css.modelName}>{m.name}</span></td>
                     <td className={css.numCol}>{formatTokens(m.input)}</td>
