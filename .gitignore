@@ -11,3 +11,5 @@ usage-billing-redesign/
 
 # 本地设计稿（不入库，仅本地参考）
 .design/
+.v2c/
+.video_agent/
