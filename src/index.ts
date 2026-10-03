@@ -43,7 +43,7 @@ import { queryDeclaredEndpoints } from './declarative.ts'
 import { reconcileBalanceDelta, type BalanceRef, type ReconcileEvent } from './reconcile.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
 import type { CustomBalanceConfig, DeclaredEndpointConfig, LivePricing, RelayQuota, SubscriptionPlanConfig, SubscriptionQuota } from './pricing-shared.ts'
-import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts'
+import { collectSubscriptions, EMPTY_SUBSCRIPTION_KEYS, identifySubscriptionPlans, parseOpenCodeAuthDocument, type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts'
 import { isOfficialBaseUrl, queryRelayQuotas, type RelayRoute } from './relay.ts'
 import { planTypeOf, subscriptionFeeCnyOf } from './client/plan-knowledge.ts'
 
@@ -376,7 +376,8 @@ export const inject = ['webServer', 'sessionPersistence', 'credentials', 'settin
 /** key 只取字符串凭据字段：zaiRegion 是区域枚举，由下方区域逻辑单独赋值。 */
 const SUBSCRIPTION_KEY_SOURCES: ReadonlyArray<{ provider: string; key: Exclude<keyof SubscriptionKeys, 'zaiRegion'> }> = [
   { provider: 'kimi-coding', key: 'kimiApiKey' },
-  { provider: 'zai-coding-cn', key: 'zaiApiKey' },
+  { provider: 'zai-coding-cn', key: 'zaiCnApiKey' },
+  { provider: 'zai-coding', key: 'zaiApiKey' },
   { provider: 'opencode', key: 'opencodeApiKey' },
   { provider: 'opencode-go', key: 'opencodeApiKey' },
   { provider: 'minimax', key: 'minmaxApiKey' },
@@ -521,8 +522,9 @@ export async function resolveSubscriptionKeys(
       // 凭据解析失败跳过该 provider（保持未配置）。
     }
   }
-  // zai-coding-cn 是智谱国内域：跟随它时区域固定为 bigmodel-cn。
-  if (providers?.['zai-coding-cn']?.apiKeyEnv !== undefined && keys.zaiApiKey !== '') {
+  // zai-coding-cn 是智谱国内域：跟随它时区域固定为 bigmodel-cn。只影响未显式
+  // 声明 region 的声明式 plan 配置——identify 出的两条 Z.ai 路由各带固定区域。
+  if (providers?.['zai-coding-cn']?.apiKeyEnv !== undefined && keys.zaiCnApiKey !== '') {
     keys.zaiRegion = 'bigmodel-cn'
   }
   // OpenCode 便捷回退：opencode(opencode-go) 路由没配 apiKeyEnv 时，读本机 OpenCode
@@ -549,12 +551,7 @@ export async function resolveSubscriptionKeys(
 async function readOpenCodeToken(): Promise<string> {
   try {
     const auth = JSON.parse(await readFile(join(homedir(), '.local', 'share', 'opencode', 'auth.json'), 'utf8')) as unknown
-    if (typeof auth === 'string' && auth !== '') return auth
-    if (auth !== null && typeof auth === 'object') {
-      const record = auth as Record<string, unknown>
-      const token = record.token ?? record.key ?? record.apiKey
-      if (typeof token === 'string' && token !== '') return token
-    }
+    return parseOpenCodeAuthDocument(auth)
   } catch {
     // 文件不存在 / 读不动 / JSON 解析失败 → 视为没有凭据，不报错。
   }
