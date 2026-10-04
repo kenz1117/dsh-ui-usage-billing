@@ -1,10 +1,12 @@
 /**
  * usage-stats 工具开关的共享设置契约（node 与 client 两端共用）。
  *
- * 宿主把已注册的设置命名空间服务给浏览器；node 半区在 apply 阶段读一次该值决定
- * 是否向模型注入 `usage_stats` 工具（工具注入是启动期决策，改开关后重载应用生效），
- * client 半区在「设置」Tab 渲染开关并写入同一命名空间。缺省的默认行为是关闭——
- * 避免该工具默认占用模型每次请求的上下文（coding 场景通常在仪表盘看用量）。
+ * 旧宿主（≤0.1.6）把该开关存设置命名空间；宿主 0.1.7+ 起注册面移除，改存插件
+ * 条目 config 的 volatile 字段（Config schema 投影），写回经 settings.update，
+ * 提交后引用原位更新、`usage_stats` 工具即时注册/注销（无需重载应用）。
+ * client 半区在「设置」Tab 渲染开关并经 /api/billing/usage-tool 写入，node 半区
+ * 按宿主世代选择通道。缺省的默认行为是关闭——避免该工具默认占用模型每次请求
+ * 的上下文（coding 场景通常在仪表盘看用量）。
  */
 
 // type-only import：`UserPriceEntry` 是结构契约，运行时无依赖、不引入 node 侧耦合。

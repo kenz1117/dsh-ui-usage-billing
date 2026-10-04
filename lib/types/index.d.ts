@@ -15,6 +15,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials';
+import z from '@deepseek-ai/schemastery';
 import { type UsageLedgerStore, type UsagePersistence } from './aggregate.ts';
 import type { CustomBalanceConfig, DeclaredEndpointConfig, SubscriptionPlanConfig } from './pricing-shared.ts';
 import { type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts';
@@ -42,6 +43,23 @@ export declare function normalizeTrustedHosts(hosts: readonly string[] | undefin
  * @returns 是否放行；false = 已拒绝并结束响应。
  */
 export declare function guardLoopback(req: IncomingMessage, res: ServerResponse, trustedHosts?: ReadonlySet<string>): boolean;
+/** 宿主 0.1.7+ 经 Config schema 解析后，volatile 字段在 config 中的稳定引用形态
+ *  （cosmokit `Volatile<T>` 的最小结构镜像，避免为类型引入直接依赖）。 */
+export interface VolatileToggle {
+    /** @returns 当前生效的布尔快照（设置写入后原位更新，无需重载插件）。 */
+    get(): boolean;
+}
+/**
+ * Loader 挂载时对条目 config 做校验的 Config 声明：`enableUsageStatsTool` 标记
+ * volatile，宿主 0.1.7+ 设置系统据此把它投影为可实时编辑的开关（describe/update）。
+ * schemastery 非严格 object 透传未声明键，其余 config 字段不受影响；未导出 Config
+ * 的旧宿主直接把原始 config 交给 apply，普通布尔形态由读取端兼容。
+ */
+export declare const Config: z<Schemastery.ObjectS<NoInfer<{
+    enableUsageStatsTool: z<boolean, boolean, "volatile-defined">;
+}>>, Schemastery.ObjectT<NoInfer<{
+    enableUsageStatsTool: z<boolean, boolean, "volatile-defined">;
+}>>, "plain">;
 /** Plugin configuration. */
 export interface UsageBillingConfig {
     /** Absolute path to a `.dsh-usage-stats.json` fallback file. */
@@ -83,9 +101,10 @@ export interface UsageBillingConfig {
      * 例：`['llm.example.com']`。
      */
     trustedHosts?: string[];
-    /** `usage_stats` 工具注入的组合 base（默认 false：不注入）；与设置命名空间同字段，
-     *  作为用户设置（设置 Tab 开关）的组合兜底。该工具占用每次请求的上下文，coding 场景多在仪表盘查看。 */
-    enableUsageStatsTool?: boolean;
+    /** `usage_stats` 工具注入开关（默认 false：不注入）。宿主 0.1.7+ 经 Config
+     *  解析后是 volatile 引用（设置写入即时反映），直连 apply（测试）是普通布尔；
+     *  读取统一走 readUsageStatsToggle。该工具占用每次请求的上下文，coding 场景多在仪表盘查看。 */
+    enableUsageStatsTool?: boolean | VolatileToggle;
     /**
      * 联网搜索请求（`web/deepseek-search-llm-request`，日志只有请求、无用量事件）
      * 的单次费用估算（人民币元）。这类调用直连官方 api.deepseek.com，开放平台照常

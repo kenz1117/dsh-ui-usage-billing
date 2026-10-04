@@ -123,6 +123,25 @@ const settingsDouble = {
   },
 }
 
+/** settings 能力替身（新世代，issue #80）：模拟宿主 0.1.7+ 的 SettingsForms——
+ *  register 已移除、只剩 describe/update 表单面；update 记录调用供断言写回寻址。
+ *  update 按宿主真实契约依赖 this.write（服务类方法），防止实现裸摘函数引用脱绑 this。 */
+function liveSettingsDouble(onUpdate: (ns: string, patch: Record<string, unknown>) => void) {
+  return {
+    name: 'test-billing-settings-live',
+    apply(ctx: Context): void {
+      ctx.provide('settings', {
+        describe: () => [],
+        write: () => {},
+        update(this: { write?: unknown }, ns: string, patch: Record<string, unknown>) {
+          if (typeof this?.write !== 'function') throw new TypeError('this.write is not a function')
+          onUpdate(ns, patch)
+        },
+      } as unknown as SettingsProvider)
+    },
+  }
+}
+
 /** Write the four-row cordis.yml, then boot it through the real Loader. */
 async function loadComposition(): Promise<Context> {
   return loadCompositionWith({})
@@ -131,8 +150,19 @@ async function loadComposition(): Promise<Context> {
 /** 参数化组装：默认用正常 persistence；`corrupt` 时注入 readFrom 抛错的替身，
  *  `slow` 时注入 list 延迟 3 秒的替身；`statsPath` 写入配置指向回退快照文件
  * （聚合失败/超预算时走该文件）；`omitPersistPaths` 省略三个持久化路径——
- * 配合 vi.stubEnv('DSH_HOME', …) 验证默认路径跟随宿主 harness home（issue #52）。 */
-async function loadCompositionWith(options: { corrupt?: boolean; slow?: boolean; statsPath?: string; omitPersistPaths?: boolean } = {}): Promise<Context> {
+ * 配合 vi.stubEnv('DSH_HOME', …) 验证默认路径跟随宿主 harness home（issue #52）；
+ * `settings: 'live'` 换新世代 settings 替身（issue #80），`entryId`/`entryConfig`
+ * 给插件条目写显式 id 与追加 config 行（无 id 条目会拿随机 id，无法断言写回寻址）。 */
+async function loadCompositionWith(options: {
+  corrupt?: boolean
+  slow?: boolean
+  statsPath?: string
+  omitPersistPaths?: boolean
+  settings?: 'legacy' | 'live'
+  entryId?: string
+  entryConfig?: string[]
+  onUpdate?: (ns: string, patch: Record<string, unknown>) => void
+} = {}): Promise<Context> {
   root = await mkdtemp(join(tmpdir(), 'dsh-usage-billing-'))
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
@@ -142,10 +172,14 @@ async function loadCompositionWith(options: { corrupt?: boolean; slow?: boolean;
     '    port: 0',
     "- name: 'virtual:test-billing-persistence'",
     "- name: 'virtual:test-billing-credentials'",
-    "- name: 'virtual:test-billing-settings'",
-    "- name: '@kenz1117/dsh-ui-usage-billing'",
+    `- name: 'virtual:test-billing-settings${options.settings === 'live' ? '-live' : ''}'`,
+    // 显式 id 与 name 必须是同一个列表项（name 用 2 空格缩进续行），拆成两行
+    // 会生成一个无 name 的空条目导致 import 失败。
+    ...(options.entryId === undefined ? ["- name: '@kenz1117/dsh-ui-usage-billing'"] : ["- id: 'usage-billing-test'", "  name: '@kenz1117/dsh-ui-usage-billing'"]),
     '  config:',
     '    monthlyBudget: 100',
+    // 追加的 config 行统一补 4 空格缩进，调用方只写裸字段行。
+    ...(options.entryConfig ?? []).map(line => `    ${line}`),
     // 隔离持久化路径：快照/账本/对账基准都写入本测试临时目录，避免读/写
     // 宿主家目录下的使用统计与账本等真实持久化数据（由宿主服务运行产生，
     // 测试硬编码读取会导致断言污染值而失败）。omitPersistPaths 用例必须先
@@ -167,7 +201,9 @@ async function loadCompositionWith(options: { corrupt?: boolean; slow?: boolean;
     ['@deepseek-ai/dsh-host-webserver', HttpServer],
     ['virtual:test-billing-persistence', options.slow ? slowPersistenceDouble : options.corrupt ? corruptPersistenceDouble : persistenceDouble],
     ['virtual:test-billing-credentials', credentialsDouble],
-    ['virtual:test-billing-settings', settingsDouble],
+    ...(options.settings === 'live'
+      ? [['virtual:test-billing-settings-live', liveSettingsDouble(options.onUpdate ?? (() => {}))] as const]
+      : [['virtual:test-billing-settings', settingsDouble] as const]),
     ['@kenz1117/dsh-ui-usage-billing', UsageBilling],
   ])
   context.loader.internal = {
@@ -311,6 +347,40 @@ describe('usage-billing real Loader composition', () => {
     expect((await getJson(port, '/api/billing/pricing/refresh')).status).toBe(404)
     expect((await getJson(port, '/api/billing/balance')).status).toBe(404)
     expect((await getJson(port, '/api/billing/notify-claim')).status).toBe(404)
+  })
+
+  it('projects the usage-tool toggle through the new-generation settings model (issue #80)', { timeout: 60_000 }, async () => {
+    // 新世代组合：settings 替身没有 register（宿主 0.1.7+ 形态），条目 config
+    // 显式 enableUsageStatsTool: true——经真实 Loader 的 Config schema 校验，
+    // apply 收到的是 volatile 引用而非普通布尔。
+    const updateCalls: { ns: string; patch: Record<string, unknown> }[] = []
+    const loaded = await loadCompositionWith({
+      settings: 'live',
+      entryId: 'usage-billing-test',
+      entryConfig: ['enableUsageStatsTool: true'],
+      onUpdate: (ns, patch) => { updateCalls.push({ ns, patch }) },
+    })
+    const port = loaded.webServer.port
+
+    // GET：读 Config 校验后的 volatile 引用，反映 yml 配置的 true。
+    const initial = await getJson(port, '/api/billing/usage-tool')
+    expect(initial.status).toBe(200)
+    expect((initial.json as { enabled: boolean }).enabled).toBe(true)
+
+    // POST 写回：ns 是本条目显式 id（fiber.entry 自发现），补丁只含布尔字段。
+    const posted = await fetch(`http://127.0.0.1:${String(port)}/api/billing/usage-tool`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: `http://127.0.0.1:${String(port)}` },
+      body: JSON.stringify({ enabled: false }),
+    })
+    expect(posted.status).toBe(200)
+    expect(await posted.json()).toEqual({ ok: true, enabled: false })
+    expect(updateCalls).toEqual([{ ns: 'usage-billing-test', patch: { enableUsageStatsTool: false } }])
+
+    // GET 仍读引用：替身未提交（真实宿主由 configEditor 提交），值保持 true——
+    // 证明响应不是 POST 回显，而是读 Config 解析出的引用。
+    const after = await getJson(port, '/api/billing/usage-tool')
+    expect((after.json as { enabled: boolean }).enabled).toBe(true)
   })
 
   it('claims notification keys first-come-first-served across instances (issue #44)', { timeout: 60_000 }, async () => {

@@ -19,6 +19,8 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
+// 引入 loader 的声明合并：loader/volatile-update 事件与 Fiber.entry 属性。
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 // Type-only: merges the ctx.sessionPersistence service declaration.
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session/types'
@@ -188,6 +190,23 @@ const UsageBillingSettingsSchema: z<UsageBillingSettings> = z.object({
   [ENABLE_USAGE_STATS_TOOL_FIELD]: z.boolean().default(DEFAULT_ENABLE_USAGE_STATS_TOOL),
 })
 
+/** 宿主 0.1.7+ 经 Config schema 解析后，volatile 字段在 config 中的稳定引用形态
+ *  （cosmokit `Volatile<T>` 的最小结构镜像，避免为类型引入直接依赖）。 */
+export interface VolatileToggle {
+  /** @returns 当前生效的布尔快照（设置写入后原位更新，无需重载插件）。 */
+  get(): boolean
+}
+
+/**
+ * Loader 挂载时对条目 config 做校验的 Config 声明：`enableUsageStatsTool` 标记
+ * volatile，宿主 0.1.7+ 设置系统据此把它投影为可实时编辑的开关（describe/update）。
+ * schemastery 非严格 object 透传未声明键，其余 config 字段不受影响；未导出 Config
+ * 的旧宿主直接把原始 config 交给 apply，普通布尔形态由读取端兼容。
+ */
+export const Config = z.object({
+  [ENABLE_USAGE_STATS_TOOL_FIELD]: z.boolean().default(DEFAULT_ENABLE_USAGE_STATS_TOOL).volatile(),
+})
+
 /** Plugin configuration. */
 export interface UsageBillingConfig {
   /** Absolute path to a `.dsh-usage-stats.json` fallback file. */
@@ -229,9 +248,10 @@ export interface UsageBillingConfig {
    * 例：`['llm.example.com']`。
    */
   trustedHosts?: string[]
-  /** `usage_stats` 工具注入的组合 base（默认 false：不注入）；与设置命名空间同字段，
-   *  作为用户设置（设置 Tab 开关）的组合兜底。该工具占用每次请求的上下文，coding 场景多在仪表盘查看。 */
-  enableUsageStatsTool?: boolean
+  /** `usage_stats` 工具注入开关（默认 false：不注入）。宿主 0.1.7+ 经 Config
+   *  解析后是 volatile 引用（设置写入即时反映），直连 apply（测试）是普通布尔；
+   *  读取统一走 readUsageStatsToggle。该工具占用每次请求的上下文，coding 场景多在仪表盘查看。 */
+  enableUsageStatsTool?: boolean | VolatileToggle
   /**
    * 联网搜索请求（`web/deepseek-search-llm-request`，日志只有请求、无用量事件）
    * 的单次费用估算（人民币元）。这类调用直连官方 api.deepseek.com，开放平台照常
@@ -660,6 +680,23 @@ export function adaptSessionPersistence(raw: unknown): UsagePersistence {
 }
 
 /**
+ * 读取 usage_stats 工具开关的当前生效值：宿主 0.1.7+ 经 Config 解析后是 volatile
+ * 引用（.get() 即时反映设置写入，无需重载），直连 apply（测试）与未导出 Config 的
+ * 旧宿主组合是普通布尔；缺省/非法值一律回 DEFAULT。
+ * @param config - apply 收到的插件 config。
+ * @returns 开关当前生效值。
+ */
+function readUsageStatsToggle(config: UsageBillingConfig): boolean {
+  const field = config[ENABLE_USAGE_STATS_TOOL_FIELD]
+  if (typeof field === 'boolean') return field
+  if (typeof field === 'object' && field !== null && typeof field.get === 'function') {
+    const current = field.get()
+    return typeof current === 'boolean' ? current : DEFAULT_ENABLE_USAGE_STATS_TOOL
+  }
+  return DEFAULT_ENABLE_USAGE_STATS_TOOL
+}
+
+/**
  * Host plugin body: serve real aggregated usage to the browser dashboard.
  * @param ctx - host context carrying webServer and sessionPersistence.
  * @param config - optional statsPath override.
@@ -667,8 +704,11 @@ export function adaptSessionPersistence(raw: unknown): UsagePersistence {
 export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 反向代理主机名白名单：归一化一次，所有端点共用同一守卫路径（含 POST 写入）。
   const trustedHosts = normalizeTrustedHosts(config.trustedHosts)
-  // usage_stats 工具开关的设置命名空间 scope：settings 服务就绪后注册；HTTP 路由据此读写。
+  // usage_stats 工具开关的双世代通道：旧宿主 ≤0.1.6 走 settings.register 命名空间
+  // scope（usageSettingsScope）；宿主 0.1.7+ 注册面已移除，走 volatile config 投影
+  // （liveSettings：经 settings.update 写回本条目 config）。HTTP 路由据此读写。
   let usageSettingsScope: SettingsNamespaceScope<UsageBillingSettings> | undefined
+  let liveSettings: { update(ns: string, patch: object): Promise<void>; ns: string } | undefined
   const cwd = process.cwd()
   // 持久化文件的默认根跟随宿主 harness home：DSH_HOME 环境变量优先，回退
   // `~/.dsh`（resolveDshHome 的解析语义与宿主一致）。自定义 DSH_HOME 的多套
@@ -869,29 +909,28 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
 
   // usage_stats 动态工具（默认关闭）：模型可主动查询用量费用（今天 / 本月 / 当前会话 / 累计）。
   // 该工具占用每次请求的上下文，而 coding 场景多在仪表盘看用量，属可关的打扰项。
-  // 开关持久化在设置命名空间 `ui-usage-billing.enableUsageStatsTool`（默认 false），
-  // 用户可在「设置」Tab 切换；工具注入是启动期决策，改开关后重载应用生效。
-  // cordis.yml 的 `enableUsageStatsTool` config 作为组合 base 兜底。
-  ctx.inject(['settings'], (sctx) => {
-    // 宿主 ≤0.1.6：settings.register 可用（注册命名空间并返回读写 scope）。
-    // 宿主 0.1.7+：register 从运行时移除（SettingsForms 只保留 describe/update 等
-    // 表单面，命名空间持久化改走 plugin config 投影），此时跳过注册——开关降级为
-    // 只读：读取回退 cordis.yml config 兜底，写入返回 settings unavailable
-    // （HTTP 路由对 scope 缺席已有防御）。
-    const legacy = sctx.settings as unknown as SettingsReader & {
-      register?: (ns: string, schema: unknown, options?: { base?: unknown }) => SettingsNamespaceScope<UsageBillingSettings>
+  // 开关双世代持久化：旧宿主 ≤0.1.6 存设置命名空间 `ui-usage-billing.enableUsageStatsTool`；
+  // 宿主 0.1.7+ 存本条目 config 的 volatile 字段（Config schema 投影）。工具注册由
+  // syncUsageTool 驱动：初始一次 + 每次 volatile 提交（loader/volatile-update，不重载
+  // 插件）+ 旧世代写回后显式调用，切换即时生效；cordis.yml 的 `enableUsageStatsTool`
+  // config 作为组合 base 兜底。
+  let usageToolDisposer: (() => void) | undefined
+  // 工具注册动作由 tools 服务就绪时填充；注册前 sync 是无操作（组合期 tools 缺席安全）。
+  let usageToolRegister: (() => () => void) | undefined
+  const syncUsageTool = (): void => {
+    if (usageToolRegister === undefined) return
+    if (readUsageStatsToggle(config)) {
+      if (usageToolDisposer === undefined) usageToolDisposer = usageToolRegister()
+      return
     }
-    if (typeof legacy.register !== 'function') return
-    const scope = legacy.register(usageBillingSettingsNs, UsageBillingSettingsSchema, {
-      base: { enableUsageStatsTool: config.enableUsageStatsTool ?? DEFAULT_ENABLE_USAGE_STATS_TOOL },
-    })
-    usageSettingsScope = scope
-    // 命名空间注册与工具注册解耦：tools 服务缺席/延迟就绪时命名空间仍尽早注册，
-    // 前端可从本插件的 HTTP 路由读到开关状态。工具仅在可用且开启时注入。
-    ctx.inject(['tools'], (toolsCtx) => {
-      if (scope.get().enableUsageStatsTool) {
-        toolsCtx.tools.register(defineTool({
-          name: 'usage_stats',
+    if (usageToolDisposer !== undefined) {
+      usageToolDisposer()
+      usageToolDisposer = undefined
+    }
+  }
+  ctx.inject(['tools'], (toolsCtx) => {
+    usageToolRegister = () => toolsCtx.tools.register(defineTool({
+      name: 'usage_stats',
       description: '查询本机 DeepSeek Harness 的模型用量与估算费用（人民币，按官方目录价估算，非账单）。range 取值：today=今天，month=本月，session=当前会话，all=累计。',
       parameters: {
         range: {
@@ -975,8 +1014,36 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
         return { range: args.range, cost, calls, input, output }
       }
     }))
+    syncUsageTool()
+    // 事件只在本插件 fiber 上发射（兄弟插件的 volatile 提交沿 ctx 树向上冒泡，互不可见）。
+    ctx.on('loader/volatile-update', syncUsageTool)
+  })
+
+  // 设置开关的双世代读写面：settings 服务就绪后按宿主世代接线。
+  ctx.inject(['settings'], (sctx) => {
+    const legacy = sctx.settings as unknown as SettingsReader & {
+      register?: (ns: string, schema: unknown, options?: { base?: unknown }) => SettingsNamespaceScope<UsageBillingSettings>
+      update?: (ns: string, patch: object) => Promise<void>
     }
-    })
+    if (typeof legacy.register === 'function') {
+      // 宿主 ≤0.1.6：注册命名空间并持有读写 scope（GET/POST 都经 scope）。
+      usageSettingsScope = legacy.register(usageBillingSettingsNs, UsageBillingSettingsSchema, {
+        base: { enableUsageStatsTool: readUsageStatsToggle(config) },
+      })
+      return
+    }
+    // 宿主 0.1.7+：register 已从 SettingsForms 移除，写回走 SettingsForms.update——
+    // 目标 ns 是本插件条目 id（loader 把 fiber.entry 注入本 fiber；仅直接挂载的
+    // 测试组合会缺失，回退约定 ns）。读取不在此处：volatile 引用覆盖 GET 与工具同步。
+    // update 是服务类方法（内部依赖 this.write 持久化），必须以方法调用形式包一层，
+    // 不能裸摘函数引用（this 脱绑后真机 TypeError: this.write is not a function）。
+    const forms = legacy
+    if (typeof forms.update !== 'function') return
+    const entryId: string | undefined = ctx.fiber.entry?.options.id
+    liveSettings = {
+      update: (ns, patch) => forms.update!(ns, patch),
+      ns: entryId ?? usageBillingSettingsNs,
+    }
   })
 
   // 后台拉取实时定价（汇率 + OpenRouter 模型价 + models.dev 目录外补充），
@@ -1151,14 +1218,18 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
           return
         }
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-        const enabled = usageSettingsScope?.get().enableUsageStatsTool ?? DEFAULT_ENABLE_USAGE_STATS_TOOL
+        // GET：旧宿主读命名空间 scope（POST 写入立即反映）；新宿主读 volatile
+        // 引用（settings.update 提交后原位更新）。
+        const enabled = usageSettingsScope !== undefined
+          ? usageSettingsScope.get().enableUsageStatsTool
+          : readUsageStatsToggle(config)
         if (req.method === 'GET') {
           res.end(JSON.stringify({ enabled }))
           return
         }
-        // 跨站写保护：POST 是写操作（改写设置命名空间），必须校验 Origin 头是回环，
-        // 且 Content-Type 为 application/json。跨站表单/fetch 的简单请求只能带
-        // text/plain 等，带不了 application/json（会触发 CORS preflight 而被上方
+        // 跨站写保护：POST 是写操作（改写设置命名空间/条目 config），必须校验 Origin
+        // 头是回环，且 Content-Type 为 application/json。跨站表单/fetch 的简单请求只
+        // 能带 text/plain 等，带不了 application/json（会触发 CORS preflight 而被上方
         // guardLoopback 的 methodOk 拒绝），从两个维度堵住 CSRF。
         if (!isLoopbackOrigin(req.headers.origin)) {
           res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
@@ -1170,7 +1241,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
           res.end(JSON.stringify({ error: 'unsupported content-type' }))
           return
         }
-        // 读取并解析 JSON body 后写设置命名空间；settings 服务未就绪时拒绝写。
+        // 读取并解析 JSON body 后按世代写回；两个通道都缺席时拒绝写。
         // body 只承载一个布尔开关，512 字节上限已足够，防坏/恶意 body 拖住 handler。
         try {
           let body = ''
@@ -1182,14 +1253,25 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
             }
           }
           const parsed = JSON.parse(body === '' ? '{}' : body) as { enabled?: unknown }
-          if (usageSettingsScope === undefined) {
+          const next = parsed.enabled === true
+          if (usageSettingsScope !== undefined) {
+            await usageSettingsScope.update({ enableUsageStatsTool: next })
+            // 旧宿主没有 volatile 提交事件，写回后显式同步工具注册（幂等）。
+            syncUsageTool()
+          } else if (liveSettings !== undefined) {
+            await liveSettings.update(liveSettings.ns, { [ENABLE_USAGE_STATS_TOOL_FIELD]: next })
+            // 新宿主：真实提交会触发 loader/volatile-update 再同步一次；此处先同步
+            // 覆盖「写回成功但引用未即时可见」的组合（如测试替身不提交），幂等。
+            syncUsageTool()
+          } else {
             res.end(JSON.stringify({ error: 'settings unavailable' }))
             return
           }
-          const next = parsed.enabled === true
-          await usageSettingsScope.update({ enableUsageStatsTool: next })
           res.end(JSON.stringify({ ok: true, enabled: next }))
-        } catch {
+        } catch (error) {
+          // 写回链路异常必须可见：settings.update 抛错（ns 不匹配/volatile 校验拒绝）
+          // 需要真机诊断线索，吞掉后只剩笼统的 invalid。
+          console.warn('[usage-billing] usage-tool toggle write-back failed:', error)
           res.end(JSON.stringify({ error: 'invalid' }))
         }
       },

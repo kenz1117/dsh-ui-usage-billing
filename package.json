@@ -1,7 +1,7 @@
 {
   "name": "@kenz1117/dsh-ui-usage-billing",
   "description": "Usage billing dashboard for DeepSeek Harness: sidebar cost metrics plus a full dashboard modal, priced from a current multi-provider catalog with real usage aggregated from session logs.",
-  "version": "1.4.18",
+  "version": "1.4.19",
   "keywords": [
     "deepseek-harness",
     "deepseek",
@@ -119,7 +119,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "*",
     "@deepseek-ai/cordis-plugin-include": "^1.0.7",
-    "@deepseek-ai/cordis-plugin-loader": "^1.0.3",
+    "@deepseek-ai/cordis-plugin-loader": "^1.0.5",
     "@deepseek-ai/dsh-api-gateway": "0.1.7-rc.1",
     "@deepseek-ai/dsh-api-remotes": "0.1.7-rc.1",
     "@deepseek-ai/dsh-api-session-controller": "0.1.7-rc.1",
@@ -149,7 +149,7 @@
     "@deepseek-ai/dsh-typert-protocol": "0.1.7-rc.1",
     "@deepseek-ai/dsh-user-approval": "0.1.7-rc.1",
     "@deepseek-ai/dsh-util-workspace-path": "0.1.7-rc.1",
-    "@deepseek-ai/schemastery": "^3.18.2",
+    "@deepseek-ai/schemastery": "^3.18.4",
     "@shikijs/langs": "^4.3.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.1.0",
