@@ -174,8 +174,10 @@ export declare function emptyUsage(): ModelUsage;
  * @param pricedCost - 调用方预算好的本次费用（同一条消息折叠进多个桶时计价结果相同，
  *   逐桶重算会让最热路径付出 N 倍常数）；提供时跳过内部的计价闸门与计算，
  *   调用方保证其已按 `!subscription && isPriced(key)` 判定。
+ * @param unverifiedChannel - 本次调用是否来自未知通道（配置外 provider）。未知通道的
+ *   支出主体无法核实，费用一律记 0（token 照常统计，issue #82）。
  */
-export declare function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number, official?: boolean, pricedCost?: number): void;
+export declare function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number, official?: boolean, pricedCost?: number, unverifiedChannel?: boolean): void;
 /**
  * 联网搜索辅助请求的单次费用估算默认值（人民币元）。DeepSeek 官方对搜索请求
  * （web_search 服务端工具注入上下文）照常计费，实测每次约 0.01~0.03 元，取中值；
@@ -552,7 +554,7 @@ export interface UsageLedgerDocument {
  * 会话费用只剩最近一段，issue #29）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export declare const FOLD_VERSION = 16;
+export declare const FOLD_VERSION = 17;
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
  * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并

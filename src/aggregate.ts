@@ -256,8 +256,10 @@ export function emptyUsage(): ModelUsage {
  * @param pricedCost - 调用方预算好的本次费用（同一条消息折叠进多个桶时计价结果相同，
  *   逐桶重算会让最热路径付出 N 倍常数）；提供时跳过内部的计价闸门与计算，
  *   调用方保证其已按 `!subscription && isPriced(key)` 判定。
+ * @param unverifiedChannel - 本次调用是否来自未知通道（配置外 provider）。未知通道的
+ *   支出主体无法核实，费用一律记 0（token 照常统计，issue #82）。
  */
-export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number, official = false, pricedCost?: number): void {
+export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subscription: boolean, timeMs: number, official = false, pricedCost?: number, unverifiedChannel = false): void {
   const cacheHit = usage.cacheReadTokens ?? 0
   const cacheMiss = usage.inputTokens + (usage.cacheWriteTokens ?? 0)
   acc.calls += 1
@@ -278,7 +280,7 @@ export function foldUsage(acc: ModelUsage, usage: TokenUsage, key: string, subsc
     if (official) acc.officialCost += pricedCost
     return
   }
-  if (!subscription && isPriced(key)) {
+  if (!subscription && !unverifiedChannel && isPriced(key)) {
     const thisCost = computeCostAt(modelOf(key), {
       input: cacheHit + cacheMiss,
       cacheHit,
@@ -891,7 +893,11 @@ export interface UsageLedgerDocument {
 // 16：折叠形态变更——性能持久化改摘要（`perf` 逐样本数组 → `perfDigest`/
 // `perfHourDigest`）。归账语义未变，但 stamp 复用旧行会把本可精确插值的活样本
 // 困在近似分位数上；bump 让日志仍在的会话重折，仅日志已删的行留在摘要口径。
-export const FOLD_VERSION = 16
+// 17：计价语义变更——未知通道（配置外 provider）费用记 0（issue #82）。旧口径
+// 下 unknown 桶的已收录模型按目录价计入了金额，复用旧行会让报告人的历史累计
+// 金额在升级后原样保留；bump 让日志仍在的会话重折出零费用，仅日志已删的行
+// 留在旧口径（账本「历史定格」语义的固有残留）。
+export const FOLD_VERSION = 17
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
@@ -1362,8 +1368,12 @@ function foldInto(
     const modelKey = key
     const day = dayStamp(event.time)
     // 不可计价模型（目录外/无价，且非订阅通道）收集到 unpriced 集合，供聚合层暴露给用户提示。
-    const priced = !subscription && isPriced(modelKey)
-    if (!subscription && !priced) fold.unpricedModels.add(modelKey)
+    // 未知通道（配置外 provider，issue #82）不计价：支出主体无法核实，与订阅豁免、
+    // 未收录模型同姿态——费用记 0、token 照常统计；已收录模型因通道未知而未计价时
+    // 不进 unpricedModels（模型本身可计价，是通道不可核实）。
+    const unverifiedChannel = siteBucket === 'unknown'
+    const priced = !subscription && !unverifiedChannel && isPriced(modelKey)
+    if (!subscription && !isPriced(modelKey)) fold.unpricedModels.add(modelKey)
     // 本条消息折叠进 7 个桶 + 每轮明细，各桶费用完全相同：一次计价全程复用
     // （此前逐桶重算 computeCostAt/modelOf，折叠最热路径付出 9 倍计价常数）。
     const entry = priced ? modelOf(modelKey) : undefined
@@ -1373,15 +1383,15 @@ function foldInto(
       cacheMiss: usage.inputTokens + (usage.cacheWriteTokens ?? 0),
       output: usage.outputTokens,
     }, event.time)
-    foldUsage(fold.total, usage, modelKey, subscription, event.time, official, thisCost)
-    foldUsage(usageCell(fold.byModel, modelKey), usage, modelKey, subscription, event.time, official, thisCost)
-    foldUsage(usageCell(fold.byDay, day), usage, modelKey, subscription, event.time, official, thisCost)
-    foldUsage(modelDayCell(fold.byDayModels, day, modelKey), usage, modelKey, subscription, event.time, official, thisCost)
+    foldUsage(fold.total, usage, modelKey, subscription, event.time, official, thisCost, unverifiedChannel)
+    foldUsage(usageCell(fold.byModel, modelKey), usage, modelKey, subscription, event.time, official, thisCost, unverifiedChannel)
+    foldUsage(usageCell(fold.byDay, day), usage, modelKey, subscription, event.time, official, thisCost, unverifiedChannel)
+    foldUsage(modelDayCell(fold.byDayModels, day, modelKey), usage, modelKey, subscription, event.time, official, thisCost, unverifiedChannel)
     // 模型×日期×站点三维（issue #16）：供「按 origin 绑定自定义价」的显示层重估。
-    foldUsage(modelDaySiteCell(fold.byDayModelsSite, day, modelKey, siteBucket), usage, modelKey, subscription, event.time, official, thisCost)
-    foldUsage(usageCell(fold.bySite, siteBucket), usage, modelKey, subscription, event.time, official, thisCost)
+    foldUsage(modelDaySiteCell(fold.byDayModelsSite, day, modelKey, siteBucket), usage, modelKey, subscription, event.time, official, thisCost, unverifiedChannel)
+    foldUsage(usageCell(fold.bySite, siteBucket), usage, modelKey, subscription, event.time, official, thisCost, unverifiedChannel)
     // 峰谷分桶：与计费同口径逐调用判档（tierAt），峰谷占比因此是真实数据。
-    foldUsage(usageCell(fold.byTier, tierAt(event.time)), usage, modelKey, subscription, event.time, official, thisCost)
+    foldUsage(usageCell(fold.byTier, tierAt(event.time)), usage, modelKey, subscription, event.time, official, thisCost, unverifiedChannel)
     if (subscription) fold.planCalls.set(modelKey, (fold.planCalls.get(modelKey) ?? 0) + 1)
     // 每轮明细：同一轮内的调用累加进该轮状态（模型取最近一次的归属）。
     const turn = (event.data as { turn?: number }).turn ?? -1

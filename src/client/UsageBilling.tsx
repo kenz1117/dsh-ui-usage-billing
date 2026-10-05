@@ -2330,6 +2330,10 @@ function BillingDashboard({
     }
     const modelsByChannel = new Map<string, ModelRow[]>()
     for (const [siteKey, bucket] of cells) {
+      // 未知通道（issue #82）：数据面已不计价（支出主体无法核实），目录价预估同步
+      // 归零——否则 estimated 经组头 providerCostOf 的 actual ?? estimated 兜底顶上
+      // 组头，金额只是换个名目继续显示。
+      const unknownChannel = !siteKey.startsWith('direct:') && !siteKey.startsWith('site:')
       const rows = [...bucket.entries()]
         .filter(([, cell]) => cell.calls > 0)
         .map(([modelKey, cell], index) => {
@@ -2347,7 +2351,7 @@ function BillingDashboard({
             output: cell.output,
             cacheHitRate: cell.cacheHit + cell.cacheMiss > 0 ? (cell.cacheHit / (cell.cacheHit + cell.cacheMiss)) * 100 : 0,
             // 目录价预估：订阅通道行即「套餐内预估开销」，按量行即未重估前的目录口径。
-            estimated: computeCost(entry, { input: cell.input, cacheHit: cell.cacheHit, cacheMiss: cell.cacheMiss, output: cell.output }),
+            estimated: unknownChannel ? 0 : computeCost(entry, { input: cell.input, cacheHit: cell.cacheHit, cacheMiss: cell.cacheMiss, output: cell.output }),
             plan: stats.byModel?.[modelKey]?.plan === true,
             ...(cell.cost > 0 ? { actual: cell.cost } : {}),
             uncatalogued,
@@ -2525,8 +2529,11 @@ function BillingDashboard({
   }
 
   // Total: real stats value when present, otherwise the estimated sum.
+  // 未知通道有调用时不回退按量等价（issue #82）：estimatedTotal 含未知通道 token
+  // 现算值，而未知通道费用记 0，回退会让金额换个名目重新出现。
+  const unknownChannelCalls = stats.bySite?.unknown?.calls ?? 0
   const estimatedTotal = modelRows.reduce((sum, row) => sum + row.estimated, 0)
-  const displayTotal = total.cost > 0 ? total.cost : estimatedTotal
+  const displayTotal = total.cost > 0 || unknownChannelCalls > 0 ? total.cost : estimatedTotal
 
   // KPI 七卡按所选范围聚合（issue #47 反馈）：累计沿用「实际优先」口径（含搜索
   // 估值兜底）与 total 全字段；其余范围对 byDay 逐日聚合，除零时比例回 0。
@@ -3563,10 +3570,13 @@ function BillingDashboard({
                             )}
                           </span>
                           <span className={css.providerGroupMeta}>
-                            {/* 费用合计：付费者视角的一级信息（issue #34）——充值与余额都针对厂商。 */}
+                            {/* 费用合计：付费者视角的一级信息（issue #34）——充值与余额都针对厂商。
+                                未知通道组显示「—」（issue #82）：支出主体无法核实，费用口径为空而非 0。 */}
                             <span className={css.providerGroupCost} data-testid="billing-provider-cost">
                               <span className={css.providerGroupCostLabel}>{t('cost')}</span>
-                              <span className={css.providerGroupCostValue}>{money(providerCostOf(group))}</span>
+                              {group.channelKind === 'unknown'
+                                ? <span className={css.na}>—</span>
+                                : <span className={css.providerGroupCostValue}>{money(providerCostOf(group))}</span>}
                             </span>
                             {/* 套餐徽章已移至组名后：原 64px 保列位空槽一并移除，费用/余额随之右移让位标题行。 */}
                             {!hideBalanceForGroup(group) && group.balance !== undefined ? (
@@ -3603,6 +3613,10 @@ function BillingDashboard({
                         </div>
                         {/* 展开明细（issue #77）：模型行与订阅卡收在组头之下，展开才渲染。 */}
                         {open && (<>
+                        {/* 未知通道说明（issue #82）：组头费用显示「—」的原因。 */}
+                        {group.channelKind === 'unknown' && (
+                          <p className={css.unknownHint} data-testid="billing-unknown-hint">{t('unknownChannelHint')}</p>
+                        )}
                         {/* 模型用量子表：无余额列（余额已在厂商头部显示一次）。 */}
                         {group.models.length > 0 && (
                           <div className={clsx(css.tableScroll, css.modelTableScroll)} data-testid="billing-table-scroll">

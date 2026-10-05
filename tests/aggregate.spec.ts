@@ -201,6 +201,15 @@ describe('foldUsage', () => {
     expect(acc.cost).toBe(0)
   })
 
+  it('charges nothing for calls from unverified channels even when the model is priced (issue #82)', () => {
+    // 未知通道（配置外 provider）的已收录模型：支出主体无法核实，费用记 0，token 照常。
+    const acc = emptyUsage()
+    foldUsage(acc, USAGE, 'flash', false, 1_000, false, undefined, true)
+    expect(acc.calls).toBe(1)
+    expect(acc.input).toBeGreaterThan(0)
+    expect(acc.cost).toBe(0)
+  })
+
   it('prices peak vs off-peak by the call time (P0-1)', () => {
     // 同一桶、同一模型：北京时间 10 点（高峰）比 13 点（低谷）贵。
     const peak = emptyUsage()
@@ -634,6 +643,38 @@ describe('relay site attribution (P0-2)', () => {
       fakePersistence({ s1: [header(1, 'deepseek-v4-flash', 'missing-route'), message(2, Date.UTC(2026, 7, 15, 4, 0, 0), USAGE)] }),
     )
     expect(stats.bySite?.['unknown']?.calls).toBe(1)
+  })
+
+  it('records zero cost for unknown channels while tokens still count (issue #82)', () => {
+    const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): SessionEvent =>
+      ({ type, seq, time, data }) as unknown as SessionEvent
+    const fold = foldSession([
+      ev('request/header', 1, 1_000, { header: { config: { provider: 'missing-route', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE }),
+    ], new Set())
+    // 已收录模型走未知通道：费用记 0、token 照常、不进「目录外模型」提示。
+    expect(fold.total.calls).toBe(1)
+    expect(fold.total.cost).toBe(0)
+    expect(fold.total.input).toBeGreaterThan(0)
+    expect(fold.bySite.get('unknown')?.cost ?? 0).toBe(0)
+    expect(fold.bySite.get('unknown')?.calls).toBe(1)
+    expect(fold.unpricedModels.size).toBe(0)
+  })
+
+  it('keeps unknown-channel cost out of totals when mixed with direct usage (issue #82)', () => {
+    const ev = (type: string, seq: number, time: number, data: Record<string, unknown>): SessionEvent =>
+      ({ type, seq, time, data }) as unknown as SessionEvent
+    const fold = foldSession([
+      ev('request/header', 1, 1_000, { header: { config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/message', 2, 1_001, { turn: 1, step: 1, usage: USAGE }),
+      ev('request/header', 3, 2_000, { header: { config: { provider: 'missing-route', model: 'deepseek-v4-flash' } } }),
+      ev('assistant/message', 4, 2_001, { turn: 2, step: 1, usage: USAGE }),
+    ], new Set())
+    // total 只含 direct 调用的费用；unknown 调用只贡献 calls/token。
+    expect(fold.total.calls).toBe(2)
+    expect(fold.total.cost).toBeGreaterThan(0)
+    expect(fold.total.cost).toBe(fold.bySite.get('direct:deepseek-official')?.cost ?? -1)
+    expect(fold.bySite.get('unknown')?.cost ?? 0).toBe(0)
   })
 })
 
@@ -1691,7 +1732,9 @@ describe('official channel by origin + route aliases (Tencent gateway)', () => {
 })
 
 describe('subscription matcher (default set vs explicit RE rule)', () => {
-  const tokenhubRoutes = { tencent: { baseURL: 'https://tokenhub.tencentmaas.com/v1' } }
+  // 订阅路由本身也要在册（无 baseURL → direct）：unknown 桶是「配置外通道」，
+  // 修复 issue #82 后不计价，不能用它承载「空集 → 按量」的断言。
+  const tokenhubRoutes = { tencent: { baseURL: 'https://tokenhub.tencentmaas.com/v1' }, 'tencent-token-plan': {} }
 
   it('exempts tencent-token-plan calls from token pricing by the default set', () => {
     const events = [header(1, 'glm-5.3', 'tencent-token-plan'), message(2, 2_000, USAGE)]

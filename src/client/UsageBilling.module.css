@@ -2045,6 +2045,14 @@ span.bandDot { cursor: default; }
   color: var(--ds-t-4);
 }
 
+/* 未知通道组展开区的说明行（issue #82）：解释组头费用「—」的原因。 */
+.unknownHint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--ds-t-4);
+}
+
 .modelCell {
   display: inline-flex;
   align-items: center;

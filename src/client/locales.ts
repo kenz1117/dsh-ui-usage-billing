@@ -50,6 +50,7 @@ export type UsageBillingKey =
   | 'directTag'
   | 'relayTag'
   | 'unknownTag'
+  | 'unknownChannelHint'
   | 'planCountUnit'
   | 'actual'
   | 'pricing'
@@ -353,6 +354,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'directTag': '直连',
   'relayTag': '中转',
   'unknownTag': '未知',
+  'unknownChannelHint': '通道未在插件配置中注册，支出主体无法核实，费用不计入口径，仅统计用量。',
   'planCountUnit': '套餐',
   'actual': '实际',
   'pricing': '模型单价表',
@@ -656,6 +658,7 @@ export const en: Record<UsageBillingKey, string> = {
   'directTag': 'Direct',
   'relayTag': 'Relay',
   'unknownTag': 'Unknown',
+  'unknownChannelHint': 'Channel is not registered in the plugin config; the spending party cannot be verified, so cost stays out of the totals while usage is still counted.',
   'planCountUnit': 'plan(s)',
   'actual': 'Actual',
   'pricing': 'Model pricing',
