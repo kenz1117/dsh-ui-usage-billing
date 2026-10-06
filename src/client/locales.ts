@@ -222,6 +222,7 @@ export type UsageBillingKey =
   | 'triggerToday'
   | 'triggerMonth'
   | 'subscriptionTag'
+  | 'cellEstimateHint'
   | 'free'
   | 'perfSamples'
   | 'perfTtft'
@@ -527,6 +528,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'triggerTodayTokens': '今日消耗 Token',
   'triggerWeekTokens': '本周消耗 Token',
   'subscriptionTag': '订阅',
+  'cellEstimateHint': '本行无按量扣费记录（订阅通道不逐次计费），金额按目录价估算',
   'free': '免费',
   'perfSamples': '样本',
   'perfTtft': '首字延时',
@@ -831,6 +833,7 @@ export const en: Record<UsageBillingKey, string> = {
   'triggerTodayTokens': "Today's tokens",
   'triggerWeekTokens': "This week's tokens",
   'subscriptionTag': 'Plan',
+  'cellEstimateHint': 'No pay-as-you-go charge recorded for this row (subscription routes are not billed per call); amount is a catalog-price estimate',
   'free': 'Free',
   'perfSamples': 'Samples',
   'perfTtft': 'TTFT',
