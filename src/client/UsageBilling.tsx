@@ -65,7 +65,7 @@ import type { createBillingBudgetStore } from './budget-store.ts'
 import { convertFromCny,
   applyBuiltinCatalog, applyLiveCatalogModels, applyLivePricing, applyUserPrices, catalogEntries, canonModelId, computeCost, convertUnitPrice,
   DEFAULT_PEAK_SHARE, formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, getUserPrices, isPromoActive,
-  channelCountdown, localDayStamp, modelOf, normalizeOriginInput, rateChannelOf, resolveToken, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type ModelEntry, type TokenUsageBuckets,
+  channelCountdown, localDayStamp, modelOf, normalizeOriginInput, rateChannelOf, tierAt, userOriginPriceEntryOf, userPriceOf, type CatalogModel, type CostCurrency, type ModelEntry, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { BalanceResponse, LivePricing, ProviderBalance, ReconcileNotice, RelayQuota, RelayResponse } from '../pricing-shared.ts'
 import type { SubscriptionQuota, SubscriptionResponse } from '../pricing-shared.ts'
@@ -2508,12 +2508,10 @@ function BillingDashboard({
     </thead>
   )
   const modelNameCell = (
-    row: { key: string; name: string; provider: string; uncatalogued?: boolean; estimatedPricing?: boolean; color?: string; colorVar?: string },
+    row: { key: string; name: string; provider: string; uncatalogued?: boolean; estimatedPricing?: boolean },
   ): React.ReactNode => {
-    const logoColor = row.color ?? (row.colorVar !== undefined ? resolveToken(row.colorVar) : undefined)
     return (
       <span className={css.modelCell}>
-        <VendorLogo provider={row.provider} {...(logoColor !== undefined ? { colorVar: logoColor } : {})} />
         <span>
           <span className={css.modelName}>
             {row.name}
@@ -3982,7 +3980,6 @@ function BillingDashboard({
                                     />
                                   )
                                 })()}
-                                <VendorLogo provider={entry.provider} colorVar={resolveToken(entry.colorVar)} />
                                 <span className={css.ubModelName}>
                                   {entry.name}
                                   {/* 探活命中但无内置/models.dev 价：明确标注，不参与计价。 */}
@@ -4107,23 +4104,6 @@ function BillingDashboard({
         </footer>
       </div>
     </Modal>
-  )
-}
-
-/**
- * VendorLogo: 模型名前显示品牌色字母徽章（vendor-logos 内嵌 SVG 已移除——
- * client.js 逼近 DSH Store 256KiB 单文件上限，字母徽章零体积且有色彩辨识度；
- * colorVar 来自图表色板，同一厂商在各面板颜色一致）。
- */
-function VendorLogo({ provider, colorVar }: { provider: string; colorVar?: string }): React.ReactNode {
-  return (
-    <span
-      className={css.vendorLetter}
-      style={colorVar !== undefined ? { background: colorVar } : undefined}
-      aria-hidden="true"
-    >
-      {provider.trim().charAt(0).toUpperCase()}
-    </span>
   )
 }
 

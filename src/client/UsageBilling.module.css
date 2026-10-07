@@ -1837,22 +1837,6 @@ span.bandDot { cursor: default; }
   gap: 6px;
 }
 
-/* 厂商字母徽章：模型名前的 16×16 品牌色块 + 首字母（内嵌 SVG 已移除以守住
-   client.js 体积门禁，徽章是唯一形态；背景色由内联 colorVar 提供）。 */
-.vendorLetter {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-}
-
 .ubModelName {
   display: inline-flex;
   align-items: center;
