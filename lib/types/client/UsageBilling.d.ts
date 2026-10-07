@@ -110,6 +110,14 @@ export declare function activeDaysOf(byDay: Record<string, {
 export declare function streakDaysOf(byDay: Record<string, {
     cost: number;
 }>, now?: number): number;
+/** 当日 Token 口径：输入 + 输出。stats.input 本身已含缓存命中与未命中
+ * （aggregate foldUsage：input = cacheHit + cacheMiss），再叠加缓存字段即重复
+ * 计数——趋势图/热力图/用量 KPI/触发卡必须共用本函数（issue #85）。
+ * 导出供测试：纯函数。 */
+export declare function dayTokensOf(day: {
+    input: number;
+    output: number;
+}): number;
 /**
  * 近 7 天费用序列（含今天，缺日补 0）：触发卡 hover 速览的迷你柱数据源。
  * 导出供测试：纯函数（日期取本地时区）。
@@ -315,8 +323,10 @@ export interface UsageStats {
     perf?: ClientPerf;
     /** 旧版算法账本行兜底的会话数（模型归属可能失真）；0 或缺省 = 全部数据可信。 */
     staleLedgerSessions?: number;
-    /** 读时迁移拒读而未统计的会话数；0 或缺省 = 全部会话已统计。 */
+    /** 本轮未统计的会话数（跨轮次稳定）；0 或缺省 = 全部会话已统计。 */
     unreadableSessions?: number;
+    /** 未统计中因会话格式拒读的子集（过新待宿主升级、过旧需迁移）；0 或缺省 = 无格式拒读。 */
+    unreadableFormatSessions?: number;
     /** 插件版本号（服务端读自包 package.json；旧快照缺失）。 */
     pluginVersion?: string;
 }

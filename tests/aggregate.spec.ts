@@ -1650,7 +1650,64 @@ describe('unreadable sessions visibility', () => {
     const stats = await aggregateUsage(failing)
 
     expect(stats.unreadableSessions).toBe(1)
+    // 格式拒读子集单独计数：message 保留宿主错误类名即可识别（issue #84）。
+    expect(stats.unreadableFormatSessions).toBe(1)
     expect(stats.bySession).toHaveLength(0)
+  })
+
+  it('classifies by error.name too (host class instances, issue #84)', async () => {
+    // 宿主真实路径：SessionFormatUnsupportedError 实例的类名落在 error.name。
+    const failing = {
+      list: async () => [{ id: 'v0-session' }],
+      readFrom: async () => {
+        const error = new Error('…refuses this format v0 Session: permission/preset 0 data has unexpected member "origin"')
+        error.name = 'SessionFormatUnsupportedError'
+        throw error
+      },
+    } as unknown as UsagePersistence
+    const stats = await aggregateUsage(failing)
+
+    expect(stats.unreadableSessions).toBe(1)
+    expect(stats.unreadableFormatSessions).toBe(1)
+  })
+
+  it('does not classify non-format failures as format refusals', async () => {
+    // 损坏/其他读取失败：进未统计总数，但不进格式拒读子集（归因不混淆）。
+    const failing = {
+      list: async () => [{ id: 'torn-session' }],
+      readFrom: async () => { throw new Error('zstd torn frame') },
+    } as unknown as UsagePersistence
+    const stats = await aggregateUsage(failing)
+
+    expect(stats.unreadableSessions).toBe(1)
+    expect(Object.hasOwn(stats, 'unreadableFormatSessions')).toBe(false)
+  })
+
+  it('keeps counting negative-cached sessions on later rounds (issue #84)', async () => {
+    // 负缓存命中轮次不重读失败会话（skipped 为空、stderr 不再打印），但未统计
+    // 计数仍保留——否则面板的「未统计」通知在首轮之后归零消失（issue 报告现象）。
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const persistence = {
+        list: async () => [{ id: 'v0-session' }],
+        stampOf: async () => 'stamp-1',
+        readFrom: async () => { throw new Error('SessionFormatUnsupportedError: unsupported descriptor version 2') },
+      } as unknown as UsagePersistence
+      const aggregator = createUsageAggregator(persistence)
+
+      const first = await aggregator.aggregate()
+      expect(first.unreadableSessions).toBe(1)
+      // 首轮两条告警：单会话 skip + 末尾汇总（含 skipped id 明细）。
+      expect(warn).toHaveBeenCalledTimes(2)
+
+      const second = await aggregator.aggregate()
+      expect(second.unreadableSessions).toBe(1)
+      expect(second.unreadableFormatSessions).toBe(1)
+      // 负缓存生效：不重读、不重打两条告警。
+      expect(warn).toHaveBeenCalledTimes(2)
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('omits unreadableSessions when every session folds', async () => {

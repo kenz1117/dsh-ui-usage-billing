@@ -526,6 +526,14 @@ export function streakDaysOf(byDay: Record<string, { cost: number }>, now = Date
   return streak
 }
 
+/** 当日 Token 口径：输入 + 输出。stats.input 本身已含缓存命中与未命中
+ * （aggregate foldUsage：input = cacheHit + cacheMiss），再叠加缓存字段即重复
+ * 计数——趋势图/热力图/用量 KPI/触发卡必须共用本函数（issue #85）。
+ * 导出供测试：纯函数。 */
+export function dayTokensOf(day: { input: number; output: number }): number {
+  return day.input + day.output
+}
+
 /**
  * 近 7 天费用序列（含今天，缺日补 0）：触发卡 hover 速览的迷你柱数据源。
  * 导出供测试：纯函数（日期取本地时区）。
@@ -904,8 +912,10 @@ export interface UsageStats {
   perf?: ClientPerf
   /** 旧版算法账本行兜底的会话数（模型归属可能失真）；0 或缺省 = 全部数据可信。 */
   staleLedgerSessions?: number
-  /** 读时迁移拒读而未统计的会话数；0 或缺省 = 全部会话已统计。 */
+  /** 本轮未统计的会话数（跨轮次稳定）；0 或缺省 = 全部会话已统计。 */
   unreadableSessions?: number
+  /** 未统计中因会话格式拒读的子集（过新待宿主升级、过旧需迁移）；0 或缺省 = 无格式拒读。 */
+  unreadableFormatSessions?: number
   /** 插件版本号（服务端读自包 package.json；旧快照缺失）。 */
   pluginVersion?: string
 }
@@ -1001,6 +1011,7 @@ async function loadUsageStats(): Promise<UsageStats | null> {
       ...(Array.isArray(candidate.unpricedModels) ? { unpricedModels: candidate.unpricedModels } : {}),
       ...(typeof candidate.staleLedgerSessions === 'number' ? { staleLedgerSessions: candidate.staleLedgerSessions } : {}),
       ...(typeof candidate.unreadableSessions === 'number' ? { unreadableSessions: candidate.unreadableSessions } : {}),
+      ...(typeof candidate.unreadableFormatSessions === 'number' ? { unreadableFormatSessions: candidate.unreadableFormatSessions } : {}),
       // 联网搜索估算：旧快照缺失；数值存在才透传（渲染处据 searchCalls 判定显示）。
       ...(typeof candidate.searchCallEstimateCny === 'number' ? { searchCallEstimateCny: candidate.searchCallEstimateCny } : {}),
       // 角色归因：旧快照缺失；仅接受对象形状（durable 边界，字段值由渲染处数值化兜底）。
@@ -2205,11 +2216,11 @@ function BillingDashboard({
   const latestDate = trendDates.at(-1) ?? today
 
   // 热力图输入：按日指标（YYYY-MM-DD → 数值）。value 的含义跟随 heatmapMetric：
-  // 费用（CNY）或 Token 总量（与趋势图 tokens 口径一致：输入 + 输出 + 命中 + 未命中）。
+  // 费用（CNY）或 Token 总量（与趋势图/用量 KPI 同口径：输入 + 输出，issue #85）。
   const heatmapDays: HeatmapDay[] = useMemo(
     () => Object.entries(byDay).map(([date, day]) => ({
       date,
-      value: heatmapMetric === 'tokens' ? day.input + day.output + day.cacheHit + day.cacheMiss : day.cost,
+      value: heatmapMetric === 'tokens' ? dayTokensOf(day) : day.cost,
     })),
     [byDay, heatmapMetric],
   )
@@ -2236,7 +2247,7 @@ function BillingDashboard({
         cost: day?.cost ?? 0,
         calls: day?.calls ?? 0,
         byModel,
-        tokens: day === undefined ? 0 : day.input + day.output + day.cacheHit + day.cacheMiss,
+        tokens: day === undefined ? 0 : dayTokensOf(day),
       }
     }),
     [trendDates, byDay, stats.byDayModels],
@@ -2806,14 +2817,19 @@ function BillingDashboard({
                 </div>
               )}
 
-              {/* 数据完整性提示：读时迁移拒读的会话未计入统计（原始日志未动，
-                  上游兼容修复后自动恢复）——让今日/累计偏低可自助归因。 */}
+              {/* 数据完整性提示：读时拒读的会话未计入统计（原始日志未动）——
+                  让今日/累计偏低可自助归因；格式拒读子集单独一行给行动指引
+                  （过新升级宿主 / 过旧需迁移，issue #84）。计数跨轮次稳定。 */}
               {(stats.unreadableSessions ?? 0) > 0 && (
                 <div className={css.staleNotice} data-testid="billing-sessions-unreadable">
                   {t('unreadableNotice').replace('{count}', String(stats.unreadableSessions))}
+                  {(stats.unreadableFormatSessions ?? 0) > 0 && (
+                    <div data-testid="billing-sessions-format-unsupported">
+                      {t('unreadableFormatNotice').replace('{count}', String(stats.unreadableFormatSessions))}
+                    </div>
+                  )}
                 </div>
               )}
-
               {/* KPI 七卡 + 全局统计范围（issue #47 反馈）：概览与用量两处 KPI 合并到
                   这里（缓存命中率/Token/平均成本/调用 + 思考占比/输入输出比/峰值日）；
                   范围切换从平均成本单卡提升为全局口径，控制全部指标，默认累计。 */}

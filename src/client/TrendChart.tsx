@@ -33,7 +33,7 @@ export interface TrendPoint {
   cost: number
   /** API calls that day (total across models). */
   calls: number
-  /** Total tokens that day (input+output+cache); used by the `tokens` metric. */
+  /** Total tokens that day (input+output — stats.input already includes cache hit/miss); used by the `tokens` metric. */
   tokens?: number
   /** Per-model cost that day (stats key → CNY); absent entries plot zero. */
   byModel?: Readonly<Record<string, number>>

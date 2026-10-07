@@ -441,8 +441,10 @@ export interface UsageStatsDocument {
   perf?: PerfStats
   /** 只存在于账本、且缺 foldVersion 的旧会话数；无旧行时省略。 */
   staleLedgerSessions?: number
-  /** 读时迁移拒读而未统计的会话数（原始日志未动，上游修复后自动恢复）；无拒读时省略。 */
+  /** 本轮未统计的会话数（新失败 + 负缓存命中，跨轮次稳定；原始日志未动）；无失败时省略。 */
   unreadableSessions?: number
+  /** 未统计中因会话格式拒读（SessionFormatUnsupportedError）的子集；无格式拒读时省略。 */
+  unreadableFormatSessions?: number
 }
 
 /** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
@@ -1681,6 +1683,14 @@ export function configFingerprint(
   return [subs, officials, aliases, String(searchEstimate)].join('|')
 }
 
+/** 会话格式拒读（宿主 SessionFormatUnsupportedError）：日志完好，仅本构建读不了。
+ * 宿主错误类显式落 error.name；经包装/重建的路径只在 message 里保留类名，两处都认。
+ * 据此把「格式不受支持」与「损坏/其他读取失败」分开计数，供面板按原因归因（issue #84）。 */
+function isFormatUnsupportedError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return error.name === 'SessionFormatUnsupportedError' || error.message.includes('SessionFormatUnsupportedError')
+}
+
 /**
  * Create the incremental usage aggregator.
  * @param persistence - the session persistence service.
@@ -1708,10 +1718,11 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
   let ledgerLoaded = false
   let ledgerNeedsSave = false
   let lastLedgerSaveAt = 0
-  // 不可读会话负缓存（id → 失败时的 stamp）：stamp 不变不再重读——新版宿主写出的
-  // 未知事件格式会在读取中途抛错，不缓存的话每轮聚合（前端 30s 轮询）都把该日志
-  // 重新解压解析一遍再失败；stamp 变化（日志被重写/追加）后自动重试一次。
-  const unreadable = new Map<string, string>()
+  // 不可读会话负缓存（id → 失败 stamp + 是否格式拒读）：stamp 不变不再重读——
+  // 新版宿主写出的未知事件格式会在读取中途抛错，不缓存的话每轮聚合（前端 30s
+  // 轮询）都把该日志重新解压解析一遍再失败；stamp 变化（日志被重写/追加）后自动
+  // 重试一次。format 位让负缓存命中轮次仍能按原因细分未统计计数（issue #84）。
+  const unreadable = new Map<string, { stamp: string; format: boolean }>()
   // 并发聚合共享的进行中的折叠（usage-stats / balance / usage_stats 工具会同时触发）。
   let inflight: Promise<UsageStatsDocument> | undefined
   // 加载边界跑迁移后留下的已应用 id；save 透传，避免每次重启都把迁移重跑一遍。
@@ -1831,8 +1842,14 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const seen = new Set<string>()
       const included = new Set<string>()
       const folds: { id: string; cwd?: string; fold: SessionFold; staleLedger?: true }[] = []
-      // skipped：记录未能读取的会话 id，聚合末尾统一告警。
+      // skipped：记录本轮新失败的会话 id（stderr 明细；负缓存命中不重复打印），
+      // 聚合末尾统一告警。carriedUnreadable 计负缓存命中的历史失败会话，与本轮
+      // 新失败合成 unreadableSessions——计数跨轮次稳定，面板的「未统计」通知
+      // 不随负缓存生效而消失（issue #84）。formatUnreadable 为其中格式拒读子集。
       const skipped: string[] = []
+      let carriedUnreadable = 0
+      let carriedFormatUnreadable = 0
+      let formatUnreadable = 0
       let staleLedgerSessions = 0
       for (const meta of metas) {
         const id = String(meta.id)
@@ -1841,7 +1858,13 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         // 负缓存命中：该会话上次以同一 stamp 读取失败（如未知事件格式），本轮
         // 直接跳过，不再重读重压；stamp 变化（日志被重写/追加）后自动重试。
         // 不进 included：其陈旧账本行仍由下方的账本兜底段合并，不丢历史用量。
-        if (stamp !== null && unreadable.get(id) === stamp) continue
+        // 命中仍计入未统计计数（issue #84）：否则首轮之后通知归零消失。
+        const mark = unreadable.get(id)
+        if (stamp !== null && mark !== undefined && mark.stamp === stamp) {
+          carriedUnreadable += 1
+          if (mark.format) carriedFormatUnreadable += 1
+          continue
+        }
         const hit = cache.get(id)
         if (hit !== undefined && stamp !== null && hit.stamp === stamp) {
           // LRU touch：复用命中的会话移到缓存末尾，供上方上限清理优先淘汰最久未用。
@@ -1930,8 +1953,10 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           recordLedger(id, cwd, stamp, fold)
         } catch (error) {
           skipped.push(id)
+          const format = isFormatUnsupportedError(error)
+          if (format) formatUnreadable += 1
           // 记负缓存：stamp 不变期间不再重读该会话（下轮聚合直接跳过）。
-          if (stamp !== null) unreadable.set(id, stamp)
+          if (stamp !== null) unreadable.set(id, { stamp, format })
           console.warn('[usage-billing] skip unreadable session', id, error)
         }
       }
@@ -2147,6 +2172,10 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
             }).filter((entry): entry is [string, HourModelPerf] => entry !== null))]
           })),
         }
+      // 未统计计数合成（issue #84）：本轮新失败 + 负缓存命中，跨轮次稳定——
+      // 否则首轮之后负缓存生效，面板的「未统计」通知归零消失。
+      const unreadableTotal = skipped.length + carriedUnreadable
+      const formatUnreadableTotal = formatUnreadable + carriedFormatUnreadable
       lastDoc = {
         version: 4,
         updatedAt: now,
@@ -2167,9 +2196,12 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         ...(searchEstimate > 0 ? { searchCallEstimateCny: searchEstimate } : {}),
         ...(perf === undefined ? {} : { perf }),
         ...(staleLedgerSessions > 0 ? { staleLedgerSessions } : {}),
-        // 读时迁移拒读的会话数：费用缺失的可诊断性信号（插件 issue #71）——
-        // 数据未丢，上游修复后自动恢复，面板据此明示「未统计」而非今日费用静默为空。
-        ...(skipped.length > 0 ? { unreadableSessions: skipped.length } : {}),
+        // 未统计的会话数：费用缺失的可诊断性信号（插件 issue #71/#84）——
+        // 数据未丢，按原因恢复后自动计入，面板据此明示「未统计」而非今日费用静默为空。
+        ...(unreadableTotal > 0 ? { unreadableSessions: unreadableTotal } : {}),
+        // 其中格式拒读（SessionFormatUnsupportedError）子集：过新格式升级宿主、
+        // 过旧格式需先迁移，与损坏/其他读取失败分开归因（issue #84）。
+        ...(formatUnreadableTotal > 0 ? { unreadableFormatSessions: formatUnreadableTotal } : {}),
         // 角色归因：输出成本为实测；输入成本按 user/tool 消息字符占比摊分
         //（无任何消息内容的日志按五五均分兜底，整体属估算口径）。
         byRole: (() => {
