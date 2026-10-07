@@ -103,5 +103,13 @@ describe('trend / heatmap token caliber (issue #85)', () => {
     const text = svg.textContent ?? ''
     expect(text).toContain('4.0M')
     expect(text).not.toContain('7.0M')
+    // hover 十字线直接命中当日 tooltip（jsdom rect 全零 → 落点钳到最后一列=今天）：
+    // 总计行必须是 4.0M（TrendPoint.tokens 的真实值，不是轴派生值）。
+    const wrap = svg.parentElement
+    expect(wrap).not.toBeNull()
+    fireEvent.mouseMove(svg, { clientX: 300, clientY: 60 })
+    expect(wrap!.textContent).toContain('总计')
+    expect(wrap!.textContent).toContain('4.0M')
+    expect(wrap!.textContent).not.toContain('7.0M')
   })
 })

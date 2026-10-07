@@ -110,9 +110,10 @@ export declare function activeDaysOf(byDay: Record<string, {
 export declare function streakDaysOf(byDay: Record<string, {
     cost: number;
 }>, now?: number): number;
-/** 当日 Token 口径：输入 + 输出。stats.input 本身已含缓存命中与未命中
+/** 按日 Token 口径：输入 + 输出。stats.input 本身已含缓存命中与未命中
  * （aggregate foldUsage：input = cacheHit + cacheMiss），再叠加缓存字段即重复
- * 计数——趋势图/热力图/用量 KPI/触发卡必须共用本函数（issue #85）。
+ * 计数——趋势图/热力图/触发卡/峰值日的按日 Token 一律走本函数（issue #85）；
+ * 跨日合计在各行之上累加（KPI 见 kpiAgg，触发卡见 month/weekTokens）。
  * 导出供测试：纯函数。 */
 export declare function dayTokensOf(day: {
     input: number;

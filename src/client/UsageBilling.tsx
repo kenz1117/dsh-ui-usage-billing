@@ -526,9 +526,10 @@ export function streakDaysOf(byDay: Record<string, { cost: number }>, now = Date
   return streak
 }
 
-/** 当日 Token 口径：输入 + 输出。stats.input 本身已含缓存命中与未命中
+/** 按日 Token 口径：输入 + 输出。stats.input 本身已含缓存命中与未命中
  * （aggregate foldUsage：input = cacheHit + cacheMiss），再叠加缓存字段即重复
- * 计数——趋势图/热力图/用量 KPI/触发卡必须共用本函数（issue #85）。
+ * 计数——趋势图/热力图/触发卡/峰值日的按日 Token 一律走本函数（issue #85）；
+ * 跨日合计在各行之上累加（KPI 见 kpiAgg，触发卡见 month/weekTokens）。
  * 导出供测试：纯函数。 */
 export function dayTokensOf(day: { input: number; output: number }): number {
   return day.input + day.output
@@ -648,8 +649,8 @@ export function sumByDayRange(
     cacheHit += row.cacheHit
     cacheMiss += row.cacheMiss
     reasoning += row.reasoning ?? 0
-    // 峰值日 = 范围内总处理 Token（缓存读+缓存写+输出，与用量页峰值口径一致）最大的日。
-    const dayTokens = row.cacheMiss + row.cacheHit + row.output
+    // 峰值日 = 范围内当日 Token（input + output，dayTokensOf 统一口径）最大的日。
+    const dayTokens = dayTokensOf(row)
     if (dayTokens > peakTokens) {
       peakTokens = dayTokens
       peakDay = date
@@ -2557,7 +2558,7 @@ function BillingDashboard({
       let peakDay: string | undefined
       let peakTokens = 0
       for (const [date, row] of Object.entries(byDay)) {
-        const dayTokens = row.cacheMiss + row.cacheHit + row.output
+        const dayTokens = dayTokensOf(row)
         if (dayTokens > peakTokens) {
           peakTokens = dayTokens
           peakDay = date
@@ -4368,19 +4369,19 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const last7 = useMemo(
     () => lastSevenDays(displayStats.byDay).map((day) => {
       const row = displayStats.byDay[day.date]
-      return { date: day.date, cost: day.cost, tokens: row === undefined ? 0 : row.input + row.output }
+      return { date: day.date, cost: day.cost, tokens: row === undefined ? 0 : dayTokensOf(row) }
     }),
     [displayStats.byDay],
   )
   // tokens 视角的主副行数字：当月/今日/本周 累计 token（本周 = 自然周，issue #39）。
   const monthTokens = Object.entries(displayStats.byDay)
     .filter(([date]) => date.startsWith(today.slice(0, 7)))
-    .reduce((sum, [, day]) => sum + day.input + day.output, 0)
+    .reduce((sum, [, day]) => sum + dayTokensOf(day), 0)
   const todayTokens = (() => {
     const row = displayStats.byDay[today]
-    return row === undefined ? 0 : row.input + row.output
+    return row === undefined ? 0 : dayTokensOf(row)
   })()
-  const weekTokens = sinceMondayOf(displayStats.byDay, today, (row) => row.input + row.output)
+  const weekTokens = sinceMondayOf(displayStats.byDay, today, dayTokensOf)
 
   // 预算偏好：开关与金额经框架 store 读取；用户金额优先，宿主 monthlyBudget
   //（stats.budget）兜底为默认值。

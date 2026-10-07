@@ -1688,10 +1688,14 @@ describe('unreadable sessions visibility', () => {
     // 计数仍保留——否则面板的「未统计」通知在首轮之后归零消失（issue 报告现象）。
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
+      let reads = 0
       const persistence = {
         list: async () => [{ id: 'v0-session' }],
         stampOf: async () => 'stamp-1',
-        readFrom: async () => { throw new Error('SessionFormatUnsupportedError: unsupported descriptor version 2') },
+        readFrom: async () => {
+          reads += 1
+          throw new Error('SessionFormatUnsupportedError: unsupported descriptor version 2')
+        },
       } as unknown as UsagePersistence
       const aggregator = createUsageAggregator(persistence)
 
@@ -1703,7 +1707,8 @@ describe('unreadable sessions visibility', () => {
       const second = await aggregator.aggregate()
       expect(second.unreadableSessions).toBe(1)
       expect(second.unreadableFormatSessions).toBe(1)
-      // 负缓存生效：不重读、不重打两条告警。
+      // 负缓存生效的核心不变量：两轮聚合 readFrom 只被调用一次（不重读不重打日志）。
+      expect(reads).toBe(1)
       expect(warn).toHaveBeenCalledTimes(2)
     } finally {
       warn.mockRestore()
