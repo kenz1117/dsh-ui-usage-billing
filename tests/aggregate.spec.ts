@@ -330,6 +330,12 @@ describe('message.source attribution (issue #14)', () => {
     expect(glm?.cost).toBe(0)
     expect(fold.planCalls.get('glm-5.3-flash')).toBe(2)
     expect(fold.planCalls.has('flash')).toBe(false)
+    // 三维格同款计数（provider 行按通道判 plan）：glm 两个订阅调用落同一格。
+    const sitePlans = [...fold.planSiteCalls]
+    expect(sitePlans).toHaveLength(1)
+    expect(sitePlans[0]?.[0]).toContain('"glm-5.3-flash"')
+    expect(sitePlans[0]?.[0]).toContain('"direct:zai-coding-cn"')
+    expect(sitePlans[0]?.[1]).toBe(2)
     expect(flash?.cost ?? 0).toBeGreaterThan(0)
     // site 桶也跟随各自的 source：订阅直连 vs 官方直连。
     expect([...fold.bySite.keys()]).toEqual(['direct:zai-coding-cn', 'direct:deepseek-official'])

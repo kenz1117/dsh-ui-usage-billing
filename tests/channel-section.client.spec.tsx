@@ -164,4 +164,113 @@ describe('subscription channel shows catalog-price estimate (P3)', () => {
     expect(recharge).not.toBeNull()
     expect(recharge!.href).toBe('https://console.cloud.tencent.com/expense/recharge')
   })
+
+  it('falls back to the ≈ estimate when the cell cost is 0 and the model is not marked plan (mixed-channel model)', async () => {
+    // 同一模型在其它通道按量付费过 → 全局 plan 缺省为 false；本格全部走订阅通道
+    // → cell.cost=0。此前实际列只剩「—」，现回退目录价估算；本 fixture 为旧快照
+    // 形态（格级 plan 字段缺失、全局非 true）→ 不挂「订阅」徽标。
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      const body = url.includes('/api/billing/pricing')
+        ? { source: 'builtin' }
+        : {
+            total: { calls: 2, input: 10000, output: 5000, cacheHit: 0, cacheMiss: 10000, cost: 0, reasoning: 0, officialCalls: 0, officialCost: 0 },
+            byModel: { 'glm-5.3': { calls: 2, input: 10000, output: 5000, cacheHit: 0, cacheMiss: 10000, cost: 0, reasoning: 0, officialCalls: 0, officialCost: 0, plan: false } },
+            byDayModelsSite: {
+              '2026-09-05': {
+                'glm-5.3': { 'site:https://api.lkeap.cloud.tencent.com': { calls: 2, input: 10000, output: 5000, cacheHit: 0, cacheMiss: 10000, cost: 0 } },
+              },
+            },
+            updatedAt: 0,
+          }
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+    }))
+    const panel = await openProvidersTab()
+    await waitFor(() => {
+      expect(panel.textContent).toContain('腾讯云 Token Plan')
+    })
+    const groups = screen.getAllByTestId('billing-provider-group')
+    const plan = groups.find(group => group.textContent?.includes('腾讯云 Token Plan'))
+    expect(plan).toBeDefined()
+    fireEvent.click(plan!.querySelector('[data-testid="billing-provider-group-head"]')!)
+    expect(plan!.textContent).toContain('GLM-5.3')
+    // 回退估算：≈¥0.22（glm-5.3：输入 10000×¥8 + 输出 5000×¥28 → 0.22），不再是「—」。
+    expect(plan!.textContent).toContain('≈¥0.22')
+    expect(plan!.textContent).not.toContain('—')
+    expect(plan!.querySelector('[data-testid="billing-plan-badge"]')).toBeNull()
+    // 组头按估算兜底（issue #34：actual ?? (plan ? 0 : estimated)）计入 0.22。
+    expect(plan!.textContent).toContain('¥0.22')
+  })
+
+  it('keeps the — dash for unknown-channel cells with zero cost (issue #82 不回退估算)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      const body = url.includes('/api/billing/pricing')
+        ? { source: 'builtin' }
+        : {
+            total: { calls: 2, input: 10000, output: 5000, cacheHit: 0, cacheMiss: 10000, cost: 0, reasoning: 0, officialCalls: 0, officialCost: 0 },
+            byModel: { 'glm-5.3': { calls: 2, input: 10000, output: 5000, cacheHit: 0, cacheMiss: 10000, cost: 0, reasoning: 0, officialCalls: 0, officialCost: 0, plan: false } },
+            byDayModelsSite: {
+              '2026-09-05': {
+                'glm-5.3': { unknown: { calls: 2, input: 10000, output: 5000, cacheHit: 0, cacheMiss: 10000, cost: 0 } },
+              },
+            },
+            updatedAt: 0,
+          }
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+    }))
+    const panel = await openProvidersTab()
+    await waitFor(() => {
+      expect(panel.querySelector('[data-testid="billing-kind-badge"]')?.textContent).toBe(t('unknownTag'))
+    })
+    const groups = screen.getAllByTestId('billing-provider-group')
+    const unknown = groups.find(group => group.querySelector('[data-testid="billing-kind-badge"]')?.textContent === t('unknownTag'))
+    expect(unknown).toBeDefined()
+    fireEvent.click(unknown!.querySelector('[data-testid="billing-provider-group-head"]')!)
+    // 未知通道数据面已强制归零，estimated 同步为 0 → 不触发回退，仍显示「—」。
+    expect(unknown!.textContent).toContain('—')
+    expect(unknown!.textContent).not.toContain('≈')
+  })
+
+  it('reads plan from the site cell so mixed-channel models still badge their subscription rows', async () => {
+    // 混通道模型（全局无 plan）+ 本格全订阅（格级 plan:true）：徽标按格判，不再借
+    // 模型全局口径（其它提供商的按量历史会把全局 plan 压成 false）。
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      const body = url.includes('/api/billing/pricing')
+        ? { source: 'builtin' }
+        : {
+            total: { calls: 4, input: 20000, output: 10000, cacheHit: 0, cacheMiss: 20000, cost: 1, reasoning: 0, officialCalls: 0, officialCost: 0 },
+            byModel: { 'glm-5.3': { calls: 4, input: 20000, output: 10000, cacheHit: 0, cacheMiss: 20000, cost: 1, reasoning: 0, officialCalls: 0, officialCost: 0 } },
+            byDayModelsSite: {
+              '2026-09-05': {
+                'glm-5.3': {
+                  'site:https://api.lkeap.cloud.tencent.com': { calls: 2, input: 10000, output: 5000, cacheHit: 0, cacheMiss: 10000, cost: 0, plan: true },
+                  'site:https://tokenhub.tencentmaas.com': { calls: 2, input: 10000, output: 5000, cacheHit: 0, cacheMiss: 10000, cost: 1 },
+                },
+              },
+            },
+            updatedAt: 0,
+          }
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+    }))
+    const panel = await openProvidersTab()
+    await waitFor(() => {
+      expect(panel.textContent).toContain('腾讯云 Token Plan')
+    })
+    const groups = screen.getAllByTestId('billing-provider-group')
+    const planGroup = groups.find(group => group.textContent?.includes('腾讯云 Token Plan'))
+    expect(planGroup).toBeDefined()
+    fireEvent.click(planGroup!.querySelector('[data-testid="billing-provider-group-head"]')!)
+    // 订阅格：格级 plan=true → 「订阅」徽标 + ≈估算（glm-5.3 → 0.22），不看全局。
+    expect(planGroup!.querySelector('[data-testid="billing-plan-badge"]')).not.toBeNull()
+    expect(planGroup!.textContent).toContain('≈¥0.22')
+
+    const hubGroup = groups.find(group => group.textContent?.includes('腾讯云 TokenHub'))
+    expect(hubGroup).toBeDefined()
+    fireEvent.click(hubGroup!.querySelector('[data-testid="billing-provider-group-head"]')!)
+    // 同一模型的按量格：无格级 plan → 回退全局（缺省 = false）→ 实付金额、无徽标。
+    expect(hubGroup!.textContent).toContain('¥1.00')
+    expect(hubGroup!.querySelector('[data-testid="billing-plan-badge"]')).toBeNull()
+  })
 })

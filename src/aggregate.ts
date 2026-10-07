@@ -771,6 +771,10 @@ export interface SessionFold {
   unpricedModels: Set<string>
   /** 每个模型 key 在本会话内走订阅通道的调用数（合并时跨会话累加判定 plan）。 */
   planCalls: Map<string, number>
+  /** 三维格（日期×模型×站点）各自的订阅调用数，键 = {@link planSiteKey}：
+   *  provider 视图的行 plan 按本格判定，不再借模型全局口径（混通道模型会把
+   *  本格全订阅的行判成无标记）。 */
+  planSiteCalls: Map<string, number>
   /** 每轮费用明细（按轮次号升序，不含 sessionId）；sessionId 在合并时补齐。 */
   turns: SessionTurnRow[]
   /** 性能样本（有可测 TTFT 的调用，按事件次序折叠）；仅进程内折叠产生，
@@ -814,6 +818,8 @@ export interface SerializedSessionFold {
   bySite: Record<string, ModelUsage>
   unpricedModels: string[]
   planCalls: Record<string, number>
+  /** 三维格订阅计数；旧账本行缺失（合并按空处理，格级 plan 保守不置位）。 */
+  planSiteCalls?: Record<string, number>
   turns: SessionTurnRow[]
   /** v16 起以摘要持久化性能（体积 O(模型数) 而非 O(样本数)）；旧行的
    *  `perf` 逐样本数组由加载边界迁移转换为摘要。 */
@@ -897,7 +903,11 @@ export interface UsageLedgerDocument {
 // 下 unknown 桶的已收录模型按目录价计入了金额，复用旧行会让报告人的历史累计
 // 金额在升级后原样保留；bump 让日志仍在的会话重折出零费用，仅日志已删的行
 // 留在旧口径（账本「历史定格」语义的固有残留）。
-export const FOLD_VERSION = 17
+// 18：三维格补订阅计数（`planSiteCalls`）——provider 视图行的 plan 徽标改按通道
+// 判定，不再借模型全局口径（混通道模型会把本格全订阅的行判成无标记）。计价语义
+// 未变；bump 让日志仍在的会话重折出格级 plan，仅日志已删的行留在全局口径
+//（客户端回退 byModel.plan）。
+export const FOLD_VERSION = 18
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
@@ -1003,6 +1013,7 @@ function serializeFold(fold: SessionFold): SerializedSessionFold {
     bySite: Object.fromEntries(fold.bySite),
     unpricedModels: [...fold.unpricedModels],
     planCalls: Object.fromEntries(fold.planCalls),
+    planSiteCalls: Object.fromEntries(fold.planSiteCalls),
     turns: fold.turns,
     perfDigest,
     perfHourDigest,
@@ -1029,6 +1040,7 @@ function deserializeFold(fold: SerializedSessionFold): SessionFold {
     bySite: new Map(Object.entries(fold.bySite)),
     unpricedModels: new Set(fold.unpricedModels),
     planCalls: new Map(Object.entries(fold.planCalls)),
+    planSiteCalls: new Map(Object.entries(fold.planSiteCalls ?? {})),
     turns: fold.turns,
     // 账本行无逐样本：性能以摘要形态参与聚合（进程内折叠才保留样本）。
     perf: [],
@@ -1100,6 +1112,11 @@ function modelDayCell(map: Map<string, Map<string, ModelUsage>>, day: string, mo
     map.set(day, models)
   }
   return usageCell(models, modelKey)
+}
+
+/** 订阅计数的三维键：日期×模型×站点三元组的 JSON 形态（免分隔符转义歧义）。 */
+function planSiteKey(day: string, modelKey: string, siteKey: string): string {
+  return JSON.stringify([day, modelKey, siteKey])
 }
 
 /** Get-or-create one day×model×site cell inside the three-dimensional map. */
@@ -1187,6 +1204,7 @@ function freshFold(): SessionFold {
     bySite: new Map(),
     unpricedModels: new Set(),
     planCalls: new Map(),
+    planSiteCalls: new Map(),
     turns: [],
     perf: [],
     perfDigest: new Map(),
@@ -1393,6 +1411,11 @@ function foldInto(
     // 峰谷分桶：与计费同口径逐调用判档（tierAt），峰谷占比因此是真实数据。
     foldUsage(usageCell(fold.byTier, tierAt(event.time)), usage, modelKey, subscription, event.time, official, thisCost, unverifiedChannel)
     if (subscription) fold.planCalls.set(modelKey, (fold.planCalls.get(modelKey) ?? 0) + 1)
+    // 三维格同款计数：provider 视图的行 plan 按本格判定，键与 byDayModelsSite 对齐。
+    if (subscription) {
+      const sitePlanKey = planSiteKey(day, modelKey, siteBucket)
+      fold.planSiteCalls.set(sitePlanKey, (fold.planSiteCalls.get(sitePlanKey) ?? 0) + 1)
+    }
     // 每轮明细：同一轮内的调用累加进该轮状态（模型取最近一次的归属）。
     const turn = (event.data as { turn?: number }).turn ?? -1
     const state = turnState(turns, turn)
@@ -1966,6 +1989,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       const bySite = new Map<string, ModelUsage>()
       const unpricedModels = new Set<string>()
       const planCalls = new Map<string, number>()
+      const planSiteCalls = new Map<string, number>()
       const sessionRows: SessionUsageRow[] = []
       const turnRows: TurnUsageRow[] = []
       const workspaceMap = new Map<string, WorkspaceUsageRow>()
@@ -1999,6 +2023,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         for (const id of fold.unpricedModels) unpricedModels.add(id)
         for (const [modelKey, count] of fold.planCalls) {
           planCalls.set(modelKey, (planCalls.get(modelKey) ?? 0) + count)
+        }
+        for (const [key, count] of fold.planSiteCalls) {
+          planSiteCalls.set(key, (planSiteCalls.get(key) ?? 0) + count)
         }
         // 性能样本入桶：按模型、按小时×模型各聚合一份；小时×模型供性能曲线按模型对比。
         for (const sample of fold.perf) {
@@ -2081,7 +2108,14 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         Object.fromEntries([...map].map(([day, models]) => [day, Object.fromEntries(models)]))
       const toModelDaySiteRecord = (map: Map<string, Map<string, Map<string, ModelUsage>>>): Record<string, Record<string, Record<string, ModelUsage>>> =>
         Object.fromEntries([...map].map(([day, models]) =>
-          [day, Object.fromEntries([...models].map(([model, sites]) => [model, Object.fromEntries(sites)]))]))
+          [day, Object.fromEntries([...models].map(([model, sites]) =>
+            [model, Object.fromEntries([...sites].map(([site, cell]): [string, ModelUsage] => {
+              // 格级 plan：该格全部调用都走订阅通道才置位（provider 行徽标按通道判，
+              // 不再借模型全局口径）。旧账本行无 planSiteCalls 计数 → 保守不置位，
+              // 客户端回退模型全局 plan（byModel.plan）。
+              const count = planSiteCalls.get(planSiteKey(day, model, site)) ?? 0
+              return [site, count === cell.calls && cell.calls > 0 ? { ...cell, plan: true } : cell]
+            }))]))]))
 
       // 性能指标：按模型（含 P90）、按小时×模型聚合；无任何可测样本时整个 perf 字段缺失。
       // 活样本先归一为摘要再与账本恢复行合并——纯活数据下加权合并退化为精确插值

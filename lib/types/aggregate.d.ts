@@ -464,6 +464,10 @@ export interface SessionFold {
     unpricedModels: Set<string>;
     /** 每个模型 key 在本会话内走订阅通道的调用数（合并时跨会话累加判定 plan）。 */
     planCalls: Map<string, number>;
+    /** 三维格（日期×模型×站点）各自的订阅调用数，键 = {@link planSiteKey}：
+     *  provider 视图的行 plan 按本格判定，不再借模型全局口径（混通道模型会把
+     *  本格全订阅的行判成无标记）。 */
+    planSiteCalls: Map<string, number>;
     /** 每轮费用明细（按轮次号升序，不含 sessionId）；sessionId 在合并时补齐。 */
     turns: SessionTurnRow[];
     /** 性能样本（有可测 TTFT 的调用，按事件次序折叠）；仅进程内折叠产生，
@@ -505,6 +509,8 @@ export interface SerializedSessionFold {
     bySite: Record<string, ModelUsage>;
     unpricedModels: string[];
     planCalls: Record<string, number>;
+    /** 三维格订阅计数；旧账本行缺失（合并按空处理，格级 plan 保守不置位）。 */
+    planSiteCalls?: Record<string, number>;
     turns: SessionTurnRow[];
     /** v16 起以摘要持久化性能（体积 O(模型数) 而非 O(样本数)）；旧行的
      *  `perf` 逐样本数组由加载边界迁移转换为摘要。 */
@@ -554,7 +560,7 @@ export interface UsageLedgerDocument {
  * 会话费用只剩最近一段，issue #29）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export declare const FOLD_VERSION = 17;
+export declare const FOLD_VERSION = 18;
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
  * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并

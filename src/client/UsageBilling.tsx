@@ -852,6 +852,8 @@ export interface UsageStats {
     cacheHit: number
     cacheMiss: number
     cost: number
+    /** 该格全部调用都走订阅通道（聚合侧按三维格置位）；旧快照缺失，回退全局口径。 */
+    plan?: boolean
   }>>>
   /**
    * 峰谷分桶（全量逐调用真实判档）：1.0.8 起服务端按调用时刻精确归桶，
@@ -2308,7 +2310,7 @@ function BillingDashboard({
       const today = localDayStamp()
       siteSource = { [today]: stats.byDayModelsSite?.[today] ?? {} }
     }
-    const cells = new Map<string, Map<string, { calls: number; input: number; output: number; cacheHit: number; cacheMiss: number; cost: number }>>()
+    const cells = new Map<string, Map<string, { calls: number; input: number; output: number; cacheHit: number; cacheMiss: number; cost: number; allPlan: boolean }>>()
     for (const models of Object.values(siteSource ?? {})) {
       for (const [modelKey, sites] of Object.entries(models)) {
         for (const [siteKey, usage] of Object.entries(sites)) {
@@ -2317,13 +2319,17 @@ function BillingDashboard({
             bucket = new Map()
             cells.set(siteKey, bucket)
           }
-          const cell = bucket.get(modelKey) ?? { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0 }
+          const cell = bucket.get(modelKey) ?? { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0, allPlan: true }
           cell.calls += usage.calls
           cell.input += usage.input
           cell.output += usage.output
           cell.cacheHit += usage.cacheHit
           cell.cacheMiss += usage.cacheMiss
           cell.cost += usage.cost
+          // 行 plan 按本格（通道）判定：聚合侧按三维格置位后，混通道模型在纯订阅
+          // 通道的行也正确挂「订阅」徽标，不再借模型全局 plan（其它提供商的按量
+          // 历史会把它压成 false）。旧快照格缺字段时回退模型全局口径。
+          cell.allPlan = cell.allPlan && (usage.plan ?? stats.byModel?.[modelKey]?.plan === true)
           bucket.set(modelKey, cell)
         }
       }
@@ -2352,7 +2358,7 @@ function BillingDashboard({
             cacheHitRate: cell.cacheHit + cell.cacheMiss > 0 ? (cell.cacheHit / (cell.cacheHit + cell.cacheMiss)) * 100 : 0,
             // 目录价预估：订阅通道行即「套餐内预估开销」，按量行即未重估前的目录口径。
             estimated: unknownChannel ? 0 : computeCost(entry, { input: cell.input, cacheHit: cell.cacheHit, cacheMiss: cell.cacheMiss, output: cell.output }),
-            plan: stats.byModel?.[modelKey]?.plan === true,
+            plan: cell.allPlan,
             ...(cell.cost > 0 ? { actual: cell.cost } : {}),
             uncatalogued,
             estimatedPricing: entry.estimated === true,
@@ -3658,7 +3664,13 @@ function BillingDashboard({
                                             }
                                             return money(row.actual)
                                           })()
-                                          : <span className={css.na}>—</span>}
+                                          /* 无按量扣费记录（本格全部调用走订阅通道，cell.cost=0）：
+                                              目录价可算就回退估算金额，避免该提供商下的订阅行只剩
+                                              「—」。未知通道（issue #82，estimated 强制归零）与
+                                              目录未收录模型（零价条目）仍显示「—」。 */
+                                          : row.estimated > 0
+                                            ? <span title={t('cellEstimateHint')}>≈{money(row.estimated)}</span>
+                                            : <span className={css.na}>—</span>}
                                     </td>
                                   </tr>
                                 ))}
