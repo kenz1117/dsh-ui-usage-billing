@@ -3320,6 +3320,18 @@ span.bandDot { cursor: default; }
   border: 1px solid color-mix(in srgb, var(--ds-amber) 30%, transparent);
 }
 
+/* 未统计通知的多行结构：.staleNotice 是横向 flex，子集行直接作子元素会被
+ * 并排成多栏（v1.4.23 回归）——包一层纵向 body 让主行/子集行自上而下堆叠。 */
+.staleNoticeBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.staleNoticeSub {
+  display: block;
+  margin-top: 4px;
+}
+
 /* 插件信息卡（设计 plg-card）：图标 + 名称/版本 tag + 描述 → 元信息网格。 */
 .plgHead {
   display: flex;

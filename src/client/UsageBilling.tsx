@@ -2827,17 +2827,19 @@ function BillingDashboard({
                   子集（过新升级宿主 / 过旧需迁移）各给一行（issue #84）。 */}
               {(stats.unreadableSessions ?? 0) > 0 && (
                 <div className={css.staleNotice} data-testid="billing-sessions-unreadable">
-                  {t('unreadableNotice').replace('{count}', String(stats.unreadableSessions))}
-                  {(stats.unreadableNoLedgerSessions ?? 0) > 0 && (
-                    <div data-testid="billing-sessions-no-ledger">
-                      {t('unreadableNoLedgerNotice').replace('{count}', String(stats.unreadableNoLedgerSessions))}
-                    </div>
-                  )}
-                  {(stats.unreadableFormatSessions ?? 0) > 0 && (
-                    <div data-testid="billing-sessions-format-unsupported">
-                      {t('unreadableFormatNotice').replace('{count}', String(stats.unreadableFormatSessions))}
-                    </div>
-                  )}
+                  <div className={css.staleNoticeBody}>
+                    {t('unreadableNotice').replace('{count}', String(stats.unreadableSessions))}
+                    {(stats.unreadableNoLedgerSessions ?? 0) > 0 && (
+                      <div className={css.staleNoticeSub} data-testid="billing-sessions-no-ledger">
+                        {t('unreadableNoLedgerNotice').replace('{count}', String(stats.unreadableNoLedgerSessions))}
+                      </div>
+                    )}
+                    {(stats.unreadableFormatSessions ?? 0) > 0 && (
+                      <div className={css.staleNoticeSub} data-testid="billing-sessions-format-unsupported">
+                        {t('unreadableFormatNotice').replace('{count}', String(stats.unreadableFormatSessions))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               {/* KPI 七卡 + 全局统计范围（issue #47 反馈）：概览与用量两处 KPI 合并到
