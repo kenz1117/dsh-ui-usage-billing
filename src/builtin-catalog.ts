@@ -724,8 +724,19 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     name: 'Claude Sonnet 5.5',
     provider: 'Anthropic',
     colorVar: 'dsw-static-red-400',
-    // 约 2026-09-28 发布；Haiku 5.5 官方称即将推出，上架后补录。
+    // 约 2026-09-28 发布；缓存读官方价存疑（目录 0.2 = 输入 10%，OpenRouter 实时
+    // 报 0.1 = 5%，待控制台核实后定）。Haiku 5.5 已于 2026-10-07 上架补录。
     price: { currency: 'USD', input: 2, cacheHit: 0.2, output: 10 },
+  },
+  {
+    key: 'claude-haiku-5-5',
+    name: 'Claude Haiku 5.5',
+    provider: 'Anthropic',
+    colorVar: 'dsw-static-red-300',
+    // 2026-10-07 发布（官方 id claude-haiku-5.5）：≤100K 标准档 $0.1 / $0.01 / $0.5；
+    // 长上下文加价（≥100K 输入 $0.5 / 缓存读 $0.05 / 输出 $2.5）不单列，对齐
+    // gpt-6-astra 只记标准档的先例。价源：OpenRouter 实时价（2026-10-08）。
+    price: { currency: 'USD', input: 0.1, cacheHit: 0.01, output: 0.5 },
   },
   {
     key: 'mistral-large-2512',
@@ -1004,6 +1015,12 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'claude-fable-5-1': 'claude-fable-5-1',
   'claude-fable-5.1': 'claude-fable-5-1',
   'claude-fable': 'claude-fable-5-1',
+  // Mythos 5.1 与 Fable 5.1 同价发布（fable 条目注释「不单列」），归一到 fable 键计价。
+  'claude-mythos-5-1': 'claude-fable-5-1',
+  'claude-mythos-5.1': 'claude-fable-5-1',
+  // Claude Haiku 5.5（2026-10-07 发布）：官方 id 与点号变体归一。
+  'claude-haiku-5-5': 'claude-haiku-5-5',
+  'claude-haiku-5.5': 'claude-haiku-5-5',
   'claude-opus-5-5': 'claude-opus-5-5',
   'claude-opus-5.5': 'claude-opus-5-5',
   'claude-sonnet-5-5': 'claude-sonnet-5-5',

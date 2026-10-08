@@ -718,6 +718,22 @@ describe('catalog additions for issue #86 (U2 family, M3.1 Flash Preview)', () =
   })
 })
 
+describe('catalog additions for 2026-10 sweep (Haiku 5.5, Mythos 5.1)', () => {
+  it('adds Claude Haiku 5.5 with standard-tier pricing (2026-10-07 release)', () => {
+    // 官方 id 与点号变体归一；≤100K 标准档，长上下文加价不单列。
+    expect(resolveCatalogKey('claude-haiku-5.5')).toBe('claude-haiku-5-5')
+    expect(resolveCatalogKey('claude-haiku-5-5')).toBe('claude-haiku-5-5')
+    expect(modelOf('claude-haiku-5-5').price).toMatchObject({ currency: 'USD', input: 0.1, cacheHit: 0.01, output: 0.5 })
+  })
+
+  it('folds Mythos 5.1 into the same-price Fable 5.1 key', () => {
+    // fable 条目注释「同期同价发布的 Mythos 5.1 不单列」——别名归一补上，
+    // 日志里的 mythos 用量不再落「未收录」。
+    expect(resolveCatalogKey('claude-mythos-5-1')).toBe('claude-fable-5-1')
+    expect(resolveCatalogKey('claude-mythos-5.1')).toBe('claude-fable-5-1')
+  })
+})
+
 describe('Qwen3.8 Max list price with extra pricing rows', () => {
   const entry = modelOf('qwen3.8-max')
 
