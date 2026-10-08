@@ -388,6 +388,40 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'ds-amber',
     price: { currency: 'CNY', input: 4.2, cacheHit: 0.42, output: 16.8 },
   },
+  // MiniMax-M3.1 Flash Preview：会员侧预览模型，价格与 M3 计费规则一致（issue #86）。
+  {
+    key: 'minimax-m3.1-flash-preview',
+    name: 'MiniMax M3.1 Flash Preview',
+    provider: 'MiniMax',
+    colorVar: 'ds-amber',
+    price: { currency: 'CNY', input: 2.1, cacheHit: 0.42, output: 8.4 },
+  },
+  // 云知声 U2 系列（OpenAI-compatible，云知声 MaaS，2026-10）。价格取 issue #86
+  // 报告的用户侧计费口径（元/百万 token），官方 MaaS 平台价如有出入以后者为准。
+  // U2 Flash 限时免费（2026-09-30 ~ 10-31）用 promo factor=0 表达：活动期计 0 元，
+  // 到期自动恢复刊例价，不把目录价写成 0。
+  {
+    key: 'u2-flash',
+    name: 'U2 Flash',
+    provider: '云知声',
+    colorVar: 'dsw-static-violet-400',
+    price: { currency: 'CNY', input: 1, cacheHit: 0.2, output: 2 },
+    promo: { factor: 0, endsAtMs: Date.UTC(2026, 9, 31, 16, 0, 0), note: '限时免费至 2026-10-31' },
+  },
+  {
+    key: 'u2',
+    name: 'Unisound U2',
+    provider: '云知声',
+    colorVar: 'dsw-static-violet-400',
+    price: { currency: 'CNY', input: 1, cacheHit: 0.2, output: 2 },
+  },
+  {
+    key: 'u2-med',
+    name: 'U2-Med',
+    provider: '云知声',
+    colorVar: 'dsw-static-violet-400',
+    price: { currency: 'CNY', input: 8, cacheHit: 2, output: 28 },
+  },
   // 百度文心 (OpenAI-compatible, 千帆 2026-08).
   {
     key: 'ernie',
@@ -1066,6 +1100,13 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'minimax-m2-7': 'minimax-m2.7',
   'minimax-m2-7-highspeed': 'minimax-m2.7-highspeed',
   'minimax-m2-7-high-speed': 'minimax-m2.7-highspeed',
+  // MiniMax-M3.1 Flash Preview：官方 id 即目录键（点/横杠变体归一，issue #86）。
+  'minimax-m3.1-flash-preview': 'minimax-m3.1-flash-preview',
+  'minimax-m3-1-flash-preview': 'minimax-m3.1-flash-preview',
+  // 云知声 U2 系列：官方 id 即目录键，收录即覆盖归一（issue #86）。
+  'u2-flash': 'u2-flash',
+  'u2': 'u2',
+  'u2-med': 'u2-med',
   // OpenAI GPT-6 Astra：官方 id 为 `gpt-6-astra`（2026-09-03 发布），短名形态一并归一。
   'gpt-6': 'gpt-6-astra',
   'gpt-6-astra': 'gpt-6-astra',

@@ -12,12 +12,20 @@
  */
 
 import { stat } from 'node:fs/promises'
-import { SessionLogOffset } from '@deepseek-ai/dsh-session/types'
-import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
+import * as sessionTypes from '@deepseek-ai/dsh-session/types'
+import type { SessionEvent, SessionHeader, SessionId, SessionLogOffset as SessionLogOffsetT } from '@deepseek-ai/dsh-session/types'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import { isPriced, resolveCatalogKey, computeCostAt, modelOf, tierAt } from './client/pricing.ts'
 import { BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts'
 import { isSubscriptionProviderId } from './subscriptions.ts'
+
+/** 会话日志偏移：宿主 0.1.2-alpha.4 前的 dsh-session/types 不导出 SessionLogOffset
+ * 值，具名导入让这些宿主装载即崩（v1.4.19~v1.4.22 实测，alpha.3 真机复现）；
+ * namespace 导入不做具名导出校验，缺导出时退化为恒等——偏移类型是
+ * BrandedNumber，值域与 number 同构，老宿主的 readFrom 原样收数字。 */
+export const sessionLogOffsetOf: (value: number) => SessionLogOffsetT =
+  (sessionTypes as { SessionLogOffset?: (value: number) => SessionLogOffsetT }).SessionLogOffset
+  ?? ((value: number): SessionLogOffsetT => value as SessionLogOffsetT)
 
 // 模型别名（真实 provider id → 计费目录键）数据本体在 builtin-catalog.ts，
 // 注入与消费逻辑在 client/pricing.ts；聚合层折叠与客户端渲染共用同一张表，
@@ -364,8 +372,8 @@ export function workspaceNameOf(cwd: string | undefined): string {
 /** readFrom 返回的后缀切片：与宿主 0.1.2 的 SessionEventSuffix 同构，本地结构声明。 */
 export interface UsageEventSuffix {
   readonly meta: SessionHeader
-  readonly inheritedEventCount: SessionLogOffset
-  readonly fromSeq: SessionLogOffset
+  readonly inheritedEventCount: SessionLogOffsetT
+  readonly fromSeq: SessionLogOffsetT
   readonly events: readonly SessionEvent[]
 }
 
@@ -380,7 +388,7 @@ export interface UsageEventSuffix {
  */
 export interface UsagePersistence {
   list(): Promise<readonly SessionHeader[]>
-  readFrom(id: SessionId, fromSeq: SessionLogOffset): Promise<UsageEventSuffix>
+  readFrom(id: SessionId, fromSeq: SessionLogOffsetT): Promise<UsageEventSuffix>
   locate?(meta: SessionHeader): { path: string } | undefined
   stampOf?(id: SessionId): Promise<string | null>
 }
@@ -1907,7 +1915,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
             // 全量重读会让宿主事件循环连续阻塞十几秒、session/list 全部挂起。
             // 只读取上次折叠之后的新增段，折进既有 fold（状态机跨批次延续）。
             const from = previous.lastSeq + 1
-            const { events, inheritedEventCount } = await persistence.readFrom(meta.id, SessionLogOffset(from))
+            const { events, inheritedEventCount } = await persistence.readFrom(meta.id, sessionLogOffsetOf(from))
             const after = await stampOf(meta)
             if (stamp !== null && after !== stamp) {
               // 竞态：本批增量可能折进了半截内容，且 fold 已被原地修改——
@@ -1937,7 +1945,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           }
           // 全量重折（首次 / 缓存淘汰 / 日志重写）：分片折叠并周期性让出事件循环，
           // 超大会话不再把宿主 RPC 连续挂死十几秒。
-          const { events, inheritedEventCount } = await persistence.readFrom(meta.id, SessionLogOffset(0))
+          const { events, inheritedEventCount } = await persistence.readFrom(meta.id, sessionLogOffsetOf(0))
           // P0-4 竞态加固：读取期间日志被写入（mtime+size 变化），本轮的折叠可能基于
           // 半截内容，丢弃待下一轮重读，避免把不完整事件当作真实用量输出。
           const after = await stampOf(meta)

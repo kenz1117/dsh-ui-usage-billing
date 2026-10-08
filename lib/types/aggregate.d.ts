@@ -10,11 +10,15 @@
  * zero while their tokens still count. Pure functions only: the persistence
  * handle is injected, so the fold is unit-testable without a host.
  */
-import { SessionLogOffset } from '@deepseek-ai/dsh-session/types';
-import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types';
+import type { SessionEvent, SessionHeader, SessionId, SessionLogOffset as SessionLogOffsetT } from '@deepseek-ai/dsh-session/types';
 import type { TokenUsage } from '@deepseek-ai/dsh-llm';
 import { resolveCatalogKey } from './client/pricing.ts';
 import { BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts';
+/** 会话日志偏移：宿主 0.1.2-alpha.4 前的 dsh-session/types 不导出 SessionLogOffset
+ * 值，具名导入让这些宿主装载即崩（v1.4.19~v1.4.22 实测，alpha.3 真机复现）；
+ * namespace 导入不做具名导出校验，缺导出时退化为恒等——偏移类型是
+ * BrandedNumber，值域与 number 同构，老宿主的 readFrom 原样收数字。 */
+export declare const sessionLogOffsetOf: (value: number) => SessionLogOffsetT;
 export { BUILTIN_MODEL_KEY_ALIASES, resolveCatalogKey };
 /**
  * 走订阅套餐（coding / token plan / opencode 订阅）的 provider id：这些通道的
@@ -212,8 +216,8 @@ export declare function workspaceNameOf(cwd: string | undefined): string;
 /** readFrom 返回的后缀切片：与宿主 0.1.2 的 SessionEventSuffix 同构，本地结构声明。 */
 export interface UsageEventSuffix {
     readonly meta: SessionHeader;
-    readonly inheritedEventCount: SessionLogOffset;
-    readonly fromSeq: SessionLogOffset;
+    readonly inheritedEventCount: SessionLogOffsetT;
+    readonly fromSeq: SessionLogOffsetT;
     readonly events: readonly SessionEvent[];
 }
 /**
@@ -227,7 +231,7 @@ export interface UsageEventSuffix {
  */
 export interface UsagePersistence {
     list(): Promise<readonly SessionHeader[]>;
-    readFrom(id: SessionId, fromSeq: SessionLogOffset): Promise<UsageEventSuffix>;
+    readFrom(id: SessionId, fromSeq: SessionLogOffsetT): Promise<UsageEventSuffix>;
     locate?(meta: SessionHeader): {
         path: string;
     } | undefined;

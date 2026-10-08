@@ -663,6 +663,61 @@ describe('time-limited promo (GLM-5.3-Flash)', () => {
   })
 })
 
+describe('free-window promo factor=0 (U2 Flash, issue #86)', () => {
+  const MILLION = 1_000_000
+  const buckets = { input: MILLION, cacheHit: MILLION, cacheMiss: MILLION, output: MILLION }
+  const entry = modelOf('u2-flash')
+  // 判定时刻从 promo 元数据推导，不依赖真实时钟：免费期过后测试依旧稳定。
+  const endsAtMs = entry.promo?.endsAtMs ?? 0
+
+  it('ships list price plus the free-window metadata', () => {
+    // 目录保存刊例价（1 / 0.2 / 2），免费期是 promo 元数据，不把目录价写成 0。
+    expect(entry.price).toMatchObject({ currency: 'CNY', input: 1, cacheHit: 0.2, output: 2 })
+    expect(entry.promo?.factor).toBe(0)
+    expect(endsAtMs).toBe(Date.UTC(2026, 9, 31, 16, 0, 0))
+  })
+
+  it('prices in-window events at zero and restores list price after expiry', () => {
+    // factor=0 是合法促销（活动期免费）：窗口内全档 0 元，到期自动恢复刊例价。
+    expect(isPromoActive(entry.promo!, endsAtMs - 1000)).toBe(true)
+    expect(computeCostAt(entry, buckets, endsAtMs - 1000)).toBe(0)
+    expect(computeCostAt(entry, buckets, endsAtMs)).toBeCloseTo(1 + 0.2 + 2, 10)
+  })
+
+  it('falls back to factor for out-of-range per-band overrides', () => {
+    // 分档覆盖超出 [0,1)（如 1.5）回落 factor：仍按半价，绝不按 1.5 倍加价。
+    const perBand = { ...modelOf('flash'), promo: { factor: 0.5, factors: { input: 1.5 }, endsAtMs } }
+    const priced = applyPromo(perBand, endsAtMs - 1000)
+    expect(priced.price.input).toBeCloseTo(1, 10) // 回落 factor：¥2 → ¥1
+    expect(priced.price.output).toBeCloseTo(4, 10) // V4 Flash 输出 ¥8 → ¥4
+  })
+
+  it('honours a per-band free override alongside a discounted factor', () => {
+    // 反向：factor 0.5 + 单档 0 → 该档免费、其余半价（[0,1) 窗口对分档生效）。
+    const mixed = { ...modelOf('flash'), promo: { factor: 0.5, factors: { output: 0 }, endsAtMs } }
+    const priced = applyPromo(mixed, endsAtMs - 1000)
+    expect(priced.price.input).toBeCloseTo(1, 10)
+    expect(priced.price.output).toBe(0)
+  })
+})
+
+describe('catalog additions for issue #86 (U2 family, M3.1 Flash Preview)', () => {
+  it('resolves official ids and separator variants to the new keys', () => {
+    expect(resolveCatalogKey('u2-flash')).toBe('u2-flash')
+    expect(resolveCatalogKey('u2')).toBe('u2')
+    expect(resolveCatalogKey('u2-med')).toBe('u2-med')
+    // 官方大小写形态与横杠变体都落到 M3.1 键。
+    expect(resolveCatalogKey('MiniMax-M3.1-Flash-Preview')).toBe('minimax-m3.1-flash-preview')
+    expect(resolveCatalogKey('minimax-m3-1-flash-preview')).toBe('minimax-m3.1-flash-preview')
+  })
+
+  it('carries the reported user-side CNY prices', () => {
+    expect(modelOf('u2').price).toMatchObject({ currency: 'CNY', input: 1, cacheHit: 0.2, output: 2 })
+    expect(modelOf('u2-med').price).toMatchObject({ currency: 'CNY', input: 8, cacheHit: 2, output: 28 })
+    expect(modelOf('minimax-m3.1-flash-preview').price).toMatchObject({ currency: 'CNY', input: 2.1, cacheHit: 0.42, output: 8.4 })
+  })
+})
+
 describe('Qwen3.8 Max list price with extra pricing rows', () => {
   const entry = modelOf('qwen3.8-max')
 

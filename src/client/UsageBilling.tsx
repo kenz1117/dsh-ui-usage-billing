@@ -172,6 +172,7 @@ export const PROVIDER_ALIASES: Readonly<Record<string, readonly string[]>> = {
   '美团': ['longcat', 'meituan'],
   '面壁智能': ['minicpm', 'modelbest'],
   '小红书': ['dots', 'rednote', 'xiaohongshu'],
+  '云知声': ['unisound', 'u2'],
 }
 
 /** Normalize a provider name for dot matching: lower case, no spaces. */

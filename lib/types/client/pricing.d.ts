@@ -278,12 +278,12 @@ export interface ModelPrice extends PriceBand {
  * （主档与 offPeak）单价按 factor 折扣计价与显示，截止时刻起自动恢复刊例价。
  */
 export interface PricePromo {
-    /** 折扣系数（0.5 = 五折）；仅 (0,1) 区间有效，非法值视为无促销。 */
+    /** 折扣系数（0.5 = 五折，0 = 活动期免费）；仅 [0,1) 区间有效，非法值视为无促销。 */
     factor: number;
     /**
      * 分档折扣覆盖：厂商对不同档位给不同折扣时逐档指定（如 GPT-5.6 Sol 促销为
      * 缓存 0.8 / 输入 0.8 / 输出 2/3）。缺省档位沿用 {@link factor}；单档取值
-     * 仅 (0,1) 区间有效，非法值回落 factor。
+     * 仅 [0,1) 区间有效（0 = 该档活动期免费），非法值回落 factor。
      */
     factors?: Partial<Record<'input' | 'cacheHit' | 'cacheMiss' | 'output', number>>;
     /**
@@ -382,8 +382,8 @@ export declare function modelOf(key: string): ModelEntry;
  */
 export declare function isPriced(key: string): boolean;
 /**
- * 促销在 nowMs 是否生效：factor 必须落在 (0,1) 区间，截止时刻及之后视为过期；
- * endsAtMs 缺省表示长期活动，在 factor 合法期间持续生效。
+ * 促销在 nowMs 是否生效：factor 必须落在 [0,1) 区间（0 = 活动期免费，issue #86），
+ * 截止时刻及之后视为过期；endsAtMs 缺省表示长期活动，在 factor 合法期间持续生效。
  * 导出供测试：纯函数。
  * @param promo - 待判定的促销窗口。
  * @param nowMs - 判定时刻（epoch ms）。

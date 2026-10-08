@@ -23,8 +23,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 // Type-only: merges the ctx.sessionPersistence service declaration.
 import type {} from '@deepseek-ai/dsh-session-persistence'
-import { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session/types'
-import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session/types'
+import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 // Type-only: merges the ctx.settings / ctx.credentials service declarations.
 import type {} from '@deepseek-ai/dsh-settings'
@@ -37,7 +36,7 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import z from '@deepseek-ai/schemastery'
-import { createUsageAggregator, dayStamp, sumSiteBuckets, type UsageLedgerStore, type UsagePersistence } from './aggregate.ts'
+import { createUsageAggregator, dayStamp, sessionLogOffsetOf, sumSiteBuckets, type UsageLedgerStore, type UsagePersistence } from './aggregate.ts'
 import { applyBuiltinCatalog, applyLivePricing, applyUserModelAliases, formatMoney, formatTokens } from './client/pricing.ts'
 import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts'
 import { queryBalances, queryCustomBalances } from './balance.ts'
@@ -667,8 +666,8 @@ export function adaptSessionPersistence(raw: unknown): UsagePersistence {
           : (slice as HostReadSlice013).events
         return {
           meta: handle.header,
-          fromSeq: SessionLogOffset(fromSeq),
-          inheritedEventCount: SessionLogOffset(handle.inheritedEventCount),
+          fromSeq: sessionLogOffsetOf(fromSeq),
+          inheritedEventCount: sessionLogOffsetOf(handle.inheritedEventCount),
           events,
         }
       } finally {
