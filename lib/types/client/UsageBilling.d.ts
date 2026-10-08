@@ -324,10 +324,12 @@ export interface UsageStats {
     perf?: ClientPerf;
     /** 旧版算法账本行兜底的会话数（模型归属可能失真）；0 或缺省 = 全部数据可信。 */
     staleLedgerSessions?: number;
-    /** 本轮未统计的会话数（跨轮次稳定）；0 或缺省 = 全部会话已统计。 */
+    /** 本轮未完整计入的会话数（跨轮次稳定）；0 或缺省 = 全部会话已统计。 */
     unreadableSessions?: number;
     /** 未统计中因会话格式拒读的子集（过新待宿主升级、过旧需迁移）；0 或缺省 = 无格式拒读。 */
     unreadableFormatSessions?: number;
+    /** 未统计中无账本存档、完全未计入的子集；0 或缺省 = 拒读会话均有存档兜底。 */
+    unreadableNoLedgerSessions?: number;
     /** 插件版本号（服务端读自包 package.json；旧快照缺失）。 */
     pluginVersion?: string;
 }

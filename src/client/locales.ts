@@ -138,6 +138,7 @@ export type UsageBillingKey =
   | 'staleLedgerNotice'
   | 'unreadableNotice'
   | 'unreadableFormatNotice'
+  | 'unreadableNoLedgerNotice'
   | 'tokenCacheWrite'
   | 'toolRank'
   | 'toolName'
@@ -440,7 +441,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'floatNoTargetsHint': '暂无可选的订阅通道。',
   'subscriptionsStale': '订阅额度刷新失败，以下为缓存数据',
   'staleLedgerNotice': '{count} 个会话出自旧版算法存档（日志已删，无法重算），模型归属可能有误差',
-  'unreadableNotice': '{count} 个会话暂未计入统计（原始日志未动，不会丢失）',
+  'unreadableNotice': '{count} 个会话的用量未完整计入（原始日志未动，不会丢失）',
+  'unreadableNoLedgerNotice': '其中 {count} 个无历史存档，用量完全未计入',
   'unreadableFormatNotice': '其中 {count} 个因会话格式不受当前宿主支持：过新格式升级宿主后自动恢复，过旧格式（如 v0/v3）需先迁移',
   'tokenCacheWrite': '写入',
   'toolRank': '工具排行',
@@ -746,7 +748,8 @@ export const en: Record<UsageBillingKey, string> = {
   'floatNoTargetsHint': 'No subscription channel available.',
   'subscriptionsStale': 'Subscription refresh failed — showing cached data',
   'staleLedgerNotice': '{count} sessions use legacy-algorithm archives (logs deleted); attribution may be off',
-  'unreadableNotice': '{count} sessions are not counted yet (raw logs untouched; no data lost)',
+  'unreadableNotice': 'Usage from {count} sessions is not fully counted (raw logs untouched; no data lost)',
+  'unreadableNoLedgerNotice': '{count} of them have no archived history and are not counted at all',
   'unreadableFormatNotice': '{count} of them use a session format this host cannot read: newer formats recover after a host upgrade; legacy formats (e.g. v0/v3) need a one-time migration',
   'tokenCacheWrite': 'written',
   'toolRank': 'Tool calls',

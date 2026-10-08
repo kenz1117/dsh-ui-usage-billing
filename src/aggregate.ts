@@ -441,10 +441,12 @@ export interface UsageStatsDocument {
   perf?: PerfStats
   /** 只存在于账本、且缺 foldVersion 的旧会话数；无旧行时省略。 */
   staleLedgerSessions?: number
-  /** 本轮未统计的会话数（新失败 + 负缓存命中，跨轮次稳定；原始日志未动）；无失败时省略。 */
+  /** 本轮未完整计入的会话数（新失败 + 负缓存命中，跨轮次稳定；有账本旧行的按存档计入最近可用点）；无失败时省略。 */
   unreadableSessions?: number
   /** 未统计中因会话格式拒读（SessionFormatUnsupportedError）的子集；无格式拒读时省略。 */
   unreadableFormatSessions?: number
+  /** 未统计中无任何账本存档、完全未计入的子集（区别于有存档按最近可用点计入的）；无存档缺失时省略。 */
+  unreadableNoLedgerSessions?: number
 }
 
 /** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
@@ -1845,11 +1847,13 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       // skipped：记录本轮新失败的会话 id（stderr 明细；负缓存命中不重复打印），
       // 聚合末尾统一告警。carriedUnreadable 计负缓存命中的历史失败会话，与本轮
       // 新失败合成 unreadableSessions——计数跨轮次稳定，面板的「未统计」通知
-      // 不随负缓存生效而消失（issue #84）。formatUnreadable 为其中格式拒读子集。
+      // 不随负缓存生效而消失（issue #84）。formatUnreadable 为其中格式拒读子集，
+      // noLedgerUnreadable 为其中连账本存档都没有、完全未计入的子集。
       const skipped: string[] = []
       let carriedUnreadable = 0
       let carriedFormatUnreadable = 0
       let formatUnreadable = 0
+      let noLedgerUnreadable = 0
       let staleLedgerSessions = 0
       for (const meta of metas) {
         const id = String(meta.id)
@@ -1863,6 +1867,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         if (stamp !== null && mark !== undefined && mark.stamp === stamp) {
           carriedUnreadable += 1
           if (mark.format) carriedFormatUnreadable += 1
+          // 无存档子集：拒读会话的账本行不变（账本在循环前已加载），按轮重查即可。
+          if (!ledger.has(id)) noLedgerUnreadable += 1
           continue
         }
         const hit = cache.get(id)
@@ -1955,6 +1961,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           skipped.push(id)
           const format = isFormatUnsupportedError(error)
           if (format) formatUnreadable += 1
+          // 有账本旧行的拒读会话历史仍按存档计入（下方兜底段），只缺新增部分；
+          // 无账本行的才是完全未计入——分开计数，通知措辞才准确（issue #84）。
+          if (!ledger.has(id)) noLedgerUnreadable += 1
           // 记负缓存：stamp 不变期间不再重读该会话（下轮聚合直接跳过）。
           if (stamp !== null) unreadable.set(id, { stamp, format })
           console.warn('[usage-billing] skip unreadable session', id, error)
@@ -2202,6 +2211,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         // 其中格式拒读（SessionFormatUnsupportedError）子集：过新格式升级宿主、
         // 过旧格式需先迁移，与损坏/其他读取失败分开归因（issue #84）。
         ...(formatUnreadableTotal > 0 ? { unreadableFormatSessions: formatUnreadableTotal } : {}),
+        // 其中无任何账本存档、完全未计入的子集：区别于「按存档计入最近可用点、
+        // 只缺新增部分」的会话，面板据此把「完全缺失」与「部分缺失」分开表述。
+        ...(noLedgerUnreadable > 0 ? { unreadableNoLedgerSessions: noLedgerUnreadable } : {}),
         // 角色归因：输出成本为实测；输入成本按 user/tool 消息字符占比摊分
         //（无任何消息内容的日志按五五均分兜底，整体属估算口径）。
         byRole: (() => {

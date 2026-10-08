@@ -913,10 +913,12 @@ export interface UsageStats {
   perf?: ClientPerf
   /** 旧版算法账本行兜底的会话数（模型归属可能失真）；0 或缺省 = 全部数据可信。 */
   staleLedgerSessions?: number
-  /** 本轮未统计的会话数（跨轮次稳定）；0 或缺省 = 全部会话已统计。 */
+  /** 本轮未完整计入的会话数（跨轮次稳定）；0 或缺省 = 全部会话已统计。 */
   unreadableSessions?: number
   /** 未统计中因会话格式拒读的子集（过新待宿主升级、过旧需迁移）；0 或缺省 = 无格式拒读。 */
   unreadableFormatSessions?: number
+  /** 未统计中无账本存档、完全未计入的子集；0 或缺省 = 拒读会话均有存档兜底。 */
+  unreadableNoLedgerSessions?: number
   /** 插件版本号（服务端读自包 package.json；旧快照缺失）。 */
   pluginVersion?: string
 }
@@ -1013,6 +1015,7 @@ async function loadUsageStats(): Promise<UsageStats | null> {
       ...(typeof candidate.staleLedgerSessions === 'number' ? { staleLedgerSessions: candidate.staleLedgerSessions } : {}),
       ...(typeof candidate.unreadableSessions === 'number' ? { unreadableSessions: candidate.unreadableSessions } : {}),
       ...(typeof candidate.unreadableFormatSessions === 'number' ? { unreadableFormatSessions: candidate.unreadableFormatSessions } : {}),
+      ...(typeof candidate.unreadableNoLedgerSessions === 'number' ? { unreadableNoLedgerSessions: candidate.unreadableNoLedgerSessions } : {}),
       // 联网搜索估算：旧快照缺失；数值存在才透传（渲染处据 searchCalls 判定显示）。
       ...(typeof candidate.searchCallEstimateCny === 'number' ? { searchCallEstimateCny: candidate.searchCallEstimateCny } : {}),
       // 角色归因：旧快照缺失；仅接受对象形状（durable 边界，字段值由渲染处数值化兜底）。
@@ -2818,12 +2821,17 @@ function BillingDashboard({
                 </div>
               )}
 
-              {/* 数据完整性提示：读时拒读的会话未计入统计（原始日志未动）——
-                  让今日/累计偏低可自助归因；格式拒读子集单独一行给行动指引
-                  （过新升级宿主 / 过旧需迁移，issue #84）。计数跨轮次稳定。 */}
+              {/* 数据完整性提示：读时拒读的会话未完整计入（原始日志未动）——
+                  让今日/累计偏低可自助归因。无存档子集（完全未计入）与格式拒读
+                  子集（过新升级宿主 / 过旧需迁移）各给一行（issue #84）。 */}
               {(stats.unreadableSessions ?? 0) > 0 && (
                 <div className={css.staleNotice} data-testid="billing-sessions-unreadable">
                   {t('unreadableNotice').replace('{count}', String(stats.unreadableSessions))}
+                  {(stats.unreadableNoLedgerSessions ?? 0) > 0 && (
+                    <div data-testid="billing-sessions-no-ledger">
+                      {t('unreadableNoLedgerNotice').replace('{count}', String(stats.unreadableNoLedgerSessions))}
+                    </div>
+                  )}
                   {(stats.unreadableFormatSessions ?? 0) > 0 && (
                     <div data-testid="billing-sessions-format-unsupported">
                       {t('unreadableFormatNotice').replace('{count}', String(stats.unreadableFormatSessions))}

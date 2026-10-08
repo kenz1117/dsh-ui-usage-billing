@@ -62,11 +62,34 @@ describe('unreadable session notices (issue #84)', () => {
 
     const notice = await screen.findByTestId('billing-sessions-unreadable')
     expect(notice.textContent).toContain('2353')
-    expect(notice.textContent).toContain('暂未计入统计')
+    expect(notice.textContent).toContain('未完整计入')
+    // 快照无 unreadableNoLedgerSessions 字段：无存档子集行不渲染。
+    expect(screen.queryByTestId('billing-sessions-no-ledger')).toBeNull()
     // 格式拒读子集单独成行：旧格式需迁移、新格式升级宿主，归因不再写死「较新」。
     const format = await screen.findByTestId('billing-sessions-format-unsupported')
     expect(format.textContent).toContain('2353')
     expect(format.textContent).toContain('需先迁移')
+  })
+
+  it('shows the no-archive subset when refused sessions lack any archived fold (issue #84)', async () => {
+    // 完全未计入（无账本存档）与部分缺失（有存档兜底）分开表述——「未完整计入」
+    // 对两类都准确，无存档子集单独成行点明「完全未计入」。
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({
+        total: EMPTY_TOTAL,
+        unreadableSessions: 2353,
+        unreadableNoLedgerSessions: 1664,
+        unreadableFormatSessions: 2353,
+      }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })))
+    const { container } = render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(container.querySelector('button')!)
+    await screen.findByText('使用统计')
+
+    const noLedger = await screen.findByTestId('billing-sessions-no-ledger')
+    expect(noLedger.textContent).toContain('1664')
+    expect(noLedger.textContent).toContain('完全未计入')
   })
 
   it('omits the format line when the snapshot predates the field', async () => {

@@ -1715,6 +1715,23 @@ describe('unreadable sessions visibility', () => {
     }
   })
 
+  it('splits unreadable sessions by archived-history availability (issue #84 copy precision)', async () => {
+    // 有账本行的拒读会话：历史按存档计入（total.calls 来自存档行），只缺新增
+    // 部分——不算「完全未计入」；无账本行的拒读会话才是真正全部缺失，单独
+    // 计数进 unreadableNoLedgerSessions，面板据此区分「部分缺失/完全缺失」。
+    const { store } = fakeLedgerStore([{ id: 'archived-broken', stamp: 's1', foldVersion: FOLD_VERSION, fold: legacyFold() }])
+    const failing = {
+      list: async () => [{ id: 'archived-broken' }, { id: 'never-folded-broken' }],
+      readFrom: async () => { throw new Error('SessionFormatUnsupportedError: refuses this format v0 Session') },
+    } as unknown as UsagePersistence
+    const stats = await aggregateUsage(failing, { ledger: store })
+
+    expect(stats.unreadableSessions).toBe(2)
+    expect(stats.unreadableNoLedgerSessions).toBe(1)
+    // 存档行的历史仍合并进统计（legacyFold 的 total.calls = 2）。
+    expect(stats.total.calls).toBe(2)
+  })
+
   it('omits unreadableSessions when every session folds', async () => {
     const stats = await aggregateUsage(fakePersistence({ s1: [message(0, 1, USAGE)] }))
 

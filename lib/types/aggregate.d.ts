@@ -295,10 +295,12 @@ export interface UsageStatsDocument {
     perf?: PerfStats;
     /** 只存在于账本、且缺 foldVersion 的旧会话数；无旧行时省略。 */
     staleLedgerSessions?: number;
-    /** 本轮未统计的会话数（新失败 + 负缓存命中，跨轮次稳定；原始日志未动）；无失败时省略。 */
+    /** 本轮未完整计入的会话数（新失败 + 负缓存命中，跨轮次稳定；有账本旧行的按存档计入最近可用点）；无失败时省略。 */
     unreadableSessions?: number;
     /** 未统计中因会话格式拒读（SessionFormatUnsupportedError）的子集；无格式拒读时省略。 */
     unreadableFormatSessions?: number;
+    /** 未统计中无任何账本存档、完全未计入的子集（区别于有存档按最近可用点计入的）；无存档缺失时省略。 */
+    unreadableNoLedgerSessions?: number;
 }
 /** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
 export interface RoleCost {
