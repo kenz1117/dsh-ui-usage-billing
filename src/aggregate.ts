@@ -919,7 +919,13 @@ export interface UsageLedgerDocument {
 // 判定，不再借模型全局口径（混通道模型会把本格全订阅的行判成无标记）。计价语义
 // 未变；bump 让日志仍在的会话重折出格级 plan，仅日志已删的行留在全局口径
 //（客户端回退 byModel.plan）。
-export const FOLD_VERSION = 18
+// 19：计价语义变更——补录 xAI Grok 4.5/4.6、OpenAI GPT-5.5 / GPT-6.1 Sol、
+// Anthropic Claude Opus 4.7 / 4.8 与 Fable 5 的目录条目，并把 Anthropic 带日期
+// 快照 id（claude-haiku-4-5-20251001）归一到既有键。此前这些 id 因不在目录且无
+// 别名而落「未收录」、费用记 0，复用旧行会让已发生的用量在升级后仍为 0；bump 让
+// 日志仍在的会话按目录价重折，仅日志已删的行留在旧口径（账本「历史定格」语义的
+// 固有残留）。
+export const FOLD_VERSION = 19
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。

@@ -417,6 +417,31 @@ describe('computeCostAt (P0-1)', () => {
     expect(modelOf('deepseek-v4.1-flash-expires-on-0910').key).toBe('flash')
   })
 
+  it('prices the relay-visible Grok / GPT / Claude ids that were previously uncatalogued', () => {
+    // 中转站（如 4Router）把上游模型按裸 id 暴露在会话日志里。这些 id 此前既不在
+    // 目录也无别名 → isPriced 为假、费用记 0，输入框费用条因 sessionCost 为 0 不显示金额。
+    // 两条别名：Grok 4.6 的目录键是既有 `grok`；Anthropic 日期快照 id 归一为无日期键。
+    expect(resolveCatalogKey('grok-4.6')).toBe('grok')
+    expect(resolveCatalogKey('grok-4-6')).toBe('grok')
+    expect(resolveCatalogKey('claude-haiku-4-5-20251001')).toBe('claude-haiku-4-5')
+    // 新增目录条目：官方刊例价标准档（与 GPT-6 Astra 同口径，长上下文加价不单列）。
+    const expected: Array<[string, string, { input: number; cacheHit: number; output: number }]> = [
+      ['gpt-5.5', 'GPT-5.5', { input: 5, cacheHit: 0.5, output: 30 }],
+      ['gpt-6.1-sol', 'GPT-6.1 Sol', { input: 2, cacheHit: 0.1, output: 10 }],
+      ['grok-4.5', 'Grok 4.5', { input: 2, cacheHit: 0.3, output: 6 }],
+      ['claude-opus-4-7', 'Claude Opus 4.7', { input: 5, cacheHit: 0.5, output: 25 }],
+      ['claude-opus-4-8', 'Claude Opus 4.8', { input: 5, cacheHit: 0.5, output: 25 }],
+      ['claude-fable-5', 'Claude Fable 5', { input: 10, cacheHit: 1, output: 50 }],
+    ]
+    for (const [id, name, price] of expected) {
+      expect(resolveCatalogKey(id)).toBe(id)
+      const entry = modelOf(id)
+      expect(entry.name).toBe(name)
+      expect(entry.estimated).toBeUndefined()
+      expect(entry.price).toMatchObject({ currency: 'USD', ...price })
+    }
+  })
+
   it('keeps user prices authoritative across the reprice boundary', () => {
     // 用户价 = 实付价：分界前也不套内置旧价口径。
     const priced = { ...modelOf('flash'), userPriced: true as const, price: { currency: 'CNY' as const, input: 9, cacheHit: 0.3, output: 27 } }
