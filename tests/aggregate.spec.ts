@@ -161,14 +161,15 @@ describe('byDayModelsSite (issue #16)', () => {
     const day = dayStamp(2_000)
 
     const exempted = foldSession(events, new Set(['grok-build']))
-    const directCell = exempted.byDayModelsSite.get(day)?.get('grok-4.6')?.get('direct:grok-build')
+    // 模型格按解析后的目录键归位：grok-4.6 的目录键是 `grok`（该条目 name 即 Grok 4.6）。
+    const directCell = exempted.byDayModelsSite.get(day)?.get('grok')?.get('direct:grok-build')
     expect(directCell?.calls).toBe(1)
     // 订阅豁免：不计费，也不进 DeepSeek 官方统计。
     expect(directCell?.cost).toBe(0)
     expect(directCell?.officialCalls).toBe(0)
 
     const notExempted = foldSession(events, new Set())
-    expect(notExempted.byDayModelsSite.get(day)?.get('grok-4.6')?.get('unknown')?.calls).toBe(1)
+    expect(notExempted.byDayModelsSite.get(day)?.get('grok')?.get('unknown')?.calls).toBe(1)
   })
 })
 

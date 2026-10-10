@@ -551,6 +551,24 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'ds-green',
     price: { currency: 'USD', input: 0.2, cacheHit: 0.02, output: 1.2 },
   },
+  {
+    key: 'gpt-5.5',
+    name: 'GPT-5.5',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    // 标准档（单请求输入 ≤272K）：$5 / $0.5 / $30；>272K 官方整笔输入 ×2、
+    // 输出 ×1.5（$10 / $1 / $45），口径同 GPT-6 Astra，只记标准档。
+    price: { currency: 'USD', input: 5, cacheHit: 0.5, output: 30 },
+  },
+  {
+    key: 'gpt-6.1-sol',
+    name: 'GPT-6.1 Sol',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    // 标准档（单请求输入 ≤272K）：$2 / $0.1 / $10；>272K 加价档 $4 / $0.2 / $15，
+    // 同 GPT-6 Astra 口径只记标准档。
+    price: { currency: 'USD', input: 2, cacheHit: 0.1, output: 10 },
+  },
   // Google — Gemini 3.x (ai.google.dev/gemini-api/docs/pricing 2026-09).
   // Google does NOT bill by time of day: Standard is the real-time full
   // price, while the Flex tier prices spare-capacity traffic at exactly -50%
@@ -638,6 +656,14 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     price: { currency: 'USD', input: 2, cacheHit: 0.5, output: 6 },
   },
   {
+    key: 'grok-4.5',
+    name: 'Grok 4.5',
+    provider: 'xAI',
+    colorVar: 'dsw-static-neutral-bluish-700',
+    // $2 / $0.3 / $6（缓存读按输入 15%）；>200K 加价档 $4 / $0.6 / $12，只记标准档。
+    price: { currency: 'USD', input: 2, cacheHit: 0.3, output: 6 },
+  },
+  {
     key: 'grok-4.3',
     name: 'Grok 4.3',
     provider: 'xAI',
@@ -677,6 +703,22 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     price: { currency: 'USD', input: 5, cacheHit: 0.5, output: 25 },
   },
   {
+    key: 'claude-opus-4-7',
+    name: 'Claude Opus 4.7',
+    provider: 'Anthropic',
+    colorVar: 'ds-red',
+    // 与 Opus 4.6 / 5 同价目：$5 / $0.5 / $25。
+    price: { currency: 'USD', input: 5, cacheHit: 0.5, output: 25 },
+  },
+  {
+    key: 'claude-opus-4-8',
+    name: 'Claude Opus 4.8',
+    provider: 'Anthropic',
+    colorVar: 'ds-red',
+    // 同价目：$5 / $0.5 / $25。
+    price: { currency: 'USD', input: 5, cacheHit: 0.5, output: 25 },
+  },
+  {
     key: 'claude-sonnet-4-6',
     name: 'Claude Sonnet 4.6',
     provider: 'Anthropic',
@@ -711,6 +753,15 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'ds-red',
     // 2026-09 新旗舰；同期同价发布的 Mythos 5.1（$10 / $0.25 / $50）不单列。
     price: { currency: 'USD', input: 10, cacheHit: 0.25, output: 50 },
+  },
+  {
+    key: 'claude-fable-5',
+    name: 'Claude Fable 5',
+    provider: 'Anthropic',
+    colorVar: 'ds-red',
+    // Fable 5 与 Fable 5.1 是两个独立 id（models.dev anthropic 分别收录，同刊例
+    // $10 / $50）；差别在缓存读：Fable 5 为 $1（输入的 10%），5.1 为 $0.25。
+    price: { currency: 'USD', input: 10, cacheHit: 1, output: 50 },
   },
   {
     key: 'claude-opus-5-5',
@@ -1025,6 +1076,15 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'claude-opus-5.5': 'claude-opus-5-5',
   'claude-sonnet-5-5': 'claude-sonnet-5-5',
   'claude-sonnet-5.5': 'claude-sonnet-5-5',
+  // Claude Opus 4.7 / 4.8：与 4.6 / 5 同价目，官方 id 与目录键一致（点/横杠变体归一）。
+  'claude-opus-4-7': 'claude-opus-4-7',
+  'claude-opus-4.7': 'claude-opus-4-7',
+  'claude-opus-4-8': 'claude-opus-4-8',
+  'claude-opus-4.8': 'claude-opus-4-8',
+  // Claude Fable 5：与 Fable 5.1 是两个独立 id（缓存读 $1 vs $0.25），独立目录键。
+  'claude-fable-5': 'claude-fable-5',
+  // Anthropic 的带日期快照 id（API versioned id，网关原样透传）：等价于无日期别名。
+  'claude-haiku-4-5-20251001': 'claude-haiku-4-5',
   'mistral-large-2512': 'mistral-large-2512',
   'mistral-large-3': 'mistral-large-2512',
   'mistral-small-2603': 'mistral-small-2603',
@@ -1130,6 +1190,10 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   // GPT-6 Sol / Luna（2026-09-22 发布）：官方 id 与目录键一致，收录即覆盖归一。
   'gpt-6-sol': 'gpt-6-sol',
   'gpt-6-luna': 'gpt-6-luna',
+  // GPT-5.5 / GPT-6.1 Sol：官方 id 与目录键一致（点/横杠变体归一）。
+  'gpt-5.5': 'gpt-5.5',
+  'gpt-6.1-sol': 'gpt-6.1-sol',
+  'gpt-6-1-sol': 'gpt-6.1-sol',
   // Google Gemini 3.7 / 3.8 Flash：点/横杠变体归一。
   'gemini-3.8-flash': 'gemini-3.8-flash',
   'gemini-3-8-flash': 'gemini-3.8-flash',
@@ -1138,4 +1202,11 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   // xAI Grok Build：短名归一。
   'grok-build-0.1': 'grok-build-0.1',
   'grok-build': 'grok-build-0.1',
+  // xAI Grok 4.5 / 4.6：4.6 的目录键为 `grok`（该条目 name 即「Grok 4.6」），
+  // 日志里以带版本号的 id 出现，须别名归一到既有键，否则落「未收录」；
+  // 4.5 为独立目录键（缓存读 $0.3，与 4.6 的 $0.5 不同）。
+  'grok-4.5': 'grok-4.5',
+  'grok-4-5': 'grok-4.5',
+  'grok-4.6': 'grok',
+  'grok-4-6': 'grok',
 }
