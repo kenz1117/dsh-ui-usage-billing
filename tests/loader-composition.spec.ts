@@ -43,7 +43,9 @@ beforeEach(() => {
 afterEach(async () => {
   await context?.fiber.dispose()
   context = undefined
-  if (root !== undefined) await rm(root, { recursive: true, force: true })
+  // dispose 触发的账本/快照落盘可能仍在飞（本文件新增的用例更早返回），
+  // Windows 上会以 ENOTEMPTY 与 rm 竞争——给删除加重试而不是放宽断言。
+  if (root !== undefined) await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
   root = undefined
   vi.unstubAllGlobals()
 })
@@ -93,6 +95,40 @@ const slowPersistenceDouble = {
       },
       readFrom: async () => ({ meta: { id: 's1' as SessionId }, events: EVENTS }),
     } as unknown as SessionPersistence)
+  },
+}
+
+/**
+ * 插件注册的 adapter 通道（issue #91）：provider 由别的插件经
+ * `ctx.llm.registerAdapter` 注册（这里用 llm 服务替身扮演宿主注册表），
+ * 日志里该通道调用的模型仍按官方目录键计价。固定用低谷时刻，成本可精确断言。
+ */
+/** 2026-10-14 02:00 北京时间（周三）：低谷档，flash 谷价 = 1 / 0.02 / 4。 */
+const OFF_PEAK_MS = Date.parse('2026-10-13T18:00:00Z')
+
+const REGISTERED_CHANNEL_EVENTS = [
+  { type: 'request/header', time: OFF_PEAK_MS, data: { header: { config: { model: 'deepseek/deepseek-v4.1-flash', provider: 'commandcode' } } } },
+  { type: 'assistant/message', time: OFF_PEAK_MS, data: { usage: { inputTokens: 1_000_000, cacheReadTokens: 1_000_000, outputTokens: 1_000 } } },
+] as unknown as SessionEvent[]
+
+/** 插件注册通道的持久化替身：单会话、单次 commandcode 调用。 */
+const registeredChannelPersistenceDouble = {
+  name: 'test-billing-persistence',
+  apply(ctx: Context): void {
+    ctx.provide('sessionPersistence', {
+      list: async () => [{ id: 's1' as SessionId }],
+      readFrom: async () => ({ meta: { id: 's1' as SessionId }, events: REGISTERED_CHANNEL_EVENTS }),
+    } as unknown as SessionPersistence)
+  },
+}
+
+/** llm 服务替身：扮演宿主注册表——已注册 adapter 的路由清单（issue #91 的读取来源）。 */
+const llmRegistryDouble = {
+  name: 'test-billing-llm',
+  apply(ctx: Context): void {
+    ctx.provide('llm', {
+      listProviders: () => [{ id: 'commandcode', name: 'Command Code' }, { id: 'deepseek', name: 'DeepSeek' }],
+    })
   },
 }
 
@@ -162,6 +198,10 @@ async function loadCompositionWith(options: {
   entryId?: string
   entryConfig?: string[]
   onUpdate?: (ns: string, patch: Record<string, unknown>) => void
+  /** 换用「插件注册通道」的会话日志替身（issue #91）。 */
+  registeredChannel?: boolean
+  /** 是否提供扮演宿主 llm 注册表的 `llm` 服务（缺省不提供＝旧宿主/服务缺失）。 */
+  llmRegistry?: boolean
 } = {}): Promise<Context> {
   root = await mkdtemp(join(tmpdir(), 'dsh-usage-billing-'))
   const configPath = join(root, 'cordis.yml')
@@ -171,6 +211,7 @@ async function loadCompositionWith(options: {
     "    host: '127.0.0.1'",
     '    port: 0',
     "- name: 'virtual:test-billing-persistence'",
+    ...(options.llmRegistry === true ? ["- name: 'virtual:test-billing-llm'"] : []),
     "- name: 'virtual:test-billing-credentials'",
     `- name: 'virtual:test-billing-settings${options.settings === 'live' ? '-live' : ''}'`,
     // 显式 id 与 name 必须是同一个列表项（name 用 2 空格缩进续行），拆成两行
@@ -199,7 +240,17 @@ async function loadCompositionWith(options: {
   context.loader.builtins.include = Include
   const modules = new Map<string, unknown>([
     ['@deepseek-ai/dsh-host-webserver', HttpServer],
-    ['virtual:test-billing-persistence', options.slow ? slowPersistenceDouble : options.corrupt ? corruptPersistenceDouble : persistenceDouble],
+    [
+      'virtual:test-billing-persistence',
+      options.slow
+        ? slowPersistenceDouble
+        : options.corrupt
+          ? corruptPersistenceDouble
+          : options.registeredChannel === true
+            ? registeredChannelPersistenceDouble
+            : persistenceDouble,
+    ],
+    ...(options.llmRegistry === true ? [['virtual:test-billing-llm', llmRegistryDouble] as const] : []),
     ['virtual:test-billing-credentials', credentialsDouble],
     ...(options.settings === 'live'
       ? [['virtual:test-billing-settings-live', liveSettingsDouble(options.onUpdate ?? (() => {}))] as const]
@@ -474,5 +525,49 @@ describe('usage-billing real Loader composition', () => {
     const fresh = await getJson(port, '/api/billing/usage-stats')
     expect((fresh.json as { total: { calls: number } }).total.calls).toBe(2)
     await rm(snapshotDir, { recursive: true, force: true })
+  })
+})
+
+describe('plugin-registered adapter channels (issue #91)', () => {
+  it('homes them to direct:<provider> at the official catalog price via the host llm registry', { timeout: 60_000 }, async () => {
+    // 真实组装（Loader + webserver + 被测插件）：日志里 provider=commandcode 的调用，
+    // 宿主 llm 注册表报告该路由已注册 adapter → 归位 direct:commandcode，按官方目录键
+    // flash 的低谷价计费。1.4.31 用属性访问 ctx.llm（服务不在 inject 里）读注册表，
+    // 异常被吞掉后退化成空集合 → 本用例会得到 unknown + 费用 0。
+    const loaded = await loadCompositionWith({ registeredChannel: true, llmRegistry: true })
+    const port = loaded.webServer.port
+    const stats = await getJson(port, '/api/billing/usage-stats')
+    expect(stats.status).toBe(200)
+    const doc = stats.json as {
+      bySite: Record<string, { calls: number; cost: number }>
+      byModel: Record<string, { calls: number; cost: number }>
+    }
+    const channel = doc.bySite['direct:commandcode']
+    expect(channel).toBeDefined()
+    expect(channel?.calls).toBe(1)
+    // miss 1M×1 + hit 1M×0.02 + out 1K×4/1e6 = 1.024（官方 CNY 低谷价，无汇率）。
+    expect(channel?.cost).toBeCloseTo(1.024, 6)
+    expect(doc.bySite.unknown).toBeUndefined()
+    expect(doc.byModel.flash).toMatchObject({ calls: 1 })
+  })
+
+  it('keeps the unknown policy and warns once when the registry cannot be read', { timeout: 60_000 }, async () => {
+    // 负向对照：宿主没有 llm 注册表（服务缺失）时，通道仍按 issue #82 的 unknown 口径
+    // 记 0，但必须留下可观察信号——静默退化正是 1.4.31 事故无法自查的原因。
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const loaded = await loadCompositionWith({ registeredChannel: true })
+      const port = loaded.webServer.port
+      const stats = await getJson(port, '/api/billing/usage-stats')
+      expect(stats.status).toBe(200)
+      const doc = stats.json as { bySite: Record<string, { calls: number; cost: number }> }
+      expect(doc.bySite.unknown).toMatchObject({ calls: 1, cost: 0 })
+      expect(doc.bySite['direct:commandcode']).toBeUndefined()
+      const logged = warn.mock.calls.flat().map(String).join(' ')
+      expect(logged).toMatch(/llm registry|llm service is not registered/)
+      expect(logged).toMatch(/issue #91/)
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

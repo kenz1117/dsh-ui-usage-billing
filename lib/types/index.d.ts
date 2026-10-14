@@ -155,6 +155,22 @@ export declare function readPiAiProviderRoutes(settings: SettingsReader): Readon
     baseURL?: string;
 }>>;
 /**
+ * 读取宿主 llm 注册表里「已注册 adapter」的 provider id（issue #91）。
+ *
+ * 必须经 `ctx.get('llm')`，**不能**用属性访问 `ctx.llm`：cordis 的服务代理要求
+ * 服务名出现在插件 `inject` 里，否则抛 `cannot get property "llm" without inject`
+ * ——1.4.31 把这个异常吞掉后退化成空集合，结果是「修复发版了但完全不生效」且无任何
+ * 可观察信号（issue #91 follow-up）。本函数把「读不到」与「读到了空集合」都显式
+ * 回报给调用方，让上层能告警而不是静默降级。
+ * @param get - 宿主上下文的 `get(name)` 访问器（cordis 的免 inject 读取口）。
+ * @returns `ids` = 已注册 provider id 集合（读不到时为空集）；
+ *  `reason` = 读取失败或结果不可用的原因；成功时缺省。
+ */
+export declare function readRegisteredProviderIds(get: ((name: string) => unknown) | undefined): {
+    ids: ReadonlySet<string>;
+    reason?: string;
+};
+/**
   * 解析订阅适配器需要的 API Key：从 llm-pi-ai 设置的 `providers.<id>.apiKeyEnv`
  * 读引用（如 kimi-coding → KIMI_CODING_API_KEY），再经凭据 seam 解析成实际值。
  * 同时识别出用户配置了 key 的订阅套餐（供面板只显示已识别的）。
