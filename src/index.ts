@@ -124,6 +124,27 @@ const SUBSCRIPTION_CACHE_MS = 5 * 60 * 1000
 // 余额接口缓存：与订阅 / 中转站配额一致，5 分钟，避免每 30 秒后台轮询打官方余额 API。
 const BALANCE_CACHE_MS = 5 * 60 * 1000
 
+/**
+ * 余额路由的总等待预算（毫秒）：超预算立刻回上一次成功的余额（stale 标记），
+ * 刷新在后台继续。取 8s——与上游单次查询超时（FETCH_TIMEOUT_MS）对齐：上游
+ * 真的不可达时多等没有意义，先把响应还给浏览器，别占着同源连接（issue #104）。
+ */
+const BALANCE_RESPONSE_BUDGET_MS = 8_000
+
+/**
+ * 订阅 / 中转站额度路由的总等待预算（毫秒）：与余额路由同口径（issue #104）。
+ * 上游额度接口不可达时（8s 超时 × 重试 ≈ 10~16s），响应被长期挂住会占满浏览器
+ * 的同源连接池——多标签页各挂一条即让宿主自己的资源请求排队，界面整体卡死。
+ */
+const QUOTA_RESPONSE_BUDGET_MS = 8_000
+
+/**
+ * 对账基线的最大可用年龄（毫秒）：超过则「今日官方费用」偏小，用它对账会
+ * 报假漂移——此时跳过本轮对账，等后台补算完成后再恢复（issue #104）。
+ * 取 5 分钟：与 usage-stats 的 30s 轮询 + 5 分钟快照节流同一量级。
+ */
+const RECONCILE_BASIS_MAX_AGE_MS = 5 * 60 * 1000
+
 /** DeepSeek 余额查询的默认凭据引用（与 llm-deepseek 的默认引用一致）。 */
 const DEFAULT_BALANCE_API_KEY_ENV = 'DEEPSEEK_API_KEY'
 
@@ -1070,22 +1091,33 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     if (official !== undefined && reconcilable) {
       const now = Date.now()
       const today = dayStamp(now)
-      let todayOfficialCost = 0
-      try {
-        const stats = await aggregator.aggregate()
-        todayOfficialCost = stats.byDay[today]?.officialCost ?? 0
-      } catch {
-        // 聚合失败时不阻塞余额查询；对账基准确认可用后仍返回（消费计 0 下次再核）。
-        swallowed('reconcile-aggregate-skipped')
+      // 对账基线取「最近一次**已完成**的聚合文档」，既不触发也不等待新的
+      // 全量折叠（issue #104）：重度用户（数百会话、GB 级日志）的一次折叠要
+      // 几十秒，挂在余额路由上会把响应拖到分钟级——浏览器同源连接只有 6 条，
+      // 多标签页各挂一条即占满连接池，宿主界面随之卡死。聚合由 usage-stats
+      // 驱动（自带 1.5s 预算的 stale-while-revalidate），内存里始终留有一份
+      // 最近文档可读。
+      const recent = aggregator.lastDocOf()
+      // 文档够新（≤5 分钟）才可信：过期文档的「今日费用」偏小，用它对账会
+      // 报假漂移。基线不可信时本轮不对账、不动基准（基准过期后重新打点会
+      // 产生假漂移），并在后台补一次聚合，下一轮刷新即可用上新基线。
+      const basisFresh = recent !== undefined && now - recent.updatedAt <= RECONCILE_BASIS_MAX_AGE_MS
+      if (basisFresh) {
+        const todayOfficialCost = recent?.byDay[today]?.officialCost ?? 0
+        const result = reconcileBalanceDelta(reconcileRef, official, todayOfficialCost, today, now)
+        const refChanged = result.ref !== null && result.ref !== reconcileRef
+        reconcileRef = result.ref
+        if (result.event !== null && result.event.kind !== 'flat') {
+          reconcile = { ...result.event, provider: official.displayName, ...(official.currency === undefined ? {} : { currency: official.currency }) }
+        }
+        // 基准未变（ok/flat 保早间基线）不重复落盘；只在基准真正前移时写。
+        if (refChanged) persistReconcileRef()
+      } else {
+        // 后台补一次聚合（不等待）：下轮刷新才有可信基线。聚合自身有 TTL 与
+        // in-flight 去重，不会叠出多份折叠。
+        void aggregator.aggregate().catch(() => { /* 下一轮刷新再试 */ })
+        swallowed('reconcile-basis-stale')
       }
-      const result = reconcileBalanceDelta(reconcileRef, official, todayOfficialCost, today, now)
-      const refChanged = result.ref !== null && result.ref !== reconcileRef
-      reconcileRef = result.ref
-      if (result.event !== null && result.event.kind !== 'flat') {
-        reconcile = { ...result.event, provider: official.displayName, ...(official.currency === undefined ? {} : { currency: official.currency }) }
-      }
-      // 基准未变（ok/flat 保早间基线）不重复落盘；只在基准真正前移时写。
-      if (refChanged) persistReconcileRef()
     }
     const doc = { balances: [...balances, ...custom, ...declared], ...(reconcile === undefined ? {} : { reconcile }) }
     balanceCache = { at: Date.now(), doc }
@@ -1094,7 +1126,13 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     balanceInflight ??= refreshBalance().finally(() => { balanceInflight = undefined })
     return balanceInflight
   }
-  registerBalanceRoute(ctx, { trustedHosts, cached: () => balanceCache, refreshOnce: refreshBalanceOnce, cacheMs: BALANCE_CACHE_MS })
+  registerBalanceRoute(ctx, {
+    trustedHosts,
+    cached: () => balanceCache,
+    refreshOnce: refreshBalanceOnce,
+    cacheMs: BALANCE_CACHE_MS,
+    responseBudgetMs: BALANCE_RESPONSE_BUDGET_MS,
+  })
 
 
   // usage_stats 工具开关：插件自带的读/写接口（不依赖宿主浏览器设置白名单）。
@@ -1160,7 +1198,14 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     quotasInflight ??= refreshQuotas().finally(() => { quotasInflight = undefined })
     return quotasInflight
   }
-  registerSubscriptionsRoute(ctx, { trustedHosts, cached: () => quotaCache, refreshOnce: refreshQuotasOnce, cacheMs: SUBSCRIPTION_CACHE_MS })
+  registerSubscriptionsRoute(ctx, {
+    trustedHosts,
+    cached: () => quotaCache,
+    refreshOnce: refreshQuotasOnce,
+    cacheMs: SUBSCRIPTION_CACHE_MS,
+    responseBudgetMs: QUOTA_RESPONSE_BUDGET_MS,
+  })
+
 
 
   // 中转站额度：识别配了 baseURL 的路由所指向的中转站程序（New API / Sub2API），
@@ -1200,7 +1245,14 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     relayInflight ??= refreshRelay().finally(() => { relayInflight = undefined })
     return relayInflight
   }
-  registerRelayQuotasRoute(ctx, { trustedHosts, cached: () => relayCache, refreshOnce: refreshRelayOnce, cacheMs: SUBSCRIPTION_CACHE_MS })
+  registerRelayQuotasRoute(ctx, {
+    trustedHosts,
+    cached: () => relayCache,
+    refreshOnce: refreshRelayOnce,
+    cacheMs: SUBSCRIPTION_CACHE_MS,
+    responseBudgetMs: QUOTA_RESPONSE_BUDGET_MS,
+  })
+
 
 
   // usage-stats 响应体缓存由 src/routes/usage-stats.ts 内的模块级单例持有

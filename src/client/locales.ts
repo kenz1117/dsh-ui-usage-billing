@@ -139,6 +139,7 @@ export type UsageBillingKey =
   | 'triggerTodayTokens'
   | 'triggerWeekTokens'
   | 'subscriptionsStale'
+  | 'balanceStaleNotice'
   | 'staleLedgerNotice'
   | 'staleSnapshotNotice'
   | 'unreadableNotice'
@@ -493,6 +494,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'floatNoTargets': '未指定订阅通道，请在设置中勾选要展示的订阅。',
   'floatNoTargetsHint': '暂无可选的订阅通道。',
   'subscriptionsStale': '订阅额度刷新失败，以下为缓存数据',
+  'balanceStaleNotice': '余额刷新较慢，以下为上一次查询结果',
   'staleLedgerNotice': '{count} 个会话出自旧版算法存档（日志已删，无法重算），模型归属可能有误差',
   'staleSnapshotNotice': '用量正在重算，以下数据来自上一次计算（可能不是最新，会话标题等以工作区为准）',
   'unreadableNotice': '{count} 个会话的用量未完整计入（原始日志未动，不会丢失）',
@@ -849,6 +851,7 @@ export const en: Record<UsageBillingKey, string> = {
   'floatNoTargets': 'No subscription selected — pick some in Settings.',
   'floatNoTargetsHint': 'No subscription channel available.',
   'subscriptionsStale': 'Subscription refresh failed — showing cached data',
+  'balanceStaleNotice': 'Balance refresh is slow — the figures below come from the last completed query',
   'staleLedgerNotice': '{count} sessions use legacy-algorithm archives (logs deleted); attribution may be off',
   'staleSnapshotNotice': 'Usage is being recomputed; the figures below come from the last completed calculation (session titles may lag the workspace)',
   'unreadableNotice': 'Usage from {count} sessions is not fully counted (raw logs untouched; no data lost)',

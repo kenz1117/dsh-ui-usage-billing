@@ -24,6 +24,7 @@ import clsx from 'clsx'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { convertFromCny, formatMoney, formatSwitchCountdown, channelCountdown, rateChannelOf, tierCountdown, type CostCurrency, type RateChannel } from './pricing.ts'
+import { fetchBilling } from './api/http.ts'
 import { bandStateOf } from './band-dot.ts'
 import { loadPeakAlertConfig } from './peak-alert.ts'
 import { CURRENCY_PREF_EVENT, LIVE_COST_BAR_PREF_EVENT, PINNED_MODELS_EVENT, loadCurrency, loadLiveCostBarPrefs, loadPinnedModels } from './usage-billing-settings.ts'
@@ -147,7 +148,7 @@ const REFRESH_INTERVAL_MS = 30_000
 /** Load the thin stats slice; null when the endpoint does not answer valid JSON. */
 async function loadLiveStats(): Promise<LiveStats | null> {
   try {
-    const response = await fetch(USAGE_STATS_PATH)
+    const response = await fetchBilling(USAGE_STATS_PATH)
     if (!response.ok) return null
     const text = await response.text()
     const parsed = JSON.parse(text) as unknown
@@ -165,7 +166,7 @@ async function loadLiveStats(): Promise<LiveStats | null> {
 /** Load subscription quota slices; empty list on any failure. */
 async function loadQuotas(): Promise<readonly QuotaSlice[]> {
   try {
-    const response = await fetch(SUBSCRIPTIONS_PATH)
+    const response = await fetchBilling(SUBSCRIPTIONS_PATH)
     if (!response.ok) return []
     const parsed = JSON.parse(await response.text()) as unknown
     if (parsed === null || typeof parsed !== 'object' || !('quotas' in parsed)) return []
@@ -323,14 +324,20 @@ function useLiveCostData(sessionId: SessionId, active: boolean): {
   useEffect(() => {
     if (!visible || !active) return
     let cancelled = false
+    // 在途闸门（issue #104）：上一轮还没落地就跳过本轮——服务端被上游拖住时
+    // 旧实现一轮接一轮地叠请求，浏览器同源连接（6 条）被占满，界面卡死。
+    let inFlight = false
     const load = (): void => {
-      void loadLiveStats().then((data) => {
-        if (!cancelled && data !== null) setStats(data)
-      })
-      void loadQuotas().then((list) => {
-        if (!cancelled) setQuotas(list)
-      })
+      if (inFlight) return
+      inFlight = true
       if (!cancelled) setNowMs(Date.now())
+      void Promise.all([loadLiveStats(), loadQuotas()]).then(([data, list]) => {
+        if (cancelled) return
+        if (data !== null) setStats(data)
+        setQuotas(list)
+      }).catch(() => {
+        // 兜底：取数失败已在各自链路里降级，这里只防未处理拒绝。
+      }).finally(() => { inFlight = false })
     }
     load()
     const timer = setInterval(load, REFRESH_INTERVAL_MS)

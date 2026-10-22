@@ -21,6 +21,14 @@ export interface RelayQuotasDeps {
     refreshOnce: () => Promise<void>;
     /** 5 分钟缓存间隔（毫秒）。 */
     cacheMs: number;
+    /**
+     * 刷新的总等待预算（毫秒）：超预算立刻回上一次成功的额度（stale 标记）。
+     *
+     * 与 balance 路由同因（issue #104）：中转站不可达时（8s 超时 × 重试）响应
+     * 会被长期挂住，占着浏览器的同源连接（每源 6 条）——多标签页各挂一条即让
+     * 宿主自己的资源请求排队，界面整体卡死。
+     */
+    responseBudgetMs: number;
 }
 export declare function registerRelayQuotasRoute(ctx: Context, deps: RelayQuotasDeps): void;
 export {};

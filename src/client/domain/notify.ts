@@ -7,6 +7,8 @@
  * Set 导出供测试重置（模块级状态会跨用例泄漏）。
  */
 
+import { fetchBilling } from '../api/http.ts'
+
 export const notifiedKeys = new Set<string>()
 
 /** 浏览器通知可用且已授权；三处提醒发送前的同一前置判断。 */
@@ -18,7 +20,7 @@ export function notifyAllowed(): boolean {
 export function notifyAcrossInstances(key: string, send: () => void): void {
   if (notifiedKeys.has(key)) return
   notifiedKeys.add(key)
-  void fetch('/api/billing/notify-claim', {
+  void fetchBilling('/api/billing/notify-claim', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ key }),

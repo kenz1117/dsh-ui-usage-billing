@@ -84,6 +84,12 @@ export interface BalanceResponse {
   balances: readonly ProviderBalance[]
   /** 官方余额差对账提示（对账开启且当日有余额消费时下发）。 */
   reconcile?: ReconcileNotice
+  /**
+   * 本次余额来自上一次成功的查询（服务端刷新超预算，issue #104）：
+   * 上游查询被拖住时不再把响应长期挂起，改为回旧值并标记，客户端据此提示
+   * 「余额数据来自上次查询」。
+   */
+  stale?: boolean
 }
 
 /** 官方余额差对账提示（drift 时携带供 UI 展示的已用/本地费用）。 */

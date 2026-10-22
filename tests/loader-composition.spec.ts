@@ -30,12 +30,22 @@ import * as UsageBilling from '../src/index.ts'
 let root: string | undefined
 let context: Context | undefined
 
+/** 余额上游替身开关：开启后 fetch 桩回答 DeepSeek 官方余额接口（issue #104）。 */
+let balanceUpstreamEnabled = false
+
 beforeEach(() => {
   // 外网一律拒绝（定价拉取降级 builtin）；本地回环放行给断言用 fetch。
   const realFetch = globalThis.fetch
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input)
     if (url.startsWith('http://127.0.0.1')) return realFetch(input, init)
+    // 余额上游替身：只回答 DeepSeek 官方余额接口，其余外网仍拒绝。
+    if (balanceUpstreamEnabled && url === 'https://api.deepseek.com/user/balance') {
+      return new Response(JSON.stringify({
+        is_available: true,
+        balance_infos: [{ currency: 'CNY', total_balance: '100', granted_balance: '0', topped_up_balance: '100' }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
     throw new Error(`offline in test: ${url}`)
   }))
 })
@@ -142,6 +152,17 @@ const credentialsDouble = {
   },
 }
 
+/** credentials 能力替身（可解析）：任何引用都解析出同一个假 key——余额上游
+ *  替身据此给出真实余额行（issue #104：对账路径需要可对账的官方余额行）。 */
+const resolvedCredentialsDouble = {
+  name: 'test-billing-credentials',
+  apply(ctx: Context): void {
+    ctx.provide('credentials', {
+      resolve: async () => ({ value: 'sk-test-key' }),
+    } as unknown as CredentialProvider)
+  },
+}
+
 /** settings 能力替身：无任何命名空间（订阅 key 解析得到空值 → 不触网）。
  *  提供最小 `register`，让 node 半区注册 usage_stats 命名空间时不崩（默认关闭）。 */
 const settingsDouble = {
@@ -202,7 +223,12 @@ async function loadCompositionWith(options: {
   registeredChannel?: boolean
   /** 是否提供扮演宿主 llm 注册表的 `llm` 服务（缺省不提供＝旧宿主/服务缺失）。 */
   llmRegistry?: boolean
+  /** credentials 替身：'unresolved'（默认，余额走 unconfigured）/ 'resolved'（可解析）。 */
+  credentials?: 'unresolved' | 'resolved'
+  /** 余额上游替身：fetch 桩回答 DeepSeek 官方余额接口（issue #104）。 */
+  balanceUpstream?: boolean
 } = {}): Promise<Context> {
+  balanceUpstreamEnabled = options.balanceUpstream === true
   root = await mkdtemp(join(tmpdir(), 'dsh-usage-billing-'))
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
@@ -251,7 +277,7 @@ async function loadCompositionWith(options: {
             : persistenceDouble,
     ],
     ...(options.llmRegistry === true ? [['virtual:test-billing-llm', llmRegistryDouble] as const] : []),
-    ['virtual:test-billing-credentials', credentialsDouble],
+    ['virtual:test-billing-credentials', options.credentials === 'resolved' ? resolvedCredentialsDouble : credentialsDouble],
     ...(options.settings === 'live'
       ? [['virtual:test-billing-settings-live', liveSettingsDouble(options.onUpdate ?? (() => {}))] as const]
       : [['virtual:test-billing-settings', settingsDouble] as const]),
@@ -563,6 +589,43 @@ describe('usage-billing real Loader composition', () => {
     expect(doc.total.calls).toBe(2)
     expect(doc.staleSnapshot).toBe(true)
     await rm(snapshotDir, { recursive: true, force: true })
+  })
+
+  it('serves the balance without waiting for a full fold (issue #104)', { timeout: 60_000 }, async () => {
+    // 根因：余额刷新里 await 一次全量聚合——重度用户（数百会话、GB 级日志）
+    // 的一次折叠要几十秒，响应被挂在折叠上（报告者实测 45.9s，最长 >60s）。
+    // 浏览器对同源最多 6 条并发连接，多标签页各挂一条即占满连接池，宿主自己的
+    // 资源请求排队——用户看到的是「整个 DSH 界面卡死」。
+    // 修法：对账基线改读「最近一次**已完成**的聚合文档」，余额响应不再等折叠。
+    const loaded = await loadCompositionWith({ slow: true, credentials: 'resolved', balanceUpstream: true })
+    const port = loaded.webServer.port
+
+    // 先跑一轮聚合：usage-stats 请求触发后台折叠（3s），等它落盘即内存里有了
+    // 「最近一次完成的聚合文档」（对账基线的数据源）。
+    await getJson(port, '/api/billing/usage-stats')
+    const liveSnapshotPath = join(root!, 'usage-stats.json')
+    await vi.waitFor(async () => {
+      const doc = JSON.parse(await readFile(liveSnapshotPath, 'utf8')) as { total?: { calls?: number } }
+      expect(doc.total?.calls).toBe(2)
+    }, { timeout: 15_000, interval: 200 })
+
+    // 等聚合 TTL（5s）过期：此时若余额刷新仍去 await 一次聚合，就会触发新一轮
+    // 3 秒的折叠——正是报告者遇到的「余额响应 45s+」。
+    await new Promise(resolve => setTimeout(resolve, 6_000))
+
+    // 余额请求必须自己就绪：不等新的一轮折叠（3s），否则浏览器连接被长期占住。
+    const startedAt = Date.now()
+    const balance = await getJson(port, '/api/billing/balance')
+    const elapsed = Date.now() - startedAt
+    expect(balance.status).toBe(200)
+    expect(elapsed).toBeLessThan(2_800)
+    const doc = balance.json as {
+      balances: { provider: string; totalBalance?: number }[]
+      reconcile?: { kind?: string }
+    }
+    expect(doc.balances.find(row => row.provider === 'deepseek')?.totalBalance).toBe(100)
+    // 对账路径确实跑到了（基线取自内存里最近一次完成的聚合文档）。
+    expect(doc.reconcile?.kind).toBe('baseline')
   })
 })
 

@@ -8,6 +8,7 @@
 
 import { applyBuiltinCatalog, applyLivePricing, type ModelEntry } from '../pricing.ts'
 import type { LivePricing } from '../../pricing-shared.ts'
+import { fetchBilling } from './http.ts'
 
 /** Path to the live-pricing endpoint served by this plugin's node half. */
 export const PRICING_PATH = '/api/billing/pricing'
@@ -28,7 +29,7 @@ export let lastPricingSyncedAt = 0
 async function loadLivePricing(attempt = 0): Promise<void> {
   const MAX_ATTEMPTS = 4
   try {
-    const response = await fetch(PRICING_PATH)
+    const response = await fetchBilling(PRICING_PATH)
     if (!response.ok) {
       livePricingRetryPending = false
       return
@@ -74,10 +75,14 @@ async function loadLivePricing(attempt = 0): Promise<void> {
  */
 export async function syncPricingNow(): Promise<boolean> {
   try {
-    const response = await fetch(PRICING_REFRESH_PATH, {
+    const response = await fetchBilling(PRICING_REFRESH_PATH, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: '{}',
+      // 用户显式点的「立即同步」：服务端要真去拉 models.dev / 汇率（上游各有
+      // 8s 超时，可能串行），给足 30s——它不在 30s 轮询链路上，超时也不会
+      // 与轮询重叠（issue #104 的 12s 默认超时只用于轮询端点）。
+      timeoutMs: 30_000,
     })
     if (!response.ok) return false
     await loadLivePricing()

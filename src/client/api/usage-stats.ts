@@ -7,6 +7,7 @@
 import { EMPTY_STATS } from '../constants.ts'
 import type { ClientPerf } from '../PerfPanel.tsx'
 import type { UsageStats } from '../domain/types.ts'
+import { fetchBilling } from './http.ts'
 
 /** Path to the usage-stats endpoint served by this plugin's node half. */
 export const USAGE_STATS_PATH = '/api/billing/usage-stats'
@@ -14,7 +15,7 @@ export const USAGE_STATS_PATH = '/api/billing/usage-stats'
 /** Try to load stats from the server; returns null when no valid JSON stats are served. */
 export async function loadUsageStats(): Promise<UsageStats | null> {
   try {
-    const response = await fetch(USAGE_STATS_PATH)
+    const response = await fetchBilling(USAGE_STATS_PATH)
     if (!response.ok) return null
     // The web server's SPA fallback answers unknown paths with HTML, so a
     // 200 is not proof of JSON; parse the text and only accept objects.

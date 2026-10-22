@@ -671,6 +671,8 @@ interface BillingDashboardProps {
   onLiveCostPrefs: (next: LiveCostBarPrefs) => void
   /** 订阅刷新是否失败（保留旧快照并标记缓存）。 */
   quotasStale: boolean
+  /** 余额刷新超预算：本次余额来自上一次成功的查询（issue #104）。 */
+  balanceStale?: boolean
 }
 
 /**
@@ -968,7 +970,7 @@ function BillingDashboard({
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
   modelBudgets, monthModelCost, onModelBudget,
   peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, sitePrefs, onSitePrefs,
-  liveCostPrefs, onLiveCostPrefs, quotasStale,
+  liveCostPrefs, onLiveCostPrefs, quotasStale, balanceStale,
 }: BillingDashboardProps): React.ReactNode {
   // 趋势图指标：费用（堆叠/默认）或 Token（单色总量）。
   const [trendMetric, setTrendMetric] = useState<TrendMetric>('cost')
@@ -1937,6 +1939,13 @@ function BillingDashboard({
                   >
                     {t('reconcileDismiss')}
                   </button>
+                </div>
+              )}
+              {/* 余额刷新超预算：余额数字来自上一次成功的查询，明确标注别当最新读
+                  （issue #104：上游查询被拖住时服务端改为回旧值并标记）。 */}
+              {balanceStale === true && (
+                <div className={css.staleNotice} data-testid="billing-balance-stale">
+                  {t('balanceStaleNotice')}
                 </div>
               )}
               {/* Hero: 液晶读数大屏 —— 左上「本月费用」大数字液晶表，右上环形仪表盘，底部一条「本年 / 今日 / 本月预计」读数排。 */}
@@ -3917,6 +3926,8 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const [health, setHealth] = useState<ModelHealth>(IDLE_HEALTH)
   const [balances, setBalances] = useState<readonly ProviderBalance[]>([])
   const [reconcile, setReconcile] = useState<ReconcileNotice | undefined>(undefined)
+  // 余额刷新超预算：服务端回上一次成功的余额并标记，面板据此提示（issue #104）。
+  const [balanceStale, setBalanceStale] = useState(false)
   const [quotas, setQuotas] = useState<readonly SubscriptionQuota[]>([])
   // 订阅刷新是否失败：失败时保留上次成功快照并标记 stale（展示「缓存」）。
   const [quotasStale, setQuotasStale] = useState(false)
@@ -3991,42 +4002,58 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const close = useCallback(() => { setOpen(false) }, [])
 
   // 重新拉取统计与余额：初次挂载、打开弹窗、弹窗期间轮询共用同一入口。
-  const reloadStats = useCallback(() => {
-    void loadUsageStats().then((data) => {
-      // 存服务端原始文档：用户价显示重估的唯一出口是下方 displayStats memo。
-      // 此前这里预存重估结果，memo 又重估一次——删除用户价后 recost 原样返回
-      // 旧值，已重估的费用会粘到下一次轮询（最长 5 分钟）才被覆盖。
-      if (data !== null) setStats(data)
-    })
-    void fetchBalanceDoc().then(({ balances, reconcile }) => {
-      // 余额服务端恒返回内置行（空=失败），失败时保留旧快照。
-      if (balances.length > 0) setBalances(balances)
-      setReconcile(reconcile)
-    })
-    void fetchSubscriptions().then((list) => {
-      if (list.length > 0) {
-        setQuotas(list)
-        setQuotasStale(false)
-      } else {
-        // 成功但无订阅数据：非 stale。
-        setQuotasStale(false)
-      }
-    }).catch(() => {
-      // 刷新失败：保留上次成功快照，标记缓存（stale）。
-      setQuotasStale(true)
-    })
-    void fetchRelayQuotas().then((list) => {
-      // 成功返回空数组是合法结果（用户删光中转配置），必须清空旧快照；
-      // 只有请求失败（catch）才保留旧值，与订阅的 stale 语义区分开。
-      setRelayQuotas(list)
-    }).catch(() => {
-      // 刷新失败：保留上次成功快照。
-    })
+  //
+  // 在途闸门（issue #104）：上一轮还没落地就跳过本轮。旧实现一轮接一轮地
+  // 叠请求（每轮 4 个端点 × 30s 间隔），而浏览器对同源最多 6 条并发连接——
+  // 服务端某次响应被拖住（实测 45~60s）时，多标签页各挂几条即占满连接池，
+  // 宿主自己的资源请求排队，用户看到的是「整个 DSH 界面卡死」。
+  // force=true 用于用户显式动作（打开弹窗 / 页面恢复可见）：这时宁可多打一轮，
+  // 也不能让用户对着旧数据。
+  const statsInFlight = useRef(false)
+  const reloadStats = useCallback((force = false) => {
+    if (statsInFlight.current && !force) return
+    statsInFlight.current = true
+    void Promise.all([
+      loadUsageStats().then((data) => {
+        // 存服务端原始文档：用户价显示重估的唯一出口是下方 displayStats memo。
+        // 此前这里预存重估结果，memo 又重估一次——删除用户价后 recost 原样返回
+        // 旧值，已重估的费用会粘到下一次轮询（最长 5 分钟）才被覆盖。
+        if (data !== null) setStats(data)
+      }),
+      fetchBalanceDoc().then(({ balances, reconcile, stale }) => {
+        // 余额服务端恒返回内置行（空=失败），失败时保留旧快照。
+        if (balances.length > 0) setBalances(balances)
+        setReconcile(reconcile)
+        setBalanceStale(stale === true)
+      }),
+      fetchSubscriptions().then(({ quotas, stale }) => {
+        if (quotas.length > 0) {
+          setQuotas(quotas)
+          // 服务端刷新超预算：额度来自上一次成功的查询 → 按缓存展示。
+          setQuotasStale(stale === true)
+        } else {
+          // 成功但无订阅数据：非 stale。
+          setQuotasStale(false)
+        }
+      }).catch(() => {
+        // 刷新失败：保留上次成功快照，标记缓存（stale）。
+        setQuotasStale(true)
+      }),
+      fetchRelayQuotas().then((list) => {
+        // 成功返回空数组是合法结果（用户删光中转配置），必须清空旧快照；
+        // 只有请求失败（catch）才保留旧值，与订阅的 stale 语义区分开。
+        setRelayQuotas(list)
+      }).catch(() => {
+        // 刷新失败：保留上次成功快照。
+      }),
+    ]).catch(() => {
+      // 兜底：各端点的失败已在各自链路里降级，这里只防未处理拒绝。
+    }).finally(() => { statsInFlight.current = false })
   }, [])
 
   const openDashboard = useCallback(() => {
     // 打开弹窗时先刷新一次统计与定价，避免看到的是上次挂载的旧数据。
-    void reloadStats()
+    void reloadStats(true)
     void loadLivePricing()
     setOpen(true)
   }, [reloadStats])
@@ -4046,7 +4073,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
       setVisible(!document.hidden)
       // 重新可见：立即补一次（隐藏期间可能错过多个节拍）。
       if (!document.hidden) {
-        void reloadStats()
+        void reloadStats(true)
         void loadLivePricing()
       }
     }
@@ -4442,6 +4469,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           liveCostPrefs={liveCostPrefs}
           onLiveCostPrefs={updateLiveCostPrefs}
           quotasStale={quotasStale}
+          balanceStale={balanceStale}
         />
       )}
       {(peakHit !== null || peakPreview !== null) && (

@@ -4,6 +4,7 @@
  */
 
 import type { RelayQuota, RelayResponse } from '../../pricing-shared.ts'
+import { fetchBilling } from './http.ts'
 
 /** Path to the relay-site quota endpoint served by this plugin's node half. */
 export const RELAY_PATH = '/api/billing/relay-quotas'
@@ -13,7 +14,7 @@ export const RELAY_PATH = '/api/billing/relay-quotas'
  * @returns the relay-site quota rows（成功但无中转配置时为空数组）。
  */
 export async function fetchRelayQuotas(): Promise<readonly RelayQuota[]> {
-  const response = await fetch(RELAY_PATH)
+  const response = await fetchBilling(RELAY_PATH)
   if (!response.ok) throw new Error(`relay-quotas HTTP ${String(response.status)}`)
   const text = await response.text()
   const parsed = JSON.parse(text) as unknown

@@ -4,9 +4,18 @@
  */
 
 import type { BalanceResponse, ProviderBalance, ReconcileNotice } from '../../pricing-shared.ts'
+import { fetchBilling } from './http.ts'
 
 /** Path to the account-balance endpoint served by this plugin's node half. */
 export const BALANCE_PATH = '/api/billing/balance'
+
+/** 余额文档（服务端响应体的白名单切片）。 */
+export interface BalanceDocSlice {
+  balances: readonly ProviderBalance[]
+  reconcile?: ReconcileNotice
+  /** 服务端刷新超预算：本次余额来自上一次成功的查询（issue #104）。 */
+  stale?: boolean
+}
 
 /**
  * 一次拉取 `/api/billing/balance` 的完整响应（余额行 + 对账提示）。余额与对账
@@ -14,9 +23,9 @@ export const BALANCE_PATH = '/api/billing/balance'
  * 为单次 fetch；失败返回空值（余额 []、对账 undefined），由调用方降级。
  * @returns the balances and reconcile notice (both degraded on any failure).
  */
-export async function fetchBalanceDoc(): Promise<{ balances: readonly ProviderBalance[]; reconcile?: ReconcileNotice }> {
+export async function fetchBalanceDoc(): Promise<BalanceDocSlice> {
   try {
-    const response = await fetch(BALANCE_PATH)
+    const response = await fetchBilling(BALANCE_PATH)
     if (!response.ok) return { balances: [] }
     const text = await response.text()
     const parsed = JSON.parse(text) as unknown
@@ -25,6 +34,7 @@ export async function fetchBalanceDoc(): Promise<{ balances: readonly ProviderBa
     return {
       balances: Array.isArray(doc.balances) ? doc.balances : [],
       ...(doc.reconcile === undefined ? {} : { reconcile: doc.reconcile }),
+      ...(doc.stale === true ? { stale: true } : {}),
     }
   } catch {
     return { balances: [] }

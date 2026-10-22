@@ -2024,6 +2024,12 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
   let foldFingerprint = foldFingerprintOf(new Set(), {})
   // 全量重折的分片大小：每片折叠后让出事件循环，超大会话不再连续阻塞宿主 RPC（issue #30）。
   const FOLD_CHUNK_EVENTS = 8000
+  // 会话之间让出事件循环的粒度（会话数）：整轮折叠的主体是纯 CPU 的同步计算，
+  // 会话之间的 await 只排微任务——微任务队列排空前事件循环不会回到 poll 阶段，
+  // 宿主的定时器 / RPC / 静态资源请求会被连续饿死（issue #104：重度用户升级后
+  // 一次性重折数百个会话，整个 DSH 界面卡死）。每折完 N 个会话让一次
+  // （setImmediate 让到 check 阶段），宿主能在折叠间隙正常服务请求。
+  const FOLD_YIELD_SESSIONS = 8
 
   /** 惰性失效（价目表时序）：账本/缓存行若以「当时不可计价」的模型落盘，
    *  而价目表现在能计价了，该行必须重折——否则显示层按实时价算出的
@@ -2166,7 +2172,13 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       let formatUnreadable = 0
       let noLedgerUnreadable = 0
       let staleLedgerSessions = 0
-      for (const meta of metas) {
+      for (const [metaIndex, meta] of metas.entries()) {
+        // 周期性让出事件循环（issue #104）：折叠主体是同步 CPU 计算，会话之间
+        // 的 await 只排微任务——不主动让出时，宿主的事件循环在整个折叠期间
+        // 不回到 poll 阶段，定时器 / RPC / 静态资源请求被连续饿死，界面卡死。
+        if (metaIndex > 0 && metaIndex % FOLD_YIELD_SESSIONS === 0) {
+          await new Promise<void>(resolve => { setImmediate(resolve) })
+        }
         const id = String(meta.id)
         seen.add(id)
         const stamp = await stampOf(meta)
