@@ -948,3 +948,70 @@ describe('unseeded client catalog degradation', () => {
     expect(modelOf('glm-5.3-flashx')?.price.input).toBe(2)
   })
 })
+
+describe('catalog expansion 2026-10-23 (first-party vendors)', () => {
+  it('keeps catalog keys unique and free of normalized-key collisions', () => {
+    // 归一化索引是「首个命中即用」：两个键归一后同形会让其中一个永远解析不到，
+    // 扩容后必须守住这条不变量。
+    const keys = BUILTIN_MODEL_CATALOG.map(entry => entry.key)
+    expect(new Set(keys).size).toBe(keys.length)
+    const canonSeen = new Map<string, string>()
+    for (const key of keys) {
+      const canon = canonModelId(key)
+      const prev = canonSeen.get(canon)
+      expect(prev, `normalized collision: ${prev} vs ${key}`).toBeUndefined()
+      canonSeen.set(canon, key)
+    }
+  })
+
+  it('points every alias at an existing catalog key', () => {
+    for (const [alias, target] of Object.entries(BUILTIN_MODEL_KEY_ALIASES)) {
+      expect(BUILTIN_MODEL_CATALOG.some(entry => entry.key === target), `alias ${alias} → ${target}`).toBe(true)
+    }
+  })
+
+  it('prices every catalog entry with positive input and output rates', () => {
+    for (const entry of BUILTIN_MODEL_CATALOG) {
+      // 'other' 是未知模型的零价兜底（不产生费用），不参与正价断言。
+      if (entry.key === 'other') continue
+      expect(entry.price.input, entry.key).toBeGreaterThan(0)
+      expect(entry.price.output, entry.key).toBeGreaterThan(0)
+      expect(entry.price.cacheHit, entry.key).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('resolves the newly covered official ids', () => {
+    // 一批此前落「未收录」的官方 id：补录后应各自命中对应目录键。
+    expect(resolveCatalogKey('kimi-k2.7-code')).toBe('kimi')
+    expect(resolveCatalogKey('doubao-seed-2.0-pro')).toBe('doubao')
+    expect(resolveCatalogKey('doubao-seed-1.6')).toBe('doubao-1.6')
+    expect(resolveCatalogKey('gemini-3.6-flash')).toBe('gemini-flash')
+    expect(resolveCatalogKey('gemini-pro-latest')).toBe('gemini-pro')
+    expect(resolveCatalogKey('qwen3.5-plus')).toBe('qwen-plus')
+    expect(resolveCatalogKey('zai-glm-5-3')).toBe('glm-5.3')
+    expect(resolveCatalogKey('MiniMax-M2.1')).toBe('minimax-m2.1')
+    expect(resolveCatalogKey('kimi-k2.5')).toBe('kimi-k2.5')
+    expect(resolveCatalogKey('gpt-5.4-mini')).toBe('gpt-5.4-mini')
+    expect(resolveCatalogKey('muse-spark-1.3')).toBe('muse-spark-1.3')
+    expect(resolveCatalogKey('mimo-v2.5-pro-ultraspeed')).toBe('mimo-v2.5-pro-ultraspeed')
+  })
+
+  it('surfaces the newly covered models in the rate table rows', () => {
+    // 费率表面板的数据源是 catalogEntries()：补录条目必须真的出现在面板行里，
+    // 而不只是躺在目录里（面板过滤 retired 条目）。
+    const rows = catalogEntries()
+    const byKey = new Map(rows.map(row => [row.key, row]))
+    expect(byKey.get('gpt-5.4')?.price).toMatchObject({ currency: 'USD', input: 2.5, output: 15 })
+    expect(byKey.get('kimi-k2.5')?.price).toMatchObject({ currency: 'CNY', input: 4.07 })
+    expect(byKey.get('muse-spark-1.3')?.provider).toBe('Meta')
+  })
+
+  it('carries the new entries at the catalog prices', () => {
+    // 抽样：海外取 models.dev 原生 USD，国内取官方 CN 价（-cn 目录）或折算值。
+    expect(modelOf('gpt-5.4').price).toMatchObject({ currency: 'USD', input: 2.5, cacheHit: 0.25, output: 15 })
+    expect(modelOf('claude-opus-4-5').price).toMatchObject({ currency: 'USD', input: 5, cacheHit: 0.5, output: 25 })
+    expect(modelOf('glm-4.5').price).toMatchObject({ currency: 'CNY', input: 4.07, cacheHit: 0.75, output: 14.94 })
+    expect(modelOf('kimi-k2.5').price).toMatchObject({ currency: 'CNY', input: 4.07, cacheHit: 0, output: 20.37 })
+    expect(modelOf('minimax-m2.1').price).toMatchObject({ currency: 'CNY', input: 2.13, cacheHit: 0.21, output: 8.52 })
+  })
+})

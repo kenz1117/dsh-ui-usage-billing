@@ -6,13 +6,22 @@
 import type { ModelEntry } from './client/pricing.ts'
 
 /**
- * Built-in catalog of current mainstream models as of 2026-09-29, priced from
+ * Built-in catalog of current mainstream models as of 2026-10-23, priced from
  * each provider's official price page. Domestic providers are OpenAI-API
  * compatible and publish RMB prices directly; overseas providers publish USD
  * and convert through the exchange rate at estimate time. Retired models
- * (GPT-4o family, Gemini 2.x, GLM-4.x-lite, older Qwen) are deliberately
- * absent. DeepSeek keys match the harness stats file so real usage prices
- * from the catalog; unknown keys fall back to `other`.
+ * (GPT-4o family, GLM-4.x-lite, older Qwen) are deliberately absent. DeepSeek
+ * keys match the harness stats file so real usage prices from the catalog;
+ * unknown keys fall back to `other`.
+ *
+ * 2026-10-23 扩容：补录一手厂商当前在售模型 129 条（OpenAI GPT-5.x / 4.1 /
+ * o 系列 / Daybreak、Anthropic 4.5 代、Google Gemini 2.5-4 代、xAI Grok 4.20、
+ * Meta Muse、Mistral 全系、Cohere Command 变体、智谱 4.5/4.5V/4.6V/4.7-FlashX、
+ * 阿里 Qwen3.x、月之暗面 Kimi K2 代、MiniMax M2 代、小米 MiMo 2.5 UltraSpeed、
+ * 字节豆包 1.8/1.6 系、阶跃 Step 5）。补录条目的价取 models.dev 实时目录
+ * （2026-10-23 快照）：海外厂商取原生 USD；国内厂商优先取官方 CN 价
+ * （models.dev 的 -cn 目录），该目录缺项时按 USD 价 × 汇率折算。既有条目一律
+ * 不动——存量价格的更正走独立的调价节点，不与扩容混在一起。
  *
  * Time-of-day billing (peak/off-peak) is now real: DeepSeek V4 officially
  * splits peak (09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate
@@ -365,6 +374,16 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'dsw-static-green-400',
     price: { currency: 'CNY', input: 3, cacheHit: 0.025, output: 6 },
   },
+
+  // 小米 —— MiMo 2.5 Pro UltraSpeed 档。CNY 价 = models.dev 官方美元价 × 6.79 折算。
+  {
+    key: 'mimo-v2.5-pro-ultraspeed',
+    name: 'MiMo V2.5 Pro UltraSpeed',
+    provider: '小米',
+    colorVar: 'dsw-static-green-400',
+    price: { currency: 'CNY', input: 8.86, cacheHit: 0.073, output: 17.72 },
+  },
+
   // MiniMax (OpenAI-compatible, TokenHub 2026-08-14).
   {
     key: 'minimax',
@@ -409,6 +428,30 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'ds-amber',
     price: { currency: 'CNY', input: 2.1, cacheHit: 0.42, output: 8.4 },
   },
+
+  // MiniMax —— M2 代补充档。CNY 价取 models.dev 的 minimax-cn 目录（= 官方 CN 价 ÷ 汇率）。
+  {
+    key: 'minimax-m2.1',
+    name: 'MiniMax-M2.1',
+    provider: 'MiniMax',
+    colorVar: 'ds-amber',
+    price: { currency: 'CNY', input: 2.13, cacheHit: 0.21, output: 8.52 },
+  },
+  {
+    key: 'minimax-m2.5',
+    name: 'MiniMax-M2.5',
+    provider: 'MiniMax',
+    colorVar: 'ds-amber',
+    price: { currency: 'CNY', input: 2.13, cacheHit: 0.21, output: 8.52 },
+  },
+  {
+    key: 'minimax-m2.5-highspeed',
+    name: 'MiniMax-M2.5-highspeed',
+    provider: 'MiniMax',
+    colorVar: 'ds-amber',
+    price: { currency: 'CNY', input: 4.26, cacheHit: 0.21, output: 17.04 },
+  },
+
   // 云知声 U2 系列（OpenAI-compatible，云知声 MaaS，2026-10）。价格取 issue #86
   // 报告的用户侧计费口径（元/百万 token），官方 MaaS 平台价如有出入以后者为准。
   // U2 Flash 限时免费（2026-09-30 ~ 10-31）用 promo factor=0 表达：活动期计 0 元，
@@ -482,6 +525,23 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'dsw-static-neutral-bluish-400',
     price: { currency: 'CNY', input: 1.35, cacheHit: 0.27, output: 8.1 },
   },
+
+  // 阶跃星辰 —— 在售补充档（Step 5 / 3.5）。CNY 价 = models.dev 官方美元价 × 6.79 折算。
+  {
+    key: 'step-5-preview',
+    name: 'Step 5 Preview',
+    provider: '阶跃星辰',
+    colorVar: 'dsw-static-neutral-bluish-400',
+    price: { currency: 'CNY', input: 6.79, cacheHit: 0.68, output: 18.33 },
+  },
+  {
+    key: 'step-3.5-flash',
+    name: 'Step 3.5 Flash',
+    provider: '阶跃星辰',
+    colorVar: 'dsw-static-neutral-bluish-400',
+    price: { currency: 'CNY', input: 0.68, cacheHit: 0.14, output: 2.04 },
+  },
+
   // 科大讯飞星火 (OpenAI-compatible, 2026-07 汇总; 套餐制，价格约)。
   {
     key: 'spark',
@@ -582,6 +642,208 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     // 同 GPT-6 Astra 口径只记标准档。
     price: { currency: 'USD', input: 2, cacheHit: 0.1, output: 10 },
   },
+
+  // OpenAI —— 当前在售模型（2026-10-23 补录）：gpt-5.x 家族 / 4.1 家族 / o 系列推理 /
+  // Daybreak。价取 models.dev 实时目录（2026-10-23 快照）原生 USD。
+  {
+    key: 'gpt-5',
+    name: 'GPT-5',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 1.25, cacheHit: 0.125, output: 10 },
+  },
+  {
+    key: 'gpt-5-mini',
+    name: 'GPT-5 Mini',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 0.25, cacheHit: 0.025, output: 2 },
+  },
+  {
+    key: 'gpt-5-nano',
+    name: 'GPT-5 Nano',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 0.05, cacheHit: 0.005, output: 0.4 },
+  },
+  {
+    key: 'gpt-5-pro',
+    name: 'GPT-5 Pro',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 15, cacheHit: 0, output: 120 },
+  },
+  {
+    key: 'gpt-5.1',
+    name: 'GPT-5.1',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 1.25, cacheHit: 0.125, output: 10 },
+  },
+  {
+    key: 'gpt-5.2',
+    name: 'GPT-5.2',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 1.75, cacheHit: 0.175, output: 14 },
+  },
+  {
+    key: 'gpt-5.2-pro',
+    name: 'GPT-5.2 Pro',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 21, cacheHit: 0, output: 168 },
+  },
+  {
+    key: 'gpt-5.3-codex',
+    name: 'GPT-5.3 Codex',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 1.75, cacheHit: 0.175, output: 14 },
+  },
+  {
+    key: 'gpt-5.3-codex-spark',
+    name: 'GPT-5.3 Codex Spark',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 1.75, cacheHit: 0.175, output: 14 },
+  },
+  {
+    key: 'gpt-5.4',
+    name: 'GPT-5.4',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 2.5, cacheHit: 0.25, output: 15 },
+  },
+  {
+    key: 'gpt-5.4-mini',
+    name: 'GPT-5.4 mini',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 0.75, cacheHit: 0.075, output: 4.5 },
+  },
+  {
+    key: 'gpt-5.4-nano',
+    name: 'GPT-5.4 nano',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 0.2, cacheHit: 0.02, output: 1.25 },
+  },
+  {
+    key: 'gpt-5.4-pro',
+    name: 'GPT-5.4 Pro',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 30, cacheHit: 0, output: 180 },
+  },
+  {
+    key: 'gpt-5.5-pro',
+    name: 'GPT-5.5 Pro',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 30, cacheHit: 0, output: 180 },
+  },
+  {
+    key: 'gpt-5.6',
+    name: 'GPT-5.6',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 4, cacheHit: 0.4, output: 20 },
+  },
+  {
+    key: 'gpt-daybreak-blue-latest',
+    name: 'Daybreak Blue',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 4, cacheHit: 0.4, output: 20 },
+  },
+  {
+    key: 'gpt-daybreak-red-latest',
+    name: 'Daybreak Red',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 12.5, cacheHit: 1.25, output: 75 },
+  },
+  {
+    key: 'gpt-4.1',
+    name: 'GPT-4.1',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 2, cacheHit: 0.5, output: 8 },
+  },
+  {
+    key: 'gpt-4.1-mini',
+    name: 'GPT-4.1 mini',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 0.4, cacheHit: 0.1, output: 1.6 },
+  },
+  {
+    key: 'gpt-4.1-nano',
+    name: 'GPT-4.1 nano',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 0.1, cacheHit: 0.025, output: 0.4 },
+  },
+  {
+    key: 'o3',
+    name: 'o3',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 2, cacheHit: 0.5, output: 8 },
+  },
+  {
+    key: 'o3-mini',
+    name: 'o3-mini',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 1.1, cacheHit: 0.55, output: 4.4 },
+  },
+  {
+    key: 'o3-pro',
+    name: 'o3-pro',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 20, cacheHit: 0, output: 80 },
+  },
+  {
+    key: 'o4-mini',
+    name: 'o4-mini',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 1.1, cacheHit: 0.275, output: 4.4 },
+  },
+  {
+    key: 'gpt-realtime-2.1',
+    name: 'GPT-Realtime-2.1',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 4, cacheHit: 0.4, output: 24 },
+  },
+
+  // OpenAI —— chat-latest 指针档（官方 id 即 chat-latest）。价取 models.dev 目录（实时或宿主预制快照）原生 USD。
+  {
+    key: 'gpt-5-chat-latest',
+    name: 'GPT-5 Chat Latest',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 1.25, cacheHit: 0, output: 10 },
+  },
+  {
+    key: 'gpt-5.2-chat-latest',
+    name: 'GPT-5.2 Chat Latest',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 1.75, cacheHit: 0, output: 14 },
+  },
+  {
+    key: 'gpt-5.3-chat-latest',
+    name: 'GPT-5.3 Chat Latest',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    price: { currency: 'USD', input: 1.75, cacheHit: 0, output: 14 },
+  },
+
   // OpenAI 绘图模型（gpt-image 系列）：由经营业者提供的实付人民币单价——
   // 输入 ¥14 / 缓存读 ¥5.6 / 输出 ¥84 per 1M（两个型号同价）。它们经 4Router 的
   // 绘图通道暴露，models.dev 无同 id 的一手收录，故按实付价直接记 CNY 刊例价。
@@ -672,6 +934,159 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     peakHours: GEMINI_PEAK_HOURS,
     tierSemantics: 'latency',
   },
+
+  // Google —— Gemini 当前在售：2.5 代 / 3.x 预览与正式 / 3.5 / 4 代 + 图像与 Deep Research 档。
+  // 价取 models.dev 实时目录（2026-10-23 快照）原生 USD。
+  {
+    key: 'gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 1.25, cacheHit: 0.125, output: 10 },
+  },
+  {
+    key: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 0.3, cacheHit: 0.03, output: 2.5 },
+  },
+  {
+    key: 'gemini-2.5-flash-lite',
+    name: 'Gemini 2.5 Flash-Lite',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 0.1, cacheHit: 0.01, output: 0.4 },
+  },
+  {
+    key: 'gemini-3-flash-preview',
+    name: 'Gemini 3 Flash Preview',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 0.5, cacheHit: 0.05, output: 3 },
+  },
+  {
+    key: 'gemini-3.1-pro-preview',
+    name: 'Gemini 3.1 Pro Preview',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 2, cacheHit: 0.2, output: 12 },
+  },
+  {
+    key: 'gemini-3.1-pro-preview-customtools',
+    name: 'Gemini 3.1 Pro Preview (Custom Tools)',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 2, cacheHit: 0.2, output: 12 },
+  },
+  {
+    key: 'gemini-3.1-flash-lite',
+    name: 'Gemini 3.1 Flash Lite',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 0.25, cacheHit: 0.025, output: 1.5 },
+  },
+  {
+    key: 'gemini-3.1-flash-lite-preview',
+    name: 'Gemini 3.1 Flash Lite Preview',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 0.25, cacheHit: 0.025, output: 1.5 },
+  },
+  {
+    key: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 1.5, cacheHit: 0.15, output: 9 },
+  },
+  {
+    key: 'gemini-3.5-flash-lite',
+    name: 'Gemini 3.5 Flash Lite',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 0.3, cacheHit: 0.03, output: 2.5 },
+  },
+  {
+    key: 'gemini-4-argon',
+    name: 'Gemini 4 Argon',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 2, cacheHit: 0.1, output: 10 },
+  },
+  {
+    key: 'gemini-flash-latest',
+    name: 'Gemini Flash Latest',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 0.75, cacheHit: 0.075, output: 3.75 },
+  },
+  {
+    key: 'gemini-flash-lite-latest',
+    name: 'Gemini Flash-Lite Latest',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 0.3, cacheHit: 0.03, output: 2.5 },
+  },
+  {
+    key: 'deep-research-preview-04-2026',
+    name: 'Deep Research Preview (2026-04)',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 2, cacheHit: 0.2, output: 12 },
+  },
+  {
+    key: 'deep-research-max-preview-04-2026',
+    name: 'Deep Research Max Preview (2026-04)',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 2, cacheHit: 0.2, output: 12 },
+  },
+  {
+    key: 'gemini-2.5-flash-image',
+    name: 'Nano Banana (Gemini 2.5 Flash Image)',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 0.3, cacheHit: 0.075, output: 30 },
+  },
+  {
+    key: 'gemini-3-pro-image-preview',
+    name: 'Nano Banana Pro (Gemini 3 Pro Image Preview)',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 2, cacheHit: 0, output: 120 },
+  },
+  {
+    key: 'gemini-3.1-flash-image-preview',
+    name: 'Nano Banana 2 (Gemini 3.1 Flash Image Preview)',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 0.5, cacheHit: 0, output: 60 },
+  },
+  {
+    key: 'gemini-3.1-flash-lite-image',
+    name: 'Nano Banana 2 Lite (Gemini 3.1 Flash Lite Image)',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 0.25, cacheHit: 0, output: 30 },
+  },
+
+  // Google —— 补录 live / computer-use 档。价取 models.dev 实时目录（2026-10-23 快照）原生 USD。
+  {
+    key: 'gemini-3.1-flash-live-preview',
+    name: 'Gemini 3.1 Flash Live Preview',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 0.75, cacheHit: 0, output: 4.5 },
+  },
+  {
+    key: 'gemini-2.5-computer-use-preview-10-2025',
+    name: 'Gemini 2.5 Computer Use Preview',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    price: { currency: 'USD', input: 1.25, cacheHit: 0, output: 10 },
+  },
+
   // xAI — current Grok family (docs.x.ai 2026-09; Grok 4.7 2026-09-21 与 4.6 同价).
   {
     key: 'grok-4.7',
@@ -710,6 +1125,31 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     // 256K 上下文编码专用（docs.x.ai 2026-09）。
     price: { currency: 'USD', input: 1, cacheHit: 0.2, output: 2 },
   },
+
+  // xAI —— Grok 4.20 系列（推理 / 非推理 / 多智能体三个独立 id，同价）。价取 models.dev
+  // 实时目录（2026-10-23 快照）原生 USD。
+  {
+    key: 'grok-4.20-0309-reasoning',
+    name: 'Grok 4.20 (Reasoning)',
+    provider: 'xAI',
+    colorVar: 'dsw-static-neutral-bluish-700',
+    price: { currency: 'USD', input: 1.25, cacheHit: 0.2, output: 2.5 },
+  },
+  {
+    key: 'grok-4.20-0309-non-reasoning',
+    name: 'Grok 4.20 (Non-Reasoning)',
+    provider: 'xAI',
+    colorVar: 'dsw-static-neutral-bluish-700',
+    price: { currency: 'USD', input: 1.25, cacheHit: 0.2, output: 2.5 },
+  },
+  {
+    key: 'grok-4.20-multi-agent-0309',
+    name: 'Grok 4.20 Multi-Agent',
+    provider: 'xAI',
+    colorVar: 'dsw-static-neutral-bluish-700',
+    price: { currency: 'USD', input: 1.25, cacheHit: 0.2, output: 2.5 },
+  },
+
   // Meta — Llama 4 (Together/OpenRouter list rates 2026-08).
   {
     key: 'llama',
@@ -725,6 +1165,51 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'dsw-static-red-400',
     price: { currency: 'USD', input: 0.1, cacheHit: 0.025, output: 0.3 },
   },
+
+  // Meta —— Muse 系列（主力 + Contributor 档）。价取 models.dev 实时目录（2026-10-23 快照）原生 USD。
+  {
+    key: 'muse-spark-1.3',
+    name: 'Muse Spark 1.3',
+    provider: 'Meta',
+    colorVar: 'ds-red',
+    price: { currency: 'USD', input: 1.25, cacheHit: 0.15, output: 4.25 },
+  },
+  {
+    key: 'muse-spark-1.2',
+    name: 'Muse Spark 1.2',
+    provider: 'Meta',
+    colorVar: 'ds-red',
+    price: { currency: 'USD', input: 1.25, cacheHit: 0.15, output: 4.25 },
+  },
+  {
+    key: 'muse-spark-1.1',
+    name: 'Muse Spark 1.1',
+    provider: 'Meta',
+    colorVar: 'ds-red',
+    price: { currency: 'USD', input: 1.25, cacheHit: 0.15, output: 4.25 },
+  },
+  {
+    key: 'muse-wonder-1.0',
+    name: 'Muse Wonder 1.0',
+    provider: 'Meta',
+    colorVar: 'ds-red',
+    price: { currency: 'USD', input: 4, cacheHit: 0.2, output: 20 },
+  },
+  {
+    key: 'muse-spark-1.3-contributor',
+    name: 'Muse Spark 1.3 Contributor',
+    provider: 'Meta',
+    colorVar: 'ds-red',
+    price: { currency: 'USD', input: 0.1, cacheHit: 0.002, output: 0.2 },
+  },
+  {
+    key: 'muse-spark-1.2-contributor',
+    name: 'Muse Spark 1.2 Contributor',
+    provider: 'Meta',
+    colorVar: 'ds-red',
+    price: { currency: 'USD', input: 0.1, cacheHit: 0.002, output: 0.2 },
+  },
+
   // Anthropic Claude（platform.claude.com 官方价目 2026-09）/ Mistral / Cohere：
   // models.dev 公开美元价（USD / 每百万 token）。
   {
@@ -821,6 +1306,24 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     // gpt-6-astra 只记标准档的先例。价源：OpenRouter 实时价（2026-10-08）。
     price: { currency: 'USD', input: 0.1, cacheHit: 0.01, output: 0.5 },
   },
+
+  // Anthropic —— 4.5 代（4.6/4.7/4.8 已在目录）：官方 id 与点/横杠变体归一到目录键。
+  // 价取 models.dev 实时目录（2026-10-23 快照）原生 USD。
+  {
+    key: 'claude-opus-4-5',
+    name: 'Claude Opus 4.5',
+    provider: 'Anthropic',
+    colorVar: 'ds-red',
+    price: { currency: 'USD', input: 5, cacheHit: 0.5, output: 25 },
+  },
+  {
+    key: 'claude-sonnet-4-5',
+    name: 'Claude Sonnet 4.5',
+    provider: 'Anthropic',
+    colorVar: 'ds-red',
+    price: { currency: 'USD', input: 3, cacheHit: 0.3, output: 15 },
+  },
+
   {
     key: 'mistral-large-2512',
     name: 'Mistral Large 3',
@@ -842,6 +1345,201 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'dsw-static-violet-300',
     price: { currency: 'USD', input: 0.1, cacheHit: 0.01, output: 0.1 },
   },
+
+  // Mistral AI —— 当前在售全系（Large / Medium / Small / Codestral / Devstral / Magistral /
+  // Voxtral / Ministral）。价取 models.dev 实时目录（2026-10-23 快照）原生 USD。
+  {
+    key: 'mistral-large-latest',
+    name: 'Mistral Large (latest)',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.5, cacheHit: 0.05, output: 1.5 },
+  },
+  {
+    key: 'mistral-large-4',
+    name: 'Mistral Large 4',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 1.36, cacheHit: 0.14, output: 4.18 },
+  },
+  {
+    key: 'mistral-medium-latest',
+    name: 'Mistral Medium (latest)',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 1.5, cacheHit: 0.15, output: 7.5 },
+  },
+  {
+    key: 'mistral-medium-2604',
+    name: 'Mistral Medium 3.5',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 1.5, cacheHit: 0.15, output: 7.5 },
+  },
+  {
+    key: 'mistral-medium-2508',
+    name: 'Mistral Medium 3.1',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.4, cacheHit: 0, output: 2 },
+  },
+  {
+    key: 'mistral-small-latest',
+    name: 'Mistral Small (latest)',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.15, cacheHit: 0.015, output: 0.6 },
+  },
+  {
+    key: 'mistral-small-2506',
+    name: 'Mistral Small 3.2',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.1, cacheHit: 0, output: 0.3 },
+  },
+  {
+    key: 'codestral-latest',
+    name: 'Codestral (latest)',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.3, cacheHit: 0.03, output: 0.9 },
+  },
+  {
+    key: 'devstral-latest',
+    name: 'Devstral 2 (latest)',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.4, cacheHit: 0, output: 2 },
+  },
+  {
+    key: 'devstral-2512',
+    name: 'Devstral 2',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.4, cacheHit: 0, output: 2 },
+  },
+  {
+    key: 'devstral-medium-latest',
+    name: 'Devstral Medium (latest)',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.4, cacheHit: 0, output: 2 },
+  },
+  {
+    key: 'magistral-medium-latest',
+    name: 'Magistral Medium (latest)',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 2, cacheHit: 0, output: 5 },
+  },
+  {
+    key: 'voxtral-small-latest',
+    name: 'Voxtral Small (latest)',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.1, cacheHit: 0, output: 0.4 },
+  },
+  {
+    key: 'ministral-3b-2512',
+    name: 'Ministral 3 3B',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.1, cacheHit: 0.01, output: 0.1 },
+  },
+  {
+    key: 'ministral-8b-2512',
+    name: 'Ministral 3 8B',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.15, cacheHit: 0.015, output: 0.15 },
+  },
+  {
+    key: 'ministral-14b-2512',
+    name: 'Ministral 3 14B',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.2, cacheHit: 0.02, output: 0.2 },
+  },
+
+  // Mistral AI —— 补录剩余在售档（Magistral / 开放权重 Mistral 与 Mixtral / Pixtral / Nemo）。价取 models.dev 目录（实时或宿主预制快照）原生 USD。
+  {
+    key: 'magistral-small',
+    name: 'Magistral Small',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.5, cacheHit: 0, output: 1.5 },
+  },
+  {
+    key: 'ministral-3b-latest',
+    name: 'Ministral 3B (latest)',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.1, cacheHit: 0.01, output: 0.1 },
+  },
+  {
+    key: 'voxtral-small-2507',
+    name: 'Voxtral Small 2507',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.1, cacheHit: 0, output: 0.4 },
+  },
+  {
+    key: 'devstral-small-2507',
+    name: 'Devstral Small 2507',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.1, cacheHit: 0, output: 0.3 },
+  },
+  {
+    key: 'mistral-medium-2505',
+    name: 'Mistral Medium 3',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.4, cacheHit: 0, output: 2 },
+  },
+  {
+    key: 'open-mistral-7b',
+    name: 'Open Mistral 7B',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.25, cacheHit: 0, output: 0.25 },
+  },
+  {
+    key: 'open-mixtral-8x7b',
+    name: 'Open Mixtral 8x7B',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.7, cacheHit: 0, output: 0.7 },
+  },
+  {
+    key: 'open-mixtral-8x22b',
+    name: 'Open Mixtral 8x22B',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 2, cacheHit: 0, output: 6 },
+  },
+  {
+    key: 'pixtral-12b',
+    name: 'Pixtral 12B',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.15, cacheHit: 0, output: 0.15 },
+  },
+  {
+    key: 'pixtral-large-latest',
+    name: 'Pixtral Large (latest)',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 2, cacheHit: 0, output: 6 },
+  },
+  {
+    key: 'mistral-nemo',
+    name: 'Mistral Nemo',
+    provider: 'Mistral AI',
+    colorVar: 'ds-violet',
+    price: { currency: 'USD', input: 0.15, cacheHit: 0, output: 0.15 },
+  },
+
   {
     key: 'command-a-03-2025',
     name: 'Command A',
@@ -856,6 +1554,45 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'dsw-static-cyan-400',
     price: { currency: 'USD', input: 0.15, cacheHit: 0.015, output: 0.6 },
   },
+
+  // Cohere —— 当前在售：Command A 变体 / R+ / R7B / Aya Expanse。价取 models.dev 实时目录
+  // （2026-10-23 快照）原生 USD。
+  {
+    key: 'command-a-plus-05-2026',
+    name: 'Command A Plus',
+    provider: 'Cohere',
+    colorVar: 'ds-cyan',
+    price: { currency: 'USD', input: 2.5, cacheHit: 0, output: 10 },
+  },
+  {
+    key: 'command-a-reasoning-08-2025',
+    name: 'Command A Reasoning',
+    provider: 'Cohere',
+    colorVar: 'ds-cyan',
+    price: { currency: 'USD', input: 2.5, cacheHit: 0, output: 10 },
+  },
+  {
+    key: 'command-r-plus-08-2024',
+    name: 'Command R+',
+    provider: 'Cohere',
+    colorVar: 'ds-cyan',
+    price: { currency: 'USD', input: 2.5, cacheHit: 0, output: 10 },
+  },
+  {
+    key: 'command-r7b-12-2024',
+    name: 'Command R7B',
+    provider: 'Cohere',
+    colorVar: 'ds-cyan',
+    price: { currency: 'USD', input: 0.0375, cacheHit: 0, output: 0.15 },
+  },
+  {
+    key: 'c4ai-aya-expanse-32b',
+    name: 'Aya Expanse 32B',
+    provider: 'Cohere',
+    colorVar: 'ds-cyan',
+    price: { currency: 'USD', input: 0.5, cacheHit: 0, output: 1.5 },
+  },
+
   // 国产新兴/开源模型：无官方公开价，按家族口径估算 CNY（标记 estimated）。
   {
     key: 'longcat-2.0',
@@ -956,6 +1693,122 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     price: { currency: 'CNY', input: 4, cacheHit: 0.8, output: 16 },
     estimated: true,
   },
+
+  // 阿里通义 —— Qwen3.x 在售补充档。CNY 价取 models.dev 的 alibaba-cn 目录（= 官方 CN 价
+  // ÷ 汇率），该目录缺项时取 alibaba 目录折算。
+  {
+    key: 'qwen3-max',
+    name: 'Qwen3 Max',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 2.44, cacheHit: 0, output: 9.74 },
+  },
+  {
+    key: 'qwen3.6-flash',
+    name: 'Qwen3.6 Flash',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 1.12, cacheHit: 0.11, output: 6.72 },
+  },
+  {
+    key: 'qwen3.6-plus',
+    name: 'Qwen3.6 Plus',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 1.87, cacheHit: 0.19, output: 11.21 },
+  },
+  {
+    key: 'qwen3.6-27b',
+    name: 'Qwen3.6 27B',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 4.07, cacheHit: 0, output: 24.44 },
+  },
+  {
+    key: 'qwen3.6-35b-a3b',
+    name: 'Qwen3.6 35B-A3B',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 2.55, cacheHit: 0, output: 15.28 },
+  },
+  {
+    key: 'qwen3-coder-flash',
+    name: 'Qwen3-Coder Flash',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 0.98, cacheHit: 0.2, output: 3.9 },
+  },
+  {
+    key: 'qwen3-coder-30b-a3b-instruct',
+    name: 'Qwen3-Coder 30B-A3B Instruct',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 1.47, cacheHit: 0, output: 5.85 },
+  },
+  {
+    key: 'qwen3-next-80b-a3b-instruct',
+    name: 'Qwen3-Next 80B-A3B Instruct',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 0.98, cacheHit: 0, output: 3.9 },
+  },
+  {
+    key: 'qwen3-next-80b-a3b-thinking',
+    name: 'Qwen3-Next 80B-A3B (Thinking)',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 0.98, cacheHit: 0, output: 9.74 },
+  },
+  {
+    key: 'qwen3-vl-235b-a22b',
+    name: 'Qwen3-VL 235B-A22B',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 1.95, cacheHit: 0, output: 7.79 },
+  },
+  {
+    key: 'qwen3-vl-30b-a3b',
+    name: 'Qwen3-VL 30B-A3B',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 0.73, cacheHit: 0, output: 2.93 },
+  },
+  {
+    key: 'qwen3-vl-plus',
+    name: 'Qwen3-VL Plus',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 0.97, cacheHit: 0.19, output: 9.73 },
+  },
+  {
+    key: 'qwen3-omni-flash',
+    name: 'Qwen3-Omni Flash',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 1.75, cacheHit: 0, output: 6.72 },
+  },
+  {
+    key: 'qwen3.8-omni-flash',
+    name: 'Qwen3.8 Omni Flash',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 0.77, cacheHit: 0.095, output: 2.59 },
+  },
+  {
+    key: 'qwen-deep-research',
+    name: 'Qwen Deep Research',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 52.57, cacheHit: 0, output: 158.66 },
+  },
+  {
+    key: 'qwq-plus',
+    name: 'QwQ Plus',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-orange-400',
+    price: { currency: 'CNY', input: 1.56, cacheHit: 0, output: 3.9 },
+  },
+
   {
     key: 'glm-4.5-x',
     name: 'GLM-4.5-X',
@@ -981,6 +1834,38 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     // 阿里百炼代销官方价（元 / 每百万 token，北京档，help.aliyun.com 2026-09-14）：输入 ¥16 / 隐式缓存 ¥4 / 输出 ¥56。
     price: { currency: 'CNY', input: 16, cacheHit: 4, output: 56 },
   },
+
+  // 智谱 AI —— 当前在售补充档（4.5 / 4.5V / 4.6V / 4.7-FlashX）。models.dev 无 -cn 目录，
+  // CNY 价 = 官方美元价 × 6.79 折算。
+  {
+    key: 'glm-4.5',
+    name: 'GLM-4.5',
+    provider: '智谱 AI',
+    colorVar: 'dsw-static-blue-400',
+    price: { currency: 'CNY', input: 4.07, cacheHit: 0.75, output: 14.94 },
+  },
+  {
+    key: 'glm-4.5v',
+    name: 'GLM-4.5V',
+    provider: '智谱 AI',
+    colorVar: 'dsw-static-blue-400',
+    price: { currency: 'CNY', input: 4.07, cacheHit: 0.75, output: 12.22 },
+  },
+  {
+    key: 'glm-4.6v',
+    name: 'GLM-4.6V',
+    provider: '智谱 AI',
+    colorVar: 'dsw-static-blue-400',
+    price: { currency: 'CNY', input: 2.04, cacheHit: 0.34, output: 6.11 },
+  },
+  {
+    key: 'glm-4.7-flashx',
+    name: 'GLM-4.7-FlashX',
+    provider: '智谱 AI',
+    colorVar: 'dsw-static-blue-400',
+    price: { currency: 'CNY', input: 0.48, cacheHit: 0.068, output: 2.72 },
+  },
+
   {
     key: 'kimi-k3-fast',
     name: 'Kimi K3 Fast',
@@ -1030,6 +1915,52 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     // 官方：输入 ¥8（未命中）/ ¥1（命中）/ 输出 ¥58。
     price: { currency: 'CNY', input: 8, cacheHit: 1, output: 58 },
   },
+
+  // 月之暗面 —— Kimi K2 代补充档。CNY 价取 models.dev 的 moonshotai-cn 目录，
+  // 该目录缺项时取 moonshotai 目录折算。
+  {
+    key: 'kimi-k2.5',
+    name: 'Kimi K2.5',
+    provider: '月之暗面',
+    colorVar: 'dsw-static-neutral-bluish-600',
+    price: { currency: 'CNY', input: 4.07, cacheHit: 0, output: 20.37 },
+  },
+  {
+    key: 'kimi-k2-thinking',
+    name: 'Kimi K2 Thinking',
+    provider: '月之暗面',
+    colorVar: 'dsw-static-neutral-bluish-600',
+    price: { currency: 'CNY', input: 4.07, cacheHit: 0, output: 16.98 },
+  },
+  {
+    key: 'kimi-k2-turbo-preview',
+    name: 'Kimi K2 Turbo Preview',
+    provider: '月之暗面',
+    colorVar: 'dsw-static-neutral-bluish-600',
+    price: { currency: 'CNY', input: 16.3, cacheHit: 0, output: 67.9 },
+  },
+  {
+    key: 'kimi-k2-0711-preview',
+    name: 'Kimi K2 0711 Preview',
+    provider: '月之暗面',
+    colorVar: 'dsw-static-neutral-bluish-600',
+    price: { currency: 'CNY', input: 4.07, cacheHit: 0, output: 16.98 },
+  },
+  {
+    key: 'kimi-k2-0905-preview',
+    name: 'Kimi K2 0905 Preview',
+    provider: '月之暗面',
+    colorVar: 'dsw-static-neutral-bluish-600',
+    price: { currency: 'CNY', input: 4.07, cacheHit: 0, output: 16.98 },
+  },
+  {
+    key: 'kimi-k2.7-code-highspeed',
+    name: 'Kimi K2.7 Code HighSpeed',
+    provider: '月之暗面',
+    colorVar: 'dsw-static-neutral-bluish-600',
+    price: { currency: 'CNY', input: 13.19, cacheHit: 2.64, output: 54.78 },
+  },
+
   {
     key: 'doubao-seed-2.0-code',
     name: 'Doubao Seed-2.0 Code',
@@ -1044,6 +1975,37 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'dsw-static-red-300',
     price: { currency: 'CNY', input: 0.6, cacheHit: 0.12, output: 3.6 },
   },
+
+  // 字节豆包 —— 在售补充档（1.8 / 1.6 系）。CNY 价 = models.dev 官方美元价 × 6.79 折算。
+  {
+    key: 'doubao-seed-1.8',
+    name: 'Doubao Seed-1.8',
+    provider: '字节豆包',
+    colorVar: 'ds-red',
+    price: { currency: 'CNY', input: 0.81, cacheHit: 0.16, output: 8.06 },
+  },
+  {
+    key: 'doubao-seed-1.6-flash',
+    name: 'Doubao Seed-1.6 Flash',
+    provider: '字节豆包',
+    colorVar: 'ds-red',
+    price: { currency: 'CNY', input: 0.15, cacheHit: 0.03, output: 1.51 },
+  },
+  {
+    key: 'doubao-seed-1.6-vision',
+    name: 'Doubao Seed-1.6 Vision',
+    provider: '字节豆包',
+    colorVar: 'ds-red',
+    price: { currency: 'CNY', input: 0.81, cacheHit: 0.16, output: 8.06 },
+  },
+  {
+    key: 'doubao-seed-character',
+    name: 'Doubao Seed Character',
+    provider: '字节豆包',
+    colorVar: 'ds-red',
+    price: { currency: 'CNY', input: 0.81, cacheHit: 0.16, output: 2.02 },
+  },
+
   {
     key: 'other',
     name: '其他模型',
@@ -1062,6 +2024,26 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
  * 解析，两侧共用一份映射，避免同一模型两侧不一致导致「未收录」。
  */
 export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
+  'claude-opus-4-5-20251101': 'claude-opus-4-5',
+  'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5',
+  'gemini-3.6-flash': 'gemini-flash',
+  'gemini-3-6-flash': 'gemini-flash',
+  'gemini-pro-latest': 'gemini-pro',
+  'gemini-3-pro-image': 'gemini-3-pro-image-preview',
+  'gemini-3.1-flash-image': 'gemini-3.1-flash-image-preview',
+  'qwen3.5-plus': 'qwen-plus',
+  'qwen3.5-flash': 'qwen-flash',
+  'qwen3-vl-235b-a22b-instruct': 'qwen3-vl-235b-a22b',
+  'kimi-k2.7-code': 'kimi',
+  'doubao-seed-2.0-pro': 'doubao',
+  'doubao-seed-2-0-pro': 'doubao',
+  'doubao-seed-1.6': 'doubao-1.6',
+  'doubao-seed-1-8': 'doubao-seed-1.8',
+  'doubao-seed-1-6-flash': 'doubao-seed-1.6-flash',
+  'doubao-seed-1-6-vision': 'doubao-seed-1.6-vision',
+  'zai-glm-5-2': 'glm',
+  'zai-glm-5-3': 'glm-5.3',
+  'zai-glm-5-3-flash': 'glm-5.3-flash',
   'deepseek-v4-flash': 'flash',
   'deepseek-v4-flash-vision-exp': 'flash-vision-exp',
   // V4.1 Flash 正式版 id（官方公告 2026-09-10 前后发布）：计费同 flash 系时间线。
@@ -1095,6 +2077,9 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'glm-5.3-flash-x': 'glm-5.3-flashx',
   'glm-5v-turbo': 'glm-5v-turbo',
   'glm-5v.1': 'glm-5v-turbo',
+  // Mistral 同一模型的 id 变体（宿主预制快照里 Medium 3.5 = Medium 3.5 档；Nemo 另有开放权重别名形态）。
+  'mistral-medium-3.5': 'mistral-medium-2604',
+  'open-mistral-nemo': 'mistral-nemo',
   // Anthropic Claude / Mistral / Cohere：id 变体归一（点/横杠/短名）。
   'claude-opus-4-6': 'claude-opus-4-6',
   'claude-opus-4.6': 'claude-opus-4-6',

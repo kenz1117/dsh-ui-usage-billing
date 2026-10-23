@@ -8,6 +8,12 @@
 
 > **版本序列说明**：自 v1.2.0 起预览线序列恒高于稳定线 1.1.x——消除此前 1.0.x < 1.1.x 的版本号倒挂（pnpm `minimumReleaseAge` 冷静期会把刚发布的 latest 跳过、回退到旧稳定线，issue #40 有实测案例）。安装建议钉具体版本号。
 
+### v1.7.1（2026-10-23）
+
+- **改进：内置价格目录扩容 129 条——一手厂商当前在售模型基本收齐**。此前内置目录只有 111 款（25 厂商），宿主预制提供方目录里的相当一部分模型落「未收录」：OpenAI 的 GPT-5.x / 5.2-5.5 / 4.1 / o 系列、Anthropic 的 Opus 4.5 与 Sonnet 4.5、Google 的 Gemini 2.5 / 3.1 / 3.5 / 4 代、Mistral 全家（Large / Medium / Small / Codestral / Devstral / Magistral / Voxtral / Ministral）、Meta Muse、Cohere Command 变体、xAI Grok 4.20、智谱 4.5 / 4.5V / 4.6V / 4.7-FlashX、阿里 Qwen3.x 全系、月之暗面 Kimi K2 代、MiniMax M2 代、小米 MiMo 2.5 UltraSpeed、豆包 1.8 / 1.6 系、阶跃 Step 5 / 3.5。现按 models.dev 实时目录（2026-10-23 快照）与宿主预制目录快照补录，目录共 239 款。**价源口径**：海外厂商取 models.dev 原生 USD；国内厂商优先取官方 CN 价（models.dev 的 `-cn` 目录），该目录缺项时按 USD 价 × 汇率折算并在条目注释标注。**既有条目的价格一律不动**——存量价格的更正走独立的调价节点，不与扩容混在一起（同批核对出的偏差项见 issue 跟踪）。
+- **修复：几个「官方 id 本该命中却落未收录」的归一缺口**。`kimi-k2.7-code`（目录里明明有 Kimi K2.7 Code）、`doubao-seed-2.0-pro`（目录里有 Doubao Seed-2.0 Pro）、`doubao-seed-1.6`、`qwen3.5-plus` / `qwen3.5-flash`、`gemini-3.6-flash` / `gemini-pro-latest`、`zai-glm-5-2` / `zai-glm-5-3`（Mistral 转售的 GLM）此前都会掉到「其他模型」零价兜底——补录时一并补上别名归一。
+- **改进：新增目录守卫测试**。锁住三条不变量：目录键唯一、归一化后不互相打架（归一索引是「首个命中即用」，撞车会让其中一个键永远解析不到）、别名必须指向存在的条目；另加补录条目的 id 解析与费率表面板可见性断言。
+
 ### v1.7.0（2026-10-23）
 
 - **新增：「上下文」分区——把上下文占用当成一等指标看**。读宿主的官方 context 投影（`contextPressure` / `contextBreakdown`），展示占用率进度条、下一次 / 最近一次请求占用、窗口上限，以及构成拆解（系统 / 工具 / 消息）。**没有投影的会话整块不显示**（不拿 0 冒充、不占位）——上下文投影按会话分发，需在打开的对话里看本面板。

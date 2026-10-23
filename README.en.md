@@ -40,7 +40,7 @@ Most billing plugins stop at "token count × unit price". dsh-ui-usage-billing t
 Usage is aggregated live from persisted session logs — never fabricated (an empty snapshot shows until real data arrives); daily official-balance deltas are cross-checked against the local ledger, and deviations beyond the threshold prompt a review — a bill that survives scrutiny.
 
 ### Live prices, history never rewritten
-A live models.dev catalog + a built-in catalog of 110 models across 25 vendors + user-defined prices in the settings panel (bindable per relay origin) mean new models never wait for a release; DeepSeek time-of-day prices are **segmented by official change boundaries** (base price before 08-17, weekend peak hours 08-17~08-23, weekend all-day off-peak from 08-23) and later price changes never rewrite old bills.
+A live models.dev catalog + a built-in catalog of 239 models across 25 vendors + user-defined prices in the settings panel (bindable per relay origin) mean new models never wait for a release; DeepSeek time-of-day prices are **segmented by official change boundaries** (base price before 08-17, weekend peak hours 08-17~08-23, weekend all-day off-peak from 08-23) and later price changes never rewrite old bills.
 
 ### Peak/off-peak aware, alerts follow the model
 The billing channel is detected from the current session's model: DeepSeek metered uses time-of-day prices (weekday 9-12 / 14-18 peak ×2, weekend all-day off-peak), Zhipu Coding Plan uses credit windows (weekday 14-18 peak at full rate, off-peak at **50% of base credits**) — the channel layer is extensible for more providers; a popover / system notification fires automatically before each switch, and only sessions whose current model actually involves peak/off-peak get alerted or show the tier section — no watching the clock.
@@ -184,34 +184,34 @@ cost (CNY) = (missInput × p_input + cacheHit × p_cacheHit + output × p_output
 
 `input` in the stats is total input (cacheHit + cacheMiss); estimation splits it into hit / miss to avoid double counting. Models with two-band billing are mixed by `DEFAULT_PEAK_SHARE` (default 0.5); weekends (Beijing Sat/Sun) are charged at the off-peak rate all day.
 
-### Supported models (2026-10 lineup, OpenAI-compatible series, 110 models)
+### Supported models (2026-10 lineup, OpenAI-compatible series, 239 models)
 
-The full catalog lives in the Rates tab and in `BUILTIN_MODEL_CATALOG` of `src/builtin-catalog.ts` (109 active + 1 retired model kept for historical repricing); representative models per vendor below.
+The full catalog lives in the Rates tab and in `BUILTIN_MODEL_CATALOG` of `src/builtin-catalog.ts` (238 active + 1 retired model kept for historical repricing); representative models per vendor below.
 
 | Provider  | Representatives                                        |
 | -------- | -------------------------------------------- |
 | DeepSeek | V4.1 Flash, V4 Pro (3 models; priced per official change boundary: base tier → peak/off-peak v1 → weekend off-peak) |
-| Zhipu AI  | GLM-5.3, GLM-5.2 (13 models)                     |
-| Aliyun    | Qwen3.8 Max, Qwen3-Coder 480B (11 models)        |
-| Doubao    | Doubao Seed-2.1 Pro, Doubao Seed-2.0 Pro (9 models) |
-| Moonshot  | Kimi K3, Kimi K2.7 Code (10 models)              |
-| Xiaomi    | MiMo V2.6 Pro (5 models)                         |
-| MiniMax   | MiniMax-M3, MiniMax-M2.7 (4 models)              |
+| Zhipu AI  | GLM-5.3, GLM-5.2 (17 models)                     |
+| Aliyun    | Qwen3.8 Max, Qwen3-Coder 480B (27 models)        |
+| Doubao    | Doubao Seed-2.1 Pro, Doubao Seed-2.0 Pro (13 models) |
+| Moonshot  | Kimi K3, Kimi K2.7 Code (16 models)              |
+| Xiaomi    | MiMo V2.6 Pro (6 models)                         |
+| MiniMax   | MiniMax-M3, MiniMax-M2.7 (8 models)              |
 | Unisound  | U2 Flash, Unisound U2 (3 models)                 |
 | Baidu     | ERNIE-5.1, ERNIE-4.5 300B (2 models)             |
 | Tencent   | Hunyuan Hy3, Hunyuan T1 (3 models)                       |
-| Anthropic | Claude Opus 4.6, Claude Sonnet 4.6 (12 models)    |
-| Mistral AI | Mistral Large 3, Mistral Small 4 (3 models)     |
-| Cohere    | Command A, Command R (2 models)                 |
-| OpenAI    | GPT-6 Astra, GPT-5.6 Sol / Terra / Luna (10 models) |
-| Google    | Gemini 3.1 Pro, Gemini 3.6 Flash (4 models)      |
-| xAI       | Grok 4.7, Grok 4.6 (5 models)                     |
-| Meta      | Llama 4 Maverick (2 models)                     |
+| Anthropic | Claude Opus 5, Claude Sonnet 5 (14 models)    |
+| Mistral AI | Mistral Large 3, Mistral Small 4 (30 models)     |
+| Cohere    | Command A, Command R (7 models)                 |
+| OpenAI    | GPT-6 Astra, GPT-5.6 Sol / Terra / Luna (38 models) |
+| Google    | Gemini 3.1 Pro, Gemini 3.6 Flash (25 models)      |
+| xAI       | Grok 4.7, Grok 4.20 (8 models)                     |
+| Meta      | Llama 4 Maverick, Muse Spark 1.3 (8 models)                     |
 | Meituan   | LongCat 2.0 (estimated)                             |
 | ModelBest | MiniCPM-V 4.5 (estimated)                           |
 | Xiaohongshu | Dots3-Note Preview (estimated)                      |
 | 01.AI     | Yi-Lightning                                  |
-| StepFun   | Step 3.7 Flash                                |
+| StepFun   | Step 3.7 Flash, Step 5 Preview (3 models)                                |
 | iFlytek   | Spark 4.0 Ultra (plan-based)¹                       |
 | SenseTime | SenseNova 6.5 (beta)¹                         |
 | Baichuan  | Baichuan M3-Plus                              |

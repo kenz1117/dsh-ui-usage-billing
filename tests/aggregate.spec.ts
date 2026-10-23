@@ -1998,9 +1998,9 @@ describe('unreadable sessions visibility', () => {
 })
 
 describe('lazy reprice after live catalog arrives (fold-version preserved)', () => {
-  /** 真实日志形态：step-5-preview 在预热折叠时刻未收录（cost=0、落 unpricedModels）。 */
+  /** 真实日志形态：step-6-preview 在预热折叠时刻未收录（cost=0、落 unpricedModels）。 */
   function step5Events(): SessionEvent[] {
-    return [header(1, 'step-5-preview'), message(2, Date.UTC(2026, 9, 12, 4, 0, 0), USAGE)]
+    return [header(1, 'step-6-preview'), message(2, Date.UTC(2026, 9, 12, 4, 0, 0), USAGE)]
   }
 
   afterEach(() => {
@@ -2022,23 +2022,23 @@ describe('lazy reprice after live catalog arrives (fold-version preserved)', () 
       } as unknown as UsagePersistence
       const aggregator = createUsageAggregator(persistence)
 
-      // 折叠时刻价目表不含 step-5-preview：cost=0、落 unpricedModels。
+      // 折叠时刻价目表不含 step-6-preview：cost=0、落 unpricedModels。
       const before = await aggregator.aggregate()
-      expect(before.byModel['step-5-preview']?.cost ?? 0).toBe(0)
-      expect(before.unpricedModels).toContain('step-5-preview')
+      expect(before.byModel['step-6-preview']?.cost ?? 0).toBe(0)
+      expect(before.unpricedModels).toContain('step-6-preview')
 
-      // 价目表注入（models.dev extraModels）后重折：step-5-preview 折出 cost，
+      // 价目表注入（models.dev extraModels）后重折：step-6-preview 折出 cost，
       // total.cost 与 byModel 之和一致（无双口径）。
       applyLivePricing({
         source: 'live',
         rate: 7,
-        extraModels: [{ key: 'step-5-preview', name: 'Step 5 Preview', provider: 'Step', price: { input: 2, cacheHit: 0.2, output: 8 } }],
+        extraModels: [{ key: 'step-6-preview', name: 'Step 5 Preview', provider: 'Step', price: { input: 2, cacheHit: 0.2, output: 8 } }],
       })
       vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
       const after = await aggregator.aggregate()
-      const cellAfter = after.byModel['step-5-preview']
+      const cellAfter = after.byModel['step-6-preview']
       expect(cellAfter?.cost ?? 0).toBeGreaterThan(0)
-      expect(after.unpricedModels ?? []).not.toContain('step-5-preview')
+      expect(after.unpricedModels ?? []).not.toContain('step-6-preview')
       const byModelSum = Object.values(after.byModel).reduce((sum, row) => sum + row.cost, 0)
       expect(after.total.cost).toBeCloseTo(byModelSum, 6)
       // 关键：旧折叠（cache 命中，同 stamp 零读取）没有吞掉重折——
@@ -2072,14 +2072,14 @@ describe('lazy reprice after live catalog arrives (fold-version preserved)', () 
       applyLivePricing({
         source: 'live',
         rate: 7,
-        extraModels: [{ key: 'step-5-preview', name: 'Step 5 Preview', provider: 'Step', price: { input: 2, cacheHit: 0.2, output: 8 } }],
+        extraModels: [{ key: 'step-6-preview', name: 'Step 5 Preview', provider: 'Step', price: { input: 2, cacheHit: 0.2, output: 8 } }],
       })
       vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
       const after = await aggregator.aggregate()
       // 第二次读取是全量（from=0），而非增量 from=2。
       expect(reads).toEqual(['from=0', 'from=0'])
       expect(after.total.cost).toBeGreaterThan(0)
-      expect(after.byModel['step-5-preview']?.calls).toBe(2)
+      expect(after.byModel['step-6-preview']?.calls).toBe(2)
     } finally {
       vi.useRealTimers()
     }
@@ -2112,21 +2112,21 @@ describe('lazy reprice after live catalog arrives (fold-version preserved)', () 
       // 第一轮：价目表未就绪 → cost=0、落 unpricedModels，写入 cache。
       const before = await aggregator.aggregate()
       expect(reads).toBe(1)
-      expect(before.byModel['step-5-preview']?.cost ?? 0).toBe(0)
-      expect(before.unpricedModels).toContain('step-5-preview')
+      expect(before.byModel['step-6-preview']?.cost ?? 0).toBe(0)
+      expect(before.unpricedModels).toContain('step-6-preview')
 
       // 价目表就绪后的下一轮：cache 命中路径必须让路（stamp 未变）。
       applyLivePricing({
         source: 'live',
         rate: 7,
-        extraModels: [{ key: 'step-5-preview', name: 'Step 5 Preview', provider: 'Step', price: { input: 2, cacheHit: 0.2, output: 8 } }],
+        extraModels: [{ key: 'step-6-preview', name: 'Step 5 Preview', provider: 'Step', price: { input: 2, cacheHit: 0.2, output: 8 } }],
       })
       vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
       const after = await aggregator.aggregate()
       // 关键断言：日志被重新全量读取（不是 cache 零读取吞掉），cost 折出。
       expect(reads).toBe(2)
-      expect(after.byModel['step-5-preview']?.cost ?? 0).toBeGreaterThan(0)
-      expect(after.unpricedModels ?? []).not.toContain('step-5-preview')
+      expect(after.byModel['step-6-preview']?.cost ?? 0).toBeGreaterThan(0)
+      expect(after.unpricedModels ?? []).not.toContain('step-6-preview')
     } finally {
       vi.useRealTimers()
       if (dir !== undefined) await rm(dir, { recursive: true, force: true })
@@ -2152,7 +2152,7 @@ describe('lazy reprice after live catalog arrives (fold-version preserved)', () 
         },
       } as unknown as UsagePersistence
       const fold = legacyFold()
-      fold.unpricedModels = ['step-5-preview']
+      fold.unpricedModels = ['step-6-preview']
       const store = fakeLedgerStore([{
         id: 'a',
         stamp: `${String(info.mtimeMs)}:${String(info.size)}`,
@@ -2165,19 +2165,19 @@ describe('lazy reprice after live catalog arrives (fold-version preserved)', () 
       // 负向对照：模型仍未收录 → 账本行零读取复用（惰性失效不误伤未受影响行）。
       const before = await aggregator.aggregate()
       expect(reads).toBe(0)
-      expect(before.unpricedModels).toContain('step-5-preview')
+      expect(before.unpricedModels).toContain('step-6-preview')
 
       // 价目表注入后：账本行失效重折，cost>0、unpriced 标记清除、账本行重写。
       applyLivePricing({
         source: 'live',
         rate: 7,
-        extraModels: [{ key: 'step-5-preview', name: 'Step 5 Preview', provider: 'Step', price: { input: 2, cacheHit: 0.2, output: 8 } }],
+        extraModels: [{ key: 'step-6-preview', name: 'Step 5 Preview', provider: 'Step', price: { input: 2, cacheHit: 0.2, output: 8 } }],
       })
       vi.advanceTimersByTime(AGGREGATE_TTL_MS + 1000)
       const after = await aggregator.aggregate()
       expect(reads).toBe(1)
-      expect(after.byModel['step-5-preview']?.cost ?? 0).toBeGreaterThan(0)
-      expect(after.unpricedModels ?? []).not.toContain('step-5-preview')
+      expect(after.byModel['step-6-preview']?.cost ?? 0).toBeGreaterThan(0)
+      expect(after.unpricedModels ?? []).not.toContain('step-6-preview')
       expect(after.staleLedgerSessions ?? 0).toBe(0)
       // 重折后的账本行须落盘：unpricedModels 已按新价目表清空（recordLedger 的
       // changed 判定须识别惰性失效行，否则元数据全同会挡掉重写）。

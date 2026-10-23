@@ -40,7 +40,7 @@
 用量从持久化会话日志实时聚合，绝不伪造样本（数据到达前显示空快照）；官方余额当日变动与本地账本交叉对账，偏差超阈值主动提示核对——账单经得起质疑。
 
 ### 价格是活的，历史不重算
-models.dev 实时目录 + 内置 25 厂商 110 款模型 + 设置面板自定义单价（可按中转站绑定同模型不同价），新模型无需等发版；DeepSeek 分时价按官方变更节点**分段计价**（8-17 前基础价、8-17~8-23 周末计峰、8-23 起周末全谷），价格调整永不回写旧账。
+models.dev 实时目录 + 内置 25 厂商 239 款模型 + 设置面板自定义单价（可按中转站绑定同模型不同价），新模型无需等发版；DeepSeek 分时价按官方变更节点**分段计价**（8-17 前基础价、8-17~8-23 周末计峰、8-23 起周末全谷），价格调整永不回写旧账。
 
 ### 峰谷全感知，提醒跟着模型走
 计费通道按当前会话使用的模型自动识别：DeepSeek 按量走分时价（工作日 9-12 / 14-18 高峰 ×2、周末全天低谷），智谱 Coding Plan 走积分峰谷（工作日 14-18 高峰全额、非高峰**积分 5 折**），通道层可扩展、更多厂商逐步接入；切档前弹窗 / 系统通知自动提醒，且只有当前模型真正涉及峰谷才会提醒、费用条才显示档位——不用你盯时间表。
@@ -193,34 +193,34 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 
 **自定义单价（设置 Tab，issue #16）**：结构化条目表（模型 + 可选来源 + 输入/缓存命中/输出 + 币种），不再手编 JSON。来源（中转站域名）留空 = 该模型默认价；填入中转站域名（如 `https://api.my-relay.com`）= 仅该来源的同名模型用此价（同名模型可同时存在默认价与多个来源价，互不覆盖）。显示层按「模型 × 来源」精确匹配重算，命中不到来源时回落该模型默认价，再无则用内置目录价。
 
-### 支持模型（2026-10 主流阵容，OpenAI 兼容系列，共 110 款）
+### 支持模型（2026-10 主流阵容，OpenAI 兼容系列，共 239 款）
 
-完整目录见费率 Tab 及源码 `src/builtin-catalog.ts` 的 `BUILTIN_MODEL_CATALOG`（109 款在售 + 1 款退役型号保留历史回算），此处每厂商仅列代表型号。
+完整目录见费率 Tab 及源码 `src/builtin-catalog.ts` 的 `BUILTIN_MODEL_CATALOG`（238 款在售 + 1 款退役型号保留历史回算），此处每厂商仅列代表型号。
 
 | 厂商       | 代表模型                                        |
 | -------- | -------------------------------------------- |
 | DeepSeek | V4.1 Flash、V4 Pro（等 3 款；按官方变更节点分段计价：基础价 → 峰谷 v1 → 周末全谷） |
-| 智谱 AI    | GLM-5.3、GLM-5.2（等 13 款）                     |
-| 阿里通义     | Qwen3.8 Max、Qwen3-Coder 480B（等 11 款）        |
-| 字节豆包     | Doubao Seed-2.1 Pro、Doubao Seed-2.0 Pro（等 9 款） |
-| 月之暗面     | Kimi K3、Kimi K2.7 Code（等 10 款）              |
-| 小米       | MiMo V2.6 Pro（等 5 款）                         |
-| MiniMax  | MiniMax-M3、MiniMax-M2.7（等 4 款）              |
+| 智谱 AI    | GLM-5.3、GLM-5.2（等 17 款）                     |
+| 阿里通义     | Qwen3.8 Max、Qwen3-Coder 480B（等 27 款）        |
+| 字节豆包     | Doubao Seed-2.1 Pro、Doubao Seed-2.0 Pro（等 13 款） |
+| 月之暗面     | Kimi K3、Kimi K2.7 Code（等 16 款）              |
+| 小米       | MiMo V2.6 Pro（等 6 款）                         |
+| MiniMax  | MiniMax-M3、MiniMax-M2.7（等 8 款）              |
 | 云知声      | U2 Flash、Unisound U2（等 3 款）                 |
 | 百度文心     | ERNIE-5.1、ERNIE-4.5 300B（等 2 款）             |
 | 腾讯混元     | 混元 Hy3、混元 T1（等 3 款）                       |
-| Anthropic | Claude Opus 4.6、Claude Sonnet 4.6（等 12 款）    |
-| Mistral AI | Mistral Large 3、Mistral Small 4（等 3 款）     |
-| Cohere    | Command A、Command R（等 2 款）                 |
-| OpenAI   | GPT-6 Astra、GPT-5.6 Sol / Terra / Luna（等 10 款） |
-| Google   | Gemini 3.1 Pro、Gemini 3.6 Flash（等 4 款）      |
-| xAI      | Grok 4.7、Grok 4.6（等 5 款）                     |
-| Meta     | Llama 4 Maverick（等 2 款）                     |
+| Anthropic | Claude Opus 5、Claude Sonnet 5（等 14 款）    |
+| Mistral AI | Mistral Large 3、Mistral Small 4（等 30 款）     |
+| Cohere    | Command A、Command R（等 7 款）                 |
+| OpenAI   | GPT-6 Astra、GPT-5.6 Sol / Terra / Luna（等 38 款） |
+| Google   | Gemini 3.1 Pro、Gemini 3.6 Flash（等 25 款）      |
+| xAI      | Grok 4.7、Grok 4.20（等 8 款）                     |
+| Meta     | Llama 4 Maverick、Muse Spark 1.3（等 8 款）                     |
 | 美团       | LongCat 2.0（估算价）                             |
 | 面壁智能     | MiniCPM-V 4.5（估算价）                           |
 | 小红书      | Dots3-Note Preview（估算价）                      |
 | 零一万物     | Yi-Lightning                                  |
-| 阶跃星辰     | Step 3.7 Flash                                |
+| 阶跃星辰     | Step 3.7 Flash、Step 5 Preview（等 3 款）                                |
 | 科大讯飞     | Spark 4.0 Ultra（套餐制）¹                       |
 | 商汤       | SenseNova 6.5（公测中）¹                         |
 | 百川智能     | Baichuan M3-Plus                              |
@@ -228,7 +228,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 
 > ¹ 讯飞、商汤及美团 / 面壁智能 / 小红书等未公布官方按量单价的模型，表内为估算价（`estimated`）；这些模型走订阅通道（coding / token plan / opencode）时费用记 0。订阅通道与 pi-ai 内置提供方对齐（kimi-coding、zai-coding-cn、opencode、opencode-go、qwen / xiaomi 的 token-plan 各区域变体），可按 `subscriptionProviders` 配置覆盖。
 
-新增模型：在 `src/builtin-catalog.ts` 的 `BUILTIN_MODEL_CATALOG` 追加条目（别名表 `BUILTIN_MODEL_KEY_ALIASES` 同文件维护；目录只随 node 半构建，经 `/api/billing/pricing` 由宿主下发注入客户端）。
+新增模型：在 `src/builtin-catalog.ts` 的 `BUILTIN_MODEL_CATALOG` 追加条目（别名表 `BUILTIN_MODEL_KEY_ALIASES` 同文件维护；目录只随 node 半构建，经 `/api/billing/pricing` 由宿主下发注入客户端）。**价源口径**：海外厂商取 models.dev 实时目录原生 USD；国内厂商优先取官方 CN 价（models.dev 的 `-cn` 目录），该目录缺项时按 USD 价 × 汇率折算并在条目注释标注。存量条目的价格更正走独立的调价节点，不与扩容混在一起。
 
 ## 🔌 HTTP API
 
