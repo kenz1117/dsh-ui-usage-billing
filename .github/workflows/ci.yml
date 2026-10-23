@@ -29,6 +29,15 @@ jobs:
       # tsdown 的 lib entry（lib/types/*.js）是 tsc 中间产物，.gitignore 不入库——
       # 干净 checkout 必须先跑 tsc，否则 bundle 报 UNRESOLVED_ENTRY。
       - run: pnpm run build
+      # 市场目录（DSH Community Market Path A）校验：strict schema，多余字段会被
+      # 市场直接拒收整个来源——在 CI 拦住，别等到市场侧才发现。
+      - name: 市场目录校验
+        run: node scripts/check-catalog.mjs
+      # 体积守卫：把新增功能的体积增长在 PR 阶段暴露，而不是发布后被用户感知。
+      # 阈值是本仓自设的成本线（sync.sh 同阈值），不是 DSH Store 的审查上限——
+      # DSH Store 对插件 JS bundle 无审查上限，仅图标文件 icon.* 限 256 KiB。
+      - name: 客户端 bundle 体积守卫
+        run: node scripts/check-bundle-size.mjs
       # E-5 纪律守卫（类型/日志/空 catch）+ E-8 种子漂移检测（CI 无宿主
       # monorepo 时后者自动 skip，本地与 watch 每日任务负责真校验）。
       - run: pnpm run lint

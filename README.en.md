@@ -15,6 +15,7 @@
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing"><img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/kenz1117/dsh-ui-usage-billing?logo=github"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/graphs/contributors"><img alt="GitHub contributors" src="https://img.shields.io/github/contributors/kenz1117/dsh-ui-usage-billing"></a>
   <a href="https://awesome-dsh-plugin.com"><img alt="Awesome DSH Plugin" src="https://awesome-dsh-plugin.com/badge.svg"></a>
+  <a href="https://dshfind.com/en/plugins/kenz1117/dsh-ui-usage-billing"><img alt="dshfind" src="https://dshfind.com/api/badge/kenz1117/dsh-ui-usage-billing"></a>
 </p>
 
 [English](README.en.md) · [中文](README.md)
@@ -53,13 +54,18 @@ The billing channel is detected from the current session's model: DeepSeek meter
 - A performance panel: per-model TTFT mean/P50/P90 and generation speed.
 - Uncatalogued models are explicitly marked and never silently billed 0; one alias entry prices an out-of-catalog model.
 - An optional `usage_stats` tool lets the model answer "what did I spend today" or "which site used the most".
-- A pure UI surface: no tools registered, no system-prompt injection, no model-visible log events.
+- Zero tools registered by default: the single read-only `usage_stats` tool is registered **only** after the user explicitly turns on "inject usage query" in the settings (off by default). No system-prompt injection and no model-visible log events in any case.
 - Chinese / English and ¥ / ≈$ toggles; no chart library, no external CDN, offline & self-contained.
+- **Jump from a session row**: click a session title in the dashboard to open that conversation in the host (both generations of the host's session-selection channel are probed; hosts without one show a readable notice instead of silently doing nothing).
+- **Context occupancy**: the overview shows the current session's context occupancy, window capacity, and composition (system / tools / messages), read from the host's official context projections. Sessions without a projection hide the whole card — it never shows a fabricated 0.
+- **In-conversation entry**: the `/usage` command opens the billing dashboard directly (hosts without that capability degrade silently and leave the dashboard untouched).
 
 ## 📊 Dashboard
 
 - **Sidebar trigger card**: persistent above the Settings button — a single headline figure (today / this week / this month, selectable in settings, optional day-over-day badge) with a 7-day sparkline mini-trend and a today-vs-average gauge needle; collapses to an icon button; hover reveals a quick-look card (updated-at + metric grid + top spenders / quota alerts).
-- **Six-tab dashboard**: Overview / Trends / Detail / Stats / Rates / Settings — hero figures + comparisons + month projection + KPIs (hover for the metric definition) + usage heatmap, 7/30-day trends switching cost / tokens, plus the model rate table, budget (global + per-model) and peak/off-peak alerts; the Settings tab has full-text search (keyword-filters sections in either language, empty state when nothing matches); restrained tones, dark/light adaptive.
+- **Eight-tab dashboard**: Overview / Billing / Usage / Trends / Context / Agents / Rates / Settings — hero figures + comparisons + month projection + KPIs (hover for the metric definition) + usage heatmap, trends switchable between cost and tokens over 7/30 days, model price table, budgets (global + per model) and peak/off-peak alerts all live here; the settings page supports full-text search (zh/en keywords, empty state when nothing matches); tabs carry names only — no status badges.
+- **Context section**: an occupancy bar plus next-request / last-request occupancy, window capacity and the composition split (system / tools / messages). The figures come from the host's official context projections; a session without one hides the whole section rather than showing a fabricated 0.
+- **Agents section**: the agent network rebuilt from delegation relations — a parent conversation → sub-agent tree where each row carries its call count, own cost and **chain total** (itself + all descendants), which directly answers "which delegation was the most expensive".
 
   ![Overview: month cost hero, budget progress, KPIs and usage heatmap](screenshots/1.png)
 - **Live cost bar**: persistent "this turn / session" cost with three positions (composer toolbar row / above / below, toolbar by default); the peak/off-peak tier & countdown section appears only when the current model involves peak/off-peak pricing; subscription low-quota chips appear at ≤20% remaining, red at ≤10%; hideable via the settings-tab toggle (display-only preference persisted locally; stats and alerts unaffected).
@@ -109,7 +115,7 @@ The billing channel is detected from the current session's model: DeepSeek meter
 - **Multi-language + three currencies**: language (EN / 中) and currency (¥ CNY / $ USD / € EUR) switch **independently**, both plugin-only — neither leaks into the host UI. The rate table, the sidebar card and the composer capsule all convert to the selected currency, and both choices persist locally. On first upgrade the language is seeded once from the stored currency (“$” → English), so no existing user’s interface language changes silently.
 - **Security hardening**: every HTTP endpoint enforces loopback-only access via a dual check of the peer socket address and an exact Host-header match, rejecting `127.0.0.1.evil.com`-style DNS-rebinding names (reverse-proxy deployments can allow specific names with `trustedHosts`; the peer-socket check stays mandatory); write paths additionally validate a loopback Origin and Content-Type with a body-size cap against cross-site rewrites; balance / subscription / pricing fetches carry bounded retries with per-upstream circuit breaking (auth failures are config issues and do not trip the breaker).
 - **Export injection guard**: CSV cells starting with `=` / `+` / `-` / `@` get a leading single quote and full escaping, so they cannot execute as formulas in Excel / WPS.
-- **Privacy baseline**: a pure UI surface — registers no tools, injects no system prompt, writes no model-visible events; it only aggregates from existing session logs, whose content is owned by other packages.
+- **Privacy baseline**: zero tools registered by default — no system-prompt injection, no model-visible events written to the session log; it only aggregates from existing session logs, whose content is owned by other packages. The sole exception is the read-only `usage_stats` tool registered after the user opts in (see "Model Experience"); it reads only this plugin's own aggregates, never session bodies, and never writes back to the log.
 
 ## 🚀 Quick start
 
@@ -136,6 +142,16 @@ Alternatively, add it to the host `cordis.patch.yml` by hand:
 ```
 
 After the host starts, the billing entry appears above the sidebar Settings. No extra configuration is needed; when `sessionPersistence` is available it aggregates real usage automatically.
+
+### 🛒 Install from the DSH Community Market
+
+This plugin also publishes a catalog entry using the Market's **Path A standard source**. Paste the manifest URL below into *Settings → Plugins → Plugin Store → Source management → Add source*, then browse and install with one click:
+
+```
+https://kenz1117.github.io/dsh-ui-usage-billing/catalog-source.json
+```
+
+Market-hosted installs resolve an exact stable version from the npm registry (the Host resolves the install target from npm `latest`; the version listed in the catalog is display-only). The catalog files live in `catalog/` in this repository and are validated in CI before being published by GitHub Pages.
 
 ## ⚙️ How it works
 
@@ -264,7 +280,15 @@ The host discovers the browser side automatically via the `dsh.client` declarati
 
 ## 🤖 Model Experience
 
-None. This plugin is a pure UI surface: it registers no tools, injects no system prompt, writes no model-visible events to the session log, and touches no session KV cache; usage statistics are aggregated by the server from existing session logs, whose content is owned by other packages.
+**None by default.** The plugin exposes no tool to the model out of the box: the "inject usage query" setting is off by default, and while it is off the model can neither see a tool nor read any data from this plugin.
+
+After the user explicitly enables that setting, exactly **one** read-only tool is registered:
+
+| Tool | Parameters | Behaviour |
+| --- | --- | --- |
+| `usage_stats` | `range`: `today` / `month` / `session` / `all` / `bySite` / `relay` | Queries the usage and estimated cost this plugin already aggregated (CNY, estimated from the official price catalog — not a bill); `session` requires an agent session context |
+
+Boundaries: the tool reads only this plugin's own aggregates — never session bodies, never prompts, and it never writes back to the session log. The plugin injects no system prompt, writes no model-visible events to the session log, and touches no session KV cache in any case. Usage statistics are aggregated by the server from existing session logs, whose content is owned by other packages. The tool consumes context on every request, which is why it stays off by default.
 
 ## ⚠️ Known Limitations and Deferred Work
 

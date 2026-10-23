@@ -38,7 +38,8 @@
 ## 发布纪律
 
 - **发布只走预览线**（稳定线已冻结，不再发版）：一个发布节点 = 一次 `latest` 发布，tag 与 GitHub release 一起出，不碎片化。
-- **攒批**：日常变更只进分支，攒到节点一起发；只有崩溃/账单错误/安全类紧急修复例外。
+- **小步快跑（2026-10 改）**：变更合并到 `main` 后**尽快发版**（目标节奏：每批功能改动 ≤ 2 周内发一个节点），不再无限期攒批——商店目录按 `pushed_at` 与版本更新做发现，长期不发版会让插件在市场页显示为「陈旧」，装机量增长被拖住（竞品 dsh-cost-meter 已迭代到 v1.9.28）。**例外**：崩溃 / 账单错误 / 安全类紧急修复走加急通道（随时发，不等节奏）。发版仍以「一批改动 = 一个节点」为单位，不碎片化。
+- **攒批的边界**：只攒「同一主题、互相依赖」的改动（如一次 UI 改版的多处文件、一次兼容矩阵升级）；不同主题的功能改动**分开发**。
 - GitHub release 的预发布版本按需打 **Pre-release** 标记。
 - 发版前跑测试：本仓 `pnpm i && pnpm test`（main 395+）；真机验收用对应环境（见下表）。`compat/stable-dsh` 已冻结，其测试基线（337+，client 测试经 `vitest.config.ts` alias 用本地 store stub 顶替 registry 上装不到的 0.1.1 client-runtime）仅供历史查阅，不再参与发布。
 - **（已停用，保留作历史教训）cherry-pick 跨线必须逐项核对三处红线**：① `package.json` 的 version（各线独立）与 `dshReleases`（绝不能被对面线的声明覆盖——稳定线=rc 三件套、预览线=alpha 系，覆盖即重演 #25）；② `lib/client.js` / `lib/index.js` 构建产物（各线独立构建，冲突取 ours 后用对应 build 重建）；③ **cherry-pick 后必跑该线测试**——此前 compat 的测试文件里残留过冲突标记与失效断言（#26/#27 移植时留下），因 compat 无测试环境长期未被发现。稳定线冻结后不再跨线移植。
@@ -66,6 +67,7 @@
 - **独立仓当前分支决定 3080 跑哪条线的代码**：main（alpha 线）匹配 alpha.5 宿主；**切到 compat 分支后开 3080 会让稳定线代码跑在预览宿主上，装载即崩**（client-runtime 不在 0.1.2 模块表）。切分支前先想清楚 3080 还开着。
 - **pnpm store 版本坑**：主仓 pin pnpm 11（store v11），profile 的 node_modules 由系统 pnpm 10.15（store v10）管理。在 profile 目录用错版本跑 pnpm 后，`dsh plugin add` 会报 `ERR_PNPM_UNEXPECTED_STORE`——解法：`cd ~/.dsh/profiles/web && rm -rf node_modules && pnpm install`（回到 10.15）再 add。
 - **宿主升级时同步升独立仓依赖**：devDependencies 里 pin 的 `@deepseek-ai/dsh-*` 版本要跟宿主代际一致（当前 0.2.1-rc.2；个别子包不发 rc 时用其最新版，如 dsh-invariants@0.2.0-rc.2），改完 `pnpm install` 重锁 pnpm-lock.yaml。
+- **平台种子守卫（已加固）**：`scripts/check-clientbundle-sync.mjs` 对着**本仓声明的最新兼容 tag** 判定（从 `package.json` 的 `dshReleases` 取最大版本 → `dsh-v<版本>`，`git show <tag>:packages/client/web/src/platform.ts`），**不再拿宿主仓工作区 HEAD 当真相**——本机 `~/deepseek-harness` 检出过旧曾导致 `pnpm lint` 假红（宿主种子沿革：`dsh-v0.1.2-alpha.1` = 8 项 → `dsh-v0.2.0-rc.2` = 9 项 → `dsh-v0.2.1-rc.2` = 11 项；本仓 11 项，与 `origin/master` 逐项同序一致）。tag 不可得时设 `DSH_FETCH_HOST_TAG=1` 可自动补取（CI 每日任务已开），取不到则退化为参考性提示（不失败）。**判定方向**：本仓**多出**目标宿主没有的条目 = 危险（bundle 会 `require()` 到模块表应答不了的 spec → 运行时抛错）；**缺少**条目 = 需镜像（日后 import 该模块会被内联出第二份共享实例）。
 - **本仓测试可独立安装运行**（`pnpm i && pnpm test`），不依赖 harness 工作区。两个已知坑：官方发布的 `@deepseek-ai/dsh-client-test-runtime` 引用了 ui-renderer 未发布的 src/ 文件（registry 安装必坏），client 测试用本仓 `tests/bind-snapshot-selector.ts` 等价替代；宿主 UI 包 lib 产物内联 `.module.css`，靠 `vitest.config.ts` 的 `server.deps.inline` 走 vite 管线，node 原生加载会报 `Unknown file extension .css`。 0.2.1 系新增两个坑（2026-10-18 升 0.2.1-rc.2 时踩）：ui-primitives 0.2.1-rc.2 引用 `@deepseek-ai/dsh-util-code-language` 但 registry 产物漏声明依赖（vite 解析失败），需手动补进本仓 devDependencies；`dsh-atomic-write` 0.2.1 起按 `kill(pid,0)` 回收死进程孤儿锁，伪造不存在的 pid 测锁竞争会被立即抢占（测试改用恒存活 pid）。
 
 ## 多会话协作纪律
@@ -98,3 +100,9 @@ in-process DSH host 又不带桌面运行时（UI 组件加载不全）。双层
 - 计费口径：历史事件一律按**事件发生时刻**生效的官方规则计价，官方调价按变更节点追加规则（见 `src/client/pricing.ts` 的时间线与 README「计费规则时间线」），不得统一套现行规则重算历史。
 - 体积红线：**DSH Store 对插件 JS bundle 无审查上限**（仅对图标文件 icon.* 设 256 KiB 上限）。`lib/client.js` 的 256 KiB / 320 KiB 两道阈值是本仓 `sync.sh` 自设的成本防线——把新增功能的体积增长暴露在每次构建，避免被用户感知到加载变慢；非上游强制。纯 CSS/文案/资产的增量也要进评估视野。
 - issue 回复用中文；先诊断根因再动手，修复双线同步时在回复里写清两条线各自的版本。
+- **竞品调研与改进计划**：[docs/store-benchmark-2026-10.md](docs/store-benchmark-2026-10.md)——DSH 商店「用量与计费」类目 214 个插件的横向调研（2026-10-23 快照），含差距矩阵（G1~G12）与分批执行计划。**新增功能前先查该文档**：宿主能力一律 **type-only import + `ctx.inject`/`ctx.get`**，**不得**把新的 `@deepseek-ai/*` 加进 `PLATFORM_MODULES`（会让老宿主 `require()` 到应答不了的 spec → 运行时抛错）；服务缺席即降级，不得因此收窄兼容矩阵；client bundle 是单文件 closure factory、无代码分割，新代码必须体积入账（`pnpm size` 查红线）。
+- **仪表盘分区（2026-10-23）**：8 个一级分区——概览 / 账单 / 用量 / 趋势 / 上下文 / 智能体 / 费率 / 设置；**Tab 只留名称，不挂状态徽标**（信息都在各自分区内）。智能体网络树见 `src/client/domain/agent-tree.ts`（从 `parentId` 还原委派关系 + 链合计 + 环防护）。
+- **面板压缩防线**：`.dashboardBody` / `.tabPanel` 是列向 flex 容器，直系子块必须 `flex-shrink: 0`（列向 flex 默认会把内容高的卡片**压扁而不是滚动**——`overflow-y:auto` 挡不住 flex 收缩；2026-10-23 用户反馈「切到上下文 Tab 卡片被缩小」即此坑）。jsdom 不做布局、无法单测覆盖，由 lint **守卫 7「面板压缩防线」**兜底。
+- **体积现状**：`lib/client.js` ≈ 316 KiB，距自设强线 320 KiB 仅余 ~4 KiB——**下一批功能前必须先做结构性瘦身**（CSS 不是大头，见 docs/store-benchmark-2026-10.md §9.2b 的三个候选）。
+- **已接入的宿主能力（2026-10-23，均为特性探测 + 降级）**：会话跳转（`ctx.uiWorkspace.openSession` 新代 / `ctx.sessions.open` 老代，见 `src/client/session-navigation.ts`）、`/usage` 对话内命令（`ctx.commandUi.register`，见 `src/client/usage-command.ts`）、上下文占用维度（`useProjection('contextPressure'/'contextBreakdown')`，见 `src/client/context-store.ts`）。三者取服务一律走 `ctx.get()`（免 inject）——老宿主没有这些服务，声明成注入依赖会挂起等它、卡住整个 web 启动。
+- **DSH Community Market 目录（Path A）**：`catalog/catalog-source.json` + `catalog/v1/plugins.json`，由 `.github/workflows/pages.yml` 发到 GitHub Pages；本地/CI 用 `node scripts/check-catalog.mjs` 校验（strict schema：多余字段会让整个来源被市场拒收）。发布时序：**先 npm publish 精确版本，再并入 main 触发 Pages**——目录指向未发布版本时市场安装会 fail-closed（预期行为）。

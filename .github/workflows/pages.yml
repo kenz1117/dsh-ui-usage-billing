@@ -1,0 +1,60 @@
+# DSH Community Market 目录托管（Path A 标准来源）。
+#
+# 市场认两样东西：一个 manifest URL + 同源的 `GET /v1/plugins`——两者必须发布在
+# 同一个无凭据 HTTPS origin（标准 443）。本 workflow 把 catalog/ 打成 _site/：
+#   catalog/catalog-source.json        → _site/catalog-source.json
+#   catalog/v1/plugins.json            → _site/v1/plugins/index.json
+#   （_site/.nojekyll 关掉 Jekyll，静态文件原样发布）
+#
+# 为什么是 index.json 而不是 plugins.json：市场请求的 endpoint 必须以 `/v1/plugins`
+# 结尾，静态托管对无扩展名目录会 301 到 `/v1/plugins/`，由该目录的 index.json 兜住
+# （契约允许同源 redirect）。写成 `/v1/plugins.json` 会违反 endpoint 的正则。
+#
+# 发布时序（照 DSH Community Market 契约）：**先 npm publish 精确版本并核验
+# tarball，再把含新 catalog 的提交并入 main 触发本页部署**——目录指向未发布版本时
+# 市场安装会 fail-closed（属预期行为）。目录里的 latestVersion 仅用于展示，
+# 安装目标永远由 Host 解析 npm latest 决定。
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'catalog/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # 本地校验目录文件（严格 schema：多余字段会被市场直接拒收）。
+      - run: node scripts/check-catalog.mjs
+      - name: 组装 _site
+        run: |
+          mkdir -p _site/v1/plugins
+          cp catalog/catalog-source.json _site/catalog-source.json
+          cp catalog/v1/plugins.json _site/v1/plugins/index.json
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

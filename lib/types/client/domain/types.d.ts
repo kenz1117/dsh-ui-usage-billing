@@ -27,7 +27,7 @@ export interface ModelHealth {
 /** Idle health state before the probe settles. */
 export declare const IDLE_HEALTH: ModelHealth;
 /** 仪表盘分区 Tab id。 */
-export type DashboardTab = 'overview' | 'token' | 'trends' | 'providers' | 'pricing' | 'settings';
+export type DashboardTab = 'overview' | 'context' | 'agents' | 'token' | 'trends' | 'providers' | 'pricing' | 'settings';
 import type { UsageBillingKey } from '../locales.ts';
 /**
  * Tab 定义（顺序即渲染顺序）：概览=主数字/KPI/热力图，账单=厂商计费与订阅，
@@ -65,19 +65,7 @@ export interface KpiAgg {
     peakTokens: number;
 }
 /** v1.5 Tab 徽章数据信号：空字符串 / 数字 / 状态字。`kind` 决定色调。 */
-export type TabBadgeKind = 'warn' | 'hot' | 'violet' | 'neutral';
 /** v1.5 Tab 徽章。 */
-export interface TabBadge {
-    label: string;
-    kind: TabBadgeKind;
-}
-/** 各 Tab 数据信号聚合：调用方传 dashboardBadgeState（避免每个 Tab 重复声明） */
-export interface DashboardBadgeState {
-    providersCount: number;
-    tokenTotal: number;
-    rateAgeMinutes: number | null;
-    settingsDirty: number;
-}
 /** 会话明细行（与服务端 SessionUsageRow 同形；旧快照可能缺失整个 bySession）。 */
 export interface SessionBillingRow {
     id: string;
@@ -161,6 +149,11 @@ export interface UsageBillingInjected {
         monthCost: number;
     }) => void;
     registerOpen: (handler: () => void) => () => void;
+    /**
+     * 跳转到宿主会话（跨插件导航）：面板点会话行时调用。
+     * 返回 'opened' 已跳转 / 'unavailable' 宿主无通道（老到没有）/ 'failed' 通道报错。
+     */
+    navigateToSession: (sessionId: string) => 'opened' | 'unavailable' | 'failed';
 }
 /** Usage stats structure from `.dsh-usage-stats.json`. */
 export interface UsageStats {

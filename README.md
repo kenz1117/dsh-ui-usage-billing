@@ -15,6 +15,7 @@
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing"><img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/kenz1117/dsh-ui-usage-billing?logo=github"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/graphs/contributors"><img alt="GitHub contributors" src="https://img.shields.io/github/contributors/kenz1117/dsh-ui-usage-billing"></a>
   <a href="https://awesome-dsh-plugin.com"><img alt="Awesome DSH Plugin" src="https://awesome-dsh-plugin.com/badge.svg"></a>
+  <a href="https://dshfind.com/zh/plugins/kenz1117/dsh-ui-usage-billing"><img alt="dshfind" src="https://dshfind.com/api/badge/kenz1117/dsh-ui-usage-billing"></a>
 </p>
 
 [中文](README.md) · [English](README.en.md)
@@ -54,13 +55,18 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 - 性能面板：各模型首字延时（TTFT）均值 / P50 / P90 与生成速度，同类少有。
 - 未收录模型显著标注「未收录」、绝不静默计 0；目录外模型配一条别名即完成识别与计价。
 - 可选的 `usage_stats` 工具让模型直接回答「今天花了多少」「哪个站点用得最多」。
-- 纯 UI surface：不注册工具、不注入系统提示、不写模型可见事件。
+- 默认零工具注入：**仅**当用户在设置里显式开启「注入用量查询」后，才向模型注册 `usage_stats` 这一个只读工具（默认关闭）；任何情况下都不注入系统提示、不写模型可见事件。
 - 中文 / English 语言切换，¥ / ≈$ / ≈€ 币种切换（二者独立）；无图表库、无外部 CDN、离线自包含。
+- **会话行可跳转**：面板里的会话标题点一下直接打开宿主对话（双代会话选择通道自动探测；宿主不支持时给出可读提示，不静默无反应）。
+- **上下文占用维度**：概览页显示当前会话的上下文占用率、窗口上限与构成拆解（系统 / 工具 / 消息）——数据取自宿主官方的 context 投影，**没有投影的会话整块不显示**（不拿 0 冒充）。
+- **对话内入口**：`/usage` 命令直接拉起计费仪表盘（宿主无该能力时静默降级，不影响面板）。
 
 ## 📊 仪表盘
 
 - **侧边栏触发卡**：设置按钮上方常驻单值主数字（今日 / 本周 / 本月统计范围在设置里选，可选涨跌徽章），配近 7 天 sparkline 迷你趋势与当日水位仪表指针；折叠栏自动切为图标钮，悬停浮现速览卡（更新时间 + 指标网格 + 主力消耗 / 额度提醒）。
-- **六区仪表盘**：概览 / 趋势 / 明细 / 统计 / 费率 / 设置——Hero 大数字 + 环比 + 本月预计 + KPI（悬停显示口径说明）+ 用量热力图，趋势 7/30 天可切费用 / Token，模型单价表、预算（全局 + 按模型）与峰谷提醒都在；设置页支持全文搜索（中英关键词过滤分区，全不命中显示空态）；克制冷调、深浅主题自适应。
+- **八区仪表盘**：概览 / 账单 / 用量 / 趋势 / 上下文 / 智能体 / 费率 / 设置——Hero 大数字 + 环比 + 本月预计 + KPI（悬停显示口径说明）+ 用量热力图，趋势 7/30 天可切费用 / Token，模型单价表、预算（全局 + 按模型）与峰谷提醒都在；设置页支持全文搜索（中英关键词过滤分区，全不命中显示空态）；克制冷调、深浅主题自适应。Tab 只保留名称，不再挂状态徽标（信息都在各自分区里）。
+- **上下文分区**：占用率进度条 + 下一次 / 最近一次请求占用 + 窗口上限 + 构成拆解（系统 / 工具 / 消息）。数据取自宿主官方 context 投影；**没有投影的会话整块不显示**，不拿 0 冒充。
+- **智能体分区**：按委派关系还原的智能体网络——父对话 → 子智能体的层级树，每行给调用数、自身费用与**链合计**（自身 + 全部后代），直接回答「哪次委派最贵」。
 
   ![概览：本月费用 Hero、预算进度、KPI 与用量热力图](screenshots/1.png)
 - **即时代费用条**：常驻「本轮 / 会话」费用，位置三档可选（输入框内部工具行 / 上方 / 下方，默认工具行）；峰谷档位与切换倒计时只在当前模型涉及峰谷时出现；订阅额度预警 chips 剩余 ≤20% 浮现、≤10% 标红；可在设置 Tab 整条隐藏（偏好本地持久化，统计与提醒不受影响）。
@@ -110,7 +116,7 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 - **多语种 + 三币种**：语言（EN / 中）与币种（¥ CNY / $ USD / € EUR）**各自独立切换**，均仅本插件生效、不影响宿主全局 UI；费率表、侧边栏卡片与输入框胶囊均按所选币种换算，两项选择均本地持久化。老用户首次升级时语言由已存币种播种一次（选 $ 即英文），界面语言不会静默改变。
 - **安全加固**：全部 HTTP 端点强制回环访问——peer socket 地址 + Host 头精确匹配双重校验，拒绝 `127.0.0.1.evil.com` 形式的 DNS rebinding（反向代理部署可用 `trustedHosts` 显式放行特定主机名，peer socket 校验仍为强制）；写操作额外校验 Origin 回环与 Content-Type 并限制 body 上限，杜绝跨站改写；余额 / 订阅 / 定价拉取带有限重试与按上游维度熔断（鉴权失败属配置问题、不计入熔断）。
 - **导出防注入**：CSV 对 `=` / `+` / `-` / `@` 开头单元格前置单引号并完整转义，防止在 Excel / WPS 中被当作公式执行。
-- **隐私底线**：纯 UI surface，不注册工具、不注入系统提示、不向会话日志写模型可见事件；仅从既有会话日志聚合，日志内容由其他包负责。
+- **隐私底线**：默认零工具注入——不注入系统提示、不向会话日志写模型可见事件；仅从既有会话日志聚合，日志内容由其他包负责。唯一的例外是用户显式开启后注册的 `usage_stats` 只读工具（见「Model Experience」），该工具只读本插件自己的聚合结果，不读会话正文、不写回日志。
 
 ## 🚀 快速开始
 
@@ -137,6 +143,20 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 ```
 
 启动宿主后，侧边栏设置上方即出现计费入口。无需额外配置；`sessionPersistence` 可用时自动聚合真实用量。
+
+### 🛒 从 DSH Community Market 安装
+
+本插件同时按 DSH Community Market 的 **Path A 标准来源**发布目录条目。在 DSH 的
+「设置 → 插件 → 插件商店 → 来源管理 → 添加来源」粘贴下面的 manifest URL，即可把本目录
+加为来源，随后在市场里浏览并一键安装：
+
+```
+https://kenz1117.github.io/dsh-ui-usage-billing/catalog-source.json
+```
+
+市场托管安装只走 npm registry 的精确稳定版本（安装目标由 Host 解析 npm `latest` 决定，
+目录里列出的版本仅用于展示）。目录文件在本仓 `catalog/` 下，改动由 CI 校验后随
+GitHub Pages 发布。
 
 ## ⚙️ 工作原理
 
@@ -269,7 +289,15 @@ npm dist-tag add @kenz1117/dsh-ui-usage-billing@<版本> alpha
 
 ## 🤖 Model Experience
 
-无。本插件是纯 UI surface：不注册工具、不注入系统提示、不向会话日志写入模型可见事件，也不触及会话 KV 缓存；用量统计由服务端从既有会话日志聚合，日志内容由其他包各自负责。
+**默认无**——插件默认不向模型暴露任何工具：设置里的「注入用量查询」默认关闭，关闭状态下模型既看不到工具、也读不到任何本插件数据。
+
+用户显式开启该开关后，注册**一个**只读工具：
+
+| 工具 | 参数 | 行为 |
+| --- | --- | --- |
+| `usage_stats` | `range`：`today` / `month` / `session` / `all` / `bySite` / `relay` | 查询本插件已聚合的用量与估算费用（人民币，按官方目录价估算，非账单）；`session` 需处于 agent 会话上下文 |
+
+边界声明：该工具只读本插件自己的聚合结果，**不读会话正文、不读提示词、不写回会话日志**；插件任何情况下都**不注入系统提示**、**不向会话日志写入模型可见事件**、不触及会话 KV 缓存。用量统计由服务端从既有会话日志聚合，日志内容由其他包各自负责。工具会占用每次请求的上下文，因此保持默认关闭。
 
 ## ⚠️ Known Limitations and Deferred Work
 

@@ -193,9 +193,43 @@ for (const dir of SCAN_DIRS) {
   console.log(`[lint] 字体纪律：${String(declarations)} 处 font/font-family/fontFamily 声明全部走令牌或关键字`)
 }
 
+/**
+ * 守卫 7：面板压缩防线——列向 flex 容器（.dashboardBody / .tabPanel）的直系子块
+ * 必须声明 flex-shrink: 0。
+ *
+ * 背景（2026-10-23 用户反馈）：列向 flex 容器默认 flex-shrink:1，容器高度受限时
+ * **子块会被纵向压扁而不是让容器滚动**——上下文分区的卡片（两张卡 + 构成条，内
+ * 容最高）首当其冲，被压成一条。overflow-y:auto 并不能阻止 flex 子项收缩。
+ * 该规则只护住「高度由内容决定」，jsdom 不做布局、无法用单测覆盖，故在此加守卫，
+ * 防止将来重构把这条规则删掉。
+ */
+function checkPanelShrinkGuard() {
+  const css = readFileSync('src/client/UsageBilling.module.css', 'utf8')
+  const required = ['.dashboardBody > *', '.tabPanel > *']
+  let checked = 0
+  for (const selector of required) {
+    const at = css.indexOf(selector)
+    if (at < 0) {
+      VIOLATIONS.push(`src/client/UsageBilling.module.css  面板压缩防线：缺少选择器 ${selector}（列向 flex 子块会被压扁）`)
+      continue
+    }
+    // 选择器所在规则块内必须有 flex-shrink: 0
+    const block = css.slice(at, css.indexOf('}', at))
+    if (!/flex-shrink\s*:\s*0/.test(block)) {
+      VIOLATIONS.push(`src/client/UsageBilling.module.css  面板压缩防线：${selector} 必须声明 flex-shrink: 0（否则卡片被纵向压扁）`)
+      continue
+    }
+    checked += 1
+  }
+  if (checked === required.length) {
+    console.log(`[lint] 面板压缩防线：${String(checked)} 处面板直系子块均声明 flex-shrink: 0`)
+  }
+}
+checkPanelShrinkGuard()
+
 if (VIOLATIONS.length > 0) {
   console.error(`[lint] ${VIOLATIONS.length} 项纪律违规：`)
   for (const v of VIOLATIONS) console.error(`  ${v}`)
   process.exit(1)
 }
-console.log('[lint] 纪律守卫全绿（类型 / 日志 / 空 catch 注释 / CSS parity / 令牌 parity / 字体纪律）')
+console.log('[lint] 纪律守卫全绿（类型 / 日志 / 空 catch 注释 / CSS parity / 令牌 parity / 字体纪律 / 面板压缩防线）')

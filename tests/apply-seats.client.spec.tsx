@@ -35,6 +35,9 @@ function recordingContext(): { ctx: Context; injected: string[]; registered: Reg
   const ctx = {
     provide: () => {},
     effect: () => () => {},
+    // cordis 的免 inject 服务读取：真实宿主必有，本桩返回 undefined 表示
+    // 「宿主没有该服务」（会话跳转 / /usage 命令据此降级）。
+    get: () => undefined,
     locale: { register: () => () => {} },
     remote: {},
     sessions: {},

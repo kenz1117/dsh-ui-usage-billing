@@ -32,6 +32,9 @@ import { en, NS, zh, type UsageBillingKey } from './locales.ts'
 import { createBillingMetrics, type BillingMetricsService } from './billing-service.ts'
 import { createBillingBudgetStore } from './budget-store.ts'
 import { installCompletionNotifier, loadNotifyConfig } from './completion-notify.ts'
+import { createSessionNavigator } from './session-navigation.ts'
+import { registerUsageCommand } from './usage-command.ts'
+import { loadLanguage } from './usage-billing-settings.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -89,6 +92,20 @@ export function apply(ctx: Context): void {
   const budgetStore = createBillingBudgetStore()
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-usage-billing: dictionaries')
+
+  // 会话跳转器（跨插件导航）：面板点会话行时接到宿主会话选择通道。
+  // 服务读取走 ctx.get（免 inject）——老宿主没有 uiWorkspace 服务，声明成注入
+  // 依赖会挂起等它、卡住整个 web 启动（remote.llm 的同源教训，issue #28）。
+  const navigator = createSessionNavigator(ctx)
+
+  // `/usage` 对话内命令：把仪表盘拉进对话流。老宿主无 commandUi 服务时静默跳过。
+  // 文案取本包自带词典（不依赖宿主 locale.bind——那在 0.1.2 代宿主上未必存在，
+  // 声明宿主能力会收窄兼容面）；语言读本插件自己的偏好（与面板一致）。
+  registerUsageCommand(ctx, {
+    openDashboard: () => { metrics.openDashboard() },
+    label: () => (loadLanguage() === 'en' ? en.commandUsageLabel : zh.commandUsageLabel),
+    description: () => (loadLanguage() === 'en' ? en.commandUsageDescription : zh.commandUsageDescription),
+  })
 
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
@@ -159,6 +176,7 @@ export function apply(ctx: Context): void {
       },
       publishCosts: (costs) => { metrics.publishCosts(costs) },
       registerOpen: handler => metrics.registerOpen(handler),
+      navigateToSession: (sessionId) => navigator.open(sessionId),
     }),
   }, UsageBilling))
 

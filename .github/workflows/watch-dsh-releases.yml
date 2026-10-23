@@ -45,6 +45,11 @@ jobs:
       - id: bundle-sync
         # 校验脚本退出非零（漂移或自身故障）→ 打 failed 标记给开 issue 步骤。
         # Actions 的 bash 带 -e，须用 || 捕获而非 echo $?（否则步骤直接中止）。
+        # DSH_FETCH_HOST_TAG=1：宿主检出是 shallow clone（默认分支、无 tag），
+        # 脚本据此补取「本仓声明的最新兼容版本」对应的 tag，让比对对着我们声称
+        # 兼容的那一代宿主，而不是对着工作区/默认分支猜（后者会制造假警报）。
+        env:
+          DSH_FETCH_HOST_TAG: '1'
         run: node scripts/check-clientbundle-sync.mjs --repo harness || echo "failed=1" >> "$GITHUB_OUTPUT"
       - name: 平台种子漂移时开/更新 issue
         if: steps.bundle-sync.outputs.failed != '0'

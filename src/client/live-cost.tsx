@@ -30,6 +30,11 @@ import { loadPeakAlertConfig } from './peak-alert.ts'
 import { CURRENCY_PREF_EVENT, LIVE_COST_BAR_PREF_EVENT, PINNED_MODELS_EVENT, loadCurrency, loadLiveCostBarPrefs, loadPinnedModels } from './usage-billing-settings.ts'
 import type { LiveCostBarPrefs } from './usage-billing-settings.ts'
 import type { UsageBillingKey } from './locales.ts'
+// Type-only: pulls the session-controller projection reader type (useProjection).
+import type { UseProjection } from '@deepseek-ai/dsh-api-session-controller/client'
+// Type-only: pulls the token-meter projection shapes (contextPressure / contextBreakdown).
+import type { ContextBreakdownProjection, ContextPressureProjection } from '@deepseek-ai/dsh-token-meter/client'
+import { contextStore } from './context-store.ts'
 import css from './UsageBilling.module.css'
 
 /** The usage-stats shape the composer bar needs (a thin slice, not the whole doc). */
@@ -220,6 +225,12 @@ export function isBlankPhase(session: SessionPhaseSlice): boolean {
 export interface LiveCostBarProps {
   /** Current Session identity supplied by the session-scope standard kit. */
   sessionId: SessionId
+  /**
+   * Host projection reader (session-scope standard kit). Present only on hosts
+   * that serve session projections; absent → no context dimension (the
+   * dashboard hides that card entirely rather than showing zeros).
+   */
+  useProjection?: UseProjection
   /** The owning seat's locale seat (bound to the billing NS). */
   t: (key: UsageBillingKey) => string
   /** Which host seat this instance occupies; it renders only when the position pref matches. */
@@ -368,8 +379,24 @@ function useLiveCostData(sessionId: SessionId, active: boolean): {
  * @param props - framework session identity, locale, the seat occupied, and
  * (input.dock only) the owner session snapshot.
  */
-export function LiveCostBar({ sessionId, t, seat, session }: LiveCostBarProps): React.ReactNode {
+export function LiveCostBar({ sessionId, t, seat, session, useProjection }: LiveCostBarProps): React.ReactNode {
   const { visible, position } = useLiveCostPrefs()
+  // 上下文占用探针：会话作用域里唯一能读到 token-meter 投影的地方（投影按会话分发，
+  // 全局弹窗读不到）。顺手读一次并发布到 contextStore，供仪表盘「上下文」维度消费。
+  // useProjection 缺席（老宿主 / 无该投影）时整个调用跳过——宿主标准 props 的有无
+  // 在组件生命周期内不变，hook 调用序列因此稳定。
+  const pressure = useProjection?.('contextPressure') as ContextPressureProjection | undefined
+  const breakdown = useProjection?.('contextBreakdown') as ContextBreakdownProjection | undefined
+  useEffect(() => {
+    contextStore.publish({
+      ...(pressure?.projectedTokens === undefined ? {} : { projectedTokens: pressure.projectedTokens }),
+      ...(pressure?.pressureTokens === undefined ? {} : { pressureTokens: pressure.pressureTokens }),
+      ...(pressure?.contextWindow === undefined ? {} : { contextWindow: pressure.contextWindow }),
+      ...(breakdown?.systemTokens === undefined ? {} : { systemTokens: breakdown.systemTokens }),
+      ...(breakdown?.toolsTokens === undefined ? {} : { toolsTokens: breakdown.toolsTokens }),
+      ...(breakdown?.messageTokens === undefined ? {} : { messageTokens: breakdown.messageTokens }),
+    })
+  }, [pressure, breakdown])
   // 座位与位置偏好互斥：另一座位（以及工具行 chip）此时渲染 null，不各跑轮询。
   // 「上方」座位额外复刻宿主 hero 门控——空白新会话页宿主不出下方 dock，上方同样不出。
   const active = visible && position === seat && !(seat === 'above' && session !== undefined && isBlankPhase(session))

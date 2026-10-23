@@ -1,0 +1,22 @@
+{
+  "manifestVersion": "1.0.0",
+  "providerId": "io.github.kenz1117.dsh-ui-usage-billing",
+  "name": "DSH Usage Billing",
+  "description": "Usage billing dashboard for DeepSeek Harness: sidebar cost metrics plus a full dashboard modal, priced from a current multi-provider catalog with real usage aggregated from session logs.",
+  "homepage": "https://github.com/kenz1117/dsh-ui-usage-billing",
+  "attribution": {
+    "name": "kenz1117",
+    "url": "https://github.com/kenz1117"
+  },
+  "transport": {
+    "kind": "https-json",
+    "endpoint": "https://kenz1117.github.io/dsh-ui-usage-billing/v1/plugins",
+    "method": "GET"
+  },
+  "query": {
+    "supported": ["q", "category", "cursor", "limit"],
+    "defaultLimit": 50,
+    "maxLimit": 50,
+    "sorts": []
+  }
+}

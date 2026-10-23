@@ -354,6 +354,32 @@ export type UsageBillingKey =
   | 'collapseAll'
   | 'todayOnly'
   | 'todayNoConsumption'
+  | 'commandUsageLabel'
+  | 'commandUsageDescription'
+  | 'sessionOpen'
+  | 'sessionOpenFailed'
+  | 'sessionOpenUnavailable'
+  | 'contextOccupancy'
+  | 'contextWindow'
+  | 'contextSystem'
+  | 'contextTools'
+  | 'contextMessages'
+  | 'contextNoData'
+  | 'tabContext'
+  | 'tabAgents'
+  | 'contextNextRequest'
+  | 'contextLastRequest'
+  | 'contextComposition'
+  | 'contextCompositionHint'
+  | 'agentsSummary'
+  | 'agentsCount'
+  | 'agentsDelegations'
+  | 'agentsRoots'
+  | 'agentsMostExpensive'
+  | 'agentsChainTotal'
+  | 'agentsNoData'
+  | 'agentsSubagent'
+  | 'agentsRoot'
 
 export const NS = 'usageBilling'
 
@@ -712,6 +738,32 @@ export const zh: Record<UsageBillingKey, string> = {
   'collapseAll': '全部收起',
   'todayOnly': '仅看今日',
   'todayNoConsumption': '今日暂无消耗',
+  'commandUsageLabel': '打开计费仪表盘',
+  'commandUsageDescription': '查看今日/本月费用、用量明细与费率',
+  'sessionOpen': '打开会话',
+  'sessionOpenFailed': '无法打开该会话（可能已被删除或不在当前会话列表）',
+  'sessionOpenUnavailable': '当前宿主不支持会话跳转',
+  'contextOccupancy': '上下文占用',
+  'contextWindow': '窗口上限 {window}',
+  'contextSystem': '系统',
+  'contextTools': '工具',
+  'contextMessages': '消息',
+  'contextNoData': '上下文占用跟随**当前打开的对话**——请先在一个会话里打开本面板；宿主未上报该投影时同样为空。',
+  'tabContext': '上下文',
+  'tabAgents': '智能体',
+  'contextNextRequest': '下一次请求占用',
+  'contextLastRequest': '最近一次请求占用',
+  'contextComposition': '上下文构成',
+  'contextCompositionHint': '构成项为启发式 token 估算，三项之和不等于下一次请求占用',
+  'agentsSummary': '智能体网络',
+  'agentsCount': '智能体',
+  'agentsDelegations': '委派',
+  'agentsRoots': '对话',
+  'agentsMostExpensive': '最贵的一支',
+  'agentsChainTotal': '链合计',
+  'agentsNoData': '暂无子智能体委派记录',
+  'agentsSubagent': '子智能体',
+  'agentsRoot': '对话',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -1069,4 +1121,30 @@ export const en: Record<UsageBillingKey, string> = {
   'collapseAll': 'Collapse all',
   'todayOnly': 'Today only',
   'todayNoConsumption': 'No usage today',
+  'commandUsageLabel': 'Open the billing dashboard',
+  'commandUsageDescription': 'See today/month spend, usage breakdown and rates',
+  'sessionOpen': 'Open session',
+  'sessionOpenFailed': 'Could not open this session (it may be deleted or absent from the current list)',
+  'sessionOpenUnavailable': 'This host does not support session navigation',
+  'contextOccupancy': 'Context occupancy',
+  'contextWindow': 'Window {window}',
+  'contextSystem': 'System',
+  'contextTools': 'Tools',
+  'contextMessages': 'Messages',
+  'contextNoData': 'Context occupancy follows the **conversation you currently have open** — open this panel from within a session; it stays empty when the host serves no such projection.',
+  'tabContext': 'Context',
+  'tabAgents': 'Agents',
+  'contextNextRequest': 'Next request occupancy',
+  'contextLastRequest': 'Last request occupancy',
+  'contextComposition': 'Context composition',
+  'contextCompositionHint': 'Composition figures are heuristic token estimates; the three do not sum to the next request occupancy',
+  'agentsSummary': 'Agent network',
+  'agentsCount': 'agents',
+  'agentsDelegations': 'delegations',
+  'agentsRoots': 'conversations',
+  'agentsMostExpensive': 'costliest chain',
+  'agentsChainTotal': 'chain total',
+  'agentsNoData': 'No sub-agent delegation records yet',
+  'agentsSubagent': 'sub-agent',
+  'agentsRoot': 'conversation',
 }

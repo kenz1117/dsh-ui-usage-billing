@@ -15,7 +15,7 @@
  * PositionMenu / SubscriptionWindowRow / BalanceDetailPopover+Row）。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, Fragment, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment, type ReactNode, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
@@ -106,7 +106,6 @@ import {
   DASHBOARD_TABS,
   IDLE_HEALTH,
   type AvgCostRange,
-  type DashboardBadgeState,
   type DashboardTab,
   type KpiAgg,
   type ModelHealth,
@@ -114,7 +113,6 @@ import {
   type ProviderBillingGroup,
   type ProviderChannelKind,
   type SessionBillingRow,
-  type TabBadge,
   type UsageBillingInjected,
   type UsageStats,
 } from './domain/types.ts'
@@ -130,6 +128,8 @@ import { rechargeUrlOf } from './domain/recharge.ts'
 import { recostWithUserPrices } from './domain/recost.ts'
 import { notifyAcrossInstances, notifyAllowed } from './domain/notify.ts'
 import { buildSessionDisplay } from './domain/provider-merge.ts'
+import { contextStore, occupancyBreakdown, occupancyRatio } from './context-store.ts'
+import { agentTreeStats, buildAgentTree } from './domain/agent-tree.ts'
 import { filterSessionsForViewer } from './domain/session-viewer.ts'
 import { settingsSectionHidden } from './settings-search.ts'
 import { formatClock, providerCostOf, providerDot, relayKindText, RELAY_KIND_CLASS, subFamilyOf, subscriptionStatusText, subscriptionWindowLabel } from './domain/kpi.ts'
@@ -141,34 +141,6 @@ import { loadUsageTool, saveUsageTool } from './api/usage-tool.ts'
 import { lastPricingSyncedAt, loadLivePricing, syncPricingNow } from './api/pricing.ts'
 
 /** 把 Tab id + 当前状态映射为徽章（null = 不渲染徽章）。 */
-function tabBadgeFor(id: DashboardTab, state: DashboardBadgeState): TabBadge | null {
-  switch (id) {
-    case 'overview':
-      return { label: '实时', kind: 'neutral' }
-    case 'providers':
-      return { label: `${state.providersCount} 厂商`, kind: 'neutral' }
-    case 'token':
-      return { label: formatTokenBadge(state.tokenTotal), kind: 'neutral' }
-    case 'trends':
-      // 用户反馈：涨跌百分比在 Tab 上是噪音（缓存日会爆出天文数字），
-      // 数值去趋势图与 KPI 卡看——Tab 徽章不再显示。
-      return null
-    case 'pricing':
-      if (state.rateAgeMinutes === null || state.rateAgeMinutes < 360) return { label: '已同步', kind: 'neutral' }
-      return { label: '需同步', kind: 'violet' }
-    case 'settings':
-      if (state.settingsDirty <= 0) return null
-      return { label: String(state.settingsDirty), kind: 'hot' }
-  }
-}
-
-/** Token 量缩成紧凑数字（M / K），徽章宽度敏感场景用。 */
-function formatTokenBadge(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return String(n)
-}
-
 /** 订阅窗口行（已用比例进度条 + 剩余文案 + 重置时刻）：悬浮速览与订阅卡共用。 */
 function SubscriptionWindowRow({ window, t }: { window: SubscriptionQuota['windows'][number]; t: (key: UsageBillingKey) => string }): React.ReactNode {
   const used = Math.min(100, Math.max(0, window.usedPercent))
@@ -634,6 +606,10 @@ interface BillingDashboardProps {
   onLanguage: (language: BillingLanguage) => void
   /** 每轮费用明细（服务端按起始时间倒序下发）。 */
   turns: readonly RoundChartRow[]
+  /**
+   * 跳转宿主会话（跨插件导航）：会话行点击时调用；宿主无通道时返回 'unavailable'。
+   */
+  navigateToSession: (sessionId: string) => 'opened' | 'unavailable' | 'failed'
   renderSlot: DashboardRenderSlots['renderSlot']
   /** 预算偏好（开关 + 金额）：由父组件从 store 读下传。 */
   budgetEnabled: boolean
@@ -970,8 +946,27 @@ function BillingDashboard({
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
   modelBudgets, monthModelCost, onModelBudget,
   peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, sitePrefs, onSitePrefs,
-  liveCostPrefs, onLiveCostPrefs, quotasStale, balanceStale,
+  liveCostPrefs, onLiveCostPrefs, quotasStale, balanceStale, navigateToSession,
 }: BillingDashboardProps): React.ReactNode {
+  // 上下文占用快照：宿主 token-meter 投影经会话作用域探针转发而来（无会话 / 老宿主
+  // 无该投影 → undefined → 整块隐藏，不显示 0、不占位）。
+  const contextOccupancy = useSyncExternalStore(contextStore.subscribe, contextStore.read)
+  const contextRatio = occupancyRatio(contextOccupancy)
+  const contextUsed = contextOccupancy?.projectedTokens ?? contextOccupancy?.pressureTokens
+  const contextRows = occupancyBreakdown(contextOccupancy)
+  // 智能体网络：从会话行的 parentId 还原委派链，逐级算链合计（哪次委派最贵）。
+  const agentRoots = useMemo(() => buildAgentTree(stats.bySession ?? []), [stats.bySession])
+  const agentSummary = useMemo(() => agentTreeStats(agentRoots), [agentRoots])
+  // 会话跳转提示：宿主无通道 / 跳转失败时在会话表上方给一行可读反馈（不打断）。
+  const [navNotice, setNavNotice] = useState<string | undefined>(undefined)
+  const openSessionRow = useCallback((sessionId: string): void => {
+    const result = navigateToSession(sessionId)
+    if (result === 'opened') {
+      setNavNotice(undefined)
+      return
+    }
+    setNavNotice(result === 'unavailable' ? t('sessionOpenUnavailable') : t('sessionOpenFailed'))
+  }, [navigateToSession, t])
   // 趋势图指标：费用（堆叠/默认）或 Token（单色总量）。
   const [trendMetric, setTrendMetric] = useState<TrendMetric>('cost')
   const { total, byModel, byDay } = stats
@@ -1664,26 +1659,6 @@ function BillingDashboard({
   /* v1.5 Tab 徽章数据信号：从已聚合的 providerGroups / stats / pricingSyncedAt 派生。
      放这里是为了引用顺序正确（providerGroups 在 line 2406 才声明）。
      useMemo 缓存——避免 Tab 重渲染时重算整张大表。 */
-  const dashboardBadgeState = useMemo<DashboardBadgeState>(() => {
-    const groupsCount = providerGroups.length
-    const todayKey = dayStampLocal()
-    const byDayMap = stats.byDay ?? {}
-    const todayUsage = byDayMap[todayKey]
-    const todayTokens = todayUsage
-      ? todayUsage.input + todayUsage.output + todayUsage.cacheHit + todayUsage.cacheMiss
-      : 0
-    const days = Object.keys(byDayMap).sort()
-    void days
-    const rateAgeMinutes = pricingSyncedAt > 0
-      ? Math.floor((Date.now() - pricingSyncedAt) / 60000)
-      : null
-    return {
-      providersCount: groupsCount,
-      tokenTotal: todayTokens,
-      rateAgeMinutes,
-      settingsDirty: 0,
-    }
-  }, [providerGroups, stats.byDay, pricingSyncedAt])
 
   // 一键展开/收起（issue #77）：只作用于有明细可展开的组（模型行或订阅卡）；
   // 纯余额组无内容可折叠，不参与计数与按钮文案判定。
@@ -1700,8 +1675,8 @@ function BillingDashboard({
   }
 
   // 厂商视图与通道视图共用模型表（同列结构）：表头与模型名单元格各只保留一份
-  // JSX，控制 bundle 体积（Store 256KiB 单文件门禁）。showTags 时才渲染估算价
-  // 标注与通道徽标（仅厂商视图）。
+  // JSX，控制 bundle 体积（本仓自设成本线，非 Store 门禁）。showTags 时才渲染
+  // 估算价标注与通道徽标（仅厂商视图）。
   const modelTableHead = (
     <thead>
       <tr>
@@ -1877,7 +1852,6 @@ function BillingDashboard({
            后再启用（对应 desktop 全屏 modal 形态）。 */}
         <nav className={css.tabNav} data-testid="billing-tab-nav" role="tablist" aria-label={t('title')}>
           {DASHBOARD_TABS.map(item => {
-            const badge = tabBadgeFor(item.id, dashboardBadgeState)
             return (
               <button
                 key={item.id}
@@ -1891,19 +1865,6 @@ function BillingDashboard({
               >
                 <span className={css.tabRailIcon} aria-hidden="true">{TAB_ICONS[item.id]}</span>
                 <span className={css.tabNavLabel}>{t(item.labelKey)}</span>
-                {badge && (
-                  <span
-                    className={clsx(
-                      css.tabBadge,
-                      badge.kind === 'warn' && css.tabBadgeWarn,
-                      badge.kind === 'hot' && css.tabBadgeHot,
-                      badge.kind === 'violet' && css.tabBadgeViolet,
-                    )}
-                    data-testid={`billing-tab-badge-${item.id}`}
-                  >
-                    {badge.label}
-                  </span>
-                )}
               </button>
             )
           })}
@@ -2334,6 +2295,131 @@ function BillingDashboard({
             </div>
           )}
 
+          {tab === 'context' && (
+              <div className={css.tabPanel} data-testid="billing-tab-panel-context">
+                {/* 上下文占用（宿主 token-meter 投影，经会话作用域探针转发）：
+                    无会话 / 宿主不上报 / 老宿主无该投影 → 整块不渲染（不显示 0、不占位）。 */}
+                {contextOccupancy === undefined ? (
+                  <p className={css.contextEmpty} data-testid="billing-context-empty">{t('contextNoData')}</p>
+                ) : (
+                  <>
+                    <section className={css.contextCard} data-testid="billing-context-card">
+                      <div className={css.contextHead}>
+                        <span className={css.contextTitle}>{t('contextOccupancy')}</span>
+                        {contextRatio !== undefined && (
+                          <span className={css.contextRatio}>{`${String(Math.round(contextRatio * 100))}%`}</span>
+                        )}
+                      </div>
+                      {contextRatio !== undefined && (
+                        <div className={css.contextBar} data-testid="billing-context-bar" role="img"
+                          aria-label={`${t('contextOccupancy')} ${String(Math.round(contextRatio * 100))}%`}>
+                          <span className={css.contextBarFill} style={{ width: `${String(Math.round(contextRatio * 100))}%` }} />
+                        </div>
+                      )}
+                      <div className={css.contextBody}>
+                        {contextUsed !== undefined && (
+                          <span className={css.contextValue}>{formatTokens(contextUsed)}</span>
+                        )}
+                        {contextOccupancy.contextWindow !== undefined && (
+                          <span className={css.contextHint}>
+                            {t('contextWindow').replace('{window}', formatTokens(contextOccupancy.contextWindow))}
+                          </span>
+                        )}
+                      </div>
+                      <div className={css.contextStats}>
+                        {contextOccupancy.projectedTokens !== undefined && (
+                          <div className={css.contextStat}>
+                            <span className={css.contextStatLabel}>{t('contextNextRequest')}</span>
+                            <span className={css.contextStatValue}>{formatTokens(contextOccupancy.projectedTokens)}</span>
+                          </div>
+                        )}
+                        {contextOccupancy.pressureTokens !== undefined && (
+                          <div className={css.contextStat}>
+                            <span className={css.contextStatLabel}>{t('contextLastRequest')}</span>
+                            <span className={css.contextStatValue}>{formatTokens(contextOccupancy.pressureTokens)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                    {contextRows.length > 0 && (
+                      <section className={css.contextCard} data-testid="billing-context-breakdown">
+                        <div className={css.contextHead}>
+                          <span className={css.contextTitle}>{t('contextComposition')}</span>
+                        </div>
+                        {(() => {
+                          const max = Math.max(...contextRows.map(row => row.tokens), 1)
+                          return (
+                            <div className={css.contextBreakdown}>
+                              {contextRows.map(row => (
+                                <div key={row.key} className={css.contextBreakRow}>
+                                  <span className={css.contextBreakLabel}>
+                                    {t(row.key === 'system' ? 'contextSystem' : row.key === 'tools' ? 'contextTools' : 'contextMessages')}
+                                  </span>
+                                  <span className={css.contextBreakTrack}>
+                                    <span className={css.contextBreakFill} style={{ width: `${String(Math.round((row.tokens / max) * 100))}%` }} />
+                                  </span>
+                                  <span className={css.contextBreakValue}>{formatTokens(row.tokens)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        })()}
+                        <p className={css.contextFootnote}>{t('contextCompositionHint')}</p>
+                      </section>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+            {tab === 'agents' && (
+              <div className={css.tabPanel} data-testid="billing-tab-panel-agents">
+                <section className={css.agentSummary} data-testid="billing-agent-summary">
+                  <span className={css.agentSummaryItem}>
+                    <span className={css.agentSummaryValue}>{String(agentSummary.agents)}</span>
+                    <span className={css.agentSummaryLabel}>{t('agentsCount')}</span>
+                  </span>
+                  <span className={css.agentSummaryItem}>
+                    <span className={css.agentSummaryValue}>{String(agentSummary.delegations)}</span>
+                    <span className={css.agentSummaryLabel}>{t('agentsDelegations')}</span>
+                  </span>
+                  <span className={css.agentSummaryItem}>
+                    <span className={css.agentSummaryValue}>{String(agentSummary.roots)}</span>
+                    <span className={css.agentSummaryLabel}>{t('agentsRoots')}</span>
+                  </span>
+                  {agentSummary.costliest !== undefined && agentSummary.costliest.chainCost > 0 && (
+                    <span className={css.agentSummaryItem}>
+                      <span className={css.agentSummaryValue}>{money(agentSummary.costliest.chainCost)}</span>
+                      <span className={css.agentSummaryLabel}>{t('agentsMostExpensive')}</span>
+                    </span>
+                  )}
+                </section>
+                {agentRoots.length === 0 || agentSummary.delegations === 0 ? (
+                  <p className={css.contextEmpty} data-testid="billing-agents-empty">{t('agentsNoData')}</p>
+                ) : (
+                  <div className={css.agentTree} data-testid="billing-agent-tree">
+                    {(() => {
+                      const renderNode = (node: ReturnType<typeof buildAgentTree>[number]): React.ReactNode => (
+                        <div key={node.id} className={css.agentNode}>
+                          <div className={css.agentRow} style={{ paddingLeft: `${String(node.depth * 16)}px` }}>
+                            <span className={css.agentKind}>{node.depth === 0 ? t('agentsRoot') : t('agentsSubagent')}</span>
+                            <span className={css.agentTitle}>{node.title ?? `${t('sessionUntitled')} · ${node.id.slice(0, 8)}`}</span>
+                            <span className={css.agentCalls}>{node.calls.toLocaleString()}</span>
+                            <span className={css.agentCost}>{money(node.cost)}</span>
+                            {node.children.length > 0 && (
+                              <span className={clsx(css.ubTag, css.ubTagNeutral)} data-testid="billing-agent-chain">
+                                {t('agentsChainTotal')} {money(node.chainCost)}
+                              </span>
+                            )}
+                          </div>
+                          {node.children.map(renderNode)}
+                        </div>
+                      )
+                      return agentRoots.map(renderNode)
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
           {tab === 'settings' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-settings">
               {/* v1.5 设置页布局：左侧 180px 锚点 + 右侧分组 pane。5 组分类——预算 / 提醒 /
@@ -3454,6 +3540,11 @@ function BillingDashboard({
                     </div>
                   )}
                   <div className={css.ubTablewrap} data-testid="billing-sessions-table">
+                    {navNotice !== undefined && (
+                      <div className={css.staleNotice} data-testid="billing-session-nav-notice" role="note">
+                        {navNotice}
+                      </div>
+                    )}
                     <table className={css.ubTable}>
                       <thead>
                         <tr>
@@ -3494,9 +3585,22 @@ function BillingDashboard({
                                 <td>
                                   {/* 无标题会话可读化（issue #42）：短 id 前补「未命名会话」提示。 */}
                                   {/* 折叠箭头由 .sessionGroupRow .modelName::before 绘制（体积考量不放 span）。 */}
+                                  {/* 标题本身是跳转按钮：点标题打开宿主会话（跨插件导航）；
+                                      按钮 stopPropagation，箭头区仍走行内展开（互不抢事件）。 */}
                                   <span className={css.modelName}>
-                                    {row.title ?? `${t('sessionUntitled')} · ${row.id.slice(0, 8)}`}
-                                    {(row.mergedCount ?? 1) > 1 ? ` ×${row.mergedCount}` : ''}
+                                    <button
+                                      type="button"
+                                      className={css.sessionLink}
+                                      data-testid="billing-session-open"
+                                      title={t('sessionOpen')}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        openSessionRow(row.id)
+                                      }}
+                                    >
+                                      {row.title ?? `${t('sessionUntitled')} · ${row.id.slice(0, 8)}`}
+                                      {(row.mergedCount ?? 1) > 1 ? ` ×${row.mergedCount}` : ''}
+                                    </button>
                                   </span>
                                   {row.stale === true && (
                                     <span className={clsx(css.ubTag, css.ubTagNeutral)} data-testid="billing-session-stale">
@@ -3518,7 +3622,18 @@ function BillingDashboard({
                               {open && row.children?.map(child => (
                                 <tr key={child.id} className={css.sessionChildRow}>
                                   <td>
-                                    <span className={css.modelProvider}>{child.id.slice(0, 8)}</span>
+                                    <button
+                                      type="button"
+                                      className={css.sessionLink}
+                                      data-testid="billing-session-open"
+                                      title={t('sessionOpen')}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        openSessionRow(child.id)
+                                      }}
+                                    >
+                                      <span className={css.modelProvider}>{child.id.slice(0, 8)}</span>
+                                    </button>
                                   </td>
                                   {sessionNumCells(child)}
                                 </tr>
@@ -3920,7 +4035,7 @@ function PositionMenu({ liveCostPrefs, onLiveCostPrefs, t }: {
  * @param props - framework-provided sidebar and locale props.
  */
 export function UsageBilling(props: UsageBillingProps): React.ReactNode {
-  const { t: hostT, checkModels, publishCosts, registerOpen, renderSlot, useStore, actions } = props
+  const { t: hostT, checkModels, publishCosts, registerOpen, navigateToSession, renderSlot, useStore, actions } = props
   // Start empty; swap in real host data when the server serves valid JSON.
   const [stats, setStats] = useState<UsageStats>(EMPTY_STATS)
   const [health, setHealth] = useState<ModelHealth>(IDLE_HEALTH)
@@ -4437,6 +4552,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           stats={displayStats}
           t={t}
           onClose={close}
+          navigateToSession={navigateToSession}
           userPrices={userPrices}
           onUserPrices={updateUserPrices}
           health={health}
