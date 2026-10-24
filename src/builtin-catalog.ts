@@ -308,6 +308,8 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     price: { currency: 'CNY', input: 0.8, cacheHit: 0.16, output: 2.7 },
   },
   // 月之暗面 Kimi (OpenAI-compatible, 腾讯云 TokenHub 官方价 2026-08-14).
+  // K2 系列退役预告（官方定价页 2026-10-24）：2026-10-31 起 K2 系列不再向新注册
+  // 用户开放，计划 2026 年 12 月底下线全部 K2 系列——K2 条目保留用于历史回算。
   {
     key: 'kimi',
     name: 'Kimi K2.7 Code',
@@ -335,6 +337,25 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     provider: '月之暗面',
     colorVar: 'dsw-static-neutral-bluish-500',
     price: { currency: 'CNY', input: 20, cacheHit: 2, output: 100 },
+  },
+  // K3.1 系列首发（2026-10-24 发布）：官方中文定价页 platform.kimi.com —— 输入
+  // ¥13（未命中缓存）/ ¥1.3（命中）/ 输出 ¥68；高速版整体 2 倍（缓存命中价不变）。
+  // 缓存写入按 TTL 单独计费（5min = 输入价 / 1h = 2×输入价），与「写入按输入价」
+  // 的折算口径一致，无需单独建模。models.dev 的 moonshotai-cn 条目是美元价
+  // （折算后约差 6.7 倍），内置目录收录后实时价目表自动跳过本键，不会覆盖官方 CN 价。
+  {
+    key: 'kimi-k3.1-pro',
+    name: 'Kimi K3.1 Pro',
+    provider: '月之暗面',
+    colorVar: 'dsw-static-neutral-bluish-700',
+    price: { currency: 'CNY', input: 13, cacheHit: 1.3, output: 68 },
+  },
+  {
+    key: 'kimi-k3.1-pro-highspeed',
+    name: 'Kimi K3.1 Pro Highspeed',
+    provider: '月之暗面',
+    colorVar: 'dsw-static-neutral-bluish-600',
+    price: { currency: 'CNY', input: 26, cacheHit: 1.3, output: 136 },
   },
   // 小米 MiMo (OpenAI-compatible; token plan 通道 model id 为 mimo-v2.5，
   // 按订阅豁免计费；按量单价 2026-08 官方公布：命中缓存 / 未命中 / 输出).
@@ -2185,6 +2206,14 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   // 月之暗面 Kimi：coding plan 通道的 model id 是短名 k3。
   'k3': 'kimi-k3',
   'kimi-k3': 'kimi-k3',
+  // Kimi K3.1 系列（2026-10-24 发布）：按量通道用长名，Kimi Code 订阅通道用短名
+  // （k3.1-pro / k3.1-pro-highspeed / k3-256k），两种形态都归一化到同一目录键。
+  'kimi-k3.1-pro': 'kimi-k3.1-pro',
+  'kimi-k3.1-pro-highspeed': 'kimi-k3.1-pro-highspeed',
+  'k3.1-pro': 'kimi-k3.1-pro',
+  'k3.1-pro-highspeed': 'kimi-k3.1-pro-highspeed',
+  // K3-256K：Kimi Code 通道的 K3 上下文档（同模型，订阅通道计 0 费）。
+  'k3-256k': 'kimi-k3',
   // Kimi K2.8 Preview：会员侧预览模型，日志里的 id 形态因通道而异，统一归一化。
   'kimi-k2.8-preview': 'kimi-k2.8-preview',
   'kimi-k2.8': 'kimi-k2.8-preview',

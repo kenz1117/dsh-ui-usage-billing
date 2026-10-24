@@ -40,7 +40,7 @@ Most billing plugins stop at "token count × unit price". dsh-ui-usage-billing t
 Usage is aggregated live from persisted session logs — never fabricated (an empty snapshot shows until real data arrives); daily official-balance deltas are cross-checked against the local ledger, and deviations beyond the threshold prompt a review — a bill that survives scrutiny.
 
 ### Live prices, history never rewritten
-A live models.dev catalog + a built-in catalog of 239 models across 25 vendors + user-defined prices in the settings panel (bindable per relay origin) mean new models never wait for a release; DeepSeek time-of-day prices are **segmented by official change boundaries** (base price before 08-17, weekend peak hours 08-17~08-23, weekend all-day off-peak from 08-23) and later price changes never rewrite old bills.
+A live models.dev catalog + a built-in catalog of 241 models across 25 vendors + user-defined prices in the settings panel (bindable per relay origin) mean new models never wait for a release; DeepSeek time-of-day prices are **segmented by official change boundaries** (base price before 08-17, weekend peak hours 08-17~08-23, weekend all-day off-peak from 08-23) and later price changes never rewrite old bills.
 
 ### Peak/off-peak aware, alerts follow the model
 The billing channel is detected from the current session's model: DeepSeek metered uses time-of-day prices (weekday 9-12 / 14-18 peak ×2, weekend all-day off-peak), Zhipu Coding Plan uses credit windows (weekday 14-18 peak at full rate, off-peak at **50% of base credits**) — the channel layer is extensible for more providers; a popover / system notification fires automatically before each switch, and only sessions whose current model actually involves peak/off-peak get alerted or show the tier section — no watching the clock.
@@ -184,9 +184,11 @@ cost (CNY) = (missInput × p_input + cacheHit × p_cacheHit + output × p_output
 
 `input` in the stats is total input (cacheHit + cacheMiss); estimation splits it into hit / miss to avoid double counting. Models with two-band billing are mixed by `DEFAULT_PEAK_SHARE` (default 0.5); weekends (Beijing Sat/Sun) are charged at the off-peak rate all day.
 
-### Supported models (2026-10 lineup, OpenAI-compatible series, 239 models)
+**Month-to-date forecast**: month-to-date spend + last-7-calendar-day pace × the days still left in the month. Only the days that have not happened yet are extrapolated, so a quiet recent week never inflates the number — earlier versions averaged over the month's *recorded* days and multiplied by the whole month length, which inflated sparsely used months several times over.
 
-The full catalog lives in the Rates tab and in `BUILTIN_MODEL_CATALOG` of `src/builtin-catalog.ts` (238 active + 1 retired model kept for historical repricing); representative models per vendor below.
+### Supported models (2026-10 lineup, OpenAI-compatible series, 241 models)
+
+The full catalog lives in the Rates tab and in `BUILTIN_MODEL_CATALOG` of `src/builtin-catalog.ts` (240 active + 1 retired model kept for historical repricing); representative models per vendor below.
 
 | Provider  | Representatives                                        |
 | -------- | -------------------------------------------- |
@@ -194,7 +196,7 @@ The full catalog lives in the Rates tab and in `BUILTIN_MODEL_CATALOG` of `src/b
 | Zhipu AI  | GLM-5.3, GLM-5.2 (17 models)                     |
 | Aliyun    | Qwen3.8 Max, Qwen3-Coder 480B (27 models)        |
 | Doubao    | Doubao Seed-2.1 Pro, Doubao Seed-2.0 Pro (13 models) |
-| Moonshot  | Kimi K3, Kimi K2.7 Code (16 models)              |
+| Moonshot  | Kimi K3.1 Pro, Kimi K3.1 Pro Highspeed, Kimi K3, Kimi K2.7 Code (18 models) |
 | Xiaomi    | MiMo V2.6 Pro (6 models)                         |
 | MiniMax   | MiniMax-M3, MiniMax-M2.7 (8 models)              |
 | Unisound  | U2 Flash, Unisound U2 (3 models)                 |
@@ -232,7 +234,7 @@ The public HTTP endpoints and field definitions are documented in source: `GET /
 | `statsPath`             | unset                                   | Absolute path to a fallback `.dsh-usage-stats.json` (used when `sessionPersistence` is unavailable)                    |
 | `ledgerPath`            | `<harness home>/.dsh-usage-ledger.json` | Independent durable ledger path; stores folded metrics only (no message bodies or session titles), so deletion does not erase recorded usage. The default root follows the host harness home (`DSH_HOME` env first, falling back to `~/.dsh`), so isolated environments never share ledger data (issue #52) |
 | `balanceApiKeyEnv`      | `DEEPSEEK_API_KEY`                      | Credential ref for the DeepSeek balance query; only used as a fallback when llm-pi-ai has no `apiKeyEnv` for deepseek |
-| `subscriptionProviders` | built-in channel list (incl. `tencent-token-plan`) | Subscription (coding / token plan) provider id list — tokens counted, cost 0; aligned with the subscription-card recognition      |
+| `subscriptionProviders` | built-in channel list (incl. `tencent-token-plan`) | Subscription (coding / token plan) provider id list — tokens counted, cost 0; aligned with the subscription-card recognition. Note it **replaces** the built-in list rather than appending to it — when customizing, list the built-in entries too, otherwise removed subscription channels fall back to pay-as-you-go |
 | `routeAliases`          | not set                                | Historical route aliases (old provider route name -> current route): renamed/deleted routes relocate into their channel instead of the "unknown" bucket. Example: `{ "deepseek-official": "tencent" }` |
 | `modelKeyAliases`       | not set                                | User model aliases (log model id -> billing catalog key, value must be an existing `MODEL_CATALOG` key): bind uncatalogued ids without waiting for a release. Example: `{ "hy4-preview": "hunyuan" }` |
 | `monthlyBudget`         | unset                                   | Default monthly budget (CNY); sent with usage-stats as the budget bar's initial amount (user UI settings take precedence and persist locally) |

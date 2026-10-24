@@ -7,6 +7,7 @@ export type UsageBillingKey =
   | 'monthCost'
   | 'yearCost'
   | 'monthProjected'
+  | 'monthProjectedHint'
   | 'liveTurn'
   | 'liveSession'
   | 'liveSessionSub'
@@ -390,6 +391,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'monthCost': '本月费用',
   'yearCost': '本年费用',
   'monthProjected': '本月预计',
+  'monthProjectedHint': '本月已发生 + 近 7 天节奏 × 剩余天数',
   'liveTurn': '本轮',
   'liveSession': '会话',
   'liveSessionSub': '含子 {cost}',
@@ -773,6 +775,7 @@ export const en: Record<UsageBillingKey, string> = {
   'monthCost': 'This month',
   'yearCost': 'This year',
   'monthProjected': 'Projected',
+  'monthProjectedHint': 'Month-to-date + last-7-day pace × days left',
   'liveTurn': 'Turn',
   'liveSession': 'Session',
   'liveSessionSub': 'incl. sub {cost}',

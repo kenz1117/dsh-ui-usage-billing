@@ -2000,7 +2000,7 @@ function BillingDashboard({
                     </span>
                   </div>
                   {monthCostProjected > 0 && (
-                    <div className={css.heroSideItem}>
+                    <div className={css.heroSideItem} title={t('monthProjectedHint')}>
                       <span className={css.heroSideLabel}>
                         {t('monthProjected')}
                       </span>
