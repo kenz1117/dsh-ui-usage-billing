@@ -9,7 +9,7 @@
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/kenz1117/dsh-ui-usage-billing?logo=github"></a>
   <a href="https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing"><img alt="npm version" src="https://img.shields.io/npm/v/@kenz1117/dsh-ui-usage-billing?logo=npm"></a>
   <a href="https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@kenz1117/dsh-ui-usage-billing?logo=npm"></a>
-  <a href="https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/COMPATIBILITY.md"><img alt="DSH 兼容" src="https://img.shields.io/badge/DSH-0.1.2_%7E_0.2.1--rc.2_%7C_0.1.0--rc.8%2B-blue"></a>
+  <a href="https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/COMPATIBILITY.md"><img alt="DSH 兼容" src="https://img.shields.io/badge/DSH-0.1.2_%7E_0.2.1--rc.3_%7C_0.1.0--rc.8%2B-blue"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/LICENSE"><img alt="License MIT" src="https://img.shields.io/github/license/kenz1117/dsh-ui-usage-billing"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/pulls"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing"><img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/kenz1117/dsh-ui-usage-billing?logo=github"></a>
@@ -25,10 +25,12 @@
 ---
 
 <div align="center">
-  <img src="screenshots/demo.png" alt="dsh-ui-usage-billing — 计费仪表盘总览" width="80%">
+  <img src="screenshots/overview.png" alt="dsh-ui-usage-billing — 计费仪表盘总览" width="80%">
 </div>
 
 ### 演示动图
+
+新版仪表盘八个分区逐个切换（概览 / 账单 / 用量 / 趋势 / 上下文 / 智能体 / 费率 / 设置）：
 
 ![演示](screenshots/demo.gif)
 
@@ -64,15 +66,22 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 ## 📊 仪表盘
 
 - **侧边栏触发卡**：设置按钮上方常驻单值主数字（今日 / 本周 / 本月统计范围在设置里选，可选涨跌徽章），配近 7 天 sparkline 迷你趋势与当日水位仪表指针；折叠栏自动切为图标钮，悬停浮现速览卡（更新时间 + 指标网格 + 主力消耗 / 额度提醒）。
+
+  ![侧边栏触发卡：今日消耗金额、涨跌徽章与迷你趋势](screenshots/sidebar.png)
+
 - **八区仪表盘**：概览 / 账单 / 用量 / 趋势 / 上下文 / 智能体 / 费率 / 设置——Hero 大数字 + 环比 + 本月预计 + KPI（悬停显示口径说明）+ 用量热力图，趋势 7/30 天可切费用 / Token，模型单价表、预算（全局 + 按模型）与峰谷提醒都在；设置页支持全文搜索（中英关键词过滤分区，全不命中显示空态）；克制冷调、深浅主题自适应。Tab 只保留名称，不再挂状态徽标（信息都在各自分区里）。
 - **上下文分区**：占用率进度条 + 下一次 / 最近一次请求占用 + 窗口上限 + 构成拆解（系统 / 工具 / 消息）。数据取自宿主官方 context 投影；**没有投影的会话整块不显示**，不拿 0 冒充。
 - **智能体分区**：按委派关系还原的智能体网络——父对话 → 子智能体的层级树，每行给调用数、自身费用与**链合计**（自身 + 全部后代），直接回答「哪次委派最贵」。
 
-  ![概览：本月费用 Hero、预算进度、KPI 与用量热力图](screenshots/1.png)
+  ![概览：本月费用 Hero、本年 / 今日 / 本月预计、KPI 与用量热力图](screenshots/overview.png)
+  ![上下文：占用率、窗口上限与系统 / 工具 / 消息构成拆解](screenshots/context.png)
+  ![智能体：父对话 → 子智能体的委派树与链合计](screenshots/agents.png)
 - **即时代费用条**：常驻「本轮 / 会话」费用，位置三档可选（输入框内部工具行 / 上方 / 下方，默认工具行）；峰谷档位与切换倒计时只在当前模型涉及峰谷时出现；订阅额度预警 chips 剩余 ≤20% 浮现、≤10% 标红；可在设置 Tab 整条隐藏（偏好本地持久化，统计与提醒不受影响）。
 - **峰 / 谷切换提醒**：切档前弹窗 + 可选系统通知，提前量 / 位置 / 模式 / 预览均可配；文案按计费通道区分（DeepSeek 价格减半、智谱积分 5 折）。
 - **会话完成提醒**：会话 running → completed 时弹系统通知（默认关闭，面板设置开启）；多窗口 / 多实例按认领端点去重，同一会话只提醒一次。
 - **插件信息卡**：设置 Tab 常驻「关于」卡——版本号服务端读自包 `package.json`（单一来源，发布自动正确），作者 / 仓库 / npm / 许可证一键可达。
+
+  ![设置：显示偏好、本月预算、峰谷提醒、注入用量查询、自定义单价与插件信息卡](screenshots/settings.png)
 
 ## 💰 计费引擎
 
@@ -80,8 +89,8 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 - **实时费率表**：models.dev 抓价 + 探活模型对标，系统实际配置的模型全纳入；峰谷分时（工作日 9-12 / 14-18 高峰 ×2、周末全天低谷，历史费用按官方变更节点分段，见下方「计费细节」）+ 实时汇率（USD→CNY），每 6 小时自动刷新；费率条显示「上次同步」时间并可**一键立即同步**（无需重启宿主）。
 - **自定义单价**：设置面板为未收录或变价模型填实付价（未命中 / 缓存命中 / 输出，可选 USD 与低谷价），总览与日趋势按用户价重估；支持按中转站来源绑定同模型不同价，目录外模型填价即生效。
 
-  ![费率：模型单价表（峰谷分时与实时汇率）](screenshots/5.png)
-- **官方 vs 三方分桶**：明细费用列按官方直连 / 第三方中转分解（混合时「官 x / 三 y」），统计 Tab 有汇总卡；联网搜索辅助请求计入官方。
+  ![费率：模型单价表（峰谷分时与实时汇率）](screenshots/pricing.png)
+- **官方 vs 三方分桶**：账单 Tab 的模型明细费用列按官方直连 / 第三方中转分解（混合时「官 x / 三 y」）；联网搜索辅助请求计入官方。
 - **月度预算 + 分档提醒**：预算条 ≥80% 琥珀、超支红脉；跨 50 / 80 / 100% 各提醒一次；余额折算 CNY 低于阈值每天提醒一次。**按模型预算**：为本月消耗 Top 模型逐个设人民币上限（与全局预算相互独立），单模型跨 80% / 100% 各提醒一次。
 - **成本突增归因**：最近 40 轮费用柱状图，金额贴柱顶、峰谷背景分带、超 2 倍红标归因。
 
@@ -93,20 +102,23 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 - **声明端点 + 余额对账**：内置表没有的供应商用 `declaredEndpoints` 自声明余额接口——只写「数字在哪里」的点路径、无表达式；安全边界（单斜杠绝对路径、仅 GET、拒跨源重定向、响应体 / 超时上限、凭据只取本 provider）由 `src/declarative.ts` 强制执行，取错路径在界面标 `declared` 与 reason。**余额差对账**（`reconcilePath`）用官方余额当日变动与本地账本交叉校验，偏差超阈值（0.3 元且 >15%）提示核对；充值 / 授信 / 币种变化重置基准而非告警，余额未减少（走订阅扣费）静默。
 - **中转站归组与额度**：按 `baseURL` 归一化 origin 归组，同站多把 key 合并一行、站名即域名；自动识别 New API 系（`/api/status`）与 Sub2API（`/v1/usage`）的余额与滚动额度窗口，读不出标「未读出额度」、剩余 <20% 标红；识别结果 5 分钟指纹缓存（同站多 key 独立熔断），`relay-quotas` 端点附 `diagnostics` 供「为什么不显示」自查；项目归属优先用工作区标题命名。
 
-  ![明细：厂商计费与订阅（余额、套餐额度、模型用量）](screenshots/3.png)
+  ![账单：提供商计费与订阅（余额、套餐额度、模型用量）与会话明细](screenshots/billing.png)
 
 > 全部渠道的适配矩阵（识别方式 / 端点 / 凭据要求 / 排查顺序）见 [docs/adapters.md](docs/adapters.md)。
 
 ## 📈 用量可视化
 
-- **会话明细 + 热力图**：按会话费用倒序（标题 / 项目 / 调用 / 费用 / 最后活跃）；「查看全部 N 个会话」打开全屏浮层（按标题 / 项目 / id 子串搜索，封顶 100 行）；月 / 半年 / 年三档日历热力图（5 档色阶、悬停明细，年视图近 52 周 GitHub 风格，**半年视图 26 周大格**——一张图看完近半年强度，截图即用），**费用 / Token 双口径**切换，头部显示区间合计、活跃天数 / 连续使用天数。
-- **性能指标**：每模型 TTFT 均值 / P50 / P90、生成速度（tokens/s）、总延迟均值；按小时 × 模型对比曲线——指标 tab 切换、模型 chip 点击开关曲线（默认点亮样本数前 5）、悬停吸附最近小时显示十字线与逐模型数值，缺失样本小时断线不造假；视图偏好本地持久化。
-- **Token 统计洞察**：每日 token 堆叠双视角——「按结构」（输入未命中 / 命中 / 输出三桶，含 reasoning）与「按模型」（旧快照缺明细时自动隐藏切换）；悬停显示当日精确明细（千分位不缩写），点击图例色块或 Token 表行聚焦单模型（再点解除）；结构 KPI（缓存命中率 / 思考占比 / 输入输出比 / 峰值日）；按日 CSV 与 JSON 导出（JSON 含按日 × 模型明细）。
+- **会话明细（账单 Tab）**：按会话费用倒序（标题 / 项目 / 调用 / 实际费用 / 最后活跃），「查看全部 N 个会话」打开全屏浮层（按标题 / 项目 / id 子串搜索，封顶 100 行）；**点会话标题直接打开宿主对话**（宿主不支持时给出可读提示，不静默无反应）。
+- **用量热力图（概览 Tab）**：月 / 半年 / 年三档日历热力图（5 档色阶、悬停明细，年视图近 52 周 GitHub 风格，**半年视图 26 周大格**——一张图看完近半年强度，截图即用），**费用 / Token 双口径**切换，头部显示区间合计、活跃天数 / 连续使用天数。
+- **Token 统计洞察（用量 Tab）**：每日 token 堆叠双视角——「按结构」（输入未命中 / 命中 / 输出三桶，含 reasoning）与「按模型」（旧快照缺明细时自动隐藏切换）；悬停显示当日精确明细（千分位不缩写），点击图例色块或 Token 表行聚焦单模型（再点解除）；模型 Token 表给出输入 / 输出 / 思考 / 缓存命中率 / 占比 / 调用数。
+- **工具调用排行（用量 Tab）**：按工具计次的调用结构（token 无法按工具归因，只给次数与占比），看清 agent 循环里哪些工具在刷量。
+- **费用构成（用量 Tab）**：输出成本按实测计价、输入成本按 user / tool 消息文本长度占比摊分（日志无角色级 token 实测，界面标注估算口径）。
+- **性能指标（用量 Tab）**：每模型 TTFT 均值 / P50 / P90、生成速度（tokens/s）、总延迟均值；按小时 × 模型对比曲线——指标 tab 切换、模型 chip 点击开关曲线（默认点亮样本数前 5）、悬停吸附最近小时显示十字线与逐模型数值，缺失样本小时断线不造假；视图偏好本地持久化。
+- **趋势（趋势 Tab）**：每日费用与调用趋势（7 / 30 天可切，费用 / Token 双口径）、最近 40 轮费用柱状图（金额贴柱顶、超 2 倍红标归因）、峰谷时段占比与低谷省下的金额。
 
-  ![趋势：每日费用趋势、每轮费用与峰谷时段占比](screenshots/2.png)
-- **数据导出 + 下钻**：统计 Tab 导出按日 / 按会话 / 按站点 CSV 与全量 JSON；费用构成 / 工作区 / 会话明细可下钻（点项目行展开该项目的会话）；无图表库、无外部 CDN、纯设计令牌。
-
-  ![统计：导出、费用构成、工作区与会话明细](screenshots/4.png)
+  ![趋势：每日费用趋势、每轮费用与峰谷时段占比](screenshots/trends.png)
+  ![用量：每日 Token、模型 Token、工具排行与费用构成](screenshots/usage.png)
+- **数据导出 + 下钻**：账单 Tab 导出按日 / 按会话 / 按站点 CSV 与全量 JSON，用量 Tab 导出按日 Token CSV；会话明细可下钻（点项目行展开该项目的会话）；无图表库、无外部 CDN、纯设计令牌。
 
 ## 🛡️ 健壮性与隐私
 
@@ -122,7 +134,7 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 
 先确认宿主代际（`dsh --version`），再按代际选安装命令——**装错线会在市场侧被 `engines.dsh` 声明拦截**（v1.0.41 起声明生效）。注意 `dsh plugin add` 需要显式 `--profile`（缺省会报 `required option '--profile <name>' not specified`），且建议**钉具体版本号**而非 `@latest`（pnpm 的 `minimumReleaseAge` 冷静期会让刚发布的版本被跳过、回退到旧线）：
 
-- **DSH 0.1.2 ~ 0.2.0 系**（0.1.2-alpha.1 起，现行 latest 为 0.2.0-rc.2；`npm ls -g @deepseek-ai/dsh` 显示 0.1.2-* ~ 0.2.0-*）：
+- **DSH 0.1.2 ~ 0.2.1 系**（0.1.2-alpha.1 起，宿主 `latest` 现为 0.2.1-rc.2、预览线已到 0.2.1-rc.3；`npm ls -g @deepseek-ai/dsh` 显示 0.1.2-* ~ 0.2.1-*）：
 
   ```sh
   dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@latest
@@ -283,7 +295,7 @@ npm dist-tag add @kenz1117/dsh-ui-usage-billing@<版本> alpha
 
 - **权限等级：high**：读取持久会话日志（文件）、访问多厂商官方 / 订阅 / 余额 / 定价 API（网络）、经凭据 seam 读取 `apiKeyEnv`（凭据）、写入 harness home（`DSH_HOME` / `~/.dsh`）下的账本与快照（持久状态）；**不含**命令执行 / Shell。
 - **更新通道：`user-reviewed`**：本插件具备文件 / 网络 / 凭据能力，DSH STORE 采用每次安装需本机人工确认的通道；安装前请复核仓库、固定 Commit、生命周期脚本与影响范围。
-- **兼容范围**：预览线（npm `latest`/`alpha`，1.6.x，自 v1.2.0 起恒高于稳定线以消除版本号倒挂）适配 DSH `0.1.2-alpha.1` ~ `0.2.1-rc.2`（宿主 `latest` 现指向 0.2.0-rc.2、预览线最新为 0.2.1-rc.2；0.2.1 全系列逐版本声明）；稳定线（npm `stable`，1.1.x，**已冻结**，终版 v1.1.17）适配旧宿主 `0.1.0-rc.8` ~ `0.1.1-rc.2`。逐版本声明见 `package.json` 的 `dsh.compatibility`，双线对照与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。Node.js `^22.19.0 || >=24.0.0`。
+- **兼容范围**：预览线（npm `latest`/`alpha`，1.7.x，自 v1.2.0 起恒高于稳定线以消除版本号倒挂）适配 DSH `0.1.2-alpha.1` ~ `0.2.1-rc.3`（宿主 `latest` 现指向 0.2.1-rc.2、预览线已到 0.2.1-rc.3；0.2.1 全系列逐版本声明）；稳定线（npm `stable`，1.1.x，**已冻结**，终版 v1.1.17）适配旧宿主 `0.1.0-rc.8` ~ `0.1.1-rc.2`。逐版本声明见 `package.json` 的 `dsh.compatibility`，双线对照与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。Node.js `^22.19.0 || >=24.0.0`。
 - **生命周期**：无 `preinstall` / `install` / `postinstall` / `prepare`（安装即用）。
 - **不冒用官方**：仅新增自有 entry id `ui-usage-billing`；对 `@deepseek-ai/dsh-*` 仅为 `peerDependencies` 依赖（不重复安装 / 不替换 / 不遮蔽官方组件），包名使用第三方命名空间 `@kenz1117/*`。
 - **打包产物**：运行文件 `lib/*` 与 `cordis.patch.yml` 已随固定 Commit 提交并声明在 `files`。
@@ -306,7 +318,7 @@ npm dist-tag add @kenz1117/dsh-ui-usage-billing@<版本> alpha
 - **余额查询已接入 DeepSeek / 月之暗面（Kimi）/ 阶跃星辰（StepFun）/ 硅基流动 / xAI / 智谱 GLM（Z.ai 国内域）/ 腾讯云 TokenHub（Token Plan 余量）**：前六家用标准 Bearer API key，腾讯云用云 API 密钥对（TC3 签名）。其余厂商因无公开余额接口或需非 Bearer 鉴权（小米 MiMo 走控制台 Cookie、商汤走 AccessKey 签名、MiniMax/字节豆包走额度制或 AK/SK），暂显示「未配置」；扩展点在 `src/balance.ts`（按厂商余额 API 增加查询器）。
 - **中转站额度依赖上游私有 schema**：New API / Sub2API 的接口字段未公开，读不出时标「未读出额度」而非臆造金额；若某中转站响应字段不同，需按 `src/relay.ts` 的解析器扩展。未知路由表示该路由在当前 provider 配置与宿主 llm 注册表里都不存在（配置已删、日志比安装更早等），历史调用数据未丢，重新配置同名路由即可自动归位。未知路由桶的费用一律记 0（issue #82）：支出主体无法核实，与未收录模型、订阅通道同姿态——token 照常统计，面板组头费用显示「—」并附说明。由独立插件经 `ctx.llm.registerAdapter` 注册的通道（如 CommandCode）不属于未知路由：插件从宿主 llm 注册表发现它们，按 `direct:<provider>` 桶以模型官方目录价计费（issue #91）；注册表读取走 `ctx.get('llm')`（免 `inject` 声明），读不到/读到空集合时告警一次（面板数字不变，unknown 口径不变），避免这类失效无声无息。
 - **超支通知依赖浏览器 Notification**：权限被拒绝或平台不支持时只有界面红色脉冲兜底，没有宿主级通知通道；通知上限为每天一次。
-- **会话明细不可跳转**：点击会话行不会打开对应会话（跨插件导航需要宿主会话选择通道）；面板默认只显示前 20 行，「查看全部」全屏浮层封顶 100 行。
+- **会话行跳转依赖宿主通道**：面板里的会话标题点一下即可打开宿主对话（双代会话选择通道自动探测）；宿主过旧、或会话已被删除 / 不在当前会话列表时，界面给出可读提示而不是静默无反应。面板默认只显示前 20 行，「查看全部」全屏浮层封顶 100 行。
 - **费用为目录价估算**：讯飞 / 商汤 / 小米等未公布按量单价的模型使用估算价（特性表脚注 ¹），正式定价以厂商账单为准。
 - **账本从首次成功聚合开始生效**：升级前已经永久删除且不在旧快照中的会话无法恢复；手动删除 `.dsh-usage-ledger.json` 及其 `.bak` 会清空独立保留的历史。账本只保留本插件已经成功观测过的调用。
 - **历史回放预热**：插件加载 3 秒后台自动全量折叠宿主全部历史会话日志（账本幂等，重复折叠不重复计数），首次打开面板即可看到完整历史统计，无需等一遍首次折叠。历史会话按「首次折叠时的模型单价」计价；厂商改价前的历史消耗不会按新价重算（价格目录无历史时点价，属估算口径）。

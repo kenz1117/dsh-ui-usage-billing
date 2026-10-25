@@ -9,7 +9,7 @@
   <a href="https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing"><img alt="npm version" src="https://img.shields.io/npm/v/@kenz1117/dsh-ui-usage-billing?logo=npm"></a>
   <a href="https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@kenz1117/dsh-ui-usage-billing?logo=npm"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/kenz1117/dsh-ui-usage-billing/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/COMPATIBILITY.md"><img alt="DSH compat" src="https://img.shields.io/badge/DSH-0.1.2_%7E_0.2.1--rc.2_%7C_0.1.0--rc.8%2B-blue"></a>
+  <a href="https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/COMPATIBILITY.md"><img alt="DSH compat" src="https://img.shields.io/badge/DSH-0.1.2_%7E_0.2.1--rc.3_%7C_0.1.0--rc.8%2B-blue"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/LICENSE"><img alt="License MIT" src="https://img.shields.io/github/license/kenz1117/dsh-ui-usage-billing"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/pulls"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing"><img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/kenz1117/dsh-ui-usage-billing?logo=github"></a>
@@ -25,10 +25,12 @@
 ---
 
 <div align="center">
-  <img src="screenshots/demo.png" alt="dsh-ui-usage-billing — billing dashboard overview" width="80%">
+  <img src="screenshots/overview.png" alt="dsh-ui-usage-billing — billing dashboard overview" width="80%">
 </div>
 
 ### Demo GIF
+
+The eight dashboard tabs in turn (Overview / Billing / Usage / Trends / Context / Agents / Rates / Settings):
 
 ![Demo](screenshots/demo.gif)
 
@@ -63,24 +65,31 @@ The billing channel is detected from the current session's model: DeepSeek meter
 ## 📊 Dashboard
 
 - **Sidebar trigger card**: persistent above the Settings button — a single headline figure (today / this week / this month, selectable in settings, optional day-over-day badge) with a 7-day sparkline mini-trend and a today-vs-average gauge needle; collapses to an icon button; hover reveals a quick-look card (updated-at + metric grid + top spenders / quota alerts).
+
+  ![Sidebar trigger card: today's spend, delta badge and mini-trend](screenshots/sidebar.png)
+
 - **Eight-tab dashboard**: Overview / Billing / Usage / Trends / Context / Agents / Rates / Settings — hero figures + comparisons + month projection + KPIs (hover for the metric definition) + usage heatmap, trends switchable between cost and tokens over 7/30 days, model price table, budgets (global + per model) and peak/off-peak alerts all live here; the settings page supports full-text search (zh/en keywords, empty state when nothing matches); tabs carry names only — no status badges.
 - **Context section**: an occupancy bar plus next-request / last-request occupancy, window capacity and the composition split (system / tools / messages). The figures come from the host's official context projections; a session without one hides the whole section rather than showing a fabricated 0.
 - **Agents section**: the agent network rebuilt from delegation relations — a parent conversation → sub-agent tree where each row carries its call count, own cost and **chain total** (itself + all descendants), which directly answers "which delegation was the most expensive".
 
-  ![Overview: month cost hero, budget progress, KPIs and usage heatmap](screenshots/1.png)
+  ![Overview: month cost hero, year/today/month projection, KPIs and usage heatmap](screenshots/overview.png)
+  ![Context: occupancy, window capacity and the system / tools / messages split](screenshots/context.png)
+  ![Agents: parent conversation → sub-agent delegation tree with chain totals](screenshots/agents.png)
 - **Live cost bar**: persistent "this turn / session" cost with three positions (composer toolbar row / above / below, toolbar by default); the peak/off-peak tier & countdown section appears only when the current model involves peak/off-peak pricing; subscription low-quota chips appear at ≤20% remaining, red at ≤10%; hideable via the settings-tab toggle (display-only preference persisted locally; stats and alerts unaffected).
 - **Peak/off-peak switch alert**: a popover plus an optional system notification before a switch; lead time / position / mode / preview configurable; copy differs by billing channel (DeepSeek price halves, Zhipu credits at 50%).
 - **Session completion notification**: an optional system notification when a session transitions running → completed (off by default, enable it in the panel); multi-window / multi-instance dedup through the claim endpoint, so each session notifies once.
 - **Plugin info card**: a persistent "About" card in the Settings tab — version read server-side from the package's `package.json` (single source of truth, correct on publish), author / repo / npm / license one click away.
+
+  ![Settings: display preferences, monthly budget, peak alerts, usage-query injection, custom prices and the plugin info card](screenshots/settings.png)
 
 ## 💰 Billing engine
 
 - **Provider-first grouping**: usage is grouped by the llm entry the calls actually went through (channel) — Tencent Cloud TokenHub / Token Plan / DeepSeek official / direct:<route> / unknown routes; the model brand stays as a row logo + sub-line. Official judgement follows the channel origin (`api.deepseek.com`) instead of the route name, so gateway routes named `deepseek-*` no longer count as official. `routeAliases` relocates renamed/deleted historical routes; `modelKeyAliases` binds uncatalogued model ids to catalog keys (date suffixes, org prefixes and the TokenHub short id `hy3` are recognized out of the box).
 - **Live rate table**: models.dev fetched pricing + live-model alignment — all configured models included; peak/off-peak split (weekdays 9-12 / 14-18 peak ×2, weekends off-peak all day; history priced per official change boundaries, see "Billing details") + a live USD→CNY rate, auto-refreshed every 6 hours; the rate strip shows the last sync time with a **one-click "Sync now"** button (no host restart needed).
 
-  ![Rates: model rate table (peak/off-peak split and live rate)](screenshots/5.png)
+  ![Rates: model rate table (peak/off-peak split and live rate)](screenshots/pricing.png)
 - **Custom unit prices**: set real paid prices (miss / cache-hit / output, optional USD and off-peak columns) for uncatalogued or repriced models; bindable per relay origin; an out-of-catalog model is priced as soon as you fill it in.
-- **Official vs third-party buckets**: the detail cost column splits official direct / third-party relay ("official x / third y" when mixed); the Stats tab has a summary card; web-search assist calls count as official.
+- **Official vs third-party buckets**: the model cost column in the Billing tab splits official direct / third-party relay ("official x / third y" when mixed); web-search assist calls count as official.
 - **Monthly budget + tier alerts**: budget bar ≥80% amber, over-budget red pulse; one alert per 50/80/100% crossing; a balance below the CNY threshold alerts once a day. **Per-model budgets**: set a CNY cap per top-spending model of the month (independent of the global budget), with one alert per model per 80% / 100% crossing.
 - **Cost-spike attribution**: last-40-turn cost bars, amount at bar top, peak/off-peak background bands, >2× spikes flagged with attribution.
 
@@ -92,20 +101,23 @@ The billing channel is detected from the current session's model: DeepSeek meter
 - **Declared endpoints + balance reconcile**: `declaredEndpoints` self-declares balance/quota interfaces for vendors absent from the built-in table — dot-paths only ("where the number is"), no expressions; safety bounds (single-slash absolute path, GET only, no cross-origin redirects, response-size/timeout caps, credentials from the matched provider only) are enforced by `src/declarative.ts`; a wrong path is marked `declared` with a reason. **Balance reconcile** (`reconcilePath`) cross-checks the official balance change against the local ledger, flagging drift above the threshold (0.3 CNY and >15%); top-ups / grants / currency changes reset the baseline instead of alerting, and a flat balance (subscription spend) stays silent.
 - **Relay-site attribution & quota**: usage is grouped by `baseURL` origin — multiple keys on one relay merge into a row named by its domain; New API (`/api/status`) and Sub2API (`/v1/usage`) are auto-detected for balance and rolling quota windows, labeled "no quota" when unreadable, <20% remaining in red; recognition caches for 5 minutes (per-key fuse-breaking), and the `relay-quotas` endpoint attaches `diagnostics` for "why is my relay not showing"; project attribution prefers the workspace title.
 
-  ![Providers: provider billing & subscriptions (balance, plan quota, model usage)](screenshots/3.png)
+  ![Billing: provider billing & subscriptions (balance, plan quota, model usage) and session detail](screenshots/billing.png)
 
 > For the full adapter matrix per channel (detection / endpoints / credentials / troubleshooting), see [docs/adapters.md](docs/adapters.md).
 
 ## 📈 Usage visualizations
 
-- **Session detail + heatmap**: sessions sorted by cost (title / project / calls / cost / last active); "view all N sessions" opens a full-screen viewer (substring search by title / project / id, capped at 100 rows); month / half-year / year calendar heatmap (5-color scale, hover detail; the year view is ~52 weeks, GitHub-style, and the **half-year view uses 26 weeks of large cells** — half a year of intensity in one screenshot-ready chart) with a **cost / tokens metric switch**; total, active-day and streak counts on top.
-- **Performance metrics**: per-model TTFT mean / P50 / P90, generation speed (tokens/s), total-latency mean; per-hour × per-model comparison curves — metric tabs, clickable model chips (top-5 by samples lit by default), hover snapping to the nearest hour with a crosshair and per-model values, broken lines for missing-sample hours (never fabricated); view preferences persist locally.
-- **Token insights**: the daily token chart switches between two views — "Structure" (cache-miss / cache-hit / output, including reasoning) and "By model" (the toggle hides itself when snapshots lack per-day-per-model detail); hover shows the day's exact breakdown (thousand-separated); clicking a legend swatch or a model-table row focuses that model (click again to release); structural KPIs (cache-hit rate / reasoning share / input-output ratio / peak day); per-day CSV and JSON export (JSON includes per-day-per-model detail).
+- **Session detail (Billing tab)**: sessions sorted by cost (title / project / calls / actual cost / last active); "view all N sessions" opens a full-screen viewer (substring search by title / project / id, capped at 100 rows); **clicking a session title opens that conversation in the host** (hosts without a session-selection channel show a readable notice instead of silently doing nothing).
+- **Usage heatmap (Overview tab)**: month / half-year / year calendar heatmap (5-color scale, hover detail; the year view is ~52 weeks, GitHub-style, and the **half-year view uses 26 weeks of large cells** — half a year of intensity in one screenshot-ready chart) with a **cost / tokens metric switch**; total, active-day and streak counts on top.
+- **Token insights (Usage tab)**: the daily token chart switches between two views — "Structure" (cache-miss / cache-hit / output, including reasoning) and "By model" (the toggle hides itself when snapshots lack per-day-per-model detail); hover shows the day's exact breakdown (thousand-separated); clicking a legend swatch or a model-table row focuses that model (click again to release); the model table breaks down input / output / reasoning / cache-hit rate / share / calls.
+- **Tool-call ranking (Usage tab)**: call counts per tool (tokens cannot be attributed per tool, so only counts and shares), showing which tools dominate an agent loop.
+- **Cost composition (Usage tab)**: output cost is measured, input cost is apportioned by user / tool message text length (the log has no per-role token measurement, so the UI labels it as an estimate).
+- **Performance metrics (Usage tab)**: per-model TTFT mean / P50 / P90, generation speed (tokens/s), total-latency mean; per-hour × per-model comparison curves — metric tabs, clickable model chips (top-5 by samples lit by default), hover snapping to the nearest hour with a crosshair and per-model values, broken lines for missing-sample hours (never fabricated); view preferences persist locally.
+- **Trends (Trends tab)**: daily cost & call trend (7 / 30 days, cost / tokens metric switch), last-40-turn cost bars (amount at bar top, >2× spikes flagged with attribution), peak/off-peak time share and the amount saved in off-peak hours.
 
-  ![Trends: daily cost trend, per-turn costs and peak/off-peak share](screenshots/2.png)
-- **Export + drill-down**: daily / per-session / per-site CSV and full JSON from the Stats tab; cost breakdown / workspaces / session detail drillable (click a project row to expand its sessions); no chart library, no external CDN, pure design tokens.
-
-  ![Stats: export, cost breakdown, workspaces and session detail](screenshots/4.png)
+  ![Trends: daily cost trend, per-turn costs and peak/off-peak share](screenshots/trends.png)
+  ![Usage: daily tokens, per-model tokens, tool ranking and cost composition](screenshots/usage.png)
+- **Export + drill-down**: daily / per-session / per-site CSV and full JSON from the Billing tab, daily-token CSV from the Usage tab; session detail is drillable (click a project row to expand its sessions); no chart library, no external CDN, pure design tokens.
 
 ## 🛡️ Robustness & privacy
 
@@ -121,7 +133,7 @@ The billing channel is detected from the current session's model: DeepSeek meter
 
 Check your host generation first (`dsh --version`), then pick the matching install command — **a mismatched line is rejected by the DSH Store via the `engines.dsh` declaration** (declared since v1.0.41). Note that `dsh plugin add` requires an explicit `--profile` (otherwise it fails with `required option '--profile <name>' not specified`), and prefer **pinning an exact version** over `@latest` (pnpm's `minimumReleaseAge` cooldown skips freshly published versions and may fall back to the other line):
 
-- **DSH 0.1.2 ~ 0.2.0 era** (0.1.2-alpha.1 and later; npm `latest` currently at 0.2.0-rc.2; `npm ls -g @deepseek-ai/dsh` shows 0.1.2-* ~ 0.2.0-*):
+- **DSH 0.1.2 ~ 0.2.1 era** (0.1.2-alpha.1 and later; the host's npm `latest` is currently 0.2.1-rc.2 and the preview line has reached 0.2.1-rc.3; `npm ls -g @deepseek-ai/dsh` shows 0.1.2-* ~ 0.2.1-*):
 
   ```sh
   dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@latest
@@ -274,7 +286,7 @@ The host discovers the browser side automatically via the `dsh.client` declarati
 
 - **Permission level: high**: reads durable session logs (files), calls official multi-vendor / subscription / balance / pricing APIs (network), reads `apiKeyEnv` via the credentials seam (credentials), writes the ledger and stats snapshot under the harness home (`DSH_HOME` / `~/.dsh`) (persistent state); **no** command execution / shell.
 - **Update channel: `user-reviewed`**: with file / network / credential capabilities, DSH STORE requires local manual confirmation on every install; review the repo, pinned commit, lifecycle scripts, and impact scope before installing.
-- **Compatibility**: the preview line (npm `latest`/`alpha`, 1.6.x — kept above the stable line to kill the version inversion) targets DSH `0.1.2-alpha.1` ~ `0.2.1-rc.2` (host `latest` currently at 0.2.0-rc.2, preview at 0.2.1-rc.2; the full 0.2.1 series is declared per version); the stable line (npm `stable`, 1.1.x, **frozen**, final v1.1.17) targets legacy hosts `0.1.0-rc.8` ~ `0.1.1-rc.2`. Per-version declarations live in `package.json` under `dsh.compatibility`; the two-line mapping and monitoring mechanism are documented in [COMPATIBILITY.md](COMPATIBILITY.md). Node.js `^22.19.0 || >=24.0.0`.
+- **Compatibility**: the preview line (npm `latest`/`alpha`, 1.7.x — kept above the stable line to kill the version inversion) targets DSH `0.1.2-alpha.1` ~ `0.2.1-rc.3` (the host's `latest` currently at 0.2.1-rc.2, preview at 0.2.1-rc.3; the full 0.2.1 series is declared per version); the stable line (npm `stable`, 1.1.x, **frozen**, final v1.1.17) targets legacy hosts `0.1.0-rc.8` ~ `0.1.1-rc.2`. Per-version declarations live in `package.json` under `dsh.compatibility`; the two-line mapping and monitoring mechanism are documented in [COMPATIBILITY.md](COMPATIBILITY.md). Node.js `^22.19.0 || >=24.0.0`.
 - **Lifecycle**: no `preinstall` / `install` / `postinstall` / `prepare` (ready on install).
 - **No impersonation**: adds only its own entry id `ui-usage-billing`; `@deepseek-ai/dsh-*` packages are `peerDependencies` only (no reinstall / replace / shadowing of official components); the package uses the third-party namespace `@kenz1117/*`.
 - **Build artifacts**: runtime files `lib/*` and `cordis.patch.yml` are committed at the pinned commit and declared in `files`.
@@ -297,7 +309,7 @@ Boundaries: the tool reads only this plugin's own aggregates — never session b
 - **Balance queries cover DeepSeek / Moonshot (Kimi) / StepFun / SiliconFlow / xAI / Zhipu GLM (Z.ai CN region) / Tencent Cloud TokenHub (token-plan quota)**: the first six use a standard Bearer API key; Tencent Cloud uses the cloud-API key pair (`<SecretId>:<SecretKey>`, TC3-signed management API). Other providers expose no public balance API or need non-Bearer auth (Xiaomi MiMo via console Cookie, SenseTime via AccessKey signing, MiniMax/Doubao via quota or AK/SK), so they currently show "not configured"; the extension point is `src/balance.ts` (add a querier per provider balance API).
 - **Relay quota depends on upstream private schemas**: New API / Sub2API interface fields are not public, so an unreadable station is labeled "no quota" rather than fabricating an amount; if a station's response fields differ, extend the parsers in `src/relay.ts`. An "unknown route" means that route exists neither in the current provider config nor in the host llm registry (deleted config, logs older than the install, …); historical call data is not lost — re-adding the same-named route restores attribution automatically. Cost in the unknown-route bucket is always 0 (issue #82): the spending party cannot be verified — same posture as uncatalogued models and subscription channels — while tokens are still counted, and the panel shows "—" for the group cost with an explanatory note. Channels registered by another plugin through `ctx.llm.registerAdapter` (e.g. CommandCode) are **not** unknown routes: the plugin discovers them from the host llm registry and bills them in the `direct:<provider>` bucket at the model's official catalog price (issue #91); the registry is read through `ctx.get('llm')` (no `inject` requirement), and an unreadable or empty registry warns once (panel numbers and the unknown policy are unchanged) so this class of failure is never silent again.
 - **Overspend notifications rely on the browser Notification API**: when permission is denied or the platform lacks support, only the in-UI red-pulse fallback remains — no host-level notification channel; notifications are capped at once per day.
-- **Session rows are not navigable**: clicking a session row does not open that session (cross-plugin navigation needs a host session-selection channel); the panel shows the top 20 by default and the "view all" full-screen viewer is capped at 100 rows.
+- **Session-row navigation depends on a host channel**: clicking a session title in the panel opens that conversation in the host (both generations of the host's session-selection channel are probed); on very old hosts, or when the session was deleted / is not in the current session list, the UI shows a readable notice instead of silently doing nothing. The panel shows the top 20 by default and the "view all" full-screen viewer is capped at 100 rows.
 - **Cost is a catalog estimate**: models without published per-token pricing (iFlytek, SenseTime, Xiaomi) use estimates (feature-list footnote ¹); official billing is authoritative.
 - **The ledger starts at its first successful aggregation**: sessions permanently deleted before the upgrade and absent from the old snapshot cannot be recovered. Manually deleting `.dsh-usage-ledger.json` and its `.bak` clears independently retained history. Only calls successfully observed by this plugin are retained.
 
