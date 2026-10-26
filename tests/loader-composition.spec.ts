@@ -245,6 +245,10 @@ async function loadCompositionWith(options: {
     ...(options.entryId === undefined ? ["- name: '@kenz1117/dsh-ui-usage-billing'"] : ["- id: 'usage-billing-test'", "  name: '@kenz1117/dsh-ui-usage-billing'"]),
     '  config:',
     '    monthlyBudget: 100',
+    // 组合测试验证的是完整折叠管线（聚合内容/快照兜底/预算回落/余额不等待），
+    // 全部是 full 模式语义——关掉默认 20s 冷phase（issue #105，单元层在
+    // aggregate-replay-gate.spec.ts 覆盖），否则路由回账本轻文档、断言全空。
+    '    replayDelayMs: 0',
     // 追加的 config 行统一补 4 空格缩进，调用方只写裸字段行。
     ...(options.entryConfig ?? []).map(line => `    ${line}`),
     // 隔离持久化路径：快照/账本/对账基准都写入本测试临时目录，避免读/写

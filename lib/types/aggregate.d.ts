@@ -179,6 +179,13 @@ export interface AggregateOptions {
     /** 联网搜索请求（`web/deepseek-search-llm-request`，无用量事件）的单次费用
      *  估算（人民币元）；默认 {@link DEFAULT_SEARCH_CALL_ESTIMATE_CNY}，设 0 关闭。 */
     searchCallEstimateCny?: number;
+    /**
+     * 启动冷phase时长（毫秒，自聚合器创建起算，issue #105）：期间 aggregate()
+     * 只出账本轻文档——不 list 会话、不读任何日志，文档带 `staleSnapshot: true`，
+     * UI 一加载的轮询不再把「全量折叠」拉进启动关键路径。到点后首个请求（或预热
+     * 定时器）照常完整折叠。0 / 缺省 = 不设闸（旧行为：随到随折）。
+     */
+    deferFoldMs?: number;
 }
 /** 每会话折叠缓存默认上限：超过则按 LRU 淘汰（P1-6 峰值内存治理）。 */
 export declare const DEFAULT_MAX_CACHE_SESSIONS = 400;
@@ -352,6 +359,12 @@ export interface UsageStatsDocument {
     unreadableFormatSessions?: number;
     /** 未统计中无任何账本存档、完全未计入的子集（区别于有存档按最近可用点计入的）；无存档缺失时省略。 */
     unreadableNoLedgerSessions?: number;
+    /**
+     * 冷phase轻文档标记（issue #105）：本档全部出自账本存档、未读任何会话日志
+     * （启动后 replayDelayMs 内的请求）。客户端复用既有「数据滞后」横幅呈现
+     * （issue #103 加的 staleSnapshot 通道，此前无生产方），零新增客户端体积。
+     */
+    staleSnapshot?: boolean;
 }
 /** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
 export interface RoleCost {
@@ -637,6 +650,19 @@ export interface UsageLedgerDocument {
     sessions: UsageLedgerSession[];
     /** 已应用的一次性配置迁移 id 列表（随文档落盘；缺省 = 尚未跑过任何迁移）。 */
     appliedMigrations?: string[];
+    /**
+     * 拒读会话负缓存（issue #105）：读失败（含格式拒读）会话的失败时 stamp。落盘
+     * 后重启不再重读——宿主对读不动的日志要解压解析到拒绝点才抛错，单条数百 ms、
+     * 老用户上百条时是每次启动的固定大头（负缓存此前只在内存，重启即失）。stamp
+     * 变化（日志被改写/追加）后照常失效重试；会话消失由 seen 清理兜底。
+     */
+    refused?: UsageLedgerRefusal[];
+}
+/** 账本里的一条拒读记录：会话 id + 失败时的失效键 + 是否格式拒读（计数细分用）。 */
+export interface UsageLedgerRefusal {
+    id: string;
+    stamp: string;
+    format: boolean;
 }
 /**
  * 多实例账本合并（自审计延期项：save 路径 last-writer-wins 丢写）：同一
@@ -666,6 +692,9 @@ export declare function mergeUsageLedgerDocuments(document: UsageLedgerDocument,
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
 export declare const FOLD_VERSION = 23;
+/** 账本里拒读记录的条数上限：防异常环境（大量损坏日志）把账本撑爆；
+ *  超限按 Map 插入序保留前 N 条（最早发现的先留，stamp 失效的自然被清理让位）。 */
+export declare const LEDGER_REFUSED_CAP = 500;
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
  * 未来账本/schema 字段变更（重命名、拆桶、语义调整）时，在此追加一条迁移并

@@ -128,6 +128,9 @@ async function usageStatsWith(credentialTable: Record<string, string>) {
     snapshotPath: join(root, 'usage-stats.json'),
     ledgerPath: join(root, 'usage-ledger.json'),
     reconcilePath: join(root, 'usage-reconcile.json'),
+    // 本用例要打完整折叠路径（断言 byModel 计费口径）：关掉默认 20s 冷phase
+    // （issue #105），否则路由回账本轻文档、byModel 为空。
+    replayDelayMs: 0,
   })
   // 启动分类是 fire-and-forget 的微任务链（凭据内存解析）：让出一个宏任务即落定。
   await new Promise(resolve => setImmediate(resolve))

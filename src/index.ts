@@ -115,9 +115,20 @@ export { Config } from './config.ts'
 /** 实时定价的后台刷新间隔（毫秒）：汇率/模型价低频变化，6 小时一次足够。 */
 const PRICING_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000
 
-/** 历史回放预热的延迟：等宿主启动高峰（插件加载 / 路由挂载）过去再全量折叠，
- *  避免抢启动期的 CPU；纯延迟不阻塞任何请求，面板提前打开也只会提前聚合。 */
-const WARMUP_DELAY_MS = 3_000
+/** 启动后延迟全量折叠的默认时长（毫秒，issue #105）：冷phase内 /api/billing/*
+ *  只出账本轻文档（不读日志），到点后预热定时器照常完整折叠——UI 一加载的
+ *  轮询不再把全量折叠拉进启动关键路径。可用 config.replayDelayMs 覆盖；0 = 旧
+ *  行为（随到随折）。20 秒的取值：小账本用户只损失十几秒新鲜度，重账本用户的
+ *  启动高峰（插件加载/索引/首批会话写入）已经过去；配合聚合器的墙钟分片让出
+ *  （FOLD_SLICE_MS），折叠真跑起来时单片阻塞也被压在 ~8ms。
+ */
+const DEFAULT_REPLAY_DELAY_MS = 20_000
+
+/** 手写收窄（schemastery 不能当形状校验器，S-7）：非有限非负数字回落默认值。 */
+function readReplayDelayMs(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value
+  return DEFAULT_REPLAY_DELAY_MS
+}
 
 /** 订阅套餐额度缓存时长（毫秒）：上游配额 API 低频变化，5 分钟足够。 */
 const SUBSCRIPTION_CACHE_MS = 5 * 60 * 1000
@@ -750,6 +761,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       swallowed('minimax-plan-classify-failed', error)
     }
   }
+  const replayDelayMs = readReplayDelayMs(config.replayDelayMs)
   const aggregator = createUsageAggregator(adaptSessionPersistence(ctx.sessionPersistence), {
     subscriptionMatcher: subscriptionRoutes,
     // 历史路由别名：改名/删除路由的历史用量按别名归位（站点/订阅/官方判定同步生效）。
@@ -766,6 +778,9 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     ...(sessionTitleResolver === undefined ? {} : { resolveSessionTitle: sessionTitleResolver }),
     // 联网搜索请求的单次费用估算（issue #15）；缺省 0.02 元/次，配置可覆盖/关闭。
     ...(config.searchCallEstimateCny === undefined ? {} : { searchCallEstimateCny: config.searchCallEstimateCny }),
+    // 冷phase闸门（issue #105）：与下面的预热定时器同源——闸门内的请求只吃账本
+    // 轻文档，把「UI 一加载就全量折叠」从启动关键路径上摘掉。
+    deferFoldMs: replayDelayMs,
     ledger: ledgerStore,
   })
   // 启动即按 key 分类一次 MiniMax 路由（凭据 seam 内存解析，毫秒级），首轮聚合通常
@@ -777,11 +792,14 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 安装/升级后的历史回放预热：宿主就绪即后台全量折叠一次（聚合器有 in-flight
   // 去重与账本幂等，与首次面板请求并发也无副作用）。不预热的话聚合只在前端轮询
   // 到达时触发，新用户首次打开面板要等一遍全量折叠，观感是「装完没数据」。
-  // 预热重放必须等首次价格拉取 settle：refreshPricing() 是 fire-and-forget，
-  // 而 WARMUP_DELAY_MS 只有 3s，冷启动时 models.dev（数 MB）几乎必然更慢。
-  // 一旦重放先跑，整份历史会以内置目录价折叠，而折叠复用键（stamp +
-  // configFingerprint）不含价格，价格随后到达也不会让它失效。
-  // 拉取失败同样继续（等价于现状的内置价回退），不会把预热卡住。
+  // 延迟与聚合器的冷phase闸门同源（config.replayDelayMs，默认 20s，issue #105）：
+  // 闸门内的面板请求只吃账本轻文档（不读日志），到点后由本定时器补上完整折叠
+  // ——启动期不再被折叠挤占 CPU，预热仍保证「装完几分钟内数据一定补齐」。
+  // 预热重放必须等首次价格拉取 settle：refreshPricing() 是 fire-and-forget，冷
+  // 启动时 models.dev（数 MB）可能比延迟更慢。一旦重放先跑，整份历史会以内置
+  // 目录价折叠，而折叠复用键（stamp + configFingerprint）不含价格，价格随后到
+  // 达也不会让它失效（惰性重折通道会兜住 cost=0 的行）。拉取失败同样继续（等
+  // 价于现状的内置价回退），不会把预热卡住。
   let pricingReady: Promise<void> | undefined
   const warmupTimer = setTimeout(() => {
     void Promise.resolve(pricingReady)
@@ -791,7 +809,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       .catch((error: unknown) => {
         console.warn('[usage-billing] historical replay warmup failed; will fold on first dashboard request:', error)
       })
-  }, WARMUP_DELAY_MS)
+  }, replayDelayMs)
   ctx.effect(() => () => { clearTimeout(warmupTimer) }, 'usage-billing: historical replay warmup timer')
   const candidates = [
     config.statsPath,

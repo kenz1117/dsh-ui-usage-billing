@@ -104,4 +104,12 @@ export interface UsageBillingConfig {
    * 如 `{ "hy4-preview": "hunyuan" }`）。聚合折叠与客户端渲染共用同一映射。
    */
   modelKeyAliases?: Record<string, string>
+  /**
+   * 启动后延迟全量折叠的时长（毫秒，issue #105）：聚合器创建起 `replayDelayMs`
+   * 之内，`/api/billing/*` 只出账本轻文档（不读任何会话日志，面板以「数据滞后」
+   * 横幅提示，复用 issue #103 的 staleSnapshot 通道），到点后预热定时器照常完整
+   * 折叠。默认 20 000（20 秒）；重账本用户（数千会话 / 数十 MB 日志）可调大到
+   * 180 000；0 = 旧行为（随到随折，首屏轮询即触发全量折叠）。
+   */
+  replayDelayMs?: number
 }

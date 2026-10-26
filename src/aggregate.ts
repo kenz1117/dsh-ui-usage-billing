@@ -269,6 +269,13 @@ export interface AggregateOptions {
   /** 联网搜索请求（`web/deepseek-search-llm-request`，无用量事件）的单次费用
    *  估算（人民币元）；默认 {@link DEFAULT_SEARCH_CALL_ESTIMATE_CNY}，设 0 关闭。 */
   searchCallEstimateCny?: number
+  /**
+   * 启动冷phase时长（毫秒，自聚合器创建起算，issue #105）：期间 aggregate()
+   * 只出账本轻文档——不 list 会话、不读任何日志，文档带 `staleSnapshot: true`，
+   * UI 一加载的轮询不再把「全量折叠」拉进启动关键路径。到点后首个请求（或预热
+   * 定时器）照常完整折叠。0 / 缺省 = 不设闸（旧行为：随到随折）。
+   */
+  deferFoldMs?: number
 }
 
 /** 每会话折叠缓存默认上限：超过则按 LRU 淘汰（P1-6 峰值内存治理）。 */
@@ -512,6 +519,12 @@ export interface UsageStatsDocument {
   unreadableFormatSessions?: number
   /** 未统计中无任何账本存档、完全未计入的子集（区别于有存档按最近可用点计入的）；无存档缺失时省略。 */
   unreadableNoLedgerSessions?: number
+  /**
+   * 冷phase轻文档标记（issue #105）：本档全部出自账本存档、未读任何会话日志
+   * （启动后 replayDelayMs 内的请求）。客户端复用既有「数据滞后」横幅呈现
+   * （issue #103 加的 staleSnapshot 通道，此前无生产方），零新增客户端体积。
+   */
+  staleSnapshot?: boolean
 }
 
 /** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
@@ -998,6 +1011,20 @@ export interface UsageLedgerDocument {
   sessions: UsageLedgerSession[]
   /** 已应用的一次性配置迁移 id 列表（随文档落盘；缺省 = 尚未跑过任何迁移）。 */
   appliedMigrations?: string[]
+  /**
+   * 拒读会话负缓存（issue #105）：读失败（含格式拒读）会话的失败时 stamp。落盘
+   * 后重启不再重读——宿主对读不动的日志要解压解析到拒绝点才抛错，单条数百 ms、
+   * 老用户上百条时是每次启动的固定大头（负缓存此前只在内存，重启即失）。stamp
+   * 变化（日志被改写/追加）后照常失效重试；会话消失由 seen 清理兜底。
+   */
+  refused?: UsageLedgerRefusal[]
+}
+
+/** 账本里的一条拒读记录：会话 id + 失败时的失效键 + 是否格式拒读（计数细分用）。 */
+export interface UsageLedgerRefusal {
+  id: string
+  stamp: string
+  format: boolean
 }
 
 /**
@@ -1120,6 +1147,10 @@ export function mergeUsageLedgerDocuments(document: UsageLedgerDocument, existin
 // 无关（peakShare 混合），套窗分桶会让峰谷占比条虚含「时间窗计费」的流量。
 // bump 让日志仍在的会话重折出新峰谷口径；费用总额不受影响（byTier 仅展示层）。
 export const FOLD_VERSION = 23
+
+/** 账本里拒读记录的条数上限：防异常环境（大量损坏日志）把账本撑爆；
+ *  超限按 Map 插入序保留前 N 条（最早发现的先留，stamp 失效的自然被清理让位）。 */
+export const LEDGER_REFUSED_CAP = 500
 
 /**
  * 一次性账本迁移：id 唯一，apply 在加载边界对原始文档执行，已应用过的跳过。
@@ -2022,14 +2053,17 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
     configFingerprint(subscriptionMatcher, officialProviderIds, routeAliases, searchEstimate, options.modelKeyAliases, registered, routeOriginsOf(routes))
   // 初值不带注册表（每轮聚合开始前刷新）：创建时刻不为指纹多读一次服务。
   let foldFingerprint = foldFingerprintOf(new Set(), {})
-  // 全量重折的分片大小：每片折叠后让出事件循环，超大会话不再连续阻塞宿主 RPC（issue #30）。
+  // 全量重折的分片大小：把超长事件数组切成有限内存片（纯切片上界，不再承担
+  // 让出节拍——让出改按墙钟，见 FOLD_SLICE_MS）。
   const FOLD_CHUNK_EVENTS = 8000
-  // 会话之间让出事件循环的粒度（会话数）：整轮折叠的主体是纯 CPU 的同步计算，
-  // 会话之间的 await 只排微任务——微任务队列排空前事件循环不会回到 poll 阶段，
-  // 宿主的定时器 / RPC / 静态资源请求会被连续饿死（issue #104：重度用户升级后
-  // 一次性重折数百个会话，整个 DSH 界面卡死）。每折完 N 个会话让一次
-  // （setImmediate 让到 check 阶段），宿主能在折叠间隙正常服务请求。
-  const FOLD_YIELD_SESSIONS = 8
+  // 墙钟分片（issue #104/#105）：同步折叠每累计 ~8ms 让出一次事件循环（setImmediate
+  // 让到 check 阶段），宿主能在折叠间隙正常服务请求。取代此前的「每 8 个会话 /
+  // 每片事件」计数让出——计数挡不住 35MB 级单会话（一片就能连堵数秒），墙钟
+  // 上限与单个会话/分片的体积无关。
+  const FOLD_SLICE_MS = 8
+  // 冷phase闸门（issue #105）：聚合器创建后 deferFoldMs 内的 aggregate() 只出
+  // 账本轻文档。0 / 缺省 = 不设闸（旧行为：随到随折）。
+  const foldAllowedAt = Date.now() + Math.max(0, options.deferFoldMs ?? 0)
 
   /** 惰性失效（价目表时序）：账本/缓存行若以「当时不可计价」的模型落盘，
    *  而价目表现在能计价了，该行必须重折——否则显示层按实时价算出的
@@ -2084,6 +2118,14 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         const document = stored as UsageLedgerDocument
         if (runLedgerMigrations(document)) ledgerNeedsSave = true
         ledgerAppliedMigrations = document.appliedMigrations
+        // 拒读负缓存回填（issue #105）：跨重启跳过已证读不动的日志——宿主要解压
+        // 解析到拒绝点才抛错，单条数百 ms，上百条拒读会话是每次启动的固定大头。
+        // 条目形状不可信（外部 JSON）逐条收窄；stamp 失效/会话消失照常清理。
+        for (const refusal of document.refused ?? []) {
+          if (typeof refusal?.id === 'string' && typeof refusal?.stamp === 'string') {
+            unreadable.set(refusal.id, { stamp: refusal.stamp, format: refusal.format === true })
+          }
+        }
       }
       for (const entry of ledgerSessionsOf(stored)) ledger.set(entry.id, entry)
     } catch (error) {
@@ -2124,6 +2166,11 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         version: 1,
         updatedAt: Date.now(),
         sessions: [...ledger.values()],
+        // 拒读负缓存随账本落盘（issue #105）：重启后跳过已证读不动的日志；
+        // 上限封顶防异常环境把账本撑爆。
+        ...(unreadable.size === 0 ? {} : {
+          refused: [...unreadable].slice(0, LEDGER_REFUSED_CAP).map(([id, mark]) => ({ id, stamp: mark.stamp, format: mark.format })),
+        }),
         ...(ledgerAppliedMigrations === undefined ? {} : { appliedMigrations: ledgerAppliedMigrations }),
       })
       ledgerNeedsSave = false
@@ -2134,28 +2181,26 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
     }
   }
 
-  const aggregateOnce = async (): Promise<UsageStatsDocument> => {
+  /**
+   * 一轮聚合。mode='full' 走完整流程（list + 逐会话失效判定 + 折叠/复用）；
+   * mode='ledger-only' 只吃账本存档出轻文档（冷phase，issue #105）：不 list、
+   * 不读任何日志，doc 带 staleSnapshot=true 且**不进 TTL 缓存**（lastDoc 不动，
+   * 开门后的下一轮即完整折叠）——轻文档的每行折叠反序列化有 WeakMap 记忆，
+   * 重复构建只付 O(行数) 的汇总合并，冷phase里每个请求都可负担。
+   */
+  const aggregateOnce = async (mode: 'full' | 'ledger-only'): Promise<UsageStatsDocument> => {
       const now = Date.now()
 
       await ensureLedgerLoaded()
       // 每轮刷新指纹与路由视图：已注册 adapter 集合变化（provider 插件装卸）或路由
       // baseURL 变化（站点归组依赖 origin）即触发历史行重折。注册表查询每轮只跑
       // 一次——此前 routesOf() 在每个分片折叠调用点都走一次服务调用 + 集合合并，
-      // 大会话分片会放大成调用风暴（issue #91 回退）。
+      // 大会话分片会放大成调用风暴（issue #91 回退）。轻文档同样要刷新：兜底行的
+      // stale 标记（foldVersion/指纹比对）依赖当前指纹。
       const registeredProviders = options.resolveRegisteredProviders?.() ?? new Set<string>()
       const roundRoutes = routesOf(registeredProviders)
       foldFingerprint = foldFingerprintOf(registeredProviders, roundRoutes)
 
-      let metas: readonly SessionHeader[]
-      try {
-        metas = await persistence.list()
-      } catch (error) {
-        if (options.ledger === undefined || ledger.size === 0) throw error
-        // The independent ledger is also the last-resort source when the session
-        // backend itself is temporarily unavailable; no live rows are pruned.
-        console.warn('[usage-billing] session list unavailable; serving durable usage ledger:', error)
-        metas = []
-      }
       const seen = new Set<string>()
       const included = new Set<string>()
       // subOf：子智能体归并标记（header origin/parentSession；账本兜底行出自
@@ -2172,12 +2217,27 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       let formatUnreadable = 0
       let noLedgerUnreadable = 0
       let staleLedgerSessions = 0
-      for (const [metaIndex, meta] of metas.entries()) {
-        // 周期性让出事件循环（issue #104）：折叠主体是同步 CPU 计算，会话之间
-        // 的 await 只排微任务——不主动让出时，宿主的事件循环在整个折叠期间
+      if (mode === 'full') {
+      let metas: readonly SessionHeader[]
+      try {
+        metas = await persistence.list()
+      } catch (error) {
+        if (options.ledger === undefined || ledger.size === 0) throw error
+        // The independent ledger is also the last-resort source when the session
+        // backend itself is temporarily unavailable; no live rows are pruned.
+        console.warn('[usage-billing] session list unavailable; serving durable usage ledger:', error)
+        metas = []
+      }
+      // 墙钟分片游标（FOLD_SLICE_MS）：与上一片让出点的间隔超过预算就让出。
+      let sliceAt = Date.now()
+      for (const meta of metas) {
+        // 周期性让出事件循环（issue #104/#105）：折叠主体是同步 CPU 计算，会话
+        // 之间的 await 只排微任务——不主动让出时，宿主的事件循环在整个折叠期间
         // 不回到 poll 阶段，定时器 / RPC / 静态资源请求被连续饿死，界面卡死。
-        if (metaIndex > 0 && metaIndex % FOLD_YIELD_SESSIONS === 0) {
+        // 按墙钟让出：单片阻塞上限 ~8ms，与单个会话的体积无关。
+        if (Date.now() - sliceAt >= FOLD_SLICE_MS) {
           await new Promise<void>(resolve => { setImmediate(resolve) })
+          sliceAt = Date.now()
         }
         const id = String(meta.id)
         seen.add(id)
@@ -2285,7 +2345,13 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           const machine = freshMachine()
           for (let start = 0; start < events.length; start += FOLD_CHUNK_EVENTS) {
             foldInto(fold, machine, events.slice(start, start + FOLD_CHUNK_EVENTS), subscriptionMatcher, officialProviderIds, roundRoutes, searchEstimate, inheritedEventCount, routeAliases)
-            if (start + FOLD_CHUNK_EVENTS < events.length) await new Promise<void>(resolve => { setImmediate(resolve) })
+            // 墙钟让出（FOLD_SLICE_MS）：FOLD_CHUNK_EVENTS 只负责把超长事件数组
+            // 切成有限内存片，让出节拍由片间累计耗时决定——单片再小、连折多片
+            // 累计超预算同样要让，宿主 RPC 不被连续饿死（issue #104/#105）。
+            if (start + FOLD_CHUNK_EVENTS < events.length && Date.now() - sliceAt >= FOLD_SLICE_MS) {
+              await new Promise<void>(resolve => { setImmediate(resolve) })
+              sliceAt = Date.now()
+            }
           }
           refreshTurns(fold, machine)
           const last = events[events.length - 1] as { seq?: number } | undefined
@@ -2301,7 +2367,12 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           // 无账本行的才是完全未计入——分开计数，通知措辞才准确（issue #84）。
           if (!ledger.has(id)) noLedgerUnreadable += 1
           // 记负缓存：stamp 不变期间不再重读该会话（下轮聚合直接跳过）。
-          if (stamp !== null) unreadable.set(id, { stamp, format })
+          // 新记录/换 stamp 都标记落盘（refused 随账本持久化，issue #105）——
+          // 否则写放大守卫（ledgerNeedsSave）看不到这次变化，重启后还会重读。
+          if (stamp !== null) {
+            unreadable.set(id, { stamp, format })
+            ledgerNeedsSave = true
+          }
           // 标题兜底（issue #103）：日志读不动时，账本旧行的标题会永远停在
           // 重命名前的值；宿主侧的会话标题（投影缓存）可能仍是新值，记下来给
           // 兜底段用。宿主没有该能力时静默跳过，行为不变。
@@ -2314,24 +2385,38 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         // 本轮真读到日志的会话：标题以日志为准，作废宿主侧提示。
         if (included.has(id)) titleHints.delete(id)
       }
-      // 已删除会话的缓存一并清除，避免内存随历史膨胀。
-      for (const key of [...cache.keys()]) {
-        if (!seen.has(key)) cache.delete(key)
-      }
-      for (const key of [...unreadable.keys()]) {
-        if (!seen.has(key)) unreadable.delete(key)
-      }
-      // P1-6 峰值内存治理：缓存会话数超过上限时，从最久未用的开始淘汰。
-      while (cache.size > maxCacheSessions) {
-        const oldest = cache.keys().next()
-        if (oldest.done === true) break
-        cache.delete(oldest.value)
+      } // end of full-mode session loop（ledger-only 跳过 list 与全部日志读取）
+      // 已删除会话的缓存/负缓存一并清除，避免内存随历史膨胀（仅 full 模式——
+      // ledger-only 的 seen 为空，跑这里会把负缓存整表误清，下轮全量又重读一遍）。
+      if (mode === 'full') {
+        for (const key of [...cache.keys()]) {
+          if (!seen.has(key)) cache.delete(key)
+        }
+        for (const key of [...unreadable.keys()]) {
+          // 负缓存条目随会话消失一并清除，且标记落盘（refused 与账本同文件）。
+          if (!seen.has(key)) {
+            unreadable.delete(key)
+            ledgerNeedsSave = true
+          }
+        }
+        // P1-6 峰值内存治理：缓存会话数超过上限时，从最久未用的开始淘汰。
+        while (cache.size > maxCacheSessions) {
+          const oldest = cache.keys().next()
+          if (oldest.done === true) break
+          cache.delete(oldest.value)
+        }
       }
       // The durable ledger is deliberately not pruned by `seen`: missing rows are
       // history, not cache garbage. Unreadable live sessions also fall back to their
-      // last successfully folded ledger row.
+      // last successfully folded ledger row. ledger-only 模式整份文档都出自这里
+      // （included 为空 → 全部行入档），同样按墙钟让出（issue #105）。
       if (options.ledger !== undefined) {
+        let fallbackSliceAt = Date.now()
         for (const entry of ledger.values()) {
+          if (Date.now() - fallbackSliceAt >= FOLD_SLICE_MS) {
+            await new Promise<void>(resolve => { setImmediate(resolve) })
+            fallbackSliceAt = Date.now()
+          }
           if (included.has(entry.id)) continue
           try {
             // 缺失 foldVersion（迁移前的异常路径）按 v1 处理：保守标注旧算法。
@@ -2540,7 +2625,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       // 否则首轮之后负缓存生效，面板的「未统计」通知归零消失。
       const unreadableTotal = skipped.length + carriedUnreadable
       const formatUnreadableTotal = formatUnreadable + carriedFormatUnreadable
-      lastDoc = {
+      const document: UsageStatsDocument = {
         version: 4,
         updatedAt: now,
         source: 'session-logs',
@@ -2580,18 +2665,31 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
             tool: roles.inputCost * (1 - userShare),
           }
         })(),
+        // 冷phase轻文档标记（issue #105）：「本档出自账本存档、未读任何日志」。
+        // 客户端复用 #103 的 staleSnapshot「数据滞后」横幅呈现，零新增客户端体积。
+        ...(mode === 'ledger-only' ? { staleSnapshot: true } : {}),
       }
-      lastAt = now
-      return lastDoc
+      // 轻文档不进 TTL 缓存（lastDoc 仍是上一份完整折叠或空）：缓存它会让开门后
+      // 的首个请求继续命中轻文档、多等一个 TTL。轻文档的行反序列化有 WeakMap
+      // 记忆兜底，每请求重build只付 O(行数) 汇总合并，可负担。
+      if (mode === 'full') {
+        lastDoc = document
+        lastAt = now
+      }
+      return document
   }
 
   return {
     aggregate(): Promise<UsageStatsDocument> {
       const now = Date.now()
       if (lastDoc !== undefined && now - lastAt < AGGREGATE_TTL_MS) return Promise.resolve(lastDoc)
+      // 冷phase（issue #105）：闸门内的请求只吃账本轻文档，不触发任何日志读取
+      // ——UI 一加载的轮询不再把全量折叠拉进启动关键路径。完整折叠已在飞（闸门
+      // 刚开）时等它，而不是再折一遍。
+      if (now < foldAllowedAt) return inflight ?? aggregateOnce('ledger-only')
       // 并发去重：多个调用方（usage-stats / balance / usage_stats 工具）同时
       // 触发聚合时共享同一次进行中的折叠，避免多倍全量重读压垮事件循环。
-      inflight ??= aggregateOnce().finally(() => { inflight = undefined })
+      inflight ??= aggregateOnce('full').finally(() => { inflight = undefined })
       return inflight
     },
     async sessionUsageOf(sessionId: string): Promise<SessionUsageSummary | undefined> {
