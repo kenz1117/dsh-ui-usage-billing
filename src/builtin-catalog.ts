@@ -663,6 +663,17 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     // 同 GPT-6 Astra 口径只记标准档。
     price: { currency: 'USD', input: 2, cacheHit: 0.1, output: 10 },
   },
+  {
+    key: 'gpt-6.1-terra',
+    name: 'GPT-6.1 Terra',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    // 2026-10-26 发布（官方 id gpt-6.1-terra）：标准档（单请求输入 ≤272K）
+    // $1 / $0.05 / $5；>272K 加价档 $2 / $0.1 / $7.5，同家族口径只记标准档。
+    // 价源 models.dev 原生 USD——18 家转售目录（openrouter / azure / requesty
+    // 等）与官方完全一致；Fast 变体 ×2 是第三方包装价，不收录。
+    price: { currency: 'USD', input: 1, cacheHit: 0.05, output: 5 },
+  },
 
   // OpenAI —— 当前在售模型（2026-10-23 补录）：gpt-5.x 家族 / 4.1 家族 / o 系列推理 /
   // Daybreak。价取 models.dev 实时目录（2026-10-23 快照）原生 USD。
