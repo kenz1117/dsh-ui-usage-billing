@@ -42,4 +42,4 @@ Issue 请尽量附带：插件版本（仪表盘 → 设置 Tab → 插件信息
 
 ## 发布流程（维护者）
 
-双线发布：预览线 1.2.x（npm `latest`，`main` 分支，自 v1.2.0 起恒高于稳定线以消除版本号倒挂）面向 DSH 0.1.2 系；稳定线 1.1.x（npm `stable`，`compat/stable-dsh` 分支）面向 0.1.0-rc.8 ~ 0.1.1-rc.2 宿主。修复默认先落 `main`，再 cherry-pick 回填稳定线。发布产物 `lib/*` 随固定 Commit 提交，供 DSH STORE 源码锚点审查，请勿把 `lib/` 加入忽略列表。
+只维护一份 `main` 代码，分为正式版与预览版两个发行通道。正式版使用非预发布 SemVer、npm `latest` 与正式 GitHub Release；预览版使用预发布 SemVer、npm `alpha` 与 Pre-release。两者共享同一宿主兼容矩阵，不做跨代际 cherry-pick。当前 `latest` 暂指 `1.8.0-alpha.2`，首个 `1.8.0` 正式版发布后仅用于正式版。发布产物 `lib/*` 随固定 Commit 提交，供 DSH STORE 源码锚点审查，请勿把 `lib/` 加入忽略列表。

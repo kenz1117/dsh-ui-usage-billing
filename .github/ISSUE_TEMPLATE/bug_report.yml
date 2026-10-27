@@ -11,7 +11,7 @@ body:
         ## 提交前
 
         - [ ] 已查 README（功能/快捷键/币种）
-        - [ ] 已查 COMPATIBILITY.md（是否在双线声明的宿主版本里）
+        - [ ] 已查 COMPATIBILITY.md（是否在当前声明的宿主版本里）
         - [ ] 已查 CHANGELOG（最近版本是否已修）
         - [ ] 在 Issue 列表里没找到同类问题
 
@@ -43,15 +43,14 @@ body:
       required: true
 
   - type: dropdown
-    id: line
-    id: line
+    id: channel
     attributes:
-      label: 影响的发布线
-      description: 你的环境跑的是哪条线？双线策略详见 COMPATIBILITY.md
+      label: 影响的发行通道
+      description: 你的环境使用的是正式版还是预览版？详见 COMPATIBILITY.md
       options:
-        - 预览线（1.5.x 适配 DSH 0.1.2+）
-        - 稳定线（1.1.x 适配 DSH 0.1.0-0.1.1，已冻结）
-        - 都不确定
+        - 正式版（npm latest）
+        - 预览版（npm alpha）
+        - 不确定
     validations:
       required: true
 
@@ -69,7 +68,7 @@ body:
     attributes:
       label: 本插件版本
       description: '仪表盘设置 → 关于 / 插件信息卡，或 `pnpm ls -g @kenz1117/dsh-ui-usage-billing`'
-      placeholder: '例：1.5.1'
+      placeholder: '例：1.8.0-alpha.2'
     validations:
       required: true
 

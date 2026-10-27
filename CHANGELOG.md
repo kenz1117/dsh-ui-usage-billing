@@ -2,11 +2,11 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前为双线发布：**预览线 1.8.x**（npm `latest` + `alpha`，适配 DSH 0.1.2-alpha.1 ~ 0.2.1-rc.4；插件 `latest` 自 v1.0.26 起跟随宿主 latest 代际，自 v1.2.0 起序列恒高于稳定线以消除版本号倒挂）与**稳定线 1.1.x**（npm `stable`，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2，维护于 `compat/stable-dsh` 分支；**自 2026-09-11 起冻结**，终版 v1.1.17，不再接收变更）。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.1-rc.4。当前 `latest` 暂指 `1.8.0-alpha.2`；首个 `1.8.0` 正式版发布后，`latest` 只指正式版，后续预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
-## 预览线（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.1-rc.4）
+## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.1-rc.4）
 
-> **版本序列说明**：自 v1.2.0 起预览线序列恒高于稳定线 1.1.x——消除此前 1.0.x < 1.1.x 的版本号倒挂（pnpm `minimumReleaseAge` 冷静期会把刚发布的 latest 跳过、回退到旧稳定线，issue #40 有实测案例）。安装建议钉具体版本号。
+> 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
 
 ### v1.8.0-alpha.2（2026-10-27）
 

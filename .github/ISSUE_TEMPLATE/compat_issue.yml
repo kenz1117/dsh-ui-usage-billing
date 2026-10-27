@@ -1,5 +1,5 @@
 name: Compatibility issue
-description: 报告宿主版本兼容性 / 计费口径 / 适配矩阵问题。详见 `COMPATIBILITY.md` 双线策略与 `CHANGELOG.md` 宿主适配范围。
+description: 报告宿主版本兼容性 / 计费口径 / 适配矩阵问题。详见 `COMPATIBILITY.md` 正式版 / 预览版策略与 `CHANGELOG.md` 宿主适配范围。
 title: '[compat] '
 labels: ['compat']
 assignees: []
@@ -10,8 +10,8 @@ body:
       value: |
         ## 提交前
 
-        - [ ] 已查 `COMPATIBILITY.md` 双线声明的宿主版本范围
-        - [ ] 已查 `CHANGELOG.md` 最近发版的「预览线适配范围」一行
+        - [ ] 已查 `COMPATIBILITY.md` 当前声明的宿主版本范围
+        - [ ] 已查 `CHANGELOG.md` 最近版本的宿主适配说明
         - [ ] 在 Issue 列表没找到同类兼容问题
 
   - type: dropdown
@@ -43,19 +43,19 @@ body:
     attributes:
       label: 本插件版本
       description: '`pnpm ls -g @kenz1117/dsh-ui-usage-billing` 或 `dsh plugin list`'
-      placeholder: '例：1.5.1'
+      placeholder: '例：1.8.0-alpha.2'
     validations:
       required: true
 
   - type: dropdown
-    id: line
+    id: channel
     attributes:
-      label: 影响的发布线
-      description: 详见 COMPATIBILITY.md
+      label: 影响的发行通道
+      description: 正式版与预览版共享同一份代码和兼容矩阵，详见 COMPATIBILITY.md
       options:
-        - 预览线（1.5.x 适配 DSH 0.1.2+）
-        - 稳定线（1.1.x 适配 DSH 0.1.0-0.1.1，已冻结）
-        - 都不确定
+        - 正式版（npm latest）
+        - 预览版（npm alpha）
+        - 不确定
     validations:
       required: true
 
@@ -78,7 +78,7 @@ body:
     attributes:
       label: 复现 / 现象
       description: 怎么操作看到了兼容问题？预期 vs 实际？
-      placeholder: '例：在 DSH 0.2.1-rc.1 跑本插件 1.5.1，打开仪表盘 → 余额行不显示 → 宿主日志报 [usage-billing] refreshBalances failed ...'
+      placeholder: '例：在 DSH 0.2.1-rc.1 跑本插件 1.8.0-alpha.2，打开仪表盘 → 余额行不显示 → 宿主日志报 [usage-billing] refreshBalances failed ...'
     validations:
       required: true
 
@@ -97,6 +97,6 @@ body:
     attributes:
       label: 是否做过版本二分定位（可选）
       description: '降级到哪个版本正常？升级到哪个版本崩？'
-      placeholder: '1.5.0 正常，1.5.1 崩；1.5.0 升 1.5.1 后回不去（已发布到 npm latest）'
+      placeholder: '1.8.0-alpha.1 正常，1.8.0-alpha.2 出现异常；请附上两个版本的实际现象'
     validations:
       required: false

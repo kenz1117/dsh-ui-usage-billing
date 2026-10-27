@@ -9,7 +9,7 @@
   <a href="https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing"><img alt="npm version" src="https://img.shields.io/npm/v/@kenz1117/dsh-ui-usage-billing?logo=npm"></a>
   <a href="https://www.npmjs.com/package/@kenz1117/dsh-ui-usage-billing"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@kenz1117/dsh-ui-usage-billing?logo=npm"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/kenz1117/dsh-ui-usage-billing/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/COMPATIBILITY.md"><img alt="DSH compat" src="https://img.shields.io/badge/DSH-0.1.2_%7E_0.2.1--rc.3_%7C_0.1.0--rc.8%2B-blue"></a>
+  <a href="https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/COMPATIBILITY.md"><img alt="DSH compat" src="https://img.shields.io/badge/DSH-0.1.2_%7E_0.2.1--rc.4-blue"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/blob/main/LICENSE"><img alt="License MIT" src="https://img.shields.io/github/license/kenz1117/dsh-ui-usage-billing"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing/pulls"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen"></a>
   <a href="https://github.com/kenz1117/dsh-ui-usage-billing"><img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/kenz1117/dsh-ui-usage-billing?logo=github"></a>
@@ -130,19 +130,15 @@ The billing channel is detected from the current session's model: DeepSeek meter
 
 ## 🚀 Quick start
 
-Check your host generation first (`dsh --version`), then pick the matching install command — **a mismatched line is rejected by the DSH Store via the `engines.dsh` declaration** (declared since v1.0.41). Note that `dsh plugin add` requires an explicit `--profile` (otherwise it fails with `required option '--profile <name>' not specified`), and prefer **pinning an exact version** over `@latest` (pnpm's `minimumReleaseAge` cooldown skips freshly published versions and may fall back to the other line):
+One codebase currently supports DSH `0.1.2-alpha.1` through `0.2.1-rc.4`. Stable and preview releases share the same compatibility matrix: stable releases use npm `latest`, while previews use `alpha`. During the transition, `latest` temporarily points to `1.8.0-alpha.2`; once `1.8.0` is released, `latest` will refer only to stable releases.
 
-- **DSH 0.1.2 ~ 0.2.1 era** (0.1.2-alpha.1 and later; the host's npm `latest` is currently 0.2.1-rc.2 and the preview line has reached 0.2.1-rc.4; `npm ls -g @deepseek-ai/dsh` shows 0.1.2-* ~ 0.2.1-*):
+`dsh plugin add` requires an explicit `--profile`. Pinning an exact version is recommended so a package manager's release cooldown cannot resolve a different version. Install the current preview with:
 
-  ```sh
-  dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@latest
-  ```
+```sh
+dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@1.8.0-alpha.2
+```
 
-- **DSH 0.1.0-rc.8 ~ 0.1.1-rc.2** (legacy hosts; **this line is frozen** — `stable` points permanently at the final v1.1.17, so existing installs keep working but receive no further releases; rationale and the formal EOL trigger are in [COMPATIBILITY.md](COMPATIBILITY.md)):
-
-  ```sh
-  dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@stable
-  ```
+After a stable release is published, default installations can use `@latest`. Check the host with `dsh --version` or `npm ls -g @deepseek-ai/dsh`.
 
 Alternatively, add it to the host `cordis.patch.yml` by hand:
 
@@ -162,7 +158,7 @@ This plugin also publishes a catalog entry using the Market's **Path A standard 
 https://kenz1117.github.io/dsh-ui-usage-billing/catalog-source.json
 ```
 
-Market-hosted installs resolve an exact stable version from the npm registry (the Host resolves the install target from npm `latest`; the version listed in the catalog is display-only). The catalog files live in `catalog/` in this repository and are validated in CI before being published by GitHub Pages.
+Market-hosted installs resolve an exact registry release from npm (the Host resolves the install target from npm `latest`; the version listed in the catalog is display-only). The catalog files live in `catalog/` in this repository and are validated in CI before being published by GitHub Pages.
 
 ## ⚙️ How it works
 
@@ -272,21 +268,22 @@ For on-machine debugging: `dsh plugin --profile web add "link:<absolute path to 
 
 ## 📦 Release
 
-This package is a standalone npm package. Releases go through the preview line (`latest` + `alpha` tags switched together); the stable line (`stable`) is frozen — see [COMPATIBILITY.md](COMPATIBILITY.md).
+This standalone npm package maintains one `main` codebase. Stable releases use non-prerelease versions and npm `latest`; previews use prerelease versions and npm `alpha`. The current transition, in which `latest` temporarily points to `1.8.0-alpha.2`, is documented in [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ```sh
 pnpm test && pnpm run build   # full tests + build before release
 npm publish --access public
-npm dist-tag add @kenz1117/dsh-ui-usage-billing@<version> alpha
+npm dist-tag add @kenz1117/dsh-ui-usage-billing@<version> alpha   # preview
+npm dist-tag add @kenz1117/dsh-ui-usage-billing@<version> latest  # stable
 ```
 
-The host discovers the browser side automatically via the `dsh.client` declaration (`platform: web`) and the `exports["./client"]` bundle in `package.json` — no registry registration needed. The compatibility matrix is declared per version from real-device testing (`dsh.compatibility.dshReleases`); run `node scripts/check-compat.mjs --peer package.json` before and after publishing to re-verify.
+The host discovers the browser side automatically via the `dsh.client` declaration (`platform: web`) and the `exports["./client"]` bundle in `package.json` — no registry registration needed. The compatibility matrix is declared per version from actual verification (`dsh.compatibility.dshReleases`); run `node scripts/check-compat.mjs` before and after publishing to re-verify.
 
 ## 🔐 Permissions & Compatibility (DSH STORE)
 
 - **Permission level: high**: reads durable Session logs, calls vendor / subscription / balance / pricing APIs, reads `apiKeyEnv` through the credentials seam, and writes the ledger, snapshots and task queue under the harness home. The plugin itself has **no** command-execution / shell capability; only explicit enqueueing creates a host Session and submits a Prompt, while Agent tools remain governed by the host's existing permissions and approvals.
 - **Update channel: `user-reviewed`**: with file / network / credential capabilities, DSH STORE requires local manual confirmation on every install; review the repo, pinned commit, lifecycle scripts, and impact scope before installing.
-- **Compatibility**: the preview line (npm `latest`/`alpha`, 1.8.x — kept above the stable line to kill the version inversion) targets DSH `0.1.2-alpha.1` ~ `0.2.1-rc.4` (the host's `latest` currently at 0.2.1-rc.2, preview at 0.2.1-rc.4; the full 0.2.1 series is declared per version); the stable line (npm `stable`, 1.1.x, **frozen**, final v1.1.17) targets legacy hosts `0.1.0-rc.8` ~ `0.1.1-rc.2`. Per-version declarations live in `package.json` under `dsh.compatibility`; the two-line mapping and monitoring mechanism are documented in [COMPATIBILITY.md](COMPATIBILITY.md). Node.js `^22.19.0 || >=24.0.0`.
+- **Compatibility**: stable and preview releases from the current `main` share one matrix covering DSH `0.1.2-alpha.1` through `0.2.1-rc.4`, with 30 per-version declarations. The current preview is `1.8.0-alpha.2` (npm `alpha`; `latest` is in its transitional state), and `latest` will be reserved for stable releases once `1.8.0` is published. Release channels and monitoring are documented in [COMPATIBILITY.md](COMPATIBILITY.md). Node.js `^22.19.0 || >=24.0.0`.
 - **Lifecycle**: no `preinstall` / `install` / `postinstall` / `prepare` (ready on install).
 - **No impersonation**: adds only its own entry id `ui-usage-billing`; `@deepseek-ai/dsh-*` packages are `peerDependencies` only (no reinstall / replace / shadowing of official components); the package uses the third-party namespace `@kenz1117/*`.
 - **Build artifacts**: runtime files `lib/*` and `cordis.patch.yml` are committed at the pinned commit and declared in `files`.

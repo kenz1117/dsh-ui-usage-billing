@@ -2,7 +2,7 @@ blank_issues_enabled: false
 contact_links:
   - name: 文档（README / COMPATIBILITY / CHANGELOG）
     url: https://github.com/kenz1117/dsh-ui-usage-billing
-    about: 先看 README.md「本地开发模式」、COMPATIBILITY.md「双线策略」、CHANGELOG.md「最近版本说明」，90% 的疑问都写在文档里
+    about: 先看 README.md「本地开发模式」、COMPATIBILITY.md「正式版 / 预览版策略」、CHANGELOG.md「最近版本说明」，常见疑问都写在文档里
   - name: DSH 宿主行为相关问题
     url: https://github.com/deepseek-ai/deepseek-harness/issues
     about: 涉及宿主 CLI / Modal / 凭据 seam / 设置 schema 漂移等，请去宿主仓开 issue；本仓不能独立 fix

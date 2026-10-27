@@ -1,7 +1,7 @@
 # DSH 商店竞品调研与改进执行计划（2026-10）
 
 > 本文件是 2026-10-23 对 DSH 插件商店「用量与计费」类目的调研结论 + 可执行改进计划。
-> 适用范围：**仅 `main` 预览线**。`compat/stable-dsh` 稳定线已于 2026-09-11 冻结，不接收本计划内任何变更（含缺陷修复），不得跨线 cherry-pick。
+> 适用范围：当前 `main` 代码；按成熟度通过正式版或预览版通道发布，不维护第二套源码或兼容矩阵。
 > 引用纪律：本文所有结论均带可复核锚点（文件:行号 / 宿主路径 / 上游仓库）。**不假声明兼容**——未实测的宿主版本不得写进 `dsh.compatibility.dshReleases`。
 
 ---
@@ -130,7 +130,7 @@
 
 ## 4. 执行计划
 
-> 通用约定：所有任务在 `main` 开发 → `./sync.sh` 构建 → 3080 日常环境真机验收 → `pnpm test` + `pnpm test:e2e` → 发 npm `latest`+`alpha`。稳定线不回移。
+> 通用约定：所有任务在 `main` 开发 → `./sync.sh` 构建 → 3080 日常环境真机验收 → `pnpm test` + `pnpm test:e2e` → 先行变更发预览版（npm `alpha`），验收成熟后晋升正式版（npm `latest`）。
 
 ### 批次 A —— 零风险的订正与门禁　✅ 已于 2026-10-23 完成
 
@@ -291,7 +291,7 @@
 
 ## 6. 通用工程红线（所有任务适用）
 
-1. **双线纪律**：只在 `main` 开发与发布（npm `latest` + `alpha`）。`compat/stable-dsh` 冻结，不回移、不 cherry-pick。
+1. **发行纪律**：只在 `main` 开发；预览版切 npm `alpha`，正式版切 `latest`，两个通道共享同一份代码与兼容矩阵。
 2. **兼容声明**：新增宿主能力一律**特性探测 + 降级**，**不得**因此收窄或扩写 `dsh.compatibility.dshReleases`；要改矩阵必须先真机实测（AGENTS.md「宿主版本升级适配流程」SOP）。
 3. **打包**：client bundle 是单文件 closure factory，**无代码分割**；任何新依赖必须内联计入体积账，且禁止 value import 非平台种子的 `@deepseek-ai/*`（purity gate 构建期报错）。
 4. **体积**：真实口径为「DSH Store 无 bundle 上限」；256/500 KiB 是本仓自设成本线（2026-10-27 起），每次构建暴露增量（`sync.sh`），批次 C 起每版必须复核 `lib/client.js` 字节数并写进 CHANGELOG。

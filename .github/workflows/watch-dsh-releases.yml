@@ -1,6 +1,5 @@
 # 宿主版本监控：每日对照 npm 上 @deepseek-ai/dsh 的发布与 dist-tags，
-# 与两条发布线（main=预览线 / compat/stable-dsh=稳定线）的兼容矩阵核对，
-# 发现漂移时自动开/更新 label=compat-drift 的 issue。
+# 与 main 的当前兼容矩阵核对，发现漂移时自动开/更新 label=compat-drift 的 issue。
 # 校验规则本身在 scripts/check-compat.mjs，本地可随时手跑。
 name: watch-dsh-releases
 
@@ -17,13 +16,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      # main：预览线矩阵 + 校验脚本本体
+      # main：当前兼容矩阵 + 校验脚本本体
       - uses: actions/checkout@v4
-      # compat/stable-dsh：稳定线矩阵（只取 package.json 参与联查）
-      - uses: actions/checkout@v4
-        with:
-          ref: compat/stable-dsh
-          path: compat-line
       # E-8：shallow clone 宿主 monorepo，校验 vendored clientBundle.ts 的
       # 平台种子是否镜像宿主 platform.ts（宿主种子扩张 = 插件 bundle externals 落后，
       # 运行时才炸——每日提前发现）。
@@ -41,7 +35,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - id: compat
-        run: node scripts/check-compat.mjs --peer compat-line/package.json --report drift-report.md
+        run: node scripts/check-compat.mjs --report drift-report.md
       - id: bundle-sync
         # 校验脚本退出非零（漂移或自身故障）→ 打 failed 标记给开 issue 步骤。
         # Actions 的 bash 带 -e，须用 || 捕获而非 echo $?（否则步骤直接中止）。
