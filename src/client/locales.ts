@@ -368,6 +368,32 @@ export type UsageBillingKey =
   | 'contextNoData'
   | 'tabContext'
   | 'tabAgents'
+  | 'tabQueue'
+  | 'queueSubtitle'
+  | 'queueUntilPeak'
+  | 'queueUntilOffPeak'
+  | 'queueUnsupportedTitle'
+  | 'queueUnsupportedBody'
+  | 'queueSafety'
+  | 'queueWorkspace'
+  | 'queueModel'
+  | 'queueNoOptions'
+  | 'queuePromptLabel'
+  | 'queuePromptPlaceholder'
+  | 'queuePrivacy'
+  | 'queueEnqueue'
+  | 'queueActive'
+  | 'queueClearFinished'
+  | 'queueEmpty'
+  | 'queueLoading'
+  | 'queueOpenSession'
+  | 'queueRemoveQueued'
+  | 'queueRemoveHistory'
+  | 'queueStatusQueued'
+  | 'queueStatusStarting'
+  | 'queueStatusRunning'
+  | 'queueStatusCompleted'
+  | 'queueStatusFailed'
   | 'contextNextRequest'
   | 'contextLastRequest'
   | 'contextComposition'
@@ -766,6 +792,32 @@ export const zh: Record<UsageBillingKey, string> = {
   'agentsNoData': '暂无子智能体委派记录',
   'agentsSubagent': '子智能体',
   'agentsRoot': '对话',
+  'tabQueue': '队列',
+  'queueSubtitle': '非紧急任务只在 DeepSeek 官方低谷启动，按入队顺序串行执行',
+  'queueUntilPeak': '距高峰',
+  'queueUntilOffPeak': '距低谷',
+  'queueUnsupportedTitle': '当前宿主不支持任务队列',
+  'queueUnsupportedBody': '任务队列需要新版宿主的会话创建、Prompt 提交与结果订阅能力。当前宿主会保持只读降级；用量、费用和峰谷提醒不受影响，也不会创建只排队却无法执行的任务。',
+  'queueSafety': '安全边界：任务开始后即使进入高峰也会继续，不会强行暂停；失败或结果无法确认时不自动重试。每个任务在独立会话执行，并按宿主现有权限使用工具。',
+  'queueWorkspace': '工作区',
+  'queueModel': '官方峰谷模型',
+  'queueNoOptions': '未发现可用工作区或内置 DeepSeek 官方峰谷模型，请先完成宿主配置。中转站同名模型不参与。',
+  'queuePromptLabel': '任务 Prompt',
+  'queuePromptPlaceholder': '描述一个非紧急、可无人值守完成的任务。入队即授权宿主在下一低谷创建会话并执行。',
+  'queuePrivacy': '队列文件仅当前用户可读；执行后 Prompt 也会进入宿主会话日志。请勿填入密码或密钥。',
+  'queueEnqueue': '加入低谷队列',
+  'queueActive': '任务与历史',
+  'queueClearFinished': '清除已结束',
+  'queueEmpty': '队列是空的。加入一个非紧急任务，下一低谷自动开始。',
+  'queueLoading': '正在读取队列…',
+  'queueOpenSession': '查看会话',
+  'queueRemoveQueued': '移出队列',
+  'queueRemoveHistory': '删除记录',
+  'queueStatusQueued': '等待低谷',
+  'queueStatusStarting': '正在启动',
+  'queueStatusRunning': '执行中',
+  'queueStatusCompleted': '已完成',
+  'queueStatusFailed': '需核对',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -1150,4 +1202,30 @@ export const en: Record<UsageBillingKey, string> = {
   'agentsNoData': 'No sub-agent delegation records yet',
   'agentsSubagent': 'sub-agent',
   'agentsRoot': 'conversation',
+  'tabQueue': 'Queue',
+  'queueSubtitle': 'Non-urgent tasks start only during DeepSeek official off-peak hours, one at a time',
+  'queueUntilPeak': 'Peak in',
+  'queueUntilOffPeak': 'Off-peak in',
+  'queueUnsupportedTitle': 'This host does not support the task queue',
+  'queueUnsupportedBody': 'The queue requires Session creation, Prompt admission and result streaming from a newer host. This host stays in read-only fallback: usage, billing and band alerts keep working, and no non-executing placeholder tasks are created.',
+  'queueSafety': 'Safety: an admitted task continues if peak pricing begins; it is never forcibly paused. Failures and unknown outcomes never auto-retry. Each task runs in its own Session with the host’s existing tool permissions.',
+  'queueWorkspace': 'Workspace',
+  'queueModel': 'Official time-of-day model',
+  'queueNoOptions': 'No workspace or built-in DeepSeek official time-of-day model is available. Relay mirrors are not eligible.',
+  'queuePromptLabel': 'Task Prompt',
+  'queuePromptPlaceholder': 'Describe a non-urgent task that can run unattended. Enqueuing authorizes the host to create a Session and run it at the next off-peak window.',
+  'queuePrivacy': 'The queue file is owner-only; executed Prompts also enter host Session logs. Do not enter passwords or secrets.',
+  'queueEnqueue': 'Enqueue for off-peak',
+  'queueActive': 'Tasks & history',
+  'queueClearFinished': 'Clear finished',
+  'queueEmpty': 'The queue is empty. Add a non-urgent task to start it at the next off-peak window.',
+  'queueLoading': 'Loading queue…',
+  'queueOpenSession': 'Open Session',
+  'queueRemoveQueued': 'Remove',
+  'queueRemoveHistory': 'Delete record',
+  'queueStatusQueued': 'Waiting',
+  'queueStatusStarting': 'Starting',
+  'queueStatusRunning': 'Running',
+  'queueStatusCompleted': 'Completed',
+  'queueStatusFailed': 'Needs review',
 }

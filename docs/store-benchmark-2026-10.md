@@ -294,7 +294,7 @@
 1. **双线纪律**：只在 `main` 开发与发布（npm `latest` + `alpha`）。`compat/stable-dsh` 冻结，不回移、不 cherry-pick。
 2. **兼容声明**：新增宿主能力一律**特性探测 + 降级**，**不得**因此收窄或扩写 `dsh.compatibility.dshReleases`；要改矩阵必须先真机实测（AGENTS.md「宿主版本升级适配流程」SOP）。
 3. **打包**：client bundle 是单文件 closure factory，**无代码分割**；任何新依赖必须内联计入体积账，且禁止 value import 非平台种子的 `@deepseek-ai/*`（purity gate 构建期报错）。
-4. **体积**：真实口径为「DSH Store 无 bundle 上限」；256/320 KiB 是本仓自设成本线，每次构建暴露增量（`sync.sh`），批次 C 起每版必须复核 `lib/client.js` 字节数并写进 CHANGELOG。
+4. **体积**：真实口径为「DSH Store 无 bundle 上限」；256/500 KiB 是本仓自设成本线（2026-10-27 起），每次构建暴露增量（`sync.sh`），批次 C 起每版必须复核 `lib/client.js` 字节数并写进 CHANGELOG。
 5. **计费口径**：历史事件一律按**事件发生时刻**生效的规则计价；官方调价按变更节点追加规则，**不得**用现行规则重算历史。
 6. **纯 UI 边界**：不注入系统提示、不写模型可见事件；`usage_stats` 工具为**用户显式开启才注入**的可选项（见 T-A2 订正后的表述）。
 7. **安全**：新增 HTTP 端点强制回环（peer socket + Host 头双校验），写操作校验 Origin / Content-Type / body 上限；CSV 导出防公式注入。

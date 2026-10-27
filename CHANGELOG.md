@@ -2,11 +2,18 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前为双线发布：**预览线 1.7.x**（npm `latest` + `alpha`，适配 DSH 0.1.2-alpha.1 ~ 0.2.1-rc.3；插件 `latest` 自 v1.0.26 起跟随宿主 latest 代际，自 v1.2.0 起序列恒高于稳定线以消除版本号倒挂）与**稳定线 1.1.x**（npm `stable`，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2，维护于 `compat/stable-dsh` 分支；**自 2026-09-11 起冻结**，终版 v1.1.17，不再接收变更）。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前为双线发布：**预览线 1.8.x**（npm `latest` + `alpha`，适配 DSH 0.1.2-alpha.1 ~ 0.2.1-rc.4；插件 `latest` 自 v1.0.26 起跟随宿主 latest 代际，自 v1.2.0 起序列恒高于稳定线以消除版本号倒挂）与**稳定线 1.1.x**（npm `stable`，适配 DSH 0.1.0-rc.8 ~ 0.1.1-rc.2，维护于 `compat/stable-dsh` 分支；**自 2026-09-11 起冻结**，终版 v1.1.17，不再接收变更）。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
-## 预览线（1.7.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.1-rc.2）
+## 预览线（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.1-rc.4）
 
 > **版本序列说明**：自 v1.2.0 起预览线序列恒高于稳定线 1.1.x——消除此前 1.0.x < 1.1.x 的版本号倒挂（pnpm `minimumReleaseAge` 冷静期会把刚发布的 latest 跳过、回退到旧稳定线，issue #40 有实测案例）。安装建议钉具体版本号。
+
+### v1.8.0-alpha.1（2026-10-27）
+
+- **新增：DeepSeek 官方低谷任务队列（预览，issue #106）**。仪表盘新增第九个「队列」分区；用户显式选择工作区、内置官方模型并提交 Prompt 后才入队，FIFO 串行、每任务独立会话、只在北京时间官方低谷启动。已提交 Prompt 的任务跨峰继续，不强行暂停；失败、结果流中断或恢复后结果未知一律标「需核对」，绝不自动重放。队列持久化采用原子写、0600 权限、文件锁与 45 秒 owner 租约，防止同一 `DSH_HOME` 多实例重复提交；可查看对应宿主会话。
+- **兼容：新宿主启用、能力缺席时只读降级**。`sessionController` / `workspaceRegistry` 均通过 `ctx.get()` 运行时探测，不增加启动注入依赖，也不收窄既有兼容矩阵；缺少会话控制能力的宿主不显示输入区、不接受入队，不创建无法执行的假任务。没有工作区或官方模型时同样禁止提交。
+- **对抗式安全加固**：仅内置 `deepseek-official` 路由可入队，中转站同名 DeepSeek 模型不误套官方低谷；执行前重新校验模型，峰前已建会话但峰后尚未提交时回到队列；慢 `create()` / `selectModel()` 导致租约丢失后旧 owner 被 fencing，不能继续提交；插件停止只中断本地结果订阅，不取消已提交的 Prompt RPC。请求体上限与 32,000 字符 Prompt 的 JSON 最坏编码对齐为 256 KiB，并补多实例、崩溃恢复、CSRF、多字节 body、损坏文件与老宿主降级测试。
+- **工程与文档**：明确默认只读，只有显式入队才创建会话并写入用户 Prompt；队列文件与宿主会话日志的隐私边界、工具权限和人工核对口径已写入中英文 README。客户端 bundle 为 **341,937 字节（333.9 KiB）**，服务端为 366,233 字节；本仓自设强警告线由 320 KiB 放宽至 **500 KiB**（软提示仍为 256 KiB），**不是宿主或 DSH Store 的上限**——Store 对插件 JS bundle 无审查上限，仅图标文件限 256 KiB。
 
 ### v1.7.4（2026-10-26）
 

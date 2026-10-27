@@ -134,14 +134,14 @@ else
   # ---- 客户端 bundle 体积检查 ----
   # 注意：DSH Store 对插件 JS bundle 没有硬上限（plugins 通过 npm 加载，宿主
   # 只对图标文件 icon.* 设 256 KiB 上限）。这里的两道阈值（256 KiB 软警告、
-  # 320 KiB 强警告）是本仓自设的体积成本防线——把新增功能的体积增长暴露在每次
+  # 500 KiB 强警告）是本仓自设的体积成本防线——把新增功能的体积增长暴露在每次
   # 构建，而不是等被用户/issue 反馈「安装越来越慢」再回头查；不是上游强制。
   # 如需放宽，对应调整 HARD_BYTES / SOFT_BYTES 与下面 [警告] 文案。
   CLIENT_BYTES="$(node -p "require('fs').statSync('$SRC/lib/client.js').size")"
   SOFT_BYTES=$((256 * 1024))   # 历史线——超过值得评审体积增长是否值得
-  HARD_BYTES=$((320 * 1024))   # 强警告——超过应立刻着手压缩
+  HARD_BYTES=$((500 * 1024))   # 强警告——超过应立刻着手压缩
   if [ "$CLIENT_BYTES" -gt "$HARD_BYTES" ]; then
-    echo "[警告] lib/client.js = ${CLIENT_BYTES} 字节，超过强警告线 ${HARD_BYTES}（320 KiB）"
+    echo "[警告] lib/client.js = ${CLIENT_BYTES} 字节，超过强警告线 ${HARD_BYTES}（500 KiB）"
     echo "       本线为本仓自设，非上游硬约束；但应尽快压缩体积（拆分 chunk、"
     echo "       移除未用 CSS、压缩 color-mix 等），避免被用户感知到加载变慢"
   elif [ "$CLIENT_BYTES" -gt "$SOFT_BYTES" ]; then

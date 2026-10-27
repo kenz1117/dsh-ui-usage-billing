@@ -22,6 +22,12 @@ export const TAB_ICONS: Record<DashboardTab, ReactNode> = {
       <path d="M2 13V3M2 13H14M4 10l4-3 2 2 4-5" />
     </svg>
   ),
+  queue: (
+    <svg viewBox="0 0 16 16" {...COMMON_PROPS}>
+      <path d="M3 4h10M3 8h10M3 12h6" />
+      <path d="M12 10v4m-2-2h4" />
+    </svg>
+  ),
   context: (
     <svg viewBox="0 0 16 16" {...COMMON_PROPS}>
       <circle cx="8" cy="8" r="5.5" />

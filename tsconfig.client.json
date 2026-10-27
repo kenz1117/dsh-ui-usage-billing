@@ -9,6 +9,7 @@
     "src/client",
     "src/css-modules.d.ts",
     "src/pricing-shared.ts",
+    "src/task-queue-shared.ts",
     "src/silent.ts"
   ],
   "references": []

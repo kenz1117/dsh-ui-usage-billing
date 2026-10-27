@@ -12,7 +12,7 @@ describe('DASHBOARD_TABS', () => {
   it('defines the sections in display order', () => {
     // 2026-10：新增「上下文」（宿主 token-meter 投影）与「智能体」（委派网络）两个一级分区。
     expect(DASHBOARD_TABS.map(tab => tab.id)).toEqual([
-      'overview', 'providers', 'token', 'trends', 'context', 'agents', 'pricing', 'settings',
+      'overview', 'queue', 'providers', 'token', 'trends', 'context', 'agents', 'pricing', 'settings',
     ])
   })
 

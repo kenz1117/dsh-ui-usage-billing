@@ -58,6 +58,8 @@ import { registerUsageToolRoute } from './routes/usage-tool.ts'
 import { registerSubscriptionsRoute } from './routes/subscriptions.ts'
 import { registerRelayQuotasRoute } from './routes/relay-quotas.ts'
 import { registerUsageStatsRoute } from './routes/usage-stats.ts'
+import { registerTaskQueueRoute } from './routes/task-queue.ts'
+import { TaskQueueEngine, type TaskQueueController } from './task-queue.ts'
 
 // Re-export guard helpers for backward compat with tests/clients that import
 // from src/index.ts (e.g. tests/trusted-hosts.spec.ts).
@@ -868,6 +870,34 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 进程内认领表（`notifyClaims`）由 src/routes/notify-claim.ts 内的模块级单例持有。
   registerNotifyClaimRoute(ctx, { trustedHosts, claimsPath: notifyClaimsPath })
 
+  // 低谷任务队列（issue #106，新宿主能力预览）：sessionController 是可选能力，
+  // 一律 ctx.get 特性探测，不进 inject——老宿主照常启动，面板明确显示不可用。
+  // 文件锁 + owner lease 防止同一 DSH_HOME 的多个实例重复提交同一任务。
+  const taskQueue = new TaskQueueEngine({
+    filePath: config.taskQueuePath ?? join(dshHome, '.dsh-usage-task-queue.json'),
+    getController: () => {
+      try {
+        return ctx.get('sessionController') as TaskQueueController | undefined
+      } catch {
+        return undefined
+      }
+    },
+    getWorkspaces: () => {
+      try {
+        const registry = ctx.get('workspaceRegistry') as {
+          list?: () => readonly { path: string; title: string }[]
+        } | undefined
+        return (registry?.list?.() ?? [])
+          .filter(workspace => typeof workspace.path === 'string' && workspace.path !== '')
+          .map(workspace => ({ path: workspace.path, title: workspace.title || workspace.path }))
+      } catch {
+        return []
+      }
+    },
+  })
+  registerTaskQueueRoute(ctx, { trustedHosts, engine: taskQueue })
+  taskQueue.start()
+  ctx.effect(() => () => { taskQueue.stop() }, 'usage-billing: task queue scheduler')
 
   // usage_stats 动态工具（默认关闭）：模型可主动查询用量费用（今天 / 本月 / 当前会话 / 累计）。
   // 该工具占用每次请求的上下文，而 coding 场景多在仪表盘看用量，属可关的打扰项。

@@ -20,6 +20,8 @@
     "src/client/usage-billing-settings.ts",
     "src/pricing-fetch.ts",
     "src/pricing-shared.ts",
+    "src/task-queue-shared.ts",
+    "src/task-queue.ts",
     "src/route-keys.ts",
     "src/balance.ts",
     "src/subscriptions.ts",
@@ -32,7 +34,8 @@
     "src/routes/usage-tool.ts",
     "src/routes/subscriptions.ts",
     "src/routes/relay-quotas.ts",
-    "src/routes/usage-stats.ts"
+    "src/routes/usage-stats.ts",
+    "src/routes/task-queue.ts"
   ],
   "references": []
 }

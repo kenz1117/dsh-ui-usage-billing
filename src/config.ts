@@ -54,6 +54,9 @@ export interface UsageBillingConfig {
   ledgerPath?: string
   /** 余额差对账基准的持久化路径；默认 `<harness home>/.dsh-usage-reconcile.json`。 */
   reconcilePath?: string
+  /** 低谷任务队列的持久化路径；默认 `<harness home>/.dsh-usage-task-queue.json`。
+   *  文件包含待执行 Prompt，以 0600 写入；测试可注入临时路径隔离真实队列。 */
+  taskQueuePath?: string
   /** 订阅制（coding / token / agent plan）provider id 列表；默认 kimi-coding、xiaomi-token-plan-cn。 */
   subscriptionProviders?: string[]
   /** 订阅套餐额度适配器（kimi / zai / opencode-go）；默认全部内置。 */

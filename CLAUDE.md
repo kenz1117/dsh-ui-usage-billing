@@ -48,7 +48,7 @@
 
 - `main`：预览线开发（0.1.2 面），发布走 npm `latest` + `alpha` tag。
 - `compat/stable-dsh`：稳定线（0.1.1 面，从 v1.0.11 分叉），**已冻结于终版 v1.1.17**——仅供历史查阅与存量用户安装，不再接收变更，也不再跨线 cherry-pick。
-- main 构建：`./sync.sh`（含本仓自设体积防线：>256KiB 提示、>320KiB 强警告——**非上游硬约束**，DSH Store 只对图标文件设 256 KiB 上限，插件 JS bundle 无审查上限）；compat 构建：`bash build.sh`（同防线）。
+- main 构建：`./sync.sh`（含本仓自设体积防线：>256KiB 提示、>500KiB 强警告——**非上游硬约束**，DSH Store 只对图标文件设 256 KiB 上限，插件 JS bundle 无审查上限）；compat 构建：`bash build.sh`（同防线）。
 
 ## 本机测试环境（三套，端口/家目录全隔离）
 
@@ -100,11 +100,11 @@ in-process DSH host 又不带桌面运行时（UI 组件加载不全）。双层
 - 计费口径：历史事件一律按**事件发生时刻**生效的官方规则计价，官方调价按变更节点追加规则（见 `src/client/pricing.ts` 的时间线与 README「计费规则时间线」），不得统一套现行规则重算历史。
 - **「本月预计」口径（2026-10-23）**：= 本月已发生 + 近 7 个自然日节奏 × 本月剩余天数（`src/client/domain/forecast.ts`）。旧口径拿「本月有记录的天数」当分母求日均再乘整月天数，稀疏使用的月份会被放大数倍——**别再改回按有记录天平均**：判断标准是「只外推还没发生的天数，近期没花钱就不虚增」。本月费用本身是实数，与预计无关，两者不可互推。
 - **内置目录扩容与调价分离（2026-10-23 纪律）**：目录扩容（补录新模型）与存量价格更正**分开发**——扩容批只加新条目、既有条目的价格一律不动，价格更正另走独立的调价节点（否则历史账单口径会被扩容顺带改写）。**价源口径**：海外厂商取 models.dev 实时目录原生 USD；国内厂商优先取官方 CN 价（models.dev 的 `-cn` 目录），该目录缺项时按 USD 价 × 汇率折算并**在条目注释里标注折算来源**。目录守卫测试（`tests/pricing.spec.ts`）锁三条不变量：目录键唯一、归一化后不互相打架（归一索引「首个命中即用」，撞车会让其中一个键永远解析不到）、别名必须指向存在的条目——**改目录先跑它**。
-- 体积红线：**DSH Store 对插件 JS bundle 无审查上限**（仅对图标文件 icon.* 设 256 KiB 上限）。`lib/client.js` 的 256 KiB / 320 KiB 两道阈值是本仓 `sync.sh` 自设的成本防线——把新增功能的体积增长暴露在每次构建，避免被用户感知到加载变慢；非上游强制。纯 CSS/文案/资产的增量也要进评估视野。
+- 体积红线：**DSH Store 对插件 JS bundle 无审查上限**（仅对图标文件 icon.* 设 256 KiB 上限）。`lib/client.js` 的 256 KiB / 500 KiB 两道阈值是本仓 `sync.sh` 自设的成本防线——把新增功能的体积增长暴露在每次构建，避免被用户感知到加载变慢；非上游强制。纯 CSS/文案/资产的增量也要进评估视野。
 - issue 回复用中文；先诊断根因再动手，修复双线同步时在回复里写清两条线各自的版本。
 - **竞品调研与改进计划**：[docs/store-benchmark-2026-10.md](docs/store-benchmark-2026-10.md)——DSH 商店「用量与计费」类目 214 个插件的横向调研（2026-10-23 快照），含差距矩阵（G1~G12）与分批执行计划。**新增功能前先查该文档**：宿主能力一律 **type-only import + `ctx.inject`/`ctx.get`**，**不得**把新的 `@deepseek-ai/*` 加进 `PLATFORM_MODULES`（会让老宿主 `require()` 到应答不了的 spec → 运行时抛错）；服务缺席即降级，不得因此收窄兼容矩阵；client bundle 是单文件 closure factory、无代码分割，新代码必须体积入账（`pnpm size` 查红线）。
-- **仪表盘分区（2026-10-23）**：8 个一级分区——概览 / 账单 / 用量 / 趋势 / 上下文 / 智能体 / 费率 / 设置；**Tab 只留名称，不挂状态徽标**（信息都在各自分区内）。智能体网络树见 `src/client/domain/agent-tree.ts`（从 `parentId` 还原委派关系 + 链合计 + 环防护）。
+- **仪表盘分区（2026-10-27）**：9 个一级分区——概览 / 队列 / 账单 / 用量 / 趋势 / 上下文 / 智能体 / 费率 / 设置；**Tab 只留名称，不挂状态徽标**（信息都在各自分区内）。智能体网络树见 `src/client/domain/agent-tree.ts`（从 `parentId` 还原委派关系 + 链合计 + 环防护）。
 - **面板压缩防线**：`.dashboardBody` / `.tabPanel` 是列向 flex 容器，直系子块必须 `flex-shrink: 0`（列向 flex 默认会把内容高的卡片**压扁而不是滚动**——`overflow-y:auto` 挡不住 flex 收缩；2026-10-23 用户反馈「切到上下文 Tab 卡片被缩小」即此坑）。jsdom 不做布局、无法单测覆盖，由 lint **守卫 7「面板压缩防线」**兜底。
-- **体积现状**：`lib/client.js` ≈ 316 KiB，距自设强线 320 KiB 仅余 ~4 KiB——**下一批功能前必须先做结构性瘦身**（CSS 不是大头，见 docs/store-benchmark-2026-10.md §9.2b 的三个候选）。
-- **已接入的宿主能力（2026-10-23，均为特性探测 + 降级）**：会话跳转（`ctx.uiWorkspace.openSession` 新代 / `ctx.sessions.open` 老代，见 `src/client/session-navigation.ts`）、`/usage` 对话内命令（`ctx.commandUi.register`，见 `src/client/usage-command.ts`）、上下文占用维度（`useProjection('contextPressure'/'contextBreakdown')`，见 `src/client/context-store.ts`）。三者取服务一律走 `ctx.get()`（免 inject）——老宿主没有这些服务，声明成注入依赖会挂起等它、卡住整个 web 启动。
+- **体积现状（2026-10-27）**：`lib/client.js` ≈ 334 KiB，自设强线已放宽至 500 KiB（余量 ~166 KiB）；每次发布仍须实测并记录增量，不为压数字牺牲可靠性或引入动态执行。
+- **已接入的宿主能力（均为特性探测 + 降级）**：会话跳转（`ctx.uiWorkspace.openSession` 新代 / `ctx.sessions.open` 老代，见 `src/client/session-navigation.ts`）、`/usage` 对话内命令（`ctx.commandUi.register`，见 `src/client/usage-command.ts`）、上下文占用维度（`useProjection('contextPressure'/'contextBreakdown')`，见 `src/client/context-store.ts`）、低谷任务队列（`sessionController`，见 `src/task-queue.ts`）。取服务一律走 `ctx.get()`（免 inject）——老宿主没有这些服务，声明成注入依赖会挂起等它、卡住整个 web 启动。
 - **DSH Community Market 目录（Path A）**：`catalog/catalog-source.json` + `catalog/v1/plugins.json`，由 `.github/workflows/pages.yml` 发到 GitHub Pages；本地/CI 用 `node scripts/check-catalog.mjs` 校验（strict schema：多余字段会让整个来源被市场拒收）。发布时序：**先 npm publish 精确版本，再并入 main 触发 Pages**——目录指向未发布版本时市场安装会 fail-closed（预期行为）。

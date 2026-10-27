@@ -370,7 +370,7 @@ function isBeijingWeekend(timeMs: number): boolean {
  * 编码为空格分隔的 `YYYYMMDD` 列表（按年分组、同年日期连续排列，便于逐年追加）：
  * 每个键长度固定为 8，故 `includes` 不会跨键误匹配；相比「区间 + 运行时展开」
  * 省掉一段解析代码——client / index 两个 face 都要过本仓自设的体积成本线
- * （sync.sh 的 256/320 KiB；DSH Store 对插件 JS bundle 本身无审查上限）。
+ * （sync.sh 的 256/500 KiB；DSH Store 对插件 JS bundle 本身无审查上限）。
  */
 const CHINA_HOLIDAYS =
   '20260925 20260926 20260927 20261001 20261002 20261003 20261004 20261005 20261006 20261007'

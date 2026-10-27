@@ -57,7 +57,8 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 - 性能面板：各模型首字延时（TTFT）均值 / P50 / P90 与生成速度，同类少有。
 - 未收录模型显著标注「未收录」、绝不静默计 0；目录外模型配一条别名即完成识别与计价。
 - 可选的 `usage_stats` 工具让模型直接回答「今天花了多少」「哪个站点用得最多」。
-- 默认零工具注入：**仅**当用户在设置里显式开启「注入用量查询」后，才向模型注册 `usage_stats` 这一个只读工具（默认关闭）；任何情况下都不注入系统提示、不写模型可见事件。
+- **低谷任务队列（预览）**：用户显式选择工作区、内置 DeepSeek 官方模型并提交 Prompt 后，任务才持久化入队；FIFO 串行、每任务独立会话，只在官方低谷启动，已提交任务跨峰继续，失败或结果未知标「需核对」且绝不自动重放。中转站同名模型不参与；宿主缺少会话控制能力时只读降级，不创建假任务。
+- 默认零工具注入：**仅**当用户在设置里显式开启「注入用量查询」后，才向模型注册 `usage_stats` 这一个只读工具（默认关闭）；不注入系统提示。
 - 中文 / English 语言切换，¥ / ≈$ / ≈€ 币种切换（二者独立）；无图表库、无外部 CDN、离线自包含。
 - **会话行可跳转**：面板里的会话标题点一下直接打开宿主对话（双代会话选择通道自动探测；宿主不支持时给出可读提示，不静默无反应）。
 - **上下文占用维度**：概览页显示当前会话的上下文占用率、窗口上限与构成拆解（系统 / 工具 / 消息）——数据取自宿主官方的 context 投影，**没有投影的会话整块不显示**（不拿 0 冒充）。
@@ -69,7 +70,8 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 
   ![侧边栏触发卡：今日消耗金额、涨跌徽章与迷你趋势](screenshots/sidebar.png)
 
-- **八区仪表盘**：概览 / 账单 / 用量 / 趋势 / 上下文 / 智能体 / 费率 / 设置——Hero 大数字 + 环比 + 本月预计 + KPI（悬停显示口径说明）+ 用量热力图，趋势 7/30 天可切费用 / Token，模型单价表、预算（全局 + 按模型）与峰谷提醒都在；设置页支持全文搜索（中英关键词过滤分区，全不命中显示空态）；克制冷调、深浅主题自适应。Tab 只保留名称，不再挂状态徽标（信息都在各自分区里）。
+- **九区仪表盘**：概览 / 队列 / 账单 / 用量 / 趋势 / 上下文 / 智能体 / 费率 / 设置——Hero 大数字 + 环比 + 本月预计 + KPI（悬停显示口径说明）+ 用量热力图，趋势 7/30 天可切费用 / Token，模型单价表、预算（全局 + 按模型）与峰谷提醒都在；设置页支持全文搜索（中英关键词过滤分区，全不命中显示空态）；克制冷调、深浅主题自适应。Tab 只保留名称，不再挂状态徽标（信息都在各自分区里）。
+- **队列分区**：显示当前峰谷与切换倒计时、待执行 / 执行中 / 需核对 / 已完成任务及宿主会话入口；可移除尚未启动的任务或清除已结束历史，执行中的任务不可从队列删除。队列文件与文件锁 / 租约防止同一 `DSH_HOME` 的多实例重复提交。
 - **上下文分区**：占用率进度条 + 下一次 / 最近一次请求占用 + 窗口上限 + 构成拆解（系统 / 工具 / 消息）。数据取自宿主官方 context 投影；**没有投影的会话整块不显示**，不拿 0 冒充。
 - **智能体分区**：按委派关系还原的智能体网络——父对话 → 子智能体的层级树，每行给调用数、自身费用与**链合计**（自身 + 全部后代），直接回答「哪次委派最贵」。
 
@@ -128,13 +130,13 @@ DeepSeek / Kimi / 智谱 GLM / 腾讯云 TokenHub 等 7 家官方余额、Coding
 - **多语种 + 三币种**：语言（EN / 中）与币种（¥ CNY / $ USD / € EUR）**各自独立切换**，均仅本插件生效、不影响宿主全局 UI；费率表、侧边栏卡片与输入框胶囊均按所选币种换算，两项选择均本地持久化。老用户首次升级时语言由已存币种播种一次（选 $ 即英文），界面语言不会静默改变。
 - **安全加固**：全部 HTTP 端点强制回环访问——peer socket 地址 + Host 头精确匹配双重校验，拒绝 `127.0.0.1.evil.com` 形式的 DNS rebinding（反向代理部署可用 `trustedHosts` 显式放行特定主机名，peer socket 校验仍为强制）；写操作额外校验 Origin 回环与 Content-Type 并限制 body 上限，杜绝跨站改写；余额 / 订阅 / 定价拉取带有限重试与按上游维度熔断（鉴权失败属配置问题、不计入熔断）。
 - **导出防注入**：CSV 对 `=` / `+` / `-` / `@` 开头单元格前置单引号并完整转义，防止在 Excel / WPS 中被当作公式执行。
-- **隐私底线**：默认零工具注入——不注入系统提示、不向会话日志写模型可见事件；仅从既有会话日志聚合，日志内容由其他包负责。唯一的例外是用户显式开启后注册的 `usage_stats` 只读工具（见「Model Experience」），该工具只读本插件自己的聚合结果，不读会话正文、不写回日志。
+- **隐私底线**：默认只读、零工具注入——不注入系统提示、不创建会话、不提交 Prompt，只从既有会话日志聚合。用户显式开启的 `usage_stats` 仍只读聚合结果。**唯一会主动创建会话并写入用户 Prompt 的路径是显式入队**：队列文件以 0600 保存，执行后 Prompt 也会按宿主规则进入对应会话日志；Agent 可用工具及权限完全由宿主控制，插件不额外提权。请勿在 Prompt 中填写密码或密钥。
 
 ## 🚀 快速开始
 
 先确认宿主代际（`dsh --version`），再按代际选安装命令——**装错线会在市场侧被 `engines.dsh` 声明拦截**（v1.0.41 起声明生效）。注意 `dsh plugin add` 需要显式 `--profile`（缺省会报 `required option '--profile <name>' not specified`），且建议**钉具体版本号**而非 `@latest`（pnpm 的 `minimumReleaseAge` 冷静期会让刚发布的版本被跳过、回退到旧线）：
 
-- **DSH 0.1.2 ~ 0.2.1 系**（0.1.2-alpha.1 起，宿主 `latest` 现为 0.2.1-rc.2、预览线已到 0.2.1-rc.3；`npm ls -g @deepseek-ai/dsh` 显示 0.1.2-* ~ 0.2.1-*）：
+- **DSH 0.1.2 ~ 0.2.1 系**（0.1.2-alpha.1 起，宿主 `latest` 现为 0.2.1-rc.2、预览线已到 0.2.1-rc.4；`npm ls -g @deepseek-ai/dsh` 显示 0.1.2-* ~ 0.2.1-*）：
 
   ```sh
   dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@latest
@@ -187,7 +189,7 @@ GitHub Pages 发布。
   └─ 渲染仪表盘
 ```
 
-- **服务端**（`src/index.ts`）：注入 `webServer`、`sessionPersistence` 与 `credentials`，注册 `GET /api/billing/usage-stats`、`/api/billing/pricing`、`/api/billing/balance`、`/api/billing/subscriptions`、`/api/billing/relay-quotas`、`/api/billing/notify-claim`（完成提醒跨实例认领）与 `/api/billing/usage-tool`（`usage_stats` 工具开关读写）。聚合器按会话缓存折叠结果：一次 LLM 调用归属到其前置 `request/header` 记录的模型，token 拆分到缓存命中 / 未命中桶，日期按本机时区归天；日志文件 mtime+size 不变则直接复用缓存，只有写过的会话重新折叠，整份文档另有 5 秒 TTL 合并密集轮询。每个成功折叠的会话同时原子写入独立的持久用量账本，永久删除会话后历史费用与 token 仍保留。
+- **服务端**（`src/index.ts`）：注入 `webServer`、`sessionPersistence` 与 `credentials`，注册用量、定价、余额、订阅、中转站、完成提醒、工具开关及 `GET/POST /api/billing/task-queue` 等回环端点。聚合器按会话缓存折叠结果并持久化独立用量账本。任务队列通过 `ctx.get()` 探测可选的 `sessionController` / `workspaceRegistry`，不把它们列为启动注入依赖；能力缺席时宿主与仪表盘照常工作。
 - **浏览器端**（`src/client/`）：请求上述接口渲染仪表盘，通过 `llm.models` 探测各厂商连接状态。真实数据到达前显示全零空快照，不展示伪造样本。
 
 ## 💡 计费细节
@@ -246,7 +248,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 
 ## 🔌 HTTP API
 
-对外 HTTP 接口与字段定义详见源码：`GET /api/billing/pricing`、`/api/billing/balance`、`/api/billing/usage-stats`、`/api/billing/subscriptions`、`/api/billing/relay-quotas`（见 `src/index.ts`、`src/aggregate.ts`、`src/relay.ts`）。其中 `usage-stats` 返回的 `bySite` 字段为按中转站归组后的用量分布（`site:<origin>` / `direct:<provider>` / `unknown`），`unpricedModels` 为未计价模型的 id 列表；`relay-quotas` 返回 `quotas`（各中转站额度）与 `diagnostics`（每条路由的 origin / kind 归类，供「为什么不显示」自查）。全部端点仅接受回环请求（peer socket 地址 + Host 头校验）。
+对外 HTTP 接口与字段定义详见源码：`GET /api/billing/pricing`、`/api/billing/balance`、`/api/billing/usage-stats`、`/api/billing/subscriptions`、`/api/billing/relay-quotas`、`GET/POST /api/billing/task-queue` 等（见 `src/index.ts`、`src/aggregate.ts`、`src/relay.ts`、`src/routes/task-queue.ts`）。其中 `usage-stats` 返回的 `bySite` 字段为按中转站归组后的用量分布，`relay-quotas` 返回额度与路由诊断；`task-queue` 返回能力、工作区、官方模型和持久任务快照，写操作仅允许入队、移除未启动任务与清理已结束历史。全部端点仅接受回环请求；队列写操作另校验回环 Origin、JSON Content-Type 与 256 KiB body 上限。
 
 ## ⚙️ 配置
 
@@ -254,6 +256,7 @@ cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_outp
 | ----------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
 | `statsPath`             | 未设置                                  | 回退统计文件 `.dsh-usage-stats.json` 的绝对路径（`sessionPersistence` 不可用时生效）                                            |
 | `ledgerPath`            | `<harness home>/.dsh-usage-ledger.json` | 独立持久用量账本的绝对路径；只保存折叠后的统计（不保存消息正文或会话标题），永久删除会话不会删除已记录的费用与 token。**默认根跟随宿主 harness home**（`DSH_HOME` 环境变量优先，回退 `~/.dsh`），自定义 `DSH_HOME` 的多套隔离环境互不污染（issue #52）                           |
+| `taskQueuePath`         | `<harness home>/.dsh-usage-task-queue.json` | 低谷任务队列的绝对路径；包含用户显式提交的 Prompt、工作区、模型与执行状态，原子写入且权限为 0600，备份为 `.bak`。多套 `DSH_HOME` 的队列互不共享 |
 | `balanceApiKeyEnv`      | `DEEPSEEK_API_KEY`                   | DeepSeek 余额查询的凭据引用；仅在 llm-pi-ai 未配置 deepseek 的 `apiKeyEnv` 时兜底使用                                             |
 | `subscriptionProviders` | 内置订阅通道清单（含 `tencent-token-plan`） | 订阅制（coding / token 套餐）provider id 列表，照常统计 token、费用记 0；与订阅卡识别口径对齐。**注意是「替换」默认清单，不是追加**——自定义时要把默认项一并写全，否则被移出的订阅通道会被拉回按量计费 |
 | `routeAliases`          | 未设置                                  | 历史路由别名（旧 provider 路由名 → 当前路由名）：改名/删除过的路由，其历史用量原落「未知路由」桶且订阅/官方判定失效；配置后按目标路由归位。例：`{ "deepseek-official": "tencent", "tencent-cloud": "tencent" }` |
@@ -293,9 +296,9 @@ npm dist-tag add @kenz1117/dsh-ui-usage-billing@<版本> alpha
 
 ## 🔐 权限与兼容声明（DSH STORE）
 
-- **权限等级：high**：读取持久会话日志（文件）、访问多厂商官方 / 订阅 / 余额 / 定价 API（网络）、经凭据 seam 读取 `apiKeyEnv`（凭据）、写入 harness home（`DSH_HOME` / `~/.dsh`）下的账本与快照（持久状态）；**不含**命令执行 / Shell。
+- **权限等级：high**：读取持久会话日志（文件）、访问多厂商官方 / 订阅 / 余额 / 定价 API（网络）、经凭据 seam 读取 `apiKeyEnv`（凭据）、写入 harness home 下的账本、快照与任务队列（持久状态）。插件自身**不含**命令执行 / Shell；仅用户显式入队时才经宿主创建会话并提交 Prompt，Agent 的工具调用仍由宿主原有权限与审批控制。
 - **更新通道：`user-reviewed`**：本插件具备文件 / 网络 / 凭据能力，DSH STORE 采用每次安装需本机人工确认的通道；安装前请复核仓库、固定 Commit、生命周期脚本与影响范围。
-- **兼容范围**：预览线（npm `latest`/`alpha`，1.7.x，自 v1.2.0 起恒高于稳定线以消除版本号倒挂）适配 DSH `0.1.2-alpha.1` ~ `0.2.1-rc.3`（宿主 `latest` 现指向 0.2.1-rc.2、预览线已到 0.2.1-rc.3；0.2.1 全系列逐版本声明）；稳定线（npm `stable`，1.1.x，**已冻结**，终版 v1.1.17）适配旧宿主 `0.1.0-rc.8` ~ `0.1.1-rc.2`。逐版本声明见 `package.json` 的 `dsh.compatibility`，双线对照与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。Node.js `^22.19.0 || >=24.0.0`。
+- **兼容范围**：预览线（npm `latest`/`alpha`，1.8.x，自 v1.2.0 起恒高于稳定线以消除版本号倒挂）适配 DSH `0.1.2-alpha.1` ~ `0.2.1-rc.4`（宿主 `latest` 现指向 0.2.1-rc.2、预览线已到 0.2.1-rc.4；0.2.1 全系列逐版本声明）；稳定线（npm `stable`，1.1.x，**已冻结**，终版 v1.1.17）适配旧宿主 `0.1.0-rc.8` ~ `0.1.1-rc.2`。逐版本声明见 `package.json` 的 `dsh.compatibility`，双线对照与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。Node.js `^22.19.0 || >=24.0.0`。
 - **生命周期**：无 `preinstall` / `install` / `postinstall` / `prepare`（安装即用）。
 - **不冒用官方**：仅新增自有 entry id `ui-usage-billing`；对 `@deepseek-ai/dsh-*` 仅为 `peerDependencies` 依赖（不重复安装 / 不替换 / 不遮蔽官方组件），包名使用第三方命名空间 `@kenz1117/*`。
 - **打包产物**：运行文件 `lib/*` 与 `cordis.patch.yml` 已随固定 Commit 提交并声明在 `files`。
@@ -311,10 +314,11 @@ npm dist-tag add @kenz1117/dsh-ui-usage-billing@<版本> alpha
 | --- | --- | --- |
 | `usage_stats` | `range`：`today` / `month` / `session` / `all` / `bySite` / `relay` | 查询本插件已聚合的用量与估算费用（人民币，按官方目录价估算，非账单）；`session` 需处于 agent 会话上下文 |
 
-边界声明：该工具只读本插件自己的聚合结果，**不读会话正文、不读提示词、不写回会话日志**；插件任何情况下都**不注入系统提示**、**不向会话日志写入模型可见事件**、不触及会话 KV 缓存。用量统计由服务端从既有会话日志聚合，日志内容由其他包各自负责。工具会占用每次请求的上下文，因此保持默认关闭。
+边界声明：该工具只读本插件自己的聚合结果，**不读会话正文、不读提示词、不写回会话日志**，也不触及会话 KV 缓存；插件不注入系统提示。低谷队列不是模型工具，而是用户显式授权的独立路径：入队 Prompt 会作为用户消息写入新会话，不能与前述只读工具边界混为一谈。工具会占用每次请求的上下文，因此保持默认关闭。
 
 ## ⚠️ Known Limitations and Deferred Work
 
+- **低谷队列仍是预览能力**：只接受宿主内置 `deepseek-official` 路由中具有官方峰谷价的模型，中转站和自定义路由一律排除；不提供自动暂停、取消或失败重试。宿主停止、结果流中断或租约失效后，任务只标记「需核对」，用户应打开对应 Session 确认实际结果后手动决定是否重新入队。
 - **余额查询已接入 DeepSeek / 月之暗面（Kimi）/ 阶跃星辰（StepFun）/ 硅基流动 / xAI / 智谱 GLM（Z.ai 国内域）/ 腾讯云 TokenHub（Token Plan 余量）**：前六家用标准 Bearer API key，腾讯云用云 API 密钥对（TC3 签名）。其余厂商因无公开余额接口或需非 Bearer 鉴权（小米 MiMo 走控制台 Cookie、商汤走 AccessKey 签名、MiniMax/字节豆包走额度制或 AK/SK），暂显示「未配置」；扩展点在 `src/balance.ts`（按厂商余额 API 增加查询器）。
 - **中转站额度依赖上游私有 schema**：New API / Sub2API 的接口字段未公开，读不出时标「未读出额度」而非臆造金额；若某中转站响应字段不同，需按 `src/relay.ts` 的解析器扩展。未知路由表示该路由在当前 provider 配置与宿主 llm 注册表里都不存在（配置已删、日志比安装更早等），历史调用数据未丢，重新配置同名路由即可自动归位。未知路由桶的费用一律记 0（issue #82）：支出主体无法核实，与未收录模型、订阅通道同姿态——token 照常统计，面板组头费用显示「—」并附说明。由独立插件经 `ctx.llm.registerAdapter` 注册的通道（如 CommandCode）不属于未知路由：插件从宿主 llm 注册表发现它们，按 `direct:<provider>` 桶以模型官方目录价计费（issue #91）；注册表读取走 `ctx.get('llm')`（免 `inject` 声明），读不到/读到空集合时告警一次（面板数字不变，unknown 口径不变），避免这类失效无声无息。
 - **超支通知依赖浏览器 Notification**：权限被拒绝或平台不支持时只有界面红色脉冲兜底，没有宿主级通知通道；通知上限为每天一次。

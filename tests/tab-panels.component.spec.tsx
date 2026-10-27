@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 /**
- * UI 剧本 2（jsdom + @testing-library）：6 Tab 面板 testid 全部存在（v1.5.2 P0-4）。
+ * UI 剧本 2（jsdom + @testing-library）：全部一级分区 panel testid 均存在。
  *
- * 6 Tab 是 v1.5.0 视觉大改版的核心交付：概览/账单/用量/趋势/费率/设置，
+ * 概览/队列/账单/用量/趋势/上下文/智能体/费率/设置，
  * 每个 panel 都有 `data-testid="billing-tab-panel-<id>"`。本剧本打开 Modal 后
- * 逐个断言存在（不点切换——只验静态结构，切换逻辑在 usage-billing.client.spec.tsx
- * 已覆盖）。
+ * 逐个点击断言存在；切换逻辑在 usage-billing.client.spec.tsx 已覆盖。
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -28,16 +27,21 @@ beforeEach(() => {
 
 const t = (key: string): string => (zh as Record<string, string>)[key] ?? key
 
-const TAB_IDS = ['overview', 'providers', 'token', 'trends', 'pricing', 'settings'] as const
+const TAB_IDS = ['overview', 'queue', 'providers', 'token', 'trends', 'context', 'agents', 'pricing', 'settings'] as const
 
-describe('6 Tab 面板存在性', () => {
-  it('逐个点击 6 Tab，每个 panel 都能渲染（条件渲染：仅 active panel 在 DOM）', async () => {
+describe('一级分区面板存在性', () => {
+  it('逐个点击 9 个分区，每个 panel 都能渲染（条件渲染：仅 active panel 在 DOM）', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/api/billing/usage-stats')) {
         return new Response(JSON.stringify({
           total: { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0, reasoning: 0 },
           byModel: {}, byDay: {}, byDayModels: {}, byDayModelsSite: {},
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      if (url.includes('/api/billing/task-queue')) {
+        return new Response(JSON.stringify({
+          supported: false, tier: 'peak', nextSwitchInMs: 0, tasks: [], workspaces: [], models: [],
         }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })

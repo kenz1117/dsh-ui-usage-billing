@@ -27,12 +27,12 @@ export interface ModelHealth {
 /** Idle health state before the probe settles. */
 export declare const IDLE_HEALTH: ModelHealth;
 /** 仪表盘分区 Tab id。 */
-export type DashboardTab = 'overview' | 'context' | 'agents' | 'token' | 'trends' | 'providers' | 'pricing' | 'settings';
+export type DashboardTab = 'overview' | 'queue' | 'context' | 'agents' | 'token' | 'trends' | 'providers' | 'pricing' | 'settings';
 import type { UsageBillingKey } from '../locales.ts';
 /**
- * Tab 定义（顺序即渲染顺序）：概览=主数字/KPI/热力图，账单=厂商计费与订阅，
- * 用量=Token 用量，趋势=趋势图/每轮费用，费率=模型单价表，设置=预算与峰谷提醒。
- * 导出供测试断言 tab 与文案 key 对齐、decor 锚点落在正确分区。
+ * Tab 定义（顺序即渲染顺序）：概览=主数字/KPI/热力图，队列=低谷任务（新宿主预览），
+ * 账单=厂商计费与订阅，用量=Token 用量，趋势=趋势图/每轮费用，费率=模型单价表，
+ * 设置=预算与峰谷提醒。导出供测试断言 tab 与文案 key 对齐。
  */
 export declare const DASHBOARD_TABS: readonly {
     id: DashboardTab;

@@ -197,11 +197,11 @@ function clientConfig(id: string, entry: string): UserConfig {
     // must carry the TS/TSX mapping consumed by browser profiling tools.
     sourcemap: true,
     // 浏览器分发面统一压缩。注意口径：DSH Store 对插件 JS bundle **无审查上限**
-    // （仅图标文件 icon.* 设 256 KiB 上限），本仓 256/320 KiB 两道阈值是
+    // （仅图标文件 icon.* 设 256 KiB 上限），本仓 256/500 KiB 两道阈值是
     // sync.sh 自设的体积成本线、非上游强制。压缩的真实理由是浏览器加载性能
     // 与该成本线（未压缩 bundle 内联 CSS/双语字典，体积数倍于此）。
     // (The DSH Store caps no plugin JS bundle — only icon.* files at 256 KiB.
-    // The repo's own 256/320 KiB lines are a self-imposed cost guard, not an
+    // The repo's own 256/500 KiB lines are a self-imposed cost guard, not an
     // upstream gate. The real reasons to minify are browser load latency and
     // that guard; the uncompressed bundle inlines CSS and bilingual dicts.)
     minify: true,

@@ -139,6 +139,7 @@ import { fetchSubscriptions } from './api/subscriptions.ts'
 import { fetchRelayQuotas } from './api/relay.ts'
 import { loadUsageTool, saveUsageTool } from './api/usage-tool.ts'
 import { lastPricingSyncedAt, loadLivePricing, syncPricingNow } from './api/pricing.ts'
+import { TaskQueuePanel } from './TaskQueuePanel.tsx'
 
 /** 把 Tab id + 当前状态映射为徽章（null = 不渲染徽章）。 */
 /** 订阅窗口行（已用比例进度条 + 剩余文案 + 重置时刻）：悬浮速览与订阅卡共用。 */
@@ -1872,6 +1873,9 @@ function BillingDashboard({
 
         {/* Scrollable body: 按 Tab 条件渲染分区。 */}
         <div className={css.dashboardBody}>
+          {tab === 'queue' && (
+            <TaskQueuePanel t={t} language={language} navigateToSession={navigateToSession} />
+          )}
           {tab === 'overview' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-overview">
               {/* 对账说明条：官方余额变动与本地账本当日费用偏差超阈值（drift）时，
