@@ -28,12 +28,6 @@ export const TAB_ICONS: Record<DashboardTab, ReactNode> = {
       <path d="M12 10v4m-2-2h4" />
     </svg>
   ),
-  context: (
-    <svg viewBox="0 0 16 16" {...COMMON_PROPS}>
-      <circle cx="8" cy="8" r="5.5" />
-      <path d="M8 8V2.5M8 8l3.8 2.3" />
-    </svg>
-  ),
   agents: (
     <svg viewBox="0 0 16 16" {...COMMON_PROPS}>
       <circle cx="8" cy="3.5" r="2" />

@@ -15,7 +15,7 @@ import css from './UsageBilling.module.css'
 export interface PeakAlertBannerProps {
   hit: PeakAlertHit
   config: PeakAlertConfig
-  t: (key: UsageBillingKey) => string
+  t: (key: UsageBillingKey, params?: Record<string, unknown>) => string
   onDismiss: () => void
 }
 
@@ -67,6 +67,11 @@ export function PeakAlertBanner({ hit, config, t, onDismiss }: PeakAlertBannerPr
       </div>
       <div className={clsx(css.peakCount, isPeak ? css.peakCountPrimary : css.peakCountSuccess)}>{minutes}min</div>
       <p className={css.peakDesc}>{desc}</p>
+      {hit.queueCount !== undefined && hit.queueCount > 0 && (
+        <p className={css.peakDesc} data-testid="billing-peak-queue-note">
+          {t(entering === 'peak' ? 'peakAlertQueuePeak' : 'peakAlertQueueOff', { count: hit.queueCount })}
+        </p>
+      )}
     </div>
   )
 }

@@ -193,6 +193,8 @@ export type UsageBillingKey =
   | 'peakAlertDescOff'
   | 'peakAlertDescPeakZhipu'
   | 'peakAlertDescOffZhipu'
+  | 'peakAlertQueuePeak'
+  | 'peakAlertQueueOff'
   | 'export'
   | 'exportCsvDay'
   | 'exportCsvSession'
@@ -360,13 +362,6 @@ export type UsageBillingKey =
   | 'sessionOpen'
   | 'sessionOpenFailed'
   | 'sessionOpenUnavailable'
-  | 'contextOccupancy'
-  | 'contextWindow'
-  | 'contextSystem'
-  | 'contextTools'
-  | 'contextMessages'
-  | 'contextNoData'
-  | 'tabContext'
   | 'tabAgents'
   | 'tabQueue'
   | 'queueSubtitle'
@@ -382,6 +377,11 @@ export type UsageBillingKey =
   | 'queuePromptPlaceholder'
   | 'queuePrivacy'
   | 'queueEnqueue'
+  | 'queueImport'
+  | 'queueImportHint'
+  | 'queueImported'
+  | 'queueImportFormat'
+  | 'queueImportTooLarge'
   | 'queueActive'
   | 'queueClearFinished'
   | 'queueEmpty'
@@ -394,10 +394,6 @@ export type UsageBillingKey =
   | 'queueStatusRunning'
   | 'queueStatusCompleted'
   | 'queueStatusFailed'
-  | 'contextNextRequest'
-  | 'contextLastRequest'
-  | 'contextComposition'
-  | 'contextCompositionHint'
   | 'agentsSummary'
   | 'agentsCount'
   | 'agentsDelegations'
@@ -601,6 +597,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'peakAlertDescOff': '即将进入平价时段，价格减半，适合运行大批量任务',
   'peakAlertDescPeakZhipu': '即将进入高峰时段（工作日 14:00–18:00），Coding Plan 额度将按基础积分全额抵扣',
   'peakAlertDescOffZhipu': '即将进入非高峰时段，Coding Plan 额度按基础积分 5 折抵扣',
+  'peakAlertQueuePeak': '{count} 个排队任务将等待下一低谷；已开始任务继续执行',
+  'peakAlertQueueOff': '{count} 个排队任务将按顺序启动',
   'export': '导出',
   'exportCsvDay': '按日 CSV',
   'exportCsvSession': '按会话 CSV',
@@ -771,18 +769,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'sessionOpen': '打开会话',
   'sessionOpenFailed': '无法打开该会话（可能已被删除或不在当前会话列表）',
   'sessionOpenUnavailable': '当前宿主不支持会话跳转',
-  'contextOccupancy': '上下文占用',
-  'contextWindow': '窗口上限 {window}',
-  'contextSystem': '系统',
-  'contextTools': '工具',
-  'contextMessages': '消息',
-  'contextNoData': '上下文占用跟随**当前打开的对话**——请先在一个会话里打开本面板；宿主未上报该投影时同样为空。',
-  'tabContext': '上下文',
   'tabAgents': '智能体',
-  'contextNextRequest': '下一次请求占用',
-  'contextLastRequest': '最近一次请求占用',
-  'contextComposition': '上下文构成',
-  'contextCompositionHint': '构成项为启发式 token 估算，三项之和不等于下一次请求占用',
   'agentsSummary': '智能体网络',
   'agentsCount': '智能体',
   'agentsDelegations': '委派',
@@ -806,6 +793,11 @@ export const zh: Record<UsageBillingKey, string> = {
   'queuePromptPlaceholder': '描述一个非紧急、可无人值守完成的任务。入队即授权宿主在下一低谷创建会话并执行。',
   'queuePrivacy': '队列文件仅当前用户可读；执行后 Prompt 也会进入宿主会话日志。请勿填入密码或密钥。',
   'queueEnqueue': '加入低谷队列',
+  'queueImport': '导入 JSON',
+  'queueImportHint': 'JSON 数组项可为 Prompt 字符串或 { prompt, cwd?, provider?, model? }；缺省沿用当前工作区与模型，整批校验后一次入队。',
+  'queueImported': '已导入 {count} 个任务',
+  'queueImportFormat': '导入文件须为非空 JSON 数组，每项是 Prompt 字符串或任务对象',
+  'queueImportTooLarge': '导入文件超过 10 MiB，未读取或写入任何任务',
   'queueActive': '任务与历史',
   'queueClearFinished': '清除已结束',
   'queueEmpty': '队列是空的。加入一个非紧急任务，下一低谷自动开始。',
@@ -1011,6 +1003,8 @@ export const en: Record<UsageBillingKey, string> = {
   'peakAlertDescOff': 'About to enter off-peak hours — price halves, ideal for large batches',
   'peakAlertDescPeakZhipu': 'Peak hours soon (weekdays 14:00–18:00) — Coding Plan credits will be deducted at full rate',
   'peakAlertDescOffZhipu': 'Off-peak soon — Coding Plan credits will be deducted at 50% of base credits',
+  'peakAlertQueuePeak': '{count} queued tasks will wait for the next off-peak window; admitted tasks keep running',
+  'peakAlertQueueOff': '{count} queued tasks will start in order',
   'export': 'Export',
   'exportCsvDay': 'Daily CSV',
   'exportCsvSession': 'Sessions CSV',
@@ -1181,18 +1175,7 @@ export const en: Record<UsageBillingKey, string> = {
   'sessionOpen': 'Open session',
   'sessionOpenFailed': 'Could not open this session (it may be deleted or absent from the current list)',
   'sessionOpenUnavailable': 'This host does not support session navigation',
-  'contextOccupancy': 'Context occupancy',
-  'contextWindow': 'Window {window}',
-  'contextSystem': 'System',
-  'contextTools': 'Tools',
-  'contextMessages': 'Messages',
-  'contextNoData': 'Context occupancy follows the **conversation you currently have open** — open this panel from within a session; it stays empty when the host serves no such projection.',
-  'tabContext': 'Context',
   'tabAgents': 'Agents',
-  'contextNextRequest': 'Next request occupancy',
-  'contextLastRequest': 'Last request occupancy',
-  'contextComposition': 'Context composition',
-  'contextCompositionHint': 'Composition figures are heuristic token estimates; the three do not sum to the next request occupancy',
   'agentsSummary': 'Agent network',
   'agentsCount': 'agents',
   'agentsDelegations': 'delegations',
@@ -1216,6 +1199,11 @@ export const en: Record<UsageBillingKey, string> = {
   'queuePromptPlaceholder': 'Describe a non-urgent task that can run unattended. Enqueuing authorizes the host to create a Session and run it at the next off-peak window.',
   'queuePrivacy': 'The queue file is owner-only; executed Prompts also enter host Session logs. Do not enter passwords or secrets.',
   'queueEnqueue': 'Enqueue for off-peak',
+  'queueImport': 'Import JSON',
+  'queueImportHint': 'A JSON array of Prompt strings or { prompt, cwd?, provider?, model? } objects; omitted fields use the current selection. The whole batch is validated before one atomic enqueue.',
+  'queueImported': 'Imported {count} tasks',
+  'queueImportFormat': 'The import must be a non-empty JSON array of Prompt strings or task objects',
+  'queueImportTooLarge': 'The import exceeds 10 MiB; no tasks were read or enqueued',
   'queueActive': 'Tasks & history',
   'queueClearFinished': 'Clear finished',
   'queueEmpty': 'The queue is empty. Add a non-urgent task to start it at the next off-peak window.',

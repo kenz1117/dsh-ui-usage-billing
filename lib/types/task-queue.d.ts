@@ -7,7 +7,7 @@
  * from submitting the same task. Prompts are persisted with mode 0600.
  */
 import type { SessionController } from '@deepseek-ai/dsh-api-session-controller';
-import type { TaskQueueSnapshot, TaskQueueWorkspace } from './task-queue-shared.ts';
+import type { TaskQueueInput, TaskQueueSnapshot, TaskQueueSummary, TaskQueueWorkspace } from './task-queue-shared.ts';
 export type TaskQueueController = Pick<SessionController, 'create' | 'selectModel' | 'prompt' | 'follow' | 'modelCatalog'>;
 type ControllerFace = TaskQueueController;
 export interface TaskQueueEngineOptions {
@@ -39,12 +39,10 @@ export declare class TaskQueueEngine {
     start(): void;
     stop(): void;
     snapshot(): Promise<TaskQueueSnapshot>;
-    enqueue(input: {
-        prompt?: unknown;
-        cwd?: unknown;
-        provider?: unknown;
-        model?: unknown;
-    }): Promise<void>;
+    summary(): Promise<TaskQueueSummary>;
+    enqueue(input: TaskQueueInput): Promise<void>;
+    /** Validate the whole batch before one locked append: no partially admitted import. */
+    enqueueMany(inputs: readonly TaskQueueInput[]): Promise<void>;
     remove(id: string): Promise<void>;
     clearFinished(): Promise<void>;
     private modelOptions;

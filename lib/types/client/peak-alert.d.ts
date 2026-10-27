@@ -33,7 +33,13 @@ export interface PeakAlertHit {
     entering: PriceTierId;
     atMs: number;
     channel: RateChannel;
+    /** Waiting DeepSeek queue items; informational only, never an execution action. */
+    queueCount?: number;
 }
+/** Prefer the current model's alert; merge queue context only at the same switch. */
+export declare function mergeQueuePeakAlert(current: PeakAlertHit | null, queue: PeakAlertHit | null, queuedCount: number): PeakAlertHit | null;
+/** Keep an already-visible banner truthful as the lightweight queue count changes. */
+export declare function refreshQueuePeakAlert(current: PeakAlertHit | null, queuedCount: number): PeakAlertHit | null;
 /** 读取本地偏好（缺失/损坏回退默认，字段宽松校验）。 */
 export declare function loadPeakAlertConfig(): PeakAlertConfig;
 /** 保存偏好；存储失败静默（降级为关闭，不影响其它能力）。 */

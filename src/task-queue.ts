@@ -15,9 +15,11 @@ import type { SessionController } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionPromptRequest } from '@deepseek-ai/dsh-api-session-controller/types'
 import { channelCountdown, rateChannelOf, tierAt } from './client/pricing.ts'
 import type {
+  TaskQueueInput,
   TaskQueueModel,
   TaskQueueSnapshot,
   TaskQueueStatus,
+  TaskQueueSummary,
   TaskQueueTask,
   TaskQueueWorkspace,
 } from './task-queue-shared.ts'
@@ -154,29 +156,60 @@ export class TaskQueueEngine {
     }
   }
 
-  async enqueue(input: { prompt?: unknown; cwd?: unknown; provider?: unknown; model?: unknown }): Promise<void> {
+  async summary(): Promise<TaskQueueSummary> {
+    const countdown = channelCountdown(this.now(), 'deepseek-metered')
+    const document = await this.readDocument()
+    return {
+      supported: usableController(this.options.getController()) !== undefined,
+      tier: tierAt(this.now()),
+      nextSwitchInMs: countdown?.nextSwitchInMs ?? 0,
+      queuedCount: document.tasks.filter(task => task.status === 'queued').length,
+    }
+  }
+
+  async enqueue(input: TaskQueueInput): Promise<void> {
+    await this.enqueueMany([input])
+  }
+
+  /** Validate the whole batch before one locked append: no partially admitted import. */
+  async enqueueMany(inputs: readonly TaskQueueInput[]): Promise<void> {
     const controller = usableController(this.options.getController())
     if (controller === undefined) throw new TaskQueueError('this host does not provide Session task control', 409)
-    const { prompt, cwd, provider, model } = input
-    if (typeof prompt !== 'string' || prompt.trim() === '') throw new TaskQueueError('prompt is required')
-    if (prompt.length > MAX_PROMPT_LENGTH) throw new TaskQueueError('prompt is too long')
-    if (typeof cwd !== 'string' || !isAbsolute(cwd)) throw new TaskQueueError('a valid workspace is required')
-    if (!this.options.getWorkspaces().some(workspace => workspace.path === cwd)) {
-      throw new TaskQueueError('workspace is no longer available', 409)
-    }
-    if (typeof provider !== 'string' || typeof model !== 'string') throw new TaskQueueError('model is required')
+    if (!Array.isArray(inputs) || inputs.length === 0) throw new TaskQueueError('at least one task is required')
+    if (inputs.length > MAX_QUEUED) throw new TaskQueueError('too many active queue items', 409)
+    const workspaces = this.options.getWorkspaces()
     const models = await this.modelOptions(controller, true)
-    if (!models.some(candidate => candidate.provider === provider && candidate.id === model)) {
-      throw new TaskQueueError('select an available DeepSeek time-of-day model', 409)
-    }
-    await this.update(tasks => {
-      if (tasks.filter(task => !isTerminal(task.status)).length >= MAX_QUEUED) {
-        throw new TaskQueueError('too many active queue items', 409)
+    const validated = inputs.map((input, index) => {
+      try {
+        if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+          throw new TaskQueueError('task must be a JSON object')
+        }
+        const { prompt, cwd, provider, model } = input
+        if (typeof prompt !== 'string' || prompt.trim() === '') throw new TaskQueueError('prompt is required')
+        if (prompt.length > MAX_PROMPT_LENGTH) throw new TaskQueueError('prompt is too long')
+        if (typeof cwd !== 'string' || !isAbsolute(cwd)) throw new TaskQueueError('a valid workspace is required')
+        if (!workspaces.some(workspace => workspace.path === cwd)) {
+          throw new TaskQueueError('workspace is no longer available', 409)
+        }
+        if (typeof provider !== 'string' || typeof model !== 'string') throw new TaskQueueError('model is required')
+        if (!models.some(candidate => candidate.provider === provider && candidate.id === model)) {
+          throw new TaskQueueError('select an available DeepSeek time-of-day model', 409)
+        }
+        return { prompt, cwd, provider, model }
+      } catch (error) {
+        if (inputs.length > 1 && error instanceof TaskQueueError) {
+          throw new TaskQueueError(`task ${String(index + 1)}: ${error.message}`, error.status)
+        }
+        throw error
       }
-      tasks.push({
-        id: this.createId(), prompt, cwd, provider, model,
-        status: 'queued', createdAt: this.now(),
-      })
+    })
+    await this.update(tasks => {
+      const active = tasks.filter(task => !isTerminal(task.status)).length
+      if (active + validated.length > MAX_QUEUED) throw new TaskQueueError('too many active queue items', 409)
+      const createdAt = this.now()
+      for (const input of validated) {
+        tasks.push({ id: this.createId(), ...input, status: 'queued', createdAt })
+      }
     })
     void this.pump()
   }

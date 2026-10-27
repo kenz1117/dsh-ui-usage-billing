@@ -358,4 +358,67 @@ describe('TaskQueueEngine safety and persistence', () => {
     expect((await engine.snapshot()).tasks[0]?.error).toContain('unconfirmed')
     expect(prompts).toHaveLength(1)
   })
+
+  it('atomically imports a valid batch in FIFO order', async () => {
+    const { controller } = fakeController()
+    const engine = makeEngine(controller, () => PEAK)
+    await engine.enqueueMany([
+      { prompt: 'first import', cwd: workspace, provider: 'deepseek-official', model: 'deepseek-flash' },
+      { prompt: 'second import', cwd: workspace, provider: 'deepseek-official', model: 'deepseek-flash' },
+    ])
+
+    const tasks = (await engine.snapshot()).tasks
+    expect(tasks.map(task => task.prompt)).toEqual(['first import', 'second import'])
+    expect(tasks.map(task => task.status)).toEqual(['queued', 'queued'])
+  })
+
+  it('writes no part of a batch when any item is invalid', async () => {
+    const { controller, prompts } = fakeController({ relayMirror: true })
+    const engine = makeEngine(controller, () => PEAK)
+    await expect(engine.enqueueMany([
+      { prompt: 'valid first item', cwd: workspace, provider: 'deepseek-official', model: 'deepseek-flash' },
+      { prompt: 'invalid relay item', cwd: workspace, provider: 'discount-relay', model: 'deepseek-flash' },
+    ])).rejects.toMatchObject({ status: 409, message: 'task 2: select an available DeepSeek time-of-day model' })
+
+    expect((await engine.snapshot()).tasks).toEqual([])
+    expect(prompts).toHaveLength(0)
+  })
+
+  it('rejects the whole import when existing active tasks plus the batch exceed fifty', async () => {
+    const { controller } = fakeController()
+    const engine = makeEngine(controller, () => PEAK)
+    const task = { prompt: 'existing item', cwd: workspace, provider: 'deepseek-official', model: 'deepseek-flash' }
+    await engine.enqueueMany(Array.from({ length: 49 }, () => task))
+
+    await expect(engine.enqueueMany([
+      task,
+      { ...task, prompt: 'must not be partially appended' },
+    ])).rejects.toMatchObject({ status: 409, message: 'too many active queue items' })
+    const tasks = (await engine.snapshot()).tasks
+    expect(tasks).toHaveLength(49)
+    expect(tasks.every(item => item.prompt === 'existing item')).toBe(true)
+  })
+
+  it('summarizes only waiting tasks without probing the model catalog', async () => {
+    const { controller } = fakeController()
+    const engine = makeEngine(controller, () => PEAK)
+    await engine.enqueueMany([
+      { prompt: 'first import', cwd: workspace, provider: 'deepseek-official', model: 'deepseek-flash' },
+      { prompt: 'second import', cwd: workspace, provider: 'deepseek-official', model: 'deepseek-flash' },
+    ])
+    vi.mocked(controller.modelCatalog).mockClear()
+
+    expect(await engine.summary()).toMatchObject({ supported: true, tier: 'peak', queuedCount: 2 })
+    expect((await engine.summary()).nextSwitchInMs).toBeGreaterThan(0)
+    expect(controller.modelCatalog).not.toHaveBeenCalled()
+  })
+
+  it('rejects an empty or oversized batch before any queue write', async () => {
+    const { controller } = fakeController()
+    const engine = makeEngine(controller, () => PEAK)
+    const task = { prompt: 'batch item', cwd: workspace, provider: 'deepseek-official', model: 'deepseek-flash' }
+    await expect(engine.enqueueMany([])).rejects.toThrow('at least one task')
+    await expect(engine.enqueueMany(Array.from({ length: 51 }, () => task))).rejects.toMatchObject({ status: 409 })
+    expect((await engine.snapshot()).tasks).toEqual([])
+  })
 })

@@ -33,6 +33,13 @@ function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
 }
 
+function jsonFile(text: string, name: string): File {
+  const file = new File([text], name, { type: 'application/json' })
+  // jsdom's File has no Blob.text(); the browser path under test does.
+  Object.defineProperty(file, 'text', { value: async () => text })
+  return file
+}
+
 describe('TaskQueuePanel', () => {
   it('shows a read-only explanation when the host lacks Session control', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ ...BASE, supported: false })))
@@ -80,5 +87,49 @@ describe('TaskQueuePanel', () => {
       provider: 'deepseek-official', model: 'deepseek-flash',
     })
     expect((textarea as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('imports a JSON batch with current workspace and model defaults', async () => {
+    const requests: unknown[] = []
+    const imported: TaskQueueSnapshot = {
+      ...BASE,
+      tasks: [
+        { id: 'task-1', prompt: 'First', cwd: '/tmp/work', provider: 'deepseek-official', model: 'deepseek-flash', status: 'queued', createdAt: 1 },
+        { id: 'task-2', prompt: 'Second', cwd: '/tmp/work', provider: 'deepseek-official', model: 'deepseek-flash', status: 'queued', createdAt: 1 },
+      ],
+    }
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        requests.push(JSON.parse(String(init.body)))
+        return jsonResponse({ ok: true, snapshot: imported })
+      }
+      return jsonResponse(BASE)
+    }))
+    render(<TaskQueuePanel t={t} language="zh" navigateToSession={navigateToSession} />)
+    const input = await screen.findByTestId('queue-import-file')
+    await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false))
+    const file = jsonFile(JSON.stringify(['First', { prompt: 'Second' }]), 'tasks.json')
+    fireEvent.change(input, { target: { files: [file] } })
+
+    expect(await screen.findByTestId('queue-task-task-2')).toBeTruthy()
+    expect(requests).toEqual([{
+      action: 'enqueueMany',
+      tasks: [
+        { prompt: 'First', cwd: '/tmp/work', provider: 'deepseek-official', model: 'deepseek-flash' },
+        { prompt: 'Second', cwd: '/tmp/work', provider: 'deepseek-official', model: 'deepseek-flash' },
+      ],
+    }])
+  })
+
+  it('rejects malformed imports without issuing a mutation', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(BASE))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<TaskQueuePanel t={t} language="zh" navigateToSession={navigateToSession} />)
+    const input = await screen.findByTestId('queue-import-file')
+    await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false))
+    fireEvent.change(input, { target: { files: [jsonFile('[]', 'empty.json')] } })
+
+    expect((await screen.findByRole('alert')).textContent).toContain(t('queueImportFormat'))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

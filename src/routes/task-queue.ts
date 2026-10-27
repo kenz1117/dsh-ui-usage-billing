@@ -5,9 +5,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { guardLoopback, isLoopbackOrigin } from '../guard.ts'
 import { TaskQueueError, type TaskQueueEngine } from '../task-queue.ts'
 
-// 32k UTF-16 code units can expand to 192 KiB when JSON escapes control
-// characters. Keep the transport cap above that valid maximum, still bounded.
-const BODY_LIMIT = 256 * 1024
+// Fifty 32k UTF-16 Prompts can expand to about 9.6 MiB when JSON escapes
+// control characters. Keep the transport cap above that valid maximum, bounded.
+const BODY_LIMIT = 10 * 1024 * 1024
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }
 
 function send(res: ServerResponse, status: number, body: unknown): void {
@@ -72,6 +72,10 @@ export function registerTaskQueueRoute(ctx: Context, deps: TaskQueueRouteDeps): 
           case 'enqueue':
             await deps.engine.enqueue(input)
             break
+          case 'enqueueMany':
+            if (!Array.isArray(input.tasks)) throw new TaskQueueError('tasks must be an array')
+            await deps.engine.enqueueMany(input.tasks)
+            break
           case 'remove':
             if (typeof input.id !== 'string' || input.id === '') throw new TaskQueueError('queue item id is required')
             await deps.engine.remove(input.id)
@@ -89,4 +93,20 @@ export function registerTaskQueueRoute(ctx: Context, deps: TaskQueueRouteDeps): 
       }
     },
   }), 'usage-billing: task queue route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/billing/task-queue-summary',
+    handler: async (req: IncomingMessage, res: ServerResponse) => {
+      if (!guardLoopback(req, res, deps.trustedHosts)) return
+      if (req.method !== 'GET') {
+        send(res, 405, { error: 'method not allowed' })
+        return
+      }
+      try {
+        send(res, 200, await deps.engine.summary())
+      } catch {
+        send(res, 503, { error: 'queue summary unavailable' })
+      }
+    },
+  }), 'usage-billing: task queue summary route')
 }

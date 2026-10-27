@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import type { BillingLanguage } from './usage-billing-settings.ts'
 import type { UsageBillingKey } from './locales.ts'
-import type { TaskQueueSnapshot, TaskQueueStatus, TaskQueueTask } from '../task-queue-shared.ts'
+import type { TaskQueueInput, TaskQueueSnapshot, TaskQueueStatus, TaskQueueTask } from '../task-queue-shared.ts'
 import { loadTaskQueue, mutateTaskQueue, type TaskQueueAction } from './api/task-queue.ts'
 import { formatSwitchCountdown } from './pricing.ts'
 import css from './TaskQueuePanel.module.css'
@@ -28,6 +28,34 @@ function modelValue(provider: string, model: string): string {
   return JSON.stringify([provider, model])
 }
 
+interface ImportDefaults {
+  readonly cwd: string
+  readonly provider: string
+  readonly model: string
+}
+
+/** Normalize only the transport shape; authoritative validation stays atomic on the server. */
+export function parseTaskQueueImport(text: string, defaults: ImportDefaults): TaskQueueInput[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text) as unknown
+  } catch {
+    throw new Error('invalid task import')
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('invalid task import')
+  return parsed.map(item => {
+    if (typeof item === 'string') return { prompt: item, ...defaults }
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) throw new Error('invalid task import')
+    const input = item as TaskQueueInput
+    return {
+      prompt: input.prompt,
+      cwd: input.cwd ?? defaults.cwd,
+      provider: input.provider ?? defaults.provider,
+      model: input.model ?? defaults.model,
+    }
+  })
+}
+
 export function TaskQueuePanel({ t, language, navigateToSession }: TaskQueuePanelProps): React.ReactNode {
   const [snapshot, setSnapshot] = useState<TaskQueueSnapshot | undefined>()
   const [prompt, setPrompt] = useState('')
@@ -39,6 +67,7 @@ export function TaskQueuePanel({ t, language, navigateToSession }: TaskQueuePane
   const mounted = useRef(true)
   const inFlight = useRef(false)
   const mutating = useRef(false)
+  const fileInput = useRef<HTMLInputElement>(null)
 
   const reload = useCallback(async (): Promise<void> => {
     if (inFlight.current) return
@@ -74,19 +103,21 @@ export function TaskQueuePanel({ t, language, navigateToSession }: TaskQueuePane
     }
   }, [snapshot, cwd, selection])
 
-  const run = useCallback(async (action: TaskQueueAction, clearPrompt = false): Promise<void> => {
-    if (busy || mutating.current) return
+  const run = useCallback(async (action: TaskQueueAction, clearPrompt = false): Promise<boolean> => {
+    if (busy || mutating.current) return false
     mutating.current = true
     setBusy(true)
     setError(undefined)
     setNotice(undefined)
     try {
       const next = await mutateTaskQueue(action)
-      if (!mounted.current) return
+      if (!mounted.current) return false
       setSnapshot(next)
       if (clearPrompt) setPrompt('')
+      return true
     } catch (cause) {
       if (mounted.current) setError(cause instanceof Error ? cause.message : String(cause))
+      return false
     } finally {
       mutating.current = false
       if (mounted.current) setBusy(false)
@@ -102,6 +133,25 @@ export function TaskQueuePanel({ t, language, navigateToSession }: TaskQueuePane
     if (prompt.trim() === '' || cwd === '' || selection === '') return
     const [provider, model] = JSON.parse(selection) as [string, string]
     void run({ action: 'enqueue', prompt, cwd, provider, model }, true)
+  }
+
+  const importTasks = async (file: File | undefined): Promise<void> => {
+    if (file === undefined || !canConfigure || busy || selection === '') return
+    setError(undefined)
+    setNotice(undefined)
+    try {
+      if (file.size > 10 * 1024 * 1024) {
+        setError(t('queueImportTooLarge'))
+        return
+      }
+      const [provider, model] = JSON.parse(selection) as [string, string]
+      const tasks = parseTaskQueueImport(await file.text(), { cwd, provider, model })
+      if (await run({ action: 'enqueueMany', tasks }) && mounted.current) {
+        setNotice(t('queueImported', { count: tasks.length }))
+      }
+    } catch {
+      if (mounted.current) setError(t('queueImportFormat'))
+    }
   }
 
   const openSession = (sessionId: string): void => {
@@ -203,9 +253,33 @@ export function TaskQueuePanel({ t, language, navigateToSession }: TaskQueuePane
             </label>
             <div className={css.queueComposerFooter}>
               <span>{t('queuePrivacy')}</span>
-              <button type="button" className={css.queuePrimary} disabled={!canConfigure || busy || prompt.trim() === ''} onClick={enqueue}>
-                {t('queueEnqueue')}
-              </button>
+              <div className={css.queueComposerActions}>
+                <input
+                  ref={fileInput}
+                  className={css.queueFileInput}
+                  data-testid="queue-import-file"
+                  type="file"
+                  accept="application/json,.json"
+                  disabled={!canConfigure || busy}
+                  onChange={event => {
+                    const file = event.target.files?.[0]
+                    event.target.value = ''
+                    void importTasks(file)
+                  }}
+                />
+                <button
+                  type="button"
+                  className={css.queueSecondary}
+                  title={t('queueImportHint')}
+                  disabled={!canConfigure || busy}
+                  onClick={() => { fileInput.current?.click() }}
+                >
+                  {t('queueImport')}
+                </button>
+                <button type="button" className={css.queuePrimary} disabled={!canConfigure || busy || prompt.trim() === ''} onClick={enqueue}>
+                  {t('queueEnqueue')}
+                </button>
+              </div>
             </div>
           </section>
 

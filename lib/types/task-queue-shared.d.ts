@@ -1,5 +1,12 @@
 /** Browser-safe wire types for the opt-in off-peak task queue (issue #106). */
 export type TaskQueueStatus = 'queued' | 'starting' | 'running' | 'completed' | 'failed';
+/** Unvalidated enqueue input shared by the HTTP client and server-side engine. */
+export interface TaskQueueInput {
+    readonly prompt?: unknown;
+    readonly cwd?: unknown;
+    readonly provider?: unknown;
+    readonly model?: unknown;
+}
 export interface TaskQueueTask {
     readonly id: string;
     readonly prompt: string;
@@ -32,6 +39,13 @@ export interface TaskQueueSnapshot {
     readonly workspaces: readonly TaskQueueWorkspace[];
     readonly models: readonly TaskQueueModel[];
     readonly optionsError?: string;
+}
+/** Lightweight alert polling shape: never transports Prompt or Session content. */
+export interface TaskQueueSummary {
+    readonly supported: boolean;
+    readonly tier: 'peak' | 'offPeak';
+    readonly nextSwitchInMs: number;
+    readonly queuedCount: number;
 }
 export interface TaskQueueMutation {
     readonly ok: true;

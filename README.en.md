@@ -30,7 +30,7 @@
 
 ### Demo GIF
 
-The eight dashboard tabs in turn (Overview / Billing / Usage / Trends / Context / Agents / Rates / Settings):
+The eight dashboard tabs in turn (Overview / Queue / Billing / Usage / Trends / Agents / Rates / Settings):
 
 ![Demo](screenshots/demo.gif)
 
@@ -56,11 +56,10 @@ The billing channel is detected from the current session's model: DeepSeek meter
 - A performance panel: per-model TTFT mean/P50/P90 and generation speed.
 - Uncatalogued models are explicitly marked and never silently billed 0; one alias entry prices an out-of-catalog model.
 - An optional `usage_stats` tool lets the model answer "what did I spend today" or "which site used the most".
-- **Off-peak task queue (preview)**: nothing is queued until the user explicitly chooses a workspace, a built-in DeepSeek official model and a Prompt. Tasks run FIFO in independent Sessions, start only in the official off-peak window, continue across peak once admitted, and become "Needs review" without automatic replay after failures or unknown outcomes. Relay mirrors are excluded; hosts without Session control fall back to read-only and never create placeholder tasks.
+- **Off-peak task queue (preview)**: nothing is queued until the user explicitly chooses a workspace, a built-in DeepSeek official model and a Prompt. JSON files can be imported in batches; the whole batch is validated before one atomic enqueue, so any invalid item means zero writes. Tasks run FIFO in independent Sessions, start only in the official off-peak window, continue across peak once admitted, and become "Needs review" without automatic replay after failures or unknown outcomes. Relay mirrors are excluded; hosts without Session control fall back to read-only and never create placeholder tasks.
 - Zero tools registered by default: the single read-only `usage_stats` tool is registered **only** after the user explicitly turns on "inject usage query" in the settings (off by default). No system-prompt injection.
 - Chinese / English and ¥ / ≈$ toggles; no chart library, no external CDN, offline & self-contained.
 - **Jump from a session row**: click a session title in the dashboard to open that conversation in the host (both generations of the host's session-selection channel are probed; hosts without one show a readable notice instead of silently doing nothing).
-- **Context occupancy**: the overview shows the current session's context occupancy, window capacity, and composition (system / tools / messages), read from the host's official context projections. Sessions without a projection hide the whole card — it never shows a fabricated 0.
 - **In-conversation entry**: the `/usage` command opens the billing dashboard directly (hosts without that capability degrade silently and leave the dashboard untouched).
 
 ## 📊 Dashboard
@@ -69,16 +68,14 @@ The billing channel is detected from the current session's model: DeepSeek meter
 
   ![Sidebar trigger card: today's spend, delta badge and mini-trend](screenshots/sidebar.png)
 
-- **Nine-tab dashboard**: Overview / Queue / Billing / Usage / Trends / Context / Agents / Rates / Settings — hero figures + comparisons + month projection + KPIs (hover for the metric definition) + usage heatmap, trends switchable between cost and tokens over 7/30 days, model price table, budgets (global + per model) and peak/off-peak alerts all live here; the settings page supports full-text search (zh/en keywords, empty state when nothing matches); tabs carry names only — no status badges.
-- **Queue section**: shows the current price band and switch countdown, queued / starting / running / needs-review / completed tasks and their host Session links. Queued tasks can be removed and finished history cleared; admitted tasks cannot be removed through the queue. A queue file, file lock and owner lease prevent duplicate submission by multiple instances sharing one `DSH_HOME`.
-- **Context section**: an occupancy bar plus next-request / last-request occupancy, window capacity and the composition split (system / tools / messages). The figures come from the host's official context projections; a session without one hides the whole section rather than showing a fabricated 0.
+- **Eight-tab dashboard**: Overview / Queue / Billing / Usage / Trends / Agents / Rates / Settings — hero figures + comparisons + month projection + KPIs (hover for the metric definition) + usage heatmap, trends switchable between cost and tokens over 7/30 days, model price table, budgets (global + per model) and peak/off-peak alerts all live here; the settings page supports full-text search (zh/en keywords, empty state when nothing matches); tabs carry names only — no status badges.
+- **Queue section**: shows the current price band and switch countdown, queued / starting / running / needs-review / completed tasks and their host Session links. JSON batch import accepts up to 50 tasks; one invalid item rejects the entire batch without writes. Queued tasks can be removed and finished history cleared; admitted tasks cannot be removed through the queue. A queue file, file lock and owner lease prevent duplicate submission by multiple instances sharing one `DSH_HOME`.
 - **Agents section**: the agent network rebuilt from delegation relations — a parent conversation → sub-agent tree where each row carries its call count, own cost and **chain total** (itself + all descendants), which directly answers "which delegation was the most expensive".
 
   ![Overview: month cost hero, year/today/month projection, KPIs and usage heatmap](screenshots/overview.png)
-  ![Context: occupancy, window capacity and the system / tools / messages split](screenshots/context.png)
   ![Agents: parent conversation → sub-agent delegation tree with chain totals](screenshots/agents.png)
 - **Live cost bar**: persistent "this turn / session" cost with three positions (composer toolbar row / above / below, toolbar by default); the peak/off-peak tier & countdown section appears only when the current model involves peak/off-peak pricing; subscription low-quota chips appear at ≤20% remaining, red at ≤10%; hideable via the settings-tab toggle (display-only preference persisted locally; stats and alerts unaffected).
-- **Peak/off-peak switch alert**: a popover plus an optional system notification before a switch; lead time / position / mode / preview configurable; copy differs by billing channel (DeepSeek price halves, Zhipu credits at 50%).
+- **Peak/off-peak switch alert**: a popover plus an optional system notification before a switch; lead time / position / mode / preview configurable; copy differs by billing channel (DeepSeek price halves, Zhipu credits at 50%). When tasks are queued, the alert also explains that they wait for the next off-peak window, start FIFO during off-peak, and continue across peak once started; it never automatically pauses or replays them.
 - **Session completion notification**: an optional system notification when a session transitions running → completed (off by default, enable it in the panel); multi-window / multi-instance dedup through the claim endpoint, so each session notifies once.
 - **Plugin info card**: a persistent "About" card in the Settings tab — version read server-side from the package's `package.json` (single source of truth, correct on publish), author / repo / npm / license one click away.
 
@@ -239,7 +236,7 @@ To add a model: append an entry to `BUILTIN_MODEL_CATALOG` in `src/builtin-catal
 
 ## 🔌 HTTP API
 
-The public HTTP endpoints and field definitions are documented in source, including usage, pricing, balances, subscriptions, relay quotas and `GET/POST /api/billing/task-queue` (see `src/index.ts`, `src/aggregate.ts`, `src/relay.ts`, `src/routes/task-queue.ts`). The queue returns host capability, workspaces, official models and durable tasks; mutations are limited to enqueue, remove-not-started and clear-finished. All endpoints accept loopback requests only; queue writes additionally require a loopback Origin, JSON Content-Type and a body no larger than 256 KiB.
+The public HTTP endpoints and field definitions are documented in source, including usage, pricing, balances, subscriptions, relay quotas, `GET/POST /api/billing/task-queue` and `GET /api/billing/task-queue-summary` (see `src/index.ts`, `src/aggregate.ts`, `src/relay.ts`, `src/routes/task-queue.ts`). The queue returns host capability, workspaces, official models and durable tasks; mutations are `enqueue` / `enqueueMany`, remove-not-started and clear-finished. The summary returns only the price-band state and queued count, never Prompts. All endpoints accept loopback requests only; queue writes additionally require a loopback Origin, JSON Content-Type and a body no larger than 10 MiB.
 
 ## ⚙️ Configuration
 

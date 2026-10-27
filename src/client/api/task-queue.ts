@@ -1,7 +1,7 @@
 /** API client for the new-host off-peak task queue preview (issue #106). */
 
 import { fetchBilling } from './http.ts'
-import type { TaskQueueMutation, TaskQueueSnapshot } from '../../task-queue-shared.ts'
+import type { TaskQueueInput, TaskQueueMutation, TaskQueueSnapshot, TaskQueueSummary } from '../../task-queue-shared.ts'
 
 async function errorOf(response: Response): Promise<string> {
   try {
@@ -18,8 +18,15 @@ export async function loadTaskQueue(): Promise<TaskQueueSnapshot> {
   return await response.json() as TaskQueueSnapshot
 }
 
+export async function loadTaskQueueSummary(): Promise<TaskQueueSummary> {
+  const response = await fetchBilling('/api/billing/task-queue-summary')
+  if (!response.ok) throw new Error(await errorOf(response))
+  return await response.json() as TaskQueueSummary
+}
+
 export type TaskQueueAction =
   | { action: 'enqueue'; prompt: string; cwd: string; provider: string; model: string }
+  | { action: 'enqueueMany'; tasks: readonly TaskQueueInput[] }
   | { action: 'remove'; id: string }
   | { action: 'clearFinished' }
 

@@ -20,8 +20,12 @@
 .queueField select:focus, .queuePromptField textarea:focus { outline: 2px solid color-mix(in srgb, var(--ds-blue) 35%, transparent); border-color: var(--ds-blue); }
 .queueField select:disabled, .queuePromptField textarea:disabled { opacity: .55; }
 .queueComposerFooter { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--ds-t-3); font-size: 10px; line-height: 1.5; }
-.queuePrimary { flex-shrink: 0; min-height: 34px; padding: 0 16px; border: 0; border-radius: var(--ds-r-1); background: var(--ds-blue); color: white; font-weight: 600; cursor: pointer; }
-.queuePrimary:disabled { opacity: .45; cursor: not-allowed; }
+.queueComposerActions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.queueFileInput { display: none; }
+.queuePrimary, .queueSecondary { flex-shrink: 0; min-height: 34px; padding: 0 16px; border-radius: var(--ds-r-1); font-weight: 600; cursor: pointer; }
+.queuePrimary { border: 0; background: var(--ds-blue); color: white; }
+.queueSecondary { border: 1px solid var(--ds-border); background: var(--dsb); color: var(--ds-t-1); }
+.queuePrimary:disabled, .queueSecondary:disabled { opacity: .45; cursor: not-allowed; }
 .queueListSection { padding: 12px 14px; }
 .queueListHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .queueListHead h3 span { margin-left: 4px; color: var(--ds-t-3); font-size: 11px; font-weight: 500; }
@@ -50,6 +54,7 @@
 @media (max-width: 640px) {
   .queueHero { align-items: flex-start; }
   .queueSelectors { grid-template-columns: 1fr; }
-  .queueComposerFooter { align-items: flex-end; }
+  .queueComposerFooter { align-items: stretch; flex-direction: column; }
+  .queueComposerActions { justify-content: flex-end; flex-wrap: wrap; }
   .queueTaskTime { display: none; }
 }

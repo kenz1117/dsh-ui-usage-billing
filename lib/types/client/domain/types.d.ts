@@ -27,7 +27,7 @@ export interface ModelHealth {
 /** Idle health state before the probe settles. */
 export declare const IDLE_HEALTH: ModelHealth;
 /** 仪表盘分区 Tab id。 */
-export type DashboardTab = 'overview' | 'queue' | 'context' | 'agents' | 'token' | 'trends' | 'providers' | 'pricing' | 'settings';
+export type DashboardTab = 'overview' | 'queue' | 'agents' | 'token' | 'trends' | 'providers' | 'pricing' | 'settings';
 import type { UsageBillingKey } from '../locales.ts';
 /**
  * Tab 定义（顺序即渲染顺序）：概览=主数字/KPI/热力图，队列=低谷任务（新宿主预览），

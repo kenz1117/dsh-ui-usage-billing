@@ -22,7 +22,6 @@ import { bindSnapshotSelector } from './bind-snapshot-selector'
 import { UsageBilling } from '../src/client/UsageBilling.tsx'
 import { createBillingBudgetStore } from '../src/client/budget-store.ts'
 import { zh } from '../src/client/locales.ts'
-import { contextStore } from '../src/client/context-store.ts'
 
 afterEach(() => {
   cleanup()
@@ -70,8 +69,6 @@ async function openSessionTable(navigateToSession: (id: string) => 'opened' | 'u
 describe('session row navigation', () => {
   beforeEach(() => {
     localStorage.clear()
-    // store 是模块级单例：前序用例发布过的上下文快照不该影响后续用例。
-    contextStore.publish({})
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       const body = url.includes('/api/billing/pricing') ? { source: 'builtin' } : STATS
@@ -90,30 +87,6 @@ describe('session row navigation', () => {
     expect(buttons.length).toBeGreaterThan(0)
     fireEvent.click(buttons[0])
     expect(opened).toContain('sess-alpha')
-  })
-
-  it('renders the context occupancy card once the host projection arrives', async () => {
-    contextStore.publish({ projectedTokens: 4000, contextWindow: 16_000, systemTokens: 900, toolsTokens: 700, messageTokens: 2400 })
-    const { container } = render(<UsageBilling {...makeProps(() => 'opened')} />)
-    fireEvent.click(container.querySelector('button')!)
-    await screen.findByTestId('billing-tab-panel-overview')
-    // 上下文是独立的一级分区：切到「上下文」Tab 才渲染。
-    fireEvent.click(screen.getByTestId('billing-tab-context'))
-    await screen.findByTestId('billing-tab-panel-context')
-
-    const card = screen.getByTestId('billing-context-card')
-    expect(card.textContent).toContain('25%')
-    expect(screen.getByTestId('billing-context-breakdown').textContent).toContain('系统')
-  })
-
-  it('shows an empty notice (not a fabricated zero) when the host serves no projection', async () => {
-    const { container } = render(<UsageBilling {...makeProps(() => 'opened')} />)
-    fireEvent.click(container.querySelector('button')!)
-    await screen.findByTestId('billing-tab-panel-overview')
-    fireEvent.click(screen.getByTestId('billing-tab-context'))
-    await screen.findByTestId('billing-tab-panel-context')
-    expect(screen.queryByTestId('billing-context-card')).toBeNull()
-    expect(screen.getByTestId('billing-context-empty')).toBeTruthy()
   })
 
   it('shows a readable notice when the host cannot open the session', async () => {

@@ -15,7 +15,7 @@
  * PositionMenu / SubscriptionWindowRow / BalanceDetailPopover+Row）。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, Fragment, type ReactNode, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
@@ -88,7 +88,7 @@ import { localizeRowLabel } from './label-display.ts'
 import { filterRateRows } from './rate-search.ts'
 import { localizeProviderName, channelDisplayName, directChannelRoute } from './provider-display.ts'
 import { tierInfoOf } from './plan-knowledge.ts'
-import { computePeakAlert, loadPeakAlertConfig, savePeakAlertConfig, type PeakAlertConfig, type PeakAlertHit } from './peak-alert.ts'
+import { computePeakAlert, loadPeakAlertConfig, mergeQueuePeakAlert, refreshQueuePeakAlert, savePeakAlertConfig, type PeakAlertConfig, type PeakAlertHit } from './peak-alert.ts'
 import { PeakAlertBanner } from './PeakAlertBanner.tsx'
 import css from './UsageBilling.module.css'
 
@@ -128,7 +128,6 @@ import { rechargeUrlOf } from './domain/recharge.ts'
 import { recostWithUserPrices } from './domain/recost.ts'
 import { notifyAcrossInstances, notifyAllowed } from './domain/notify.ts'
 import { buildSessionDisplay } from './domain/provider-merge.ts'
-import { contextStore, occupancyBreakdown, occupancyRatio } from './context-store.ts'
 import { agentTreeStats, buildAgentTree } from './domain/agent-tree.ts'
 import { filterSessionsForViewer } from './domain/session-viewer.ts'
 import { settingsSectionHidden } from './settings-search.ts'
@@ -140,6 +139,7 @@ import { fetchRelayQuotas } from './api/relay.ts'
 import { loadUsageTool, saveUsageTool } from './api/usage-tool.ts'
 import { lastPricingSyncedAt, loadLivePricing, syncPricingNow } from './api/pricing.ts'
 import { TaskQueuePanel } from './TaskQueuePanel.tsx'
+import { loadTaskQueueSummary } from './api/task-queue.ts'
 
 /** 把 Tab id + 当前状态映射为徽章（null = 不渲染徽章）。 */
 /** 订阅窗口行（已用比例进度条 + 剩余文案 + 重置时刻）：悬浮速览与订阅卡共用。 */
@@ -949,12 +949,6 @@ function BillingDashboard({
   peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, sitePrefs, onSitePrefs,
   liveCostPrefs, onLiveCostPrefs, quotasStale, balanceStale, navigateToSession,
 }: BillingDashboardProps): React.ReactNode {
-  // 上下文占用快照：宿主 token-meter 投影经会话作用域探针转发而来（无会话 / 老宿主
-  // 无该投影 → undefined → 整块隐藏，不显示 0、不占位）。
-  const contextOccupancy = useSyncExternalStore(contextStore.subscribe, contextStore.read)
-  const contextRatio = occupancyRatio(contextOccupancy)
-  const contextUsed = contextOccupancy?.projectedTokens ?? contextOccupancy?.pressureTokens
-  const contextRows = occupancyBreakdown(contextOccupancy)
   // 智能体网络：从会话行的 parentId 还原委派链，逐级算链合计（哪次委派最贵）。
   const agentRoots = useMemo(() => buildAgentTree(stats.bySession ?? []), [stats.bySession])
   const agentSummary = useMemo(() => agentTreeStats(agentRoots), [agentRoots])
@@ -2299,82 +2293,6 @@ function BillingDashboard({
             </div>
           )}
 
-          {tab === 'context' && (
-              <div className={css.tabPanel} data-testid="billing-tab-panel-context">
-                {/* 上下文占用（宿主 token-meter 投影，经会话作用域探针转发）：
-                    无会话 / 宿主不上报 / 老宿主无该投影 → 整块不渲染（不显示 0、不占位）。 */}
-                {contextOccupancy === undefined ? (
-                  <p className={css.contextEmpty} data-testid="billing-context-empty">{t('contextNoData')}</p>
-                ) : (
-                  <>
-                    <section className={css.contextCard} data-testid="billing-context-card">
-                      <div className={css.contextHead}>
-                        <span className={css.contextTitle}>{t('contextOccupancy')}</span>
-                        {contextRatio !== undefined && (
-                          <span className={css.contextRatio}>{`${String(Math.round(contextRatio * 100))}%`}</span>
-                        )}
-                      </div>
-                      {contextRatio !== undefined && (
-                        <div className={css.contextBar} data-testid="billing-context-bar" role="img"
-                          aria-label={`${t('contextOccupancy')} ${String(Math.round(contextRatio * 100))}%`}>
-                          <span className={css.contextBarFill} style={{ width: `${String(Math.round(contextRatio * 100))}%` }} />
-                        </div>
-                      )}
-                      <div className={css.contextBody}>
-                        {contextUsed !== undefined && (
-                          <span className={css.contextValue}>{formatTokens(contextUsed)}</span>
-                        )}
-                        {contextOccupancy.contextWindow !== undefined && (
-                          <span className={css.contextHint}>
-                            {t('contextWindow').replace('{window}', formatTokens(contextOccupancy.contextWindow))}
-                          </span>
-                        )}
-                      </div>
-                      <div className={css.contextStats}>
-                        {contextOccupancy.projectedTokens !== undefined && (
-                          <div className={css.contextStat}>
-                            <span className={css.contextStatLabel}>{t('contextNextRequest')}</span>
-                            <span className={css.contextStatValue}>{formatTokens(contextOccupancy.projectedTokens)}</span>
-                          </div>
-                        )}
-                        {contextOccupancy.pressureTokens !== undefined && (
-                          <div className={css.contextStat}>
-                            <span className={css.contextStatLabel}>{t('contextLastRequest')}</span>
-                            <span className={css.contextStatValue}>{formatTokens(contextOccupancy.pressureTokens)}</span>
-                          </div>
-                        )}
-                      </div>
-                    </section>
-                    {contextRows.length > 0 && (
-                      <section className={css.contextCard} data-testid="billing-context-breakdown">
-                        <div className={css.contextHead}>
-                          <span className={css.contextTitle}>{t('contextComposition')}</span>
-                        </div>
-                        {(() => {
-                          const max = Math.max(...contextRows.map(row => row.tokens), 1)
-                          return (
-                            <div className={css.contextBreakdown}>
-                              {contextRows.map(row => (
-                                <div key={row.key} className={css.contextBreakRow}>
-                                  <span className={css.contextBreakLabel}>
-                                    {t(row.key === 'system' ? 'contextSystem' : row.key === 'tools' ? 'contextTools' : 'contextMessages')}
-                                  </span>
-                                  <span className={css.contextBreakTrack}>
-                                    <span className={css.contextBreakFill} style={{ width: `${String(Math.round((row.tokens / max) * 100))}%` }} />
-                                  </span>
-                                  <span className={css.contextBreakValue}>{formatTokens(row.tokens)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )
-                        })()}
-                        <p className={css.contextFootnote}>{t('contextCompositionHint')}</p>
-                      </section>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
             {tab === 'agents' && (
               <div className={css.tabPanel} data-testid="billing-tab-panel-agents">
                 <section className={css.agentSummary} data-testid="billing-agent-summary">
@@ -4270,6 +4188,44 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const [peakConfig, setPeakConfig] = useState<PeakAlertConfig>(() => loadPeakAlertConfig())
   const [peakHit, setPeakHit] = useState<PeakAlertHit | null>(null)
   const [peakPreview, setPeakPreview] = useState<PeakAlertHit | null>(null)
+  const [queuedForAlert, setQueuedForAlert] = useState(0)
+  const [queueSummaryReady, setQueueSummaryReady] = useState(false)
+  useEffect(() => {
+    if (!peakConfig.enabled) {
+      setQueuedForAlert(0)
+      setQueueSummaryReady(false)
+      return
+    }
+    let cancelled = false
+    let inFlight = false
+    // Do not let the first current-model alert race the queue summary: otherwise
+    // opening the dashboard inside the lead window drops queue copy from the notification.
+    setQueueSummaryReady(false)
+    const load = (): void => {
+      if (inFlight) return
+      inFlight = true
+      void loadTaskQueueSummary().then(summary => {
+        if (!cancelled) setQueuedForAlert(summary.supported ? summary.queuedCount : 0)
+      }).catch(() => {
+        // Old hosts and unreadable persistence degrade to no queue annotation.
+        if (!cancelled) setQueuedForAlert(0)
+      }).finally(() => {
+        inFlight = false
+        if (!cancelled) setQueueSummaryReady(true)
+      })
+    }
+    load()
+    const timer = setInterval(load, STATS_REFRESH_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [peakConfig.enabled])
+  useEffect(() => {
+    // The system notification is a point-in-time event, but the visible banner
+    // stays open; keep its count truthful after imports, removals and failures.
+    setPeakHit(current => refreshQueuePeakAlert(current, queuedForAlert))
+  }, [queuedForAlert])
   // 墙钟 tick：驱动峰谷切换提醒按时间周期重算。提醒提前量最小 1 分钟，30 秒
   // 粒度足以在切换前命中；否则开着面板等到切换点也不会触发（原实现只在挂载/
   // 配置变更时算一次）。
@@ -4334,29 +4290,34 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     notifyAcrossInstances(`budget:${top}:${today}`, () => { new Notification(t('budget'), { body }) })
   }, [budgetEnabled, effectiveBudget, monthCost, tierAlertDays, today, actions, t])
 
-  // 峰/谷切换前提醒（增强版）：距进入下一档不足提前量且该切换点未提醒过时，
-  // 弹可视化浮层 +（可选的）系统通知。峰谷窗口跟随当前对话实际使用的模型
-  // （rateChannelOf）：DeepSeek 按量模型走分时价，智谱模型在持有 Z.ai Coding
-  // Plan 时走积分分时，其余模型不提醒也不显示档位。`lastTierSwitchAt` 去重
-  // 跨重启生效，与旧的系统通知共用同一份去重，避免一条切换提醒弹两次。
-  // 「当前对话的模型」= 最近一轮调用（byTurn 服务端按起始时间倒序下发）的归因
-  // 模型键；无任何轮次时视为不涉及峰谷。
+  // 峰/谷切换前提醒：当前模型通道优先；有等待任务时再计算 DeepSeek 队列通道。
+  // 两者切换点一致则合并队列数量，`lastTierSwitchAt` 保证同点只提醒一次。
+  // 队列文案只说明等待/启动语义，绝不取消或重放已开始的 Agent 轮次。
   useEffect(() => {
-    const upcoming = computePeakAlert(nowMs, peakConfig, lastTierSwitchAt, currentChannel)
+    if (peakConfig.enabled && !queueSummaryReady) return
+    const currentUpcoming = computePeakAlert(nowMs, peakConfig, lastTierSwitchAt, currentChannel)
+    const queueUpcoming = queuedForAlert > 0
+      ? computePeakAlert(nowMs, peakConfig, lastTierSwitchAt, 'deepseek-metered')
+      : null
+    const upcoming = mergeQueuePeakAlert(currentUpcoming, queueUpcoming, queuedForAlert)
     if (upcoming === null) return
     actions.markTierSwitchAlerted(upcoming.atMs)
     setPeakHit(upcoming)
     if (!peakConfig.webNotify || !notifyAllowed()) return
     const minutes = Math.max(1, Math.round((upcoming.atMs - nowMs) / 60_000))
     const title = t(upcoming.entering === 'peak' ? 'peakAlertTitlePeak' : 'peakAlertTitleOff')
-    const body = t(upcoming.channel === 'zhipu-coding-plan'
+    const baseBody = t(upcoming.channel === 'zhipu-coding-plan'
       ? (upcoming.entering === 'peak' ? 'tierAlertEnterPeakZhipu' : 'tierAlertEnterOffZhipu')
       : (upcoming.entering === 'peak' ? 'tierAlertEnterPeak' : 'tierAlertEnterOff'))
       .replace('{minutes}', String(minutes))
+    const queueBody = upcoming.queueCount === undefined ? '' : ` ${t(
+      upcoming.entering === 'peak' ? 'peakAlertQueuePeak' : 'peakAlertQueueOff',
+      { count: upcoming.queueCount },
+    )}`
     // 认领失败 = 另一实例刚发过同一切换点提醒，本实例跳过（issue #44）。
-    notifyAcrossInstances(`peak:${upcoming.atMs}`, () => { new Notification(title, { body }) })
+    notifyAcrossInstances(`peak:${upcoming.atMs}`, () => { new Notification(title, { body: `${baseBody}${queueBody}` }) })
     // quotas/stats.byTurn 已经由 currentChannel 捕获，不重复列入依赖。
-  }, [nowMs, lastTierSwitchAt, peakConfig, currentChannel, actions, t])
+  }, [nowMs, lastTierSwitchAt, peakConfig, currentChannel, queuedForAlert, queueSummaryReady, actions, t])
 
   // 余额不足告警：任一提供方余额低于阈值（折算人民币）时每天提醒一次；
   // 与预算开关无关——余额是硬性约束，无论是否开启预算都要提醒。

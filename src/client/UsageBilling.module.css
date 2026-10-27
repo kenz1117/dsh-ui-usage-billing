@@ -732,8 +732,7 @@ body {
 /* 实底弹窗：强描边 + --ds-shadow-2，向设计「modal」的干净浅底卡片看齐（radius-16）。 */
 .dashboardModal {
   width: min(760px, calc(100vw - 48px));
-  /* 固定高度（不是 max-height）：切 Tab 时弹窗大小不变。原先只有 max-height，
-     高度由内容决定——切到内容少的分区（如上下文）整个弹窗就跟着缩小。 */
+  /* 固定高度（不是 max-height）：切 Tab 时弹窗大小不变，避免高度随内容跳动。 */
   height: min(760px, 88vh);
   border: 1px solid var(--ds-border-strong);
   border-radius: var(--ds-r-3);
@@ -1016,16 +1015,10 @@ body {
 }
 
 /* 面板与滚动容器的直系子块**不参与纵向压缩**：高度由内容决定，超出时由
-   dashboardBody 滚动。列向 flex 容器默认 flex-shrink:1，会把内容高的卡片压扁
-   （上下文分区两张卡 + 构成条最容易被压）——卡片尺寸必须由内容决定，不被挤压。 */
+   dashboardBody 滚动。列向 flex 容器默认 flex-shrink:1，会把内容高的卡片压扁，
+   卡片尺寸必须由内容决定，不被挤压。 */
 .dashboardBody > *,
-.tabPanel > * {
-  flex-shrink: 0;
-}
-
-/* 卡片内部各行同样不压缩：上下文卡片的「标题行 / 占用条 / 数值行 / 构成条」
-   高度由内容决定，卡片高度随之确定，不被父容器压成一条。 */
-.contextCard > *,
+.tabPanel > *,
 .agentSummary,
 .agentRow {
   flex-shrink: 0;
@@ -4987,141 +4980,6 @@ span.bandDot { cursor: default; }
   font-size: 11px;
   line-height: 16px;
   color: var(--ds-t-3);
-}
-
-/* ── 上下文占用 Tab（宿主 token-meter 投影，经会话作用域探针转发）────── */
-.contextCard {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-r-2);
-  background: var(--dsb-2);
-}
-
-.contextHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.contextTitle {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--ds-t-2);
-}
-
-.contextRatio {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ds-c-1);
-}
-
-.contextBar {
-  position: relative;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--dsb-3);
-  overflow: hidden;
-}
-
-.contextBarFill {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
-  background: var(--ds-c-1);
-}
-
-.contextBody {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.contextValue {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--ds-t-1);
-}
-
-.contextHint {
-  font-size: 11px;
-  color: var(--ds-t-3);
-}
-
-.contextStats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
-  margin-top: 2px;
-}
-
-.contextStat {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.contextStatLabel {
-  font-size: 11px;
-  color: var(--ds-t-3);
-}
-
-.contextStatValue {
-  font-size: 12px;
-  color: var(--ds-t-2);
-  font-variant-numeric: tabular-nums;
-}
-
-.contextBreakdown {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.contextBreakRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.contextBreakLabel {
-  flex: 0 0 44px;
-  font-size: 11px;
-  color: var(--ds-t-3);
-}
-
-.contextBreakTrack {
-  flex: 1 1 60px;
-  min-width: 40px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--dsb-3);
-  overflow: hidden;
-}
-
-.contextBreakFill {
-  display: block;
-  height: 100%;
-  border-radius: 2px;
-  background: var(--ds-c-2);
-}
-
-.contextBreakValue {
-  flex: 0 0 auto;
-  font-size: 11px;
-  color: var(--ds-t-2);
-  font-variant-numeric: tabular-nums;
-}
-
-.contextFootnote {
-  margin: 4px 0 0;
-  font-size: 10.5px;
-  line-height: 14px;
-  color: var(--ds-t-4);
 }
 
 .contextEmpty {

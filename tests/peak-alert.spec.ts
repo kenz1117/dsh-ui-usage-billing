@@ -7,7 +7,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest'
-import { computePeakAlert, DEFAULT_PEAK_ALERT_CONFIG, loadPeakAlertConfig, savePeakAlertConfig } from '../src/client/peak-alert.ts'
+import { computePeakAlert, DEFAULT_PEAK_ALERT_CONFIG, loadPeakAlertConfig, mergeQueuePeakAlert, refreshQueuePeakAlert, savePeakAlertConfig } from '../src/client/peak-alert.ts'
 
 afterEach(() => { localStorage.clear() })
 
@@ -70,5 +70,41 @@ describe('computePeakAlert', () => {
     // 北京时间 12:30（UTC 04:30，周五）：距 14:00 边界 90 分钟，超出 30 分钟提前量。
     const noon = Date.UTC(2026, 7, 21, 4, 30)
     expect(computePeakAlert(noon, { ...DEFAULT_PEAK_ALERT_CONFIG, enabled: true, leadMin: 30, mode: 'both' }, 0, 'deepseek-metered')).toBeNull()
+  })
+})
+
+describe('mergeQueuePeakAlert', () => {
+  const config = { ...DEFAULT_PEAK_ALERT_CONFIG, enabled: true, leadMin: 30, mode: 'both' as const }
+  const queue = computePeakAlert(BASE_NOW_MS, config, 0, 'deepseek-metered')!
+
+  it('uses the queue channel when the current model has no time-of-day window', () => {
+    expect(mergeQueuePeakAlert(null, queue, 3)).toEqual({ ...queue, queueCount: 3 })
+  })
+
+  it('merges queue context into the current alert at the same switch point', () => {
+    const current = { ...queue, channel: 'zhipu-coding-plan' as const }
+    expect(mergeQueuePeakAlert(current, queue, 2)).toEqual({ ...current, queueCount: 2 })
+  })
+
+  it('keeps the current channel when its switch differs and ignores an empty queue', () => {
+    const current = { ...queue, atMs: queue.atMs + 60_000, channel: 'zhipu-coding-plan' as const }
+    expect(mergeQueuePeakAlert(current, queue, 2)).toBe(current)
+    expect(mergeQueuePeakAlert(current, null, 0)).toBe(current)
+  })
+})
+
+describe('refreshQueuePeakAlert', () => {
+  const config = { ...DEFAULT_PEAK_ALERT_CONFIG, enabled: true, leadMin: 30, mode: 'both' as const }
+  const hit = { ...computePeakAlert(BASE_NOW_MS, config, 0, 'deepseek-metered')!, queueCount: 3 }
+
+  it('updates a visible banner without re-firing its deduped alert', () => {
+    expect(refreshQueuePeakAlert(hit, 1)).toEqual({ ...hit, queueCount: 1 })
+    expect(refreshQueuePeakAlert(hit, 0)).toEqual({ entering: hit.entering, atMs: hit.atMs, channel: hit.channel })
+  })
+
+  it('does not resurrect a dismissed banner or annotate an unrelated channel switch', () => {
+    expect(refreshQueuePeakAlert(null, 2)).toBeNull()
+    const withoutQueue = { entering: hit.entering, atMs: hit.atMs, channel: hit.channel }
+    expect(refreshQueuePeakAlert(withoutQueue, 2)).toBe(withoutQueue)
   })
 })

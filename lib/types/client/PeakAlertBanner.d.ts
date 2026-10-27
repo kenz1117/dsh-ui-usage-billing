@@ -10,7 +10,7 @@ import type { UsageBillingKey } from './locales.ts';
 export interface PeakAlertBannerProps {
     hit: PeakAlertHit;
     config: PeakAlertConfig;
-    t: (key: UsageBillingKey) => string;
+    t: (key: UsageBillingKey, params?: Record<string, unknown>) => string;
     onDismiss: () => void;
 }
 /** 渲染一个切档前提醒状态条。 */

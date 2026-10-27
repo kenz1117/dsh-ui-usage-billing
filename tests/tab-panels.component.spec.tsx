@@ -2,7 +2,7 @@
 /**
  * UI 剧本 2（jsdom + @testing-library）：全部一级分区 panel testid 均存在。
  *
- * 概览/队列/账单/用量/趋势/上下文/智能体/费率/设置，
+ * 概览/队列/账单/用量/趋势/智能体/费率/设置，
  * 每个 panel 都有 `data-testid="billing-tab-panel-<id>"`。本剧本打开 Modal 后
  * 逐个点击断言存在；切换逻辑在 usage-billing.client.spec.tsx 已覆盖。
  */
@@ -27,10 +27,10 @@ beforeEach(() => {
 
 const t = (key: string): string => (zh as Record<string, string>)[key] ?? key
 
-const TAB_IDS = ['overview', 'queue', 'providers', 'token', 'trends', 'context', 'agents', 'pricing', 'settings'] as const
+const TAB_IDS = ['overview', 'queue', 'providers', 'token', 'trends', 'agents', 'pricing', 'settings'] as const
 
 describe('一级分区面板存在性', () => {
-  it('逐个点击 9 个分区，每个 panel 都能渲染（条件渲染：仅 active panel 在 DOM）', async () => {
+  it('逐个点击 8 个分区，每个 panel 都能渲染（条件渲染：仅 active panel 在 DOM）', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/api/billing/usage-stats')) {
@@ -69,7 +69,7 @@ describe('一级分区面板存在性', () => {
       expect(getByTestId('billing-dashboard')).toBeTruthy()
     })
 
-    // 逐个点 6 Tab：每个 panel 都是「仅 active 渲染」——点击后旧 panel 卸载、新 panel 挂载
+    // 逐个点 8 Tab：每个 panel 都是「仅 active 渲染」——点击后旧 panel 卸载、新 panel 挂载
     for (const id of TAB_IDS) {
       fireEvent.click(getByTestId(`billing-tab-${id}`))
       await waitFor(() => {

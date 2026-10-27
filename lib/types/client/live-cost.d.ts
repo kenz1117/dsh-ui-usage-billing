@@ -21,7 +21,6 @@
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { LiveCostBarPrefs } from './usage-billing-settings.ts';
 import type { UsageBillingKey } from './locales.ts';
-import type { UseProjection } from '@deepseek-ai/dsh-api-session-controller/client';
 /** The usage-stats shape the composer bar needs (a thin slice, not the whole doc). */
 export interface LiveStats {
     bySession?: readonly {
@@ -117,12 +116,6 @@ export declare function isBlankPhase(session: SessionPhaseSlice): boolean;
 export interface LiveCostBarProps {
     /** Current Session identity supplied by the session-scope standard kit. */
     sessionId: SessionId;
-    /**
-     * Host projection reader (session-scope standard kit). Present only on hosts
-     * that serve session projections; absent → no context dimension (the
-     * dashboard hides that card entirely rather than showing zeros).
-     */
-    useProjection?: UseProjection;
     /** The owning seat's locale seat (bound to the billing NS). */
     t: (key: UsageBillingKey) => string;
     /** Which host seat this instance occupies; it renders only when the position pref matches. */
@@ -135,7 +128,7 @@ export interface LiveCostBarProps {
  * @param props - framework session identity, locale, the seat occupied, and
  * (input.dock only) the owner session snapshot.
  */
-export declare function LiveCostBar({ sessionId, t, seat, session, useProjection }: LiveCostBarProps): React.ReactNode;
+export declare function LiveCostBar({ sessionId, t, seat, session }: LiveCostBarProps): React.ReactNode;
 /** Props of the tool-row chip: session identity and locale only (its seat is fixed to input.right). */
 export type LiveCostChipProps = Pick<LiveCostBarProps, 'sessionId' | 't'>;
 /**

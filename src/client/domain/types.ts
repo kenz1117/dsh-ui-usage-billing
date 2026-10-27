@@ -36,7 +36,7 @@ export const IDLE_HEALTH: ModelHealth = {
 }
 
 /** 仪表盘分区 Tab id。 */
-export type DashboardTab = 'overview' | 'queue' | 'context' | 'agents' | 'token' | 'trends' | 'providers' | 'pricing' | 'settings'
+export type DashboardTab = 'overview' | 'queue' | 'agents' | 'token' | 'trends' | 'providers' | 'pricing' | 'settings'
 
 import type { UsageBillingKey } from '../locales.ts'
 
@@ -51,7 +51,6 @@ export const DASHBOARD_TABS: readonly { id: DashboardTab; labelKey: UsageBilling
   { id: 'providers', labelKey: 'tabProviders' },
   { id: 'token', labelKey: 'tabToken' },
   { id: 'trends', labelKey: 'tabTrends' },
-  { id: 'context', labelKey: 'tabContext' },
   { id: 'agents', labelKey: 'tabAgents' },
   { id: 'pricing', labelKey: 'tabPricing' },
   { id: 'settings', labelKey: 'tabSettings' },

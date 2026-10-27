@@ -47,6 +47,32 @@ export interface PeakAlertHit {
   entering: PriceTierId
   atMs: number
   channel: RateChannel
+  /** Waiting DeepSeek queue items; informational only, never an execution action. */
+  queueCount?: number
+}
+
+/** Prefer the current model's alert; merge queue context only at the same switch. */
+export function mergeQueuePeakAlert(
+  current: PeakAlertHit | null,
+  queue: PeakAlertHit | null,
+  queuedCount: number,
+): PeakAlertHit | null {
+  if (queue === null || queuedCount <= 0) return current
+  if (current === null) return { ...queue, queueCount: queuedCount }
+  if (current.atMs === queue.atMs && current.entering === queue.entering) {
+    return { ...current, queueCount: queuedCount }
+  }
+  return current
+}
+
+/** Keep an already-visible banner truthful as the lightweight queue count changes. */
+export function refreshQueuePeakAlert(current: PeakAlertHit | null, queuedCount: number): PeakAlertHit | null {
+  if (current === null || current.queueCount === undefined) return current
+  if (queuedCount > 0) {
+    return current.queueCount === queuedCount ? current : { ...current, queueCount: queuedCount }
+  }
+  const { queueCount: _queueCount, ...withoutQueue } = current
+  return withoutQueue
 }
 
 /** 读取本地偏好（缺失/损坏回退默认，字段宽松校验）。 */
