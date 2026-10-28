@@ -71,6 +71,7 @@ function fakeController(options: FakeControllerOptions = {}) {
       }
     })()),
     modelCatalog: vi.fn(async () => ({
+      default: { provider: 'deepseek-official', model: 'deepseek-flash' },
       groups: [
         {
           id: 'deepseek-official',
@@ -275,6 +276,38 @@ describe('TaskQueueEngine safety and persistence', () => {
     })).rejects.toMatchObject({ status: 409 })
     expect((await engine.snapshot()).tasks).toEqual([])
     expect(prompts).toHaveLength(0)
+  })
+
+  it('exposes the factual host default without weakening enqueue route validation', async () => {
+    const eligible = fakeController()
+    const eligibleEngine = makeEngine(eligible.controller, () => PEAK)
+    expect(await eligibleEngine.snapshot()).toMatchObject({
+      defaultModel: { provider: 'deepseek-official', model: 'deepseek-flash' },
+    })
+    const eligibleCatalog = await eligible.controller.modelCatalog()
+    vi.mocked(eligible.controller.modelCatalog).mockResolvedValue({
+      ...eligibleCatalog,
+      default: { provider: 'deepseek-account', model: 'deepseek-flash' },
+    })
+    expect((await eligibleEngine.snapshot()).defaultModel).toEqual({
+      provider: 'deepseek-official', model: 'deepseek-flash',
+    })
+    expect((await eligibleEngine.snapshot(true)).defaultModel).toEqual({
+      provider: 'deepseek-account', model: 'deepseek-flash',
+    })
+
+    const relay = fakeController({ relayMirror: true })
+    const catalog = await relay.controller.modelCatalog()
+    vi.mocked(relay.controller.modelCatalog).mockResolvedValue({
+      ...catalog,
+      default: { provider: 'discount-relay', model: 'deepseek-flash' },
+    })
+    const engine = makeEngine(relay.controller, () => PEAK)
+    expect((await engine.snapshot()).defaultModel).toEqual({ provider: 'discount-relay', model: 'deepseek-flash' })
+    await expect(engine.enqueue({
+      prompt: 'relay default must not inherit official off-peak pricing', cwd: workspace,
+      provider: 'discount-relay', model: 'deepseek-flash',
+    })).rejects.toMatchObject({ status: 409 })
   })
 
   it('revalidates a queued model before creating a Session', async () => {

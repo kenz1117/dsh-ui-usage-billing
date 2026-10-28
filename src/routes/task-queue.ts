@@ -42,7 +42,8 @@ export function registerTaskQueueRoute(ctx: Context, deps: TaskQueueRouteDeps): 
       }
       try {
         if (req.method === 'GET') {
-          send(res, 200, await deps.engine.snapshot())
+          const refresh = new URL(req.url ?? '', 'http://127.0.0.1').searchParams.get('refresh') === '1'
+          send(res, 200, await deps.engine.snapshot(refresh))
           return
         }
         const chunks: Buffer[] = []

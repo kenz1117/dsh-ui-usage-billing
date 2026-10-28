@@ -1,6 +1,6 @@
 /** API client for the new-host off-peak task queue preview (issue #106). */
 import type { TaskQueueInput, TaskQueueSnapshot, TaskQueueSummary } from '../../task-queue-shared.ts';
-export declare function loadTaskQueue(): Promise<TaskQueueSnapshot>;
+export declare function loadTaskQueue(refreshModels?: boolean): Promise<TaskQueueSnapshot>;
 export declare function loadTaskQueueSummary(): Promise<TaskQueueSummary>;
 export type TaskQueueAction = {
     action: 'enqueue';

@@ -2,11 +2,17 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2。当前 `latest` 指向 `1.8.0` 正式版，`alpha` 指向 `1.8.0-alpha.2`；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2。当前 `latest` 指向 `1.8.0` 正式版，`alpha` 指向 `1.8.1-alpha.1`；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2）
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
+
+### v1.8.1-alpha.1（2026-10-28）
+
+- **新增：当前草稿一键加入低谷队列（issue #106）**。对话输入框左侧新增默认关闭、持久化的「低谷队列」开关；开启后才显示「入队」、待执行条数与「入队后清稿」选项。点击即按原文捕获当前草稿，并沿用当前工作区与下一模型选择（新会话未显式选模型时读取宿主目录默认路由），不发送当前会话、不跳转；任务只由队列按峰谷规则调度。默认保留草稿，清稿需用户显式选择。
+- **安全与降级**：只使用宿主公开的 input / projection 能力，老宿主能力缺席时降级；空白、非空闲输入、附件或结构化引用、无法可靠读取 cwd / 模型、非内置官方峰谷路由均拒绝入队。仅开启且页面可见时每 30 秒轮询不含 Prompt 的轻量摘要；重复点击、旧轮询覆盖与迟到响应均有防护，只有入队成功且草稿文本、revision、会话和输入状态均未变化时才允许清稿。兼容矩阵保持 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2 不变。
+- **验证**：全量 80 个测试文件 / 826 条用例通过，新版 DMG（DSH 0.2.2-alpha.2）6 条 API 契约测试通过；真机覆盖官方 / 非官方路由、入队后清稿与保留草稿、reload 后偏好和草稿持久化，两条任务均只创建独立 Session 并完成，当前会话未发送且 Console 无错误。客户端 bundle **347,637 字节（339.5 KiB）**，服务端 368,611 字节（360.0 KiB），低于本仓自设 500 KiB 强警告线。
 
 ### v1.8.0（2026-10-28）
 

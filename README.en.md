@@ -56,7 +56,7 @@ The billing channel is detected from the current session's model: DeepSeek meter
 - A performance panel: per-model TTFT mean/P50/P90 and generation speed.
 - Uncatalogued models are explicitly marked and never silently billed 0; one alias entry prices an out-of-catalog model.
 - An optional `usage_stats` tool lets the model answer "what did I spend today" or "which site used the most".
-- **Off-peak task queue (preview)**: nothing is queued until the user explicitly chooses a workspace, a built-in DeepSeek official model and a Prompt. JSON files can be imported in batches; the whole batch is validated before one atomic enqueue, so any invalid item means zero writes. Tasks run FIFO in independent Sessions, start only in the official off-peak window, continue across peak once admitted, and become "Needs review" without automatic replay after failures or unknown outcomes. Relay mirrors are excluded; hosts without Session control fall back to read-only and never create placeholder tasks.
+- **Off-peak task queue (preview)**: nothing is queued until the user explicitly chooses a workspace, a built-in DeepSeek official model and a Prompt. An opt-in composer switch can also capture the current draft verbatim with its cwd and model—without sending the current Session or navigating away; drafts are kept by default, with optional clear-after-enqueue. JSON files can be imported in batches; the whole batch is validated before one atomic enqueue, so any invalid item means zero writes. Tasks run FIFO in independent Sessions, start only in the official off-peak window, continue across peak once admitted, and become "Needs review" without automatic replay after failures or unknown outcomes. Relay mirrors are excluded; hosts without Session control fall back to read-only and never create placeholder tasks.
 - Zero tools registered by default: the single read-only `usage_stats` tool is registered **only** after the user explicitly turns on "inject usage query" in the settings (off by default). No system-prompt injection.
 - Chinese / English and ¥ / ≈$ toggles; no chart library, no external CDN, offline & self-contained.
 - **Jump from a session row**: click a session title in the dashboard to open that conversation in the host (both generations of the host's session-selection channel are probed; hosts without one show a readable notice instead of silently doing nothing).
@@ -130,7 +130,7 @@ The billing channel is detected from the current session's model: DeepSeek meter
 
 ## 🚀 Quick start
 
-One codebase currently supports DSH `0.1.2-alpha.1` through `0.2.2-alpha.2`. Stable and preview releases share the same compatibility matrix: stable releases use npm `latest`, while previews use `alpha`. npm `latest` currently points to the stable `1.8.0` release, while `alpha` points to `1.8.0-alpha.2`.
+One codebase currently supports DSH `0.1.2-alpha.1` through `0.2.2-alpha.2`. Stable and preview releases share the same compatibility matrix: stable releases use npm `latest`, while previews use `alpha`. npm `latest` currently points to the stable `1.8.0` release, while `alpha` points to `1.8.1-alpha.1`.
 
 `dsh plugin add` requires an explicit `--profile`. Pinning an exact version is recommended so a package manager's release cooldown cannot resolve a different version. Install the current stable release with:
 
@@ -268,7 +268,7 @@ For on-machine debugging: `dsh plugin --profile web add "link:<absolute path to 
 
 ## 📦 Release
 
-This standalone npm package maintains one `main` codebase. Stable releases use non-prerelease versions and npm `latest`; previews use prerelease versions and npm `alpha`. npm `latest` currently points to the stable `1.8.0` release, while `alpha` points to `1.8.0-alpha.2`; see [COMPATIBILITY.md](COMPATIBILITY.md).
+This standalone npm package maintains one `main` codebase. Stable releases use non-prerelease versions and npm `latest`; previews use prerelease versions and npm `alpha`. npm `latest` currently points to the stable `1.8.0` release, while `alpha` points to `1.8.1-alpha.1`; see [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ```sh
 pnpm test && pnpm run build   # full tests + build before release
@@ -283,7 +283,7 @@ The host discovers the browser side automatically via the `dsh.client` declarati
 
 - **Permission level: high**: reads durable Session logs, calls vendor / subscription / balance / pricing APIs, reads `apiKeyEnv` through the credentials seam, and writes the ledger, snapshots and task queue under the harness home. The plugin itself has **no** command-execution / shell capability; only explicit enqueueing creates a host Session and submits a Prompt, while Agent tools remain governed by the host's existing permissions and approvals.
 - **Update channel: `user-reviewed`**: with file / network / credential capabilities, DSH STORE requires local manual confirmation on every install; review the repo, pinned commit, lifecycle scripts, and impact scope before installing.
-- **Compatibility**: stable and preview releases from the current `main` share one matrix covering DSH `0.1.2-alpha.1` through `0.2.2-alpha.2`, with 31 per-version declarations. The current stable release is `1.8.0` (npm `latest`), and the current preview is `1.8.0-alpha.2` (npm `alpha`). Release channels and monitoring are documented in [COMPATIBILITY.md](COMPATIBILITY.md). Node.js `^22.19.0 || >=24.0.0`.
+- **Compatibility**: stable and preview releases from the current `main` share one matrix covering DSH `0.1.2-alpha.1` through `0.2.2-alpha.2`, with 31 per-version declarations. The current stable release is `1.8.0` (npm `latest`), and the current preview is `1.8.1-alpha.1` (npm `alpha`). Release channels and monitoring are documented in [COMPATIBILITY.md](COMPATIBILITY.md). Node.js `^22.19.0 || >=24.0.0`.
 - **Lifecycle**: no `preinstall` / `install` / `postinstall` / `prepare` (ready on install).
 - **No impersonation**: adds only its own entry id `ui-usage-billing`; `@deepseek-ai/dsh-*` packages are `peerDependencies` only (no reinstall / replace / shadowing of official components); the package uses the third-party namespace `@kenz1117/*`.
 - **Build artifacts**: runtime files `lib/*` and `cordis.patch.yml` are committed at the pinned commit and declared in `files`.

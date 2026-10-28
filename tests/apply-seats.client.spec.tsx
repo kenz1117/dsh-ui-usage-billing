@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { apply } from '../src/client/apply.ts'
 import { LiveCostBar, LiveCostChip } from '../src/client/live-cost.tsx'
+import { QuickQueueEnqueue, QuickQueueToggle } from '../src/client/task-queue-quick.tsx'
 import { NS } from '../src/client/locales.ts'
 
 interface Registration {
@@ -92,6 +93,23 @@ describe('client apply(): live cost capsule seats (issue #101)', () => {
     const chip = byName('conversation.input.right')
     expect(chip.component).toBe(LiveCostChip)
     expect(chip.inject?.('s-1')).toEqual({ sessionId: 's-1' })
+  })
+
+  it('registers the opt-in queue toggle on the left and enqueue action on the right', () => {
+    const toggle = registered.find(entry => entry.id === 'usage-billing-quick-queue-toggle')
+    const enqueue = registered.find(entry => entry.id === 'usage-billing-quick-queue-enqueue')
+    expect(toggle?.name).toBe('conversation.input.left')
+    expect(toggle?.component).toBe(QuickQueueToggle)
+    expect(toggle?.locale).toBe(NS)
+    expect(enqueue?.name).toBe('conversation.input.right')
+    expect(enqueue?.component).toBe(QuickQueueEnqueue)
+    expect(enqueue?.locale).toBe(NS)
+    const injected = enqueue?.inject?.('s-1')
+    expect(injected?.sessionId).toBe('s-1')
+    const projectionFaceOf = injected?.projectionFaceOf as ((key: 'workingDirectory' | 'modelSelection') => unknown) | undefined
+    expect(projectionFaceOf).toBeTypeOf('function')
+    // A host without the public binding API degrades to an absent projection.
+    expect(projectionFaceOf?.('workingDirectory')).toBeUndefined()
   })
 
   it('binds every capsule seat to the billing locale namespace', () => {

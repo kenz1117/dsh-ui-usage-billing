@@ -97,6 +97,17 @@ describe('task queue route', () => {
     expect(JSON.parse(res.calls[0]!.body)).toEqual(SNAPSHOT)
   })
 
+  it('refreshes the host model catalog only when explicitly requested', async () => {
+    const deps = makeDeps()
+    const { handler } = captureRoute(deps)
+    const req = fakeReq('GET', {})
+    req.url = '/api/billing/task-queue?refresh=1'
+    const res = fakeRes()
+    await handler(req, res)
+    expect(res.calls[0]?.status).toBe(200)
+    expect(deps.engine.snapshot).toHaveBeenCalledWith(true)
+  })
+
   it('returns the lightweight queue summary on its own GET route', async () => {
     const deps = makeDeps()
     const res = await request(deps, 'GET', {}, '', '/api/billing/task-queue-summary')

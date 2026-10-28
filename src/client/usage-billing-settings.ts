@@ -520,3 +520,34 @@ export function saveMotion(motion: MotionPref): void {
     window.dispatchEvent(new CustomEvent(MOTION_PREF_EVENT, { detail: { motion } }))
   }
 }
+
+/** Composer shortcut preferences; both actions are opt-in and default off. */
+export interface QuickQueuePrefs {
+  /** Show the draft enqueue controls beside the composer. */
+  enabled: boolean
+  /** Clear only the exact enqueued draft revision after a successful mutation. */
+  clearAfterEnqueue: boolean
+}
+
+export const DEFAULT_QUICK_QUEUE_PREFS: QuickQueuePrefs = { enabled: false, clearAfterEnqueue: false }
+export const QUICK_QUEUE_STORAGE_KEY = 'dsh.ui-usage-billing.quick-queue'
+export const QUICK_QUEUE_PREF_EVENT = 'dsh.ui-usage-billing.quick-queue-pref'
+
+/** Read composer queue preferences, failing closed on missing or malformed values. */
+export function loadQuickQueuePrefs(): QuickQueuePrefs {
+  const parsed = readJson(QUICK_QUEUE_STORAGE_KEY)
+  if (parsed === null || typeof parsed !== 'object') return { ...DEFAULT_QUICK_QUEUE_PREFS }
+  const prefs = parsed as Partial<QuickQueuePrefs>
+  return {
+    enabled: prefs.enabled === true,
+    clearAfterEnqueue: prefs.clearAfterEnqueue === true,
+  }
+}
+
+/** Persist and broadcast to the independent left/right composer React trees. */
+export function saveQuickQueuePrefs(prefs: QuickQueuePrefs): void {
+  writeStored(QUICK_QUEUE_STORAGE_KEY, JSON.stringify(prefs))
+  if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(QUICK_QUEUE_PREF_EVENT))
+  }
+}

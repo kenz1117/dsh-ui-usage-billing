@@ -17,6 +17,7 @@ import { channelCountdown, rateChannelOf, tierAt } from './client/pricing.ts'
 import type {
   TaskQueueInput,
   TaskQueueModel,
+  TaskQueueModelSelection,
   TaskQueueSnapshot,
   TaskQueueStatus,
   TaskQueueSummary,
@@ -109,7 +110,11 @@ export class TaskQueueEngine {
   private taskAbort: AbortController | undefined
   private stopped = true
   private pumping = false
-  private modelCache: { at: number; models: readonly TaskQueueModel[] } | undefined
+  private modelCache: {
+    at: number
+    models: readonly TaskQueueModel[]
+    defaultModel?: TaskQueueModelSelection | undefined
+  } | undefined
 
   constructor(private readonly options: TaskQueueEngineOptions) {
     this.now = options.now ?? Date.now
@@ -138,7 +143,7 @@ export class TaskQueueEngine {
     // orphaned result "failed / needs review" instead of ever replaying it.
   }
 
-  async snapshot(): Promise<TaskQueueSnapshot> {
+  async snapshot(refreshModels = false): Promise<TaskQueueSnapshot> {
     const countdown = channelCountdown(this.now(), 'deepseek-metered')
     const controller = usableController(this.options.getController())
     const base = {
@@ -150,7 +155,7 @@ export class TaskQueueEngine {
     }
     if (controller === undefined) return { ...base, models: [] }
     try {
-      return { ...base, models: await this.modelOptions(controller) }
+      return { ...base, ...await this.modelOptions(controller, refreshModels) }
     } catch (error) {
       return { ...base, models: [], optionsError: messageOf(error) }
     }
@@ -178,7 +183,7 @@ export class TaskQueueEngine {
     if (!Array.isArray(inputs) || inputs.length === 0) throw new TaskQueueError('at least one task is required')
     if (inputs.length > MAX_QUEUED) throw new TaskQueueError('too many active queue items', 409)
     const workspaces = this.options.getWorkspaces()
-    const models = await this.modelOptions(controller, true)
+    const { models } = await this.modelOptions(controller, true)
     const validated = inputs.map((input, index) => {
       try {
         if (input === null || typeof input !== 'object' || Array.isArray(input)) {
@@ -234,9 +239,12 @@ export class TaskQueueEngine {
     })
   }
 
-  private async modelOptions(controller: ControllerFace, refresh = false): Promise<readonly TaskQueueModel[]> {
+  private async modelOptions(controller: ControllerFace, refresh = false): Promise<{
+    models: readonly TaskQueueModel[]
+    defaultModel?: TaskQueueModelSelection | undefined
+  }> {
     if (!refresh && this.modelCache !== undefined && this.now() - this.modelCache.at < OPTIONS_CACHE_MS) {
-      return this.modelCache.models
+      return this.modelCache
     }
     const catalog = await controller.modelCatalog()
     const models: TaskQueueModel[] = []
@@ -250,8 +258,15 @@ export class TaskQueueEngine {
         models.push({ provider: group.id, providerName: group.name, id: model.id, name: model.name })
       }
     }
-    this.modelCache = { at: this.now(), models }
-    return models
+    // modelCatalog.default is the same route Prompt uses for an unconfigured
+    // Session. Return the factual route so the client can distinguish an absent
+    // default from an ineligible one; enqueue still enforces official eligibility.
+    const candidate = catalog.default
+    const defaultModel = candidate === undefined
+      ? undefined
+      : { provider: candidate.provider, model: candidate.model }
+    this.modelCache = { at: this.now(), models, defaultModel }
+    return { models, defaultModel }
   }
 
   private async pump(): Promise<void> {
@@ -324,7 +339,7 @@ export class TaskQueueEngine {
       }
       // Enqueue-time validation is not enough: a queued route/model can be
       // removed or reconfigured before the next off-peak window.
-      const availableModels = await this.modelOptions(controller, true)
+      const { models: availableModels } = await this.modelOptions(controller, true)
       if (!availableModels.some(model => model.provider === claimed.provider && model.id === claimed.model)) {
         throw new TaskQueueError('the selected official DeepSeek model is no longer available', 409)
       }

@@ -36,7 +36,10 @@ export interface VolatileToggle {
  * object 透传未声明键，其余 config 字段不受影响；未导出 Config 的旧宿主直接
  * 把原始 config 交给 apply，普通布尔形态由读取端兼容。
  */
-export const Config = z.object({
+export const Config: z<
+  { enableUsageStatsTool?: boolean | null },
+  { enableUsageStatsTool: VolatileToggle }
+> = z.object({
   [ENABLE_USAGE_STATS_TOOL_FIELD]: z.boolean().default(DEFAULT_ENABLE_USAGE_STATS_TOOL).volatile(),
 })
 

@@ -245,4 +245,18 @@ export declare const DEFAULT_MOTION: MotionPref;
 export declare function loadMotion(): MotionPref;
 /** 写入动效偏好并同步派发事件。失败静默。 */
 export declare function saveMotion(motion: MotionPref): void;
+/** Composer shortcut preferences; both actions are opt-in and default off. */
+export interface QuickQueuePrefs {
+    /** Show the draft enqueue controls beside the composer. */
+    enabled: boolean;
+    /** Clear only the exact enqueued draft revision after a successful mutation. */
+    clearAfterEnqueue: boolean;
+}
+export declare const DEFAULT_QUICK_QUEUE_PREFS: QuickQueuePrefs;
+export declare const QUICK_QUEUE_STORAGE_KEY = "dsh.ui-usage-billing.quick-queue";
+export declare const QUICK_QUEUE_PREF_EVENT = "dsh.ui-usage-billing.quick-queue-pref";
+/** Read composer queue preferences, failing closed on missing or malformed values. */
+export declare function loadQuickQueuePrefs(): QuickQueuePrefs;
+/** Persist and broadcast to the independent left/right composer React trees. */
+export declare function saveQuickQueuePrefs(prefs: QuickQueuePrefs): void;
 //# sourceMappingURL=usage-billing-settings.d.ts.map

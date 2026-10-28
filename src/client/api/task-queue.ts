@@ -12,8 +12,9 @@ async function errorOf(response: Response): Promise<string> {
   }
 }
 
-export async function loadTaskQueue(): Promise<TaskQueueSnapshot> {
-  const response = await fetchBilling('/api/billing/task-queue')
+export async function loadTaskQueue(refreshModels = false): Promise<TaskQueueSnapshot> {
+  const suffix = refreshModels ? '?refresh=1' : ''
+  const response = await fetchBilling(`/api/billing/task-queue${suffix}`)
   if (!response.ok) throw new Error(await errorOf(response))
   return await response.json() as TaskQueueSnapshot
 }

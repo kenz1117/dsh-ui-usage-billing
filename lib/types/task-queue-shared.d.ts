@@ -30,6 +30,10 @@ export interface TaskQueueModel {
     readonly id: string;
     readonly name: string;
 }
+export interface TaskQueueModelSelection {
+    readonly provider: string;
+    readonly model: string;
+}
 export interface TaskQueueSnapshot {
     /** All required host Session-control methods are available. */
     readonly supported: boolean;
@@ -38,6 +42,8 @@ export interface TaskQueueSnapshot {
     readonly tasks: readonly TaskQueueTask[];
     readonly workspaces: readonly TaskQueueWorkspace[];
     readonly models: readonly TaskQueueModel[];
+    /** Host default route for an unconfigured Session; eligibility is checked separately. */
+    readonly defaultModel?: TaskQueueModelSelection | undefined;
     readonly optionsError?: string;
 }
 /** Lightweight alert polling shape: never transports Prompt or Session content. */

@@ -38,7 +38,7 @@ export declare class TaskQueueEngine {
     constructor(options: TaskQueueEngineOptions);
     start(): void;
     stop(): void;
-    snapshot(): Promise<TaskQueueSnapshot>;
+    snapshot(refreshModels?: boolean): Promise<TaskQueueSnapshot>;
     summary(): Promise<TaskQueueSummary>;
     enqueue(input: TaskQueueInput): Promise<void>;
     /** Validate the whole batch before one locked append: no partially admitted import. */

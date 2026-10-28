@@ -28,11 +28,11 @@ export interface VolatileToggle {
  * object 透传未声明键，其余 config 字段不受影响；未导出 Config 的旧宿主直接
  * 把原始 config 交给 apply，普通布尔形态由读取端兼容。
  */
-export declare const Config: z<Schemastery.ObjectS<NoInfer<{
-    enableUsageStatsTool: z<boolean, boolean, "volatile-defined">;
-}>>, Schemastery.ObjectT<NoInfer<{
-    enableUsageStatsTool: z<boolean, boolean, "volatile-defined">;
-}>>, "plain">;
+export declare const Config: z<{
+    enableUsageStatsTool?: boolean | null;
+}, {
+    enableUsageStatsTool: VolatileToggle;
+}>;
 /** Plugin configuration. */
 export interface UsageBillingConfig {
     /** Absolute path to a `.dsh-usage-stats.json` fallback file. */

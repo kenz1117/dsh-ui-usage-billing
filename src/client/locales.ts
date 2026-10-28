@@ -394,6 +394,20 @@ export type UsageBillingKey =
   | 'queueStatusRunning'
   | 'queueStatusCompleted'
   | 'queueStatusFailed'
+  | 'quickQueueToggle'
+  | 'quickQueueEnqueue'
+  | 'quickQueueEnqueueing'
+  | 'quickQueueWaiting'
+  | 'quickQueueClear'
+  | 'quickQueueEnqueued'
+  | 'quickQueueEmpty'
+  | 'quickQueueBusy'
+  | 'quickQueueAttachments'
+  | 'quickQueueContext'
+  | 'quickQueueRoute'
+  | 'quickQueueDraftChanged'
+  | 'quickQueueUnsupported'
+  | 'quickQueueFailed'
   | 'agentsSummary'
   | 'agentsCount'
   | 'agentsDelegations'
@@ -810,6 +824,20 @@ export const zh: Record<UsageBillingKey, string> = {
   'queueStatusRunning': '执行中',
   'queueStatusCompleted': '已完成',
   'queueStatusFailed': '需核对',
+  'quickQueueToggle': '低谷队列',
+  'quickQueueEnqueue': '入队',
+  'quickQueueEnqueueing': '入队中…',
+  'quickQueueWaiting': '{count} 个等待任务',
+  'quickQueueClear': '入队后清稿',
+  'quickQueueEnqueued': '已加入低谷队列，将按队列规则调度',
+  'quickQueueEmpty': '草稿为空，请先输入任务',
+  'quickQueueBusy': '当前草稿正在提交，请稍后再入队',
+  'quickQueueAttachments': '含附件或引用的草稿暂不支持入队，请改用纯文本',
+  'quickQueueContext': '无法读取当前工作区或模型，请在新版宿主中重试',
+  'quickQueueRoute': '当前工作区或模型不支持低谷队列，请选择官方峰谷模型',
+  'quickQueueDraftChanged': '已入队；草稿已变化，未清空',
+  'quickQueueUnsupported': '当前宿主不支持草稿入队，请升级宿主',
+  'quickQueueFailed': '入队失败：{message}',
 }
 
 export const en: Record<UsageBillingKey, string> = {
@@ -1216,4 +1244,18 @@ export const en: Record<UsageBillingKey, string> = {
   'queueStatusRunning': 'Running',
   'queueStatusCompleted': 'Completed',
   'queueStatusFailed': 'Needs review',
+  'quickQueueToggle': 'Off-peak queue',
+  'quickQueueEnqueue': 'Enqueue',
+  'quickQueueEnqueueing': 'Enqueuing…',
+  'quickQueueWaiting': '{count} waiting tasks',
+  'quickQueueClear': 'Clear after enqueue',
+  'quickQueueEnqueued': 'Added to the off-peak queue; scheduling follows the queue rules',
+  'quickQueueEmpty': 'The draft is empty; enter a task first',
+  'quickQueueBusy': 'This draft is being submitted; try enqueueing later',
+  'quickQueueAttachments': 'Drafts with attachments or references cannot be queued; use plain text',
+  'quickQueueContext': 'Cannot read the current workspace or model; retry on a newer host',
+  'quickQueueRoute': 'This workspace or model is not eligible; select an official time-of-day model',
+  'quickQueueDraftChanged': 'Enqueued; the draft changed, so it was not cleared',
+  'quickQueueUnsupported': 'This host does not support draft enqueueing; upgrade the host',
+  'quickQueueFailed': 'Enqueue failed: {message}',
 }

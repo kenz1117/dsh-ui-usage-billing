@@ -28,6 +28,7 @@ import { UsageBilling } from './UsageBilling.tsx'
 import type { ModelHealth, UsageBillingInjected } from './domain/types.ts'
 import type { CatalogModel } from './pricing.ts'
 import { LiveCostBar, LiveCostChip } from './live-cost.tsx'
+import { QuickQueueEnqueue, QuickQueueToggle, type ProjectionFaceOf } from './task-queue-quick.tsx'
 import { en, NS, zh, type UsageBillingKey } from './locales.ts'
 import { createBillingMetrics, type BillingMetricsService } from './billing-service.ts'
 import { createBillingBudgetStore } from './budget-store.ts'
@@ -214,6 +215,34 @@ export function apply(ctx: Context): void {
     locale: NS,
     inject: (sessionId: string) => ({ sessionId: SessionId(sessionId) }),
   }, LiveCostChip))
+
+  // 低谷任务快捷入口：左侧常驻开关默认关闭；右侧只在开启后显示草稿入队、
+  // 等待数与可选清稿。草稿走 session 标准套件；cwd/模型走当前 Session 公开的
+  // projections.faceOf。新会话尚未显式选模型时，由队列接口返回宿主模型目录
+  // 的默认路由；老宿主缺少 binding 或投影时安全降级，不增加启动 inject 依赖。
+  ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
+    name: 'conversation.input.left',
+    id: 'usage-billing-quick-queue-toggle',
+    order: 20,
+    locale: NS,
+  }, QuickQueueToggle))
+
+  ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
+    name: 'conversation.input.right',
+    id: 'usage-billing-quick-queue-enqueue',
+    order: 20,
+    locale: NS,
+    inject: (sessionId: string) => ({
+      sessionId: SessionId(sessionId),
+      projectionFaceOf: (key: Parameters<ProjectionFaceOf>[0]) => {
+        try {
+          return ctx.sessions.binding?.(SessionId(sessionId))?.session.projections.faceOf(key)
+        } catch {
+          return undefined
+        }
+      },
+    }),
+  }, QuickQueueEnqueue))
 
   // 对话完成提醒：会话 running→completed 迁移时弹一条桌面通知（默认关闭，
   // 用户到面板设置开启）。配置持久化在 localStorage，跨 tab 由 notifier 去重。

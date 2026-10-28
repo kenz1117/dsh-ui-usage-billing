@@ -1,0 +1,105 @@
+.quickQueue {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.quickQueueToggle,
+.quickQueueButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.quickQueueToggle:hover,
+.quickQueueButton:hover:not(:disabled) {
+  border-color: var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-primary);
+}
+
+.quickQueueToggle[aria-checked='true'] {
+  border-color: color-mix(in srgb, var(--ds-blue) 45%, transparent);
+  background: color-mix(in srgb, var(--ds-blue) 10%, transparent);
+  color: var(--ds-blue);
+}
+
+.quickQueueButton:focus-visible,
+.quickQueueToggle:focus-visible,
+.quickQueueClear input:focus-visible {
+  outline: 2px solid var(--ds-blue);
+  outline-offset: 2px;
+}
+
+.quickQueueButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.quickQueueClear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.quickQueueClear input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--ds-blue);
+}
+
+.quickQueueCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ds-blue) 14%, transparent);
+  color: var(--ds-blue);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.quickQueueNotice {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 30;
+  width: max-content;
+  max-width: min(320px, 75vw);
+  padding: 7px 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: normal;
+  pointer-events: none;
+}
+
+.quickQueueNotice[data-kind='error'] {
+  border-color: color-mix(in srgb, var(--ds-red) 45%, transparent);
+  color: var(--ds-red);
+}
