@@ -2,11 +2,17 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.1-rc.4。当前 `latest` 暂指 `1.8.0-alpha.2`；首个 `1.8.0` 正式版发布后，`latest` 只指正式版，后续预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2。当前 `latest` 指向 `1.8.0` 正式版，`alpha` 指向 `1.8.0-alpha.2`；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
-## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.1-rc.4）
+## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2）
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
+
+### v1.8.0（2026-10-28）
+
+- **正式通道首发**：完整包含 `1.8.0-alpha.1` 的 DeepSeek 官方低谷持久化 FIFO 队列，以及 `1.8.0-alpha.2` 的 JSON 批量导入、切档前队列提醒和八分区仪表盘；npm `latest` 切至本版，`alpha` 保持指向 `1.8.0-alpha.2`。队列仍只在低谷启动、跨峰不取消、失败不重放，老宿主能力缺席时只读降级。
+- **兼容：DSH 0.2.2-alpha.2**。逐包核对插件实际依赖面，Session 创建 / 模型选择 / Prompt 提交、会话日志读取和 UI slots 保持兼容；devDependencies 与显式 peer 补齐后重锁，兼容矩阵扩为 31 项。隔离 DSH_HOME 真机验收确认插件装载、完整聚合、计费刷新、任务队列与摘要接口正常，最终日志无插件装载失败或宿主模块导入错误。
+- **验证**：全量 79 个测试文件 / 798 条用例通过；新宿主 5 条非空数据依赖的 API e2e 通过，空数据 `usage-stats` 核心合同单独核验通过（`bySite` 按既有定义在空集合时省略）。构建产物与 `1.8.0-alpha.2` 相同：客户端 337,952 字节（330.0 KiB），服务端 368,220 字节。本轮仅做宿主与 API 验收，不宣称完成新版 DMG 的 UI 自动化验收。
 
 ### v1.8.0-alpha.2（2026-10-27）
 

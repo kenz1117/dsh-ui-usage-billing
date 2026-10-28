@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
-  "generatedAt": "2026-10-27T15:35:00.000Z",
-  "revision": "1.8.0-alpha.2",
+  "generatedAt": "2026-10-27T23:09:21.000Z",
+  "revision": "1.8.0",
   "items": [
     {
       "id": "dsh-ui-usage-billing",
@@ -10,7 +10,7 @@
       "summary": "Usage billing dashboard for DeepSeek Harness: sidebar cost metrics plus a full dashboard modal, priced from a current multi-provider catalog with real usage aggregated from session logs.",
       "description": "在 DSH 侧边栏展示实时费用与 Token 指标，并提供完整用量/费用仪表盘弹窗：分段计价（历史不重算）、峰谷分时价、多厂商余额与 Coding Plan 额度、余额差对账、TTFT 性能面板、子智能体费用归并、CSV/JSON 导出。",
       "homepage": "https://github.com/kenz1117/dsh-ui-usage-billing",
-      "latestVersion": "1.8.0-alpha.2",
+      "latestVersion": "1.8.0",
       "license": "MIT",
       "categories": ["utility", "billing"],
       "keywords": [
@@ -39,7 +39,7 @@
       "compatibility": {
         "hosts": ["dsh"]
       },
-      "updatedAt": "2026-10-27T15:35:00.000Z"
+      "updatedAt": "2026-10-27T23:09:21.000Z"
     }
   ],
   "page": {}
