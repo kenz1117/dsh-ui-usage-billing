@@ -2,11 +2,17 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2。当前 `latest` 指向 `1.8.0` 正式版，`alpha` 指向 `1.8.1-alpha.1`；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2。当前 `latest` 指向 `1.8.0` 正式版，`alpha` 指向 `1.8.1-alpha.2`；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2）
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
+
+### v1.8.1-alpha.2（2026-10-29）
+
+- **新增：概览 Hero + KPI 自定义日期范围（issue #107）**。在今天 / 近 7 天 / 本周 / 本月 / 累计之外新增「自定义」，默认选中昨天；可按本地时区选择任意起止日期，两个端日均完整包含。Hero 费用、调用数与全部 KPI（含缓存写入）按同一范围重算，范围与起止日期跨刷新持久化；移动一端越过另一端时自动拉回有效区间。自定义历史范围不混入最近 7 天 sparkline 或今日环比。
+- **口径边界**：Hero 与 KPI 共用范围，因此默认「累计」时 Hero 也显示累计而非本月；预算环与 Hero 侧栏仍分别保持本月 / 本年 / 今日参考口径，本月预计只在本月范围显示。现有聚合数据以自然日为最小粒度，本版不提供分钟级伪精度；宿主兼容矩阵不变。
+- **验证**：全量 81 个测试文件 / 834 条用例与 DMG 宿主 6 条 API 契约测试通过；DMG（DSH 0.2.1-rc.3）真机核对昨天与今天的 Hero 费用、调用数和 API 逐日汇总一致，端点交叉、reload 持久化均通过，Console 零错误。客户端 bundle **350,210 字节（342.0 KiB）**，服务端 368,611 字节（360.0 KiB），低于本仓自设 500 KiB 强警告线。
 
 ### v1.8.1-alpha.1（2026-10-28）
 

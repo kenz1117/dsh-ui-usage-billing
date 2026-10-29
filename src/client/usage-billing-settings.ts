@@ -146,21 +146,62 @@ export function saveBillingCardPrefs(prefs: BillingCardPrefs): void {
   writeStored(BILLING_CARD_STORAGE_KEY, JSON.stringify(prefs))
 }
 
-/** 概览 KPI 全局统计范围（今日/近7天/本周/本月/累计），与组件内 AvgCostRange 同构。 */
-export type KpiRangePref = 'today' | '7d' | 'week' | 'month' | 'all'
+/** 概览 Hero + KPI 全局统计范围（预设或自定义起止日期），与组件内 AvgCostRange 同构。 */
+export type KpiRangePref = 'today' | '7d' | 'week' | 'month' | 'all' | 'custom'
+
+/** 自定义日期范围：本地日历日，起止均包含；不伪装成分钟级切片。 */
+export interface KpiCustomRange {
+  start: string
+  end: string
+}
 
 /** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
 export const KPI_RANGE_STORAGE_KEY = 'dsh.ui-usage-billing.kpi-range'
+export const KPI_CUSTOM_RANGE_STORAGE_KEY = 'dsh.ui-usage-billing.kpi-custom-range'
 
 /** 读取 KPI 全局范围偏好（损坏/越界回退「累计」）。仅在浏览器半区调用。 */
 export function loadKpiRange(): KpiRangePref {
   const raw = readRaw(KPI_RANGE_STORAGE_KEY)
-  return raw === 'today' || raw === '7d' || raw === 'week' || raw === 'month' || raw === 'all' ? raw : 'all'
+  return raw === 'today' || raw === '7d' || raw === 'week' || raw === 'month' || raw === 'all' || raw === 'custom' ? raw : 'all'
 }
 
 /** 写入 KPI 全局范围偏好。失败静默（展示偏好非关键）。 */
 export function saveKpiRange(range: KpiRangePref): void {
   writeStored(KPI_RANGE_STORAGE_KEY, range)
+}
+
+function defaultKpiCustomRange(): KpiCustomRange {
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  const day = `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`
+  return { start: day, end: day }
+}
+
+function validKpiDay(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const year = Number(value.slice(0, 4))
+  const month = Number(value.slice(5, 7))
+  const day = Number(value.slice(8, 10))
+  if (year < 1000 || month < 1 || month > 12 || day < 1) return false
+  return day <= new Date(year, month, 0).getDate()
+}
+
+/** 自定义范围缺省为昨天；损坏、非法日期或起止倒置一律回退，避免意外全量。 */
+export function loadKpiCustomRange(): KpiCustomRange {
+  const parsed = readJson(KPI_CUSTOM_RANGE_STORAGE_KEY)
+  if (parsed !== null && typeof parsed === 'object') {
+    const candidate = parsed as Partial<KpiCustomRange>
+    if (validKpiDay(candidate.start) && validKpiDay(candidate.end) && candidate.start <= candidate.end) {
+      return { start: candidate.start, end: candidate.end }
+    }
+  }
+  return defaultKpiCustomRange()
+}
+
+/** 自定义起止日期与范围种类分开保存，切走再切回仍保留上次选择。 */
+export function saveKpiCustomRange(range: KpiCustomRange): void {
+  writeStored(KPI_CUSTOM_RANGE_STORAGE_KEY, JSON.stringify(range))
 }
 
 /**

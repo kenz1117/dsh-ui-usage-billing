@@ -60,7 +60,7 @@ export function sinceMondayOf<T>(
 export function sumByDayRange(
   byDay: Record<string, KpiDayRow>,
   today: string,
-  range: Exclude<AvgCostRange, 'all'>,
+  range: Exclude<AvgCostRange, 'all' | 'custom'>,
 ): KpiAgg {
   const now = new Date(`${today}T00:00:00`)
   // 周一起算偏移（issue #39 口径）；近 7 天 = 今天往前 6 天。
@@ -71,27 +71,41 @@ export function sumByDayRange(
   const days7Start = new Date(now)
   days7Start.setDate(days7Start.getDate() - 6)
   const range7Start = localDayStamp(days7Start.getTime())
+  return sumByDayWhere(byDay, date => range === 'today' ? date === today
+    : range === '7d' ? date >= range7Start && date <= today
+    : range === 'week' ? date >= weekStartStamp && date <= today
+    : date.startsWith(today.slice(0, 7)))
+}
+
+/** 自定义本地日期范围：起止日均完整包含，字典序边界与 byDay 键一致。 */
+export function sumByDayCustomRange(
+  byDay: Record<string, KpiDayRow>,
+  start: string,
+  end: string,
+): KpiAgg {
+  return sumByDayWhere(byDay, date => date >= start && date <= end)
+}
+
+function sumByDayWhere(byDay: Record<string, KpiDayRow>, include: (date: string) => boolean): KpiAgg {
   let cost = 0
   let calls = 0
   let input = 0
   let output = 0
   let cacheHit = 0
   let cacheMiss = 0
+  let cacheWrite = 0
   let reasoning = 0
   let peakDay: string | undefined
   let peakTokens = 0
   for (const [date, row] of Object.entries(byDay)) {
-    const inRange = range === 'today' ? date === today
-      : range === '7d' ? date >= range7Start && date <= today
-      : range === 'week' ? date >= weekStartStamp && date <= today
-      : date.startsWith(today.slice(0, 7))
-    if (!inRange) continue
+    if (!include(date)) continue
     cost += row.cost
     calls += row.calls
     input += row.input
     output += row.output
     cacheHit += row.cacheHit
     cacheMiss += row.cacheMiss
+    cacheWrite += row.cacheWrite ?? 0
     reasoning += row.reasoning ?? 0
     // 峰值日 = 范围内当日 Token（input + output，dayTokensOf 统一口径）最大的日。
     const dayTokens = dayTokensOf(row)
@@ -100,5 +114,5 @@ export function sumByDayRange(
       peakDay = date
     }
   }
-  return { cost, calls, input, output, cacheHit, cacheMiss, reasoning, peakDay, peakTokens }
+  return { cost, calls, input, output, cacheHit, cacheMiss, cacheWrite, reasoning, peakDay, peakTokens }
 }

@@ -1411,6 +1411,42 @@ body {
   color: var(--ds-t-3);
 }
 
+.kpiCustomRange {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.kpiCustomRange label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ds-t-3);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.kpiCustomRange input {
+  min-height: 28px;
+  padding: 3px 7px;
+  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  background: var(--dsb-glass);
+  color: var(--ds-t-1);
+  color-scheme: light dark;
+  font: inherit;
+  font-family: var(--font-num);
+  font-size: 11px;
+}
+
+.kpiCustomRange input:focus-visible {
+  outline: 2px solid var(--ds-blue);
+  outline-offset: 2px;
+}
+
 .kpiGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

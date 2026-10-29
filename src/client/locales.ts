@@ -23,6 +23,9 @@ export type UsageBillingKey =
   | 'avgRangeWeek'
   | 'avgRangeMonth'
   | 'avgRangeAll'
+  | 'avgRangeCustom'
+  | 'customRangeStart'
+  | 'customRangeEnd'
   | 'trend'
   | 'trend7d'
   | 'trend30d'
@@ -443,6 +446,9 @@ export const zh: Record<UsageBillingKey, string> = {
   'avgRangeWeek': '本周',
   'avgRangeMonth': '本月',
   'avgRangeAll': '累计',
+  'avgRangeCustom': '自定义',
+  'customRangeStart': '开始日期',
+  'customRangeEnd': '结束日期',
   'trend': '每日费用与调用趋势',
   'trend7d': '7 天',
   'trend30d': '30 天',
@@ -863,6 +869,9 @@ export const en: Record<UsageBillingKey, string> = {
   'avgRangeWeek': 'Week',
   'avgRangeMonth': 'Month',
   'avgRangeAll': 'All',
+  'avgRangeCustom': 'Custom',
+  'customRangeStart': 'Start date',
+  'customRangeEnd': 'End date',
   'trend': 'Daily cost & calls',
   'trend7d': '7D',
   'trend30d': '30D',

@@ -31,5 +31,7 @@ export declare function sinceMondayOf<T>(byDay: Record<string, T>, today: string
  * 本月。日期戳字典序即时间序（与 dailyBurnRate 同口径）；累计口径由调用方
  * 直接取 total（含搜索估值兜底），不走此函数。
  */
-export declare function sumByDayRange(byDay: Record<string, KpiDayRow>, today: string, range: Exclude<AvgCostRange, 'all'>): KpiAgg;
+export declare function sumByDayRange(byDay: Record<string, KpiDayRow>, today: string, range: Exclude<AvgCostRange, 'all' | 'custom'>): KpiAgg;
+/** 自定义本地日期范围：起止日均完整包含，字典序边界与 byDay 键一致。 */
+export declare function sumByDayCustomRange(byDay: Record<string, KpiDayRow>, start: string, end: string): KpiAgg;
 //# sourceMappingURL=week.d.ts.map

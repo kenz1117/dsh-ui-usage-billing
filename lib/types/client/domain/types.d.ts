@@ -38,8 +38,8 @@ export declare const DASHBOARD_TABS: readonly {
     id: DashboardTab;
     labelKey: UsageBillingKey;
 }[];
-/** 平均成本的统计范围（issue #47）；`all` = 全量累计，不进逐日求和。 */
-export type AvgCostRange = 'today' | '7d' | 'week' | 'month' | 'all';
+/** Hero + KPI 统计范围；`all` 用总量，`custom` 用持久化的本地起止日期。 */
+export type AvgCostRange = 'today' | '7d' | 'week' | 'month' | 'all' | 'custom';
 /** 全局 KPI 按日聚合行的最小字段（byDay 行 = ModelUsage，结构兼容）。 */
 export interface KpiDayRow {
     cost: number;
@@ -48,6 +48,7 @@ export interface KpiDayRow {
     output: number;
     cacheHit: number;
     cacheMiss: number;
+    cacheWrite?: number;
     reasoning?: number;
 }
 /** 全局 KPI 聚合结果：KPI 七卡按所选范围重算所需的全部字段。 */
@@ -58,6 +59,7 @@ export interface KpiAgg {
     output: number;
     cacheHit: number;
     cacheMiss: number;
+    cacheWrite: number;
     reasoning: number;
     /** 范围内总处理 Token（缓存读+缓存写+输出）最大的日期戳；窗口无数据时 undefined。 */
     peakDay: string | undefined;

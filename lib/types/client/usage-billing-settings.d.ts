@@ -65,14 +65,24 @@ export declare const BILLING_CARD_STORAGE_KEY = "dsh.ui-usage-billing.card";
 export declare function loadBillingCardPrefs(): BillingCardPrefs;
 /** 写入计费卡偏好。失败静默（展示偏好非关键）。 */
 export declare function saveBillingCardPrefs(prefs: BillingCardPrefs): void;
-/** 概览 KPI 全局统计范围（今日/近7天/本周/本月/累计），与组件内 AvgCostRange 同构。 */
-export type KpiRangePref = 'today' | '7d' | 'week' | 'month' | 'all';
+/** 概览 Hero + KPI 全局统计范围（预设或自定义起止日期），与组件内 AvgCostRange 同构。 */
+export type KpiRangePref = 'today' | '7d' | 'week' | 'month' | 'all' | 'custom';
+/** 自定义日期范围：本地日历日，起止均包含；不伪装成分钟级切片。 */
+export interface KpiCustomRange {
+    start: string;
+    end: string;
+}
 /** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
 export declare const KPI_RANGE_STORAGE_KEY = "dsh.ui-usage-billing.kpi-range";
+export declare const KPI_CUSTOM_RANGE_STORAGE_KEY = "dsh.ui-usage-billing.kpi-custom-range";
 /** 读取 KPI 全局范围偏好（损坏/越界回退「累计」）。仅在浏览器半区调用。 */
 export declare function loadKpiRange(): KpiRangePref;
 /** 写入 KPI 全局范围偏好。失败静默（展示偏好非关键）。 */
 export declare function saveKpiRange(range: KpiRangePref): void;
+/** 自定义范围缺省为昨天；损坏、非法日期或起止倒置一律回退，避免意外全量。 */
+export declare function loadKpiCustomRange(): KpiCustomRange;
+/** 自定义起止日期与范围种类分开保存，切走再切回仍保留上次选择。 */
+export declare function saveKpiCustomRange(range: KpiCustomRange): void;
 /**
  * 中转站列表（中转站分布 / 中转站额度）的展示偏好（issue #17）。
  * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。

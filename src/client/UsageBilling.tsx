@@ -30,6 +30,8 @@ import {
   LIVE_COST_BAR_PREF_EVENT,
   loadBillingCardPrefs,
   loadKpiRange,
+  loadKpiCustomRange,
+  type KpiCustomRange,
   type FloatWindowPrefs,
   loadFloatWindowPrefs,
   loadCurrency,
@@ -46,6 +48,7 @@ import {
   saveBillingCardPrefs,
   saveFloatWindowPrefs,
   saveKpiRange,
+  saveKpiCustomRange,
   LANGUAGE_PREF_EVENT,
   saveCurrency,
   togglePinnedModel,
@@ -120,7 +123,7 @@ import { TAB_ICONS } from './domain/icons.tsx'
 import { BillingChevronDown } from './domain/host-version.ts'
 import { dailyBurnRate, projectMonthCost } from './domain/forecast.ts'
 import { activeDaysOf, dayTokensOf, streakDaysOf } from './domain/streak.ts'
-import { lastSevenDays, sinceMondayOf, sumByDayRange } from './domain/week.ts'
+import { lastSevenDays, sinceMondayOf, sumByDayCustomRange, sumByDayRange } from './domain/week.ts'
 import { crossedModelBudgetTiers, monthCostByModel } from './domain/model-budget.ts'
 import { normalizeProvider, providerFromModelKey } from './domain/provider-aliases.ts'
 import { subscriptionVendorOf } from './domain/subscription-vendors.ts'
@@ -1088,9 +1091,21 @@ function BillingDashboard({
       window.removeEventListener(MOTION_PREF_EVENT, onMotion)
     }
   }, [])
-  // KPI 全局统计范围（issue #47 反馈）：控制概览 KPI 七卡（含平均成本）的统计口径，
-  // 默认累计；用户选择持久化到 localStorage，下次打开保持上次范围。
+  // Hero + KPI 共用统计范围：预设或自定义本地日期；范围与起止日期分别持久化。
   const [kpiRange, setKpiRange] = useState<AvgCostRange>(loadKpiRange)
+  const [kpiCustomRange, setKpiCustomRange] = useState<KpiCustomRange>(loadKpiCustomRange)
+  const updateKpiCustomRange = (patch: Partial<KpiCustomRange>): void => {
+    const next = { ...kpiCustomRange, ...patch }
+    // 原生 date input 清空中间态不提交，避免空下界意外匹配全量。
+    if (next.start === '' || next.end === '') return
+    // 始终保持闭区间有效：移动一端越过另一端时，把另一端拉到同一天。
+    if (next.start > next.end) {
+      if (patch.start !== undefined) next.end = next.start
+      else next.start = next.end
+    }
+    setKpiCustomRange(next)
+    saveKpiCustomRange(next)
+  }
 
   // 浮窗「指定订阅卡」的可选目标：只列已接入（查询成功且有额度数据）的订阅，
   // 避免内置 alias 造成的同名重复与未接入项。
@@ -1736,13 +1751,26 @@ function BillingDashboard({
         output: total.output,
         cacheHit: total.cacheHit,
         cacheMiss: total.cacheMiss,
+        cacheWrite: total.cacheWrite ?? 0,
         reasoning: total.reasoning ?? 0,
         peakDay,
         peakTokens,
       }
     }
+    if (kpiRange === 'custom') {
+      return sumByDayCustomRange(byDay, kpiCustomRange.start, kpiCustomRange.end)
+    }
     return sumByDayRange(byDay, localDayStamp(), kpiRange)
-  }, [kpiRange, displayTotal, total, byDay])
+  }, [kpiRange, kpiCustomRange, displayTotal, total, byDay])
+
+  const heroRangeLabel = kpiRange === 'custom'
+    ? kpiCustomRange.start === kpiCustomRange.end
+      ? kpiCustomRange.start
+      : `${kpiCustomRange.start} – ${kpiCustomRange.end}`
+    : t(({
+      today: 'avgRangeToday', '7d': 'avgRange7d', week: 'avgRangeWeek',
+      month: 'avgRangeMonth', all: 'avgRangeAll',
+    } as const)[kpiRange])
 
   // Trend-chart legend: model rows sort by cost desc, so the stack bottoms
   // with the most expensive model (visually stable baseline).
@@ -1907,7 +1935,7 @@ function BillingDashboard({
                   {t('balanceStaleNotice')}
                 </div>
               )}
-              {/* Hero: 液晶读数大屏 —— 左上「本月费用」大数字液晶表，右上环形仪表盘，底部一条「本年 / 今日 / 本月预计」读数排。 */}
+              {/* Hero 主读数与 KPI 共用范围；预算环和侧栏参考值仍明确保持本月 / 本年 / 今日口径。 */}
               <section
                 className={css.hero}
                 data-testid="billing-hero"
@@ -1915,21 +1943,19 @@ function BillingDashboard({
                 {/* ZINE: 装饰孔位（hero 锚点：撕角便签角标） */}
                 {renderSlot('billing.dashboard.decor', { position: 'hero' })}
                 <div className={css.heroTop}>
-                  {/* v1.5：Hero 读数下方加「预计月底」预测（按当前日均速率推算）。 */}
                   <div className={css.heroMain}>
-                    <span className={css.heroLabel}>
-                      {t('monthCost')}
+                    <span className={css.heroLabel} data-testid="billing-hero-range-label">
+                      {heroRangeLabel}
                     </span>
                     <div className={css.heroReadout}>
                       <span className={css.heroCurrency} aria-hidden="true">{currencySymbol}</span>
-                      <span className={css.heroValue}>
-                        {money(monthCost).slice(1)}
+                      <span className={css.heroValue} data-testid="billing-hero-range-value">
+                        {money(kpiAgg.cost).slice(1)}
                       </span>
                     </div>
-                    {/* 调用副行 + 本月预计（v1.5 新增：渐变弧下推预测）。 */}
                     <span className={css.heroMeta}>
-                      {total.calls.toLocaleString()} {t('calls')}
-                      {monthCostProjected > 0 && (
+                      {kpiAgg.calls.toLocaleString()} {t('calls')}
+                      {kpiRange === 'month' && monthCostProjected > 0 && (
                         <span className={css.heroPred}>
                           {' '}{t('monthProjected')} {money(monthCostProjected)}
                         </span>
@@ -2080,9 +2106,7 @@ function BillingDashboard({
                   </button>
                 </div>
               )}
-              {/* KPI 七卡 + 全局统计范围（issue #47 反馈）：概览与用量两处 KPI 合并到
-                  这里（缓存命中率/Token/平均成本/调用 + 思考占比/输入输出比/峰值日）；
-                  范围切换从平均成本单卡提升为全局口径，控制全部指标，默认累计。 */}
+              {/* Hero + KPI 七卡共用统计范围；自定义按本地完整日历日闭区间聚合。 */}
               <div className={css.kpiZone}>
                 <div className={css.kpiZoneHead}>
                   <span className={css.kpiZoneLabel}>{t('kpiRange')}</span>
@@ -2093,6 +2117,7 @@ function BillingDashboard({
                       ['week', 'avgRangeWeek'],
                       ['month', 'avgRangeMonth'],
                       ['all', 'avgRangeAll'],
+                      ['custom', 'avgRangeCustom'],
                     ] as const).map(([r, key]) => (
                       <button
                         key={r}
@@ -2107,6 +2132,30 @@ function BillingDashboard({
                     ))}
                   </div>
                 </div>
+                {kpiRange === 'custom' && (
+                  <div className={css.kpiCustomRange} data-testid="billing-kpi-custom-range">
+                    <label>
+                      {t('customRangeStart')}
+                      <input
+                        type="date"
+                        value={kpiCustomRange.start}
+                        max={localDayStamp()}
+                        data-testid="billing-kpi-custom-start"
+                        onChange={event => { updateKpiCustomRange({ start: event.target.value }) }}
+                      />
+                    </label>
+                    <label>
+                      {t('customRangeEnd')}
+                      <input
+                        type="date"
+                        value={kpiCustomRange.end}
+                        max={localDayStamp()}
+                        data-testid="billing-kpi-custom-end"
+                        onChange={event => { updateKpiCustomRange({ end: event.target.value }) }}
+                      />
+                    </label>
+                  </div>
+                )}
                 <section className={css.kpiGrid} data-testid="billing-kpi-grid">
                   {/* v1.5：每 KPI 卡带 delta 徽章 + mini sparkline（最近 7 天趋势）。
                       delta 来自 byDay 按日聚合，sparkline 用纯色 CSS 渲染（无图表库）。 */}
@@ -2140,8 +2189,8 @@ function BillingDashboard({
                     const deltaCacheHit = todayIdx > 0 && at(seriesCacheHit, todayIdx - 1) > 0
                       ? at(seriesCacheHit, todayIdx) - at(seriesCacheHit, todayIdx - 1)
                       : 0
-                    // 简化的 sparkline 渲染（7 根柱）
-                    const renderSpark = (data: number[], color: string) => (
+                    // 自定义历史范围不混入「最近 7 天 / 今日环比」视觉信号。
+                    const renderSpark = (data: number[], color: string) => kpiRange === 'custom' ? null : (
                       <svg viewBox="0 0 28 12" preserveAspectRatio="none" style={{ display: 'block', width: '100%', height: '12px' }}>
                         {data.map((v, i) => {
                           const max = Math.max(...data, 1)
@@ -2151,7 +2200,7 @@ function BillingDashboard({
                         })}
                       </svg>
                     )
-                    const renderDelta = (pct: number) => (
+                    const renderDelta = (pct: number) => kpiRange === 'custom' ? null : (
                       <span className={clsx(css.kpiDelta, pct > 0 ? css.kpiDeltaUp : pct < 0 ? css.kpiDeltaDown : css.kpiDeltaFlat)}>
                         {pct > 0 ? '▲' : pct < 0 ? '▼' : ''} {Math.abs(pct).toFixed(1)}%
                       </span>
@@ -2172,7 +2221,7 @@ function BillingDashboard({
                           <div className={css.kpiSpark}>{renderSpark(seriesCacheHit, 'var(--ds-cyan)')}</div>
                           <span className={css.kpiDetail}>
                             {formatTokens(kpiAgg.cacheHit)} / {formatTokens(kpiAgg.cacheHit + kpiAgg.cacheMiss)}
-                            {(total.cacheWrite ?? 0) > 0 ? ` · ${t('tokenCacheWrite')} ${formatTokens(total.cacheWrite ?? 0)}` : ''}
+                            {kpiAgg.cacheWrite > 0 ? ` · ${t('tokenCacheWrite')} ${formatTokens(kpiAgg.cacheWrite)}` : ''}
                           </span>
                         </div>
                         <div className={css.kpiTile}>

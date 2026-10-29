@@ -190,6 +190,56 @@ describe('UsageBilling surface', () => {
     expect(screen.getByTestId('billing-kpi-range-all').getAttribute('aria-pressed')).toBe('false')
   })
 
+  it('applies an exact custom date range to Hero and KPI and persists both dates (issue #107)', async () => {
+    const pad = (n: number): string => String(n).padStart(2, '0')
+    const day = (offset: number): string => {
+      const date = new Date()
+      date.setDate(date.getDate() + offset)
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+    }
+    const row = (cost: number, calls: number) => ({
+      cost, calls, input: cost * 200, output: cost * 100,
+      cacheHit: cost * 100, cacheMiss: cost * 100, reasoning: cost * 50,
+    })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      total: row(10, 6),
+      byDay: { [day(-2)]: row(5, 1), [day(-1)]: row(2, 2), [day(0)]: row(3, 3) },
+    }), { status: 200, headers: { 'content-type': 'application/json' } })))
+
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    await screen.findByText('使用统计')
+    await screen.findByTestId('billing-kpi-range-custom')
+    fireEvent.click(screen.getByTestId('billing-kpi-range-custom'))
+
+    const start = screen.getByTestId('billing-kpi-custom-start') as HTMLInputElement
+    const end = screen.getByTestId('billing-kpi-custom-end') as HTMLInputElement
+    expect(start.value).toBe(day(-1))
+    expect(end.value).toBe(day(-1))
+    expect(screen.getByTestId('billing-hero-range-label').textContent).toBe(day(-1))
+    expect(screen.getByTestId('billing-hero-range-value').textContent).toBe('2.00')
+    expect(screen.getByTestId('billing-kpi-avg').textContent).toContain('¥1.00')
+    expect(screen.getByTestId('billing-kpi-avg').textContent).toContain('2')
+
+    // Crossing the other endpoint keeps a valid closed interval instead of mixing all history.
+    fireEvent.change(start, { target: { value: day(0) } })
+    expect(end.value).toBe(day(0))
+    expect(screen.getByTestId('billing-hero-range-value').textContent).toBe('3.00')
+    fireEvent.change(end, { target: { value: day(-1) } })
+    expect(start.value).toBe(day(-1))
+    expect(end.value).toBe(day(-1))
+    expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.kpi-custom-range')!)).toEqual({ start: day(-1), end: day(-1) })
+    expect(localStorage.getItem('dsh.ui-usage-billing.kpi-range')).toBe('custom')
+
+    cleanup()
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    await screen.findByText('使用统计')
+    expect(screen.getByTestId('billing-kpi-range-custom').getAttribute('aria-pressed')).toBe('true')
+    expect((screen.getByTestId('billing-kpi-custom-start') as HTMLInputElement).value).toBe(day(-1))
+    expect(screen.getByTestId('billing-hero-range-value').textContent).toBe('2.00')
+  })
+
   it('renders the hero gauge as a remaining-budget dial with used/total beneath (issue #47 feedback)', async () => {
     render(<UsageBilling {...makeProps()} />)
     fireEvent.click(screen.getByTestId('billing-trigger'))

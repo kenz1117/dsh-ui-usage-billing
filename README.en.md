@@ -68,11 +68,11 @@ The billing channel is detected from the current session's model: DeepSeek meter
 
   ![Sidebar trigger card: today's spend, delta badge and mini-trend](screenshots/sidebar.png)
 
-- **Eight-tab dashboard**: Overview / Queue / Billing / Usage / Trends / Agents / Rates / Settings — hero figures + comparisons + month projection + KPIs (hover for the metric definition) + usage heatmap, trends switchable between cost and tokens over 7/30 days, model price table, budgets (global + per model) and peak/off-peak alerts all live here; the settings page supports full-text search (zh/en keywords, empty state when nothing matches); tabs carry names only — no status badges.
+- **Eight-tab dashboard**: Overview / Queue / Billing / Usage / Trends / Agents / Rates / Settings — the hero and KPIs share today / last 7 days / this week / this month / all time / custom date ranges. Custom ranges default to yesterday, include both local calendar dates, and persist across reloads; comparisons, month projection, KPI definitions and a usage heatmap are also included. Trends switch between cost and tokens over 7/30 days; model prices, budgets (global + per model) and peak/off-peak alerts all live here. Settings support full-text search (zh/en keywords, empty state when nothing matches); tabs carry names only — no status badges.
 - **Queue section**: shows the current price band and switch countdown, queued / starting / running / needs-review / completed tasks and their host Session links. JSON batch import accepts up to 50 tasks; one invalid item rejects the entire batch without writes. Queued tasks can be removed and finished history cleared; admitted tasks cannot be removed through the queue. A queue file, file lock and owner lease prevent duplicate submission by multiple instances sharing one `DSH_HOME`.
 - **Agents section**: the agent network rebuilt from delegation relations — a parent conversation → sub-agent tree where each row carries its call count, own cost and **chain total** (itself + all descendants), which directly answers "which delegation was the most expensive".
 
-  ![Overview: month cost hero, year/today/month projection, KPIs and usage heatmap](screenshots/overview.png)
+  ![Overview: range-based hero, year/today/month projection, KPIs and usage heatmap](screenshots/overview.png)
   ![Agents: parent conversation → sub-agent delegation tree with chain totals](screenshots/agents.png)
 - **Live cost bar**: persistent "this turn / session" cost with three positions (composer toolbar row / above / below, toolbar by default); the peak/off-peak tier & countdown section appears only when the current model involves peak/off-peak pricing; subscription low-quota chips appear at ≤20% remaining, red at ≤10%; hideable via the settings-tab toggle (display-only preference persisted locally; stats and alerts unaffected).
 - **Peak/off-peak switch alert**: a popover plus an optional system notification before a switch; lead time / position / mode / preview configurable; copy differs by billing channel (DeepSeek price halves, Zhipu credits at 50%). When tasks are queued, the alert also explains that they wait for the next off-peak window, start FIFO during off-peak, and continue across peak once started; it never automatically pauses or replays them.
@@ -130,7 +130,7 @@ The billing channel is detected from the current session's model: DeepSeek meter
 
 ## 🚀 Quick start
 
-One codebase currently supports DSH `0.1.2-alpha.1` through `0.2.2-alpha.2`. Stable and preview releases share the same compatibility matrix: stable releases use npm `latest`, while previews use `alpha`. npm `latest` currently points to the stable `1.8.0` release, while `alpha` points to `1.8.1-alpha.1`.
+One codebase currently supports DSH `0.1.2-alpha.1` through `0.2.2-alpha.2`. Stable and preview releases share the same compatibility matrix: stable releases use npm `latest`, while previews use `alpha`. npm `latest` currently points to the stable `1.8.0` release, while `alpha` points to `1.8.1-alpha.2`.
 
 `dsh plugin add` requires an explicit `--profile`. Pinning an exact version is recommended so a package manager's release cooldown cannot resolve a different version. Install the current stable release with:
 
@@ -268,7 +268,7 @@ For on-machine debugging: `dsh plugin --profile web add "link:<absolute path to 
 
 ## 📦 Release
 
-This standalone npm package maintains one `main` codebase. Stable releases use non-prerelease versions and npm `latest`; previews use prerelease versions and npm `alpha`. npm `latest` currently points to the stable `1.8.0` release, while `alpha` points to `1.8.1-alpha.1`; see [COMPATIBILITY.md](COMPATIBILITY.md).
+This standalone npm package maintains one `main` codebase. Stable releases use non-prerelease versions and npm `latest`; previews use prerelease versions and npm `alpha`. npm `latest` currently points to the stable `1.8.0` release, while `alpha` points to `1.8.1-alpha.2`; see [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ```sh
 pnpm test && pnpm run build   # full tests + build before release
@@ -283,7 +283,7 @@ The host discovers the browser side automatically via the `dsh.client` declarati
 
 - **Permission level: high**: reads durable Session logs, calls vendor / subscription / balance / pricing APIs, reads `apiKeyEnv` through the credentials seam, and writes the ledger, snapshots and task queue under the harness home. The plugin itself has **no** command-execution / shell capability; only explicit enqueueing creates a host Session and submits a Prompt, while Agent tools remain governed by the host's existing permissions and approvals.
 - **Update channel: `user-reviewed`**: with file / network / credential capabilities, DSH STORE requires local manual confirmation on every install; review the repo, pinned commit, lifecycle scripts, and impact scope before installing.
-- **Compatibility**: stable and preview releases from the current `main` share one matrix covering DSH `0.1.2-alpha.1` through `0.2.2-alpha.2`, with 31 per-version declarations. The current stable release is `1.8.0` (npm `latest`), and the current preview is `1.8.1-alpha.1` (npm `alpha`). Release channels and monitoring are documented in [COMPATIBILITY.md](COMPATIBILITY.md). Node.js `^22.19.0 || >=24.0.0`.
+- **Compatibility**: stable and preview releases from the current `main` share one matrix covering DSH `0.1.2-alpha.1` through `0.2.2-alpha.2`, with 31 per-version declarations. The current stable release is `1.8.0` (npm `latest`), and the current preview is `1.8.1-alpha.2` (npm `alpha`). Release channels and monitoring are documented in [COMPATIBILITY.md](COMPATIBILITY.md). Node.js `^22.19.0 || >=24.0.0`.
 - **Lifecycle**: no `preinstall` / `install` / `postinstall` / `prepare` (ready on install).
 - **No impersonation**: adds only its own entry id `ui-usage-billing`; `@deepseek-ai/dsh-*` packages are `peerDependencies` only (no reinstall / replace / shadowing of official components); the package uses the third-party namespace `@kenz1117/*`.
 - **Build artifacts**: runtime files `lib/*` and `cordis.patch.yml` are committed at the pinned commit and declared in `files`.
