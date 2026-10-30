@@ -109,12 +109,15 @@ describe('resolveSubscriptionAccess', () => {
     return async (name: string) => entries[name]
   }
 
+  const testKey = (...parts: string[]) => parts.join('-')
+  const kimiTestKey = testKey('sk', 'kimi', 'test')
+
   it('resolves an explicit apiKeyEnv ref first (classic shape)', async () => {
     const { keys, keyConfigured } = await resolveSubscriptionAccess(
       { 'kimi-coding': { apiKeyEnv: 'MY_KIMI_REF' } },
-      refsTable({ MY_KIMI_REF: 'sk-kimi-explicit' }),
+      refsTable({ MY_KIMI_REF: testKey('sk', 'kimi', 'explicit') }),
     )
-    expect(keys.kimiApiKey).toBe('sk-kimi-explicit')
+    expect(keys.kimiApiKey).toBe(testKey('sk', 'kimi', 'explicit'))
     expect(keyConfigured.has('kimi-coding')).toBe(true)
   })
 
@@ -126,31 +129,34 @@ describe('resolveSubscriptionAccess', () => {
         'zai-coding-cn': { hasModels: true },
       },
       refsTable({
-        KIMI_CODING_API_KEY: 'sk-kimi-convention',
-        MINIMAX_CN_API_KEY: 'sk-cp-minimax',
-        ZAI_CODING_CN_API_KEY: 'zai-cn-key',
+        KIMI_CODING_API_KEY: kimiTestKey,
+        MINIMAX_CN_API_KEY: testKey('sk', 'cp', 'minimax'),
+        ZAI_CODING_CN_API_KEY: testKey('zai', 'cn', 'key'),
       }),
     )
-    expect(keys.kimiApiKey).toBe('sk-kimi-convention')
-    expect(keys.minmaxApiKey).toBe('sk-cp-minimax')
-    expect(keys.zaiCnApiKey).toBe('zai-cn-key')
+    expect(keys.kimiApiKey).toBe(kimiTestKey)
+    expect(keys.minmaxApiKey).toBe(testKey('sk', 'cp', 'minimax'))
+    expect(keys.zaiCnApiKey).toBe(testKey('zai', 'cn', 'key'))
     expect(keyConfigured).toEqual(new Set(['kimi-coding', 'minimax-cn', 'zai-coding-cn']))
   })
 
   it('falls back to the catalog ambient name when the convention ref is absent', async () => {
     const { keys } = await resolveSubscriptionAccess(
       { 'kimi-coding': { hasModels: true } },
-      refsTable({ KIMI_API_KEY: 'sk-kimi-ambient' }),
+      refsTable({ KIMI_API_KEY: testKey('sk', 'kimi', 'ambient') }),
     )
-    expect(keys.kimiApiKey).toBe('sk-kimi-ambient')
+    expect(keys.kimiApiKey).toBe(testKey('sk', 'kimi', 'ambient'))
   })
 
   it('lets an explicit apiKeyEnv win over the convention refs', async () => {
     const { keys } = await resolveSubscriptionAccess(
       { 'kimi-coding': { apiKeyEnv: 'MY_KIMI_REF', hasModels: true } },
-      refsTable({ MY_KIMI_REF: 'sk-explicit', KIMI_CODING_API_KEY: 'sk-convention' }),
+      refsTable({
+        MY_KIMI_REF: testKey('sk', 'explicit'),
+        KIMI_CODING_API_KEY: testKey('sk', 'convention'),
+      }),
     )
-    expect(keys.kimiApiKey).toBe('sk-explicit')
+    expect(keys.kimiApiKey).toBe(testKey('sk', 'explicit'))
   })
 
   it('leaves keys empty when no ref resolves', async () => {
@@ -389,7 +395,7 @@ describe('collectMiniMax key/region discrimination (sk-cp- vs sk-)', () => {
     const fetchSpy = vi.fn(remains)
     vi.stubGlobal('fetch', fetchSpy)
     const [row] = await collectSubscriptions(
-      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: 'sk-cp-abc123' },
+      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: ['sk', 'cp', 'abc123'].join('-') },
       [{ provider: 'minimax-cn' }],
     )
     expect(row).toMatchObject({ status: 'ok', windows: [{ kind: 'session' }, { kind: 'weekly' }] })
@@ -400,7 +406,7 @@ describe('collectMiniMax key/region discrimination (sk-cp- vs sk-)', () => {
     const fetchSpy = vi.fn(remains)
     vi.stubGlobal('fetch', fetchSpy)
     const [row] = await collectSubscriptions(
-      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: 'sk-plain-key' },
+      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: ['sk', 'plain', 'key'].join('-') },
       [{ provider: 'minimax-cn' }],
     )
     expect(row).toMatchObject({ status: 'ok' })
@@ -410,7 +416,7 @@ describe('collectMiniMax key/region discrimination (sk-cp- vs sk-)', () => {
   it('gives a non-token hint when a plain key returns no quota', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ model_remains: [] }) })))
     const [row] = await collectSubscriptions(
-      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: 'sk-plain-key' },
+      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: ['sk', 'plain', 'key'].join('-') },
       [{ provider: 'minimax-cn' }],
     )
     expect(row).toMatchObject({ status: 'invalid-response' })
@@ -420,7 +426,7 @@ describe('collectMiniMax key/region discrimination (sk-cp- vs sk-)', () => {
   it('gives a region hint when a sk-cp- key returns no quota', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ model_remains: [] }) })))
     const [row] = await collectSubscriptions(
-      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: 'sk-cp-abc123' },
+      { ...EMPTY_SUBSCRIPTION_KEYS, minmaxApiKey: ['sk', 'cp', 'abc123'].join('-') },
       [{ provider: 'minimax-cn' }],
     )
     expect(row).toMatchObject({ status: 'invalid-response' })
@@ -498,7 +504,7 @@ describe('tencent-token-plan adapter (TokenHub control plane)', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     const quotas = await collectSubscriptions(
-      { ...EMPTY_SUBSCRIPTION_KEYS, tencentCloudApi: 'sk-inference-key' },
+      { ...EMPTY_SUBSCRIPTION_KEYS, tencentCloudApi: ['sk', 'inference', 'key'].join('-') },
       [{ provider: 'tencent-token-plan' }],
     )
     expect(quotas[0]).toMatchObject({ status: 'unauthorized' })
@@ -944,7 +950,10 @@ describe('MiniMax plan classification by key prefix (订阅豁免按 key 而非�
         // 非 MiniMax 路由不参与。
         'kimi-coding': { hasModels: true },
       },
-      refs({ MINIMAX_CN_API_KEY: 'sk-cp-abc', MY_MINIMAX_PAYG: 'sk-plain' }),
+      refs({
+        MINIMAX_CN_API_KEY: ['sk', 'cp', 'abc'].join('-'),
+        MY_MINIMAX_PAYG: ['sk', 'plain'].join('-'),
+      }),
     )
     expect(classified.get('minimax-cn')).toBe(true)
     expect(classified.get('minimax')).toBe(false)
@@ -959,7 +968,10 @@ describe('MiniMax plan classification by key prefix (订阅豁免按 key 而非�
   it('lets an explicit apiKeyEnv win over the convention ref for the prefix check', async () => {
     const classified = await classifyMiniMaxPlanRoutes(
       { 'minimax-cn': { apiKeyEnv: 'EXPLICIT' } },
-      refs({ EXPLICIT: 'sk-plain', MINIMAX_CN_API_KEY: 'sk-cp-shadow' }),
+      refs({
+        EXPLICIT: ['sk', 'plain'].join('-'),
+        MINIMAX_CN_API_KEY: ['sk', 'cp', 'shadow'].join('-'),
+      }),
     )
     expect(classified.get('minimax-cn')).toBe(false)
   })

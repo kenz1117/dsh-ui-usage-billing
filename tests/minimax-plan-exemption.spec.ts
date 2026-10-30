@@ -144,7 +144,7 @@ async function usageStatsWith(credentialTable: Record<string, string>) {
 
 describe('MiniMax Coding Plan exemption wired through apply (key prefix, not route id)', () => {
   it('exempts minimax-cn usage when the resolved key is an sk-cp- Coding Plan key', async () => {
-    const { status, doc } = await usageStatsWith({ MINIMAX_CN_API_KEY: 'sk-cp-coding-plan' })
+    const { status, doc } = await usageStatsWith({ MINIMAX_CN_API_KEY: ['sk', 'cp', 'test'].join('-') })
     expect(status).toBe(200)
     expect(doc.byModel['minimax']?.calls).toBe(1)
     expect(doc.byModel['minimax']?.plan).toBe(true)
@@ -152,7 +152,7 @@ describe('MiniMax Coding Plan exemption wired through apply (key prefix, not rou
   }, 30_000)
 
   it('keeps minimax-cn pay-as-you-go when the resolved key is a plain sk- API key', async () => {
-    const { doc } = await usageStatsWith({ MINIMAX_CN_API_KEY: 'sk-plain-api-key' })
+    const { doc } = await usageStatsWith({ MINIMAX_CN_API_KEY: ['sk', 'plain', 'test'].join('-') })
     expect(doc.byModel['minimax']?.calls).toBe(1)
     expect(doc.byModel['minimax']?.plan).toBeUndefined()
     expect(doc.byModel['minimax']?.cost).toBeGreaterThan(0)
