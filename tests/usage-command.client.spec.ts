@@ -3,8 +3,12 @@
  * `/usage` 对话内命令的注册契约。
  *
  * 宿主能力 `ctx.commandUi`（@deepseek-ai/dsh-client-ui-commands）只在部分宿主
- * 存在；**服务缺席即降级**——不注册命令、面板功能完全不受影响，且不得因此收窄
- * 兼容矩阵（AGENTS.md 的红线）。本组用例锁住这两条分支。
+ * 存在，而且它是宿主 Service——要等 inputTriggers / remote.commands 就绪才构造，
+ * 晚于本插件 apply。所以必须用 `ctx.inject` 等它就位，apply 期 `ctx.get` 采样
+ * 必然拿到 undefined（这正是 `/usage` 曾经完全不出现的根因）。
+ *
+ * 服务缺席时降级为不注册：不报错、不注册、面板功能完全不受影响，也不得因此
+ * 收窄兼容矩阵（AGENTS.md 的红线）。本组用例锁住这两条分支。
  */
 
 import { describe, expect, it } from 'vitest'
@@ -22,30 +26,42 @@ interface Recorded {
 function stubContext(withCommandUi: boolean): { ctx: Context; registered: Recorded[] } {
   const registered: Recorded[] = []
   const ctx = {
-    get: (name: string): unknown => {
-      if (name !== 'commandUi' || !withCommandUi) return undefined
-      return {
-        register: (contribution: Recorded): (() => void) => {
-          registered.push(contribution)
-          return () => {}
+    // apply 期的免 inject 采样：宿主服务尚未构造，永远是 undefined。
+    get: () => undefined,
+    inject: (deps: readonly string[], callback: (scoped: unknown) => unknown) => {
+      if (!deps.includes('commandUi') || !withCommandUi) return () => {}
+      const scoped = {
+        commandUi: {
+          register: (contribution: Recorded) => {
+            registered.push(contribution)
+            return () => { registered.splice(registered.indexOf(contribution), 1) }
+          },
+        },
+        // cordis 的 effect 会立即执行回调并返回卸载函数。
+        effect: (callback2: () => unknown) => {
+          const dispose = callback2()
+          return typeof dispose === 'function' ? dispose : () => {}
         },
       }
+      callback(scoped)
+      return () => {}
     },
   }
   return { ctx: ctx as unknown as Context, registered }
 }
 
 describe('/usage command', () => {
-  it('registers an action command that opens the dashboard', () => {
+  it('registers an action command once the command service is ready', () => {
     const { ctx, registered } = stubContext(true)
     let opened = 0
 
-    expect(registerUsageCommand(ctx, {
+    const available = registerUsageCommand(ctx, {
       openDashboard: () => { opened++ },
       label: () => '打开计费仪表盘',
       description: () => '查看今日/本月费用',
-    })).toBe(true)
+    })
 
+    expect(available()).toBe(true)
     expect(registered).toHaveLength(1)
     const contribution = registered[0]
     expect(contribution.name).toBe(USAGE_COMMAND_NAME)
@@ -62,11 +78,12 @@ describe('/usage command', () => {
   it('degrades silently when the host has no commandUi service', () => {
     const { ctx, registered } = stubContext(false)
 
-    expect(registerUsageCommand(ctx, {
+    const available = registerUsageCommand(ctx, {
       openDashboard: () => {},
       label: () => 'x',
       description: () => 'y',
-    })).toBe(false)
+    })
+    expect(available()).toBe(false)
     expect(registered).toHaveLength(0)
   })
 })
