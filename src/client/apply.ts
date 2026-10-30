@@ -26,6 +26,9 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only: pulls the native Settings SlotMap merge (the settings.section entry).
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+// Type-only: pulls the shortcuts service's Context merge (ctx.shortcuts) and the
+// command-id brand. No runtime import — the service is the host's, not ours.
+import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { UsageBilling } from './UsageBilling.tsx'
 import { NativeSettingsSection } from './NativeSettingsSection.tsx'
 import type { ModelHealth, UsageBillingInjected } from './domain/types.ts'
@@ -109,6 +112,31 @@ export function apply(ctx: Context): void {
     openDashboard: () => { metrics.openDashboard() },
     label: () => (loadLanguage() === 'en' ? en.commandUsageLabel : zh.commandUsageLabel),
     description: () => (loadLanguage() === 'en' ? en.commandUsageDescription : zh.commandUsageDescription),
+  })
+
+  // 快捷键：侧栏入口设为「完全隐藏」后仍能一键拉起仪表盘，不必先回宿主设置
+  // 切换入口。命令注册进宿主的快捷键目录，用户可在「设置 → 快捷键」里改绑定
+  // 或清空；宿主现有默认绑定占用 KeyB/KeyN/KeyK/KeyT/KeyP/Slash/Comma/
+  // Backquote，这里取未占用的 KeyU，桌面与 Web 统一 primary+shift（按宿主
+  // ui-open-in-app 的先例，primary+shift+字母在浏览器里同样可用）。
+  // 用 ctx.inject 而非把 shortcuts 放进 apply 的 inject 列表：0.1.x 宿主没有
+  // 这个服务，声明成必需依赖会挂起整颗插件树（同上面 remote.llm 的教训）。
+  ctx.inject(['shortcuts'], (scoped) => {
+    scoped.effect(() => scoped.shortcuts.register({
+      id: 'usage-billing.open-dashboard' as ShortcutCommandId,
+      label: () => (loadLanguage() === 'en' ? en.shortcutOpenDashboard : zh.shortcutOpenDashboard),
+      aliases: ['usage', 'billing', 'dashboard'],
+      defaults: {
+        'desktop:macos': { code: 'KeyU', modifiers: ['primary', 'shift'] },
+        'desktop:windows': { code: 'KeyU', modifiers: ['primary', 'shift'] },
+        'desktop:linux': { code: 'KeyU', modifiers: ['primary', 'shift'] },
+        'web:macos': { code: 'KeyU', modifiers: ['primary', 'shift'] },
+        'web:windows': { code: 'KeyU', modifiers: ['primary', 'shift'] },
+      },
+      regions: ['page', 'editable'],
+      modals: [],
+      resolve: () => ({ status: 'handled', run: () => { metrics.openDashboard() } }),
+    }), 'ui-usage-billing: dashboard shortcut')
   })
 
   // 宿主原生设置页：完全隐藏后的稳定恢复入口。老宿主没有 settings.section 时，

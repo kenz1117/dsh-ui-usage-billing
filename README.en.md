@@ -63,6 +63,7 @@ Most billing plugins stop at "token count × unit price". dsh-ui-usage-billing t
 
 - **Trigger card**: today / week / month headline, 7-day trend and daily gauge; choose a full card, compact icon or hidden entry, with a quick look on hover.
 - **Cost bar and alerts**: live turn / Session cost, model-aware peak and quota warnings, plus optional system notifications for tier switches and Session completion.
+- **Shortcut**: bind "Open usage billing dashboard" in the host's Settings → Shortcuts — `⌘⇧U` by default (`Ctrl+Shift+U` on Windows / Linux), rebindable or clearable — so the dashboard stays one keystroke away even with the sidebar entry hidden.
 
 ![Sidebar trigger card: today's spend, delta badge and mini-trend](screenshots/sidebar.png)
 
