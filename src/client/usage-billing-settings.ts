@@ -109,11 +109,16 @@ export type BillingCardMetric = 'money' | 'tokens'
 /** 计费卡主数字的统计范围（单值卡面，issue #47 反馈）。 */
 export type BillingCardSpan = 'day' | 'week' | 'month'
 
+/** 侧栏入口显示模式：完整卡片 / 紧凑图标 / 完全隐藏（issue #108）。 */
+export type BillingCardMode = 'full' | 'compact' | 'hidden'
+
 /**
- * 计费卡显示偏好：卡面主数字与迷你柱的计价视角 + 主数字统计范围。
+ * 计费卡显示偏好：侧栏入口模式 + 卡面主数字与迷你柱的计价视角 + 主数字统计范围。
  * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
  */
 export interface BillingCardPrefs {
+  /** 侧栏入口模式（默认完整卡片；老偏好缺字段时保持原体验）。 */
+  mode: BillingCardMode
   /** 主指标：花费金额（CNY/USD 按币种）/ Token 消耗。 */
   metric: BillingCardMetric
   /** 主数字统计范围：今日 / 本周 / 本月（默认今日）。 */
@@ -122,11 +127,14 @@ export interface BillingCardPrefs {
   showDelta: boolean
 }
 
-/** 默认计费卡偏好：花费金额 + 今日口径 + 显示环比徽章（保持 v1.5.0 行为）。 */
-export const DEFAULT_BILLING_CARD_PREFS: BillingCardPrefs = { metric: 'money', span: 'day', showDelta: true }
+/** 默认计费卡偏好：完整卡片 + 花费金额 + 今日口径 + 显示环比徽章。 */
+export const DEFAULT_BILLING_CARD_PREFS: BillingCardPrefs = { mode: 'full', metric: 'money', span: 'day', showDelta: true }
 
 /** localStorage key（与 budget store 的 `dsh.ui-usage-billing.*` 命名空间一致）。 */
 export const BILLING_CARD_STORAGE_KEY = 'dsh.ui-usage-billing.card'
+
+/** 同文档跨 React 树同步：仪表盘设置与宿主原生设置页共用这份偏好。 */
+export const BILLING_CARD_PREF_EVENT = 'dsh.ui-usage-billing.card-changed'
 
 /** 读取计费卡偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
 export function loadBillingCardPrefs(): BillingCardPrefs {
@@ -134,6 +142,7 @@ export function loadBillingCardPrefs(): BillingCardPrefs {
   if (parsed === null || typeof parsed !== 'object') return { ...DEFAULT_BILLING_CARD_PREFS }
   const prefs = parsed as Partial<BillingCardPrefs>
   return {
+    mode: prefs.mode === 'compact' || prefs.mode === 'hidden' ? prefs.mode : 'full',
     metric: prefs.metric === 'tokens' ? 'tokens' : 'money',
     span: prefs.span === 'week' || prefs.span === 'month' ? prefs.span : 'day',
     // 只有显式 false 才隐藏：老用户已存的偏好没有该字段，缺省保持显示（零感官变化）。
@@ -144,6 +153,24 @@ export function loadBillingCardPrefs(): BillingCardPrefs {
 /** 写入计费卡偏好。失败静默（展示偏好非关键）。 */
 export function saveBillingCardPrefs(prefs: BillingCardPrefs): void {
   writeStored(BILLING_CARD_STORAGE_KEY, JSON.stringify(prefs))
+}
+
+/** 订阅同文档 CustomEvent 与其他标签页的 storage 写入；仅在浏览器半区调用。 */
+export function subscribeBillingCardPrefs(listener: () => void): () => void {
+  const onStorage = (event: StorageEvent): void => {
+    if (event.key === BILLING_CARD_STORAGE_KEY) listener()
+  }
+  window.addEventListener(BILLING_CARD_PREF_EVENT, listener)
+  window.addEventListener('storage', onStorage)
+  return () => {
+    window.removeEventListener(BILLING_CARD_PREF_EVENT, listener)
+    window.removeEventListener('storage', onStorage)
+  }
+}
+
+/** 防锁死：宿主没有任何恢复入口时，完全隐藏一律降级为紧凑图标。 */
+export function resolveBillingCardMode(mode: BillingCardMode, recoveryEntryAvailable: boolean): BillingCardMode {
+  return mode === 'hidden' && !recoveryEntryAvailable ? 'compact' : mode
 }
 
 /** 概览 Hero + KPI 全局统计范围（预设或自定义起止日期），与组件内 AvgCostRange 同构。 */

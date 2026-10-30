@@ -832,6 +832,27 @@ body {
   overflow-y: auto;
 }
 
+/* 宿主原生设置页复用完整设置分区；滚动交给宿主设置内容区。 */
+.nativeSettingsRoot {
+  width: 100%;
+  min-width: 0;
+}
+
+.nativeSettingsDashboard {
+  height: auto;
+}
+
+.dashboardBody.nativeSettingsBody {
+  flex: none;
+  padding: 0;
+  overflow: visible;
+}
+
+/* 宿主已有设置导航，嵌入页不再保留插件二级锚点栏。 */
+.settingsLayout.nativeSettingsLayout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 /* 底部公共细条（ub-footer）：轮询说明 + 版本/许可证，所有 Tab 共享。 */
 .modalFooter {
   display: flex;
@@ -4003,6 +4024,11 @@ span.bandDot { cursor: default; }
   border-color: var(--ds-blue);
   color: var(--dsw-alias-label-primary);
   background: color-mix(in srgb, var(--ds-blue) 16%, transparent);
+}
+
+.floatModeBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* 平价消耗胶囊位置行：标签居左、下拉靠右，与开关头部的视觉重心对齐。 */

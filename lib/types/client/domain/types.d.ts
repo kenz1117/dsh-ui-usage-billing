@@ -151,6 +151,8 @@ export interface UsageBillingInjected {
         monthCost: number;
     }) => void;
     registerOpen: (handler: () => void) => () => void;
+    /** 原生设置页或 /usage 是否至少一个可用；完全隐藏必须有恢复入口（issue #108 防锁死）。 */
+    recoveryEntryAvailable: boolean;
     /**
      * 跳转到宿主会话（跨插件导航）：面板点会话行时调用。
      * 返回 'opened' 已跳转 / 'unavailable' 宿主无通道（老到没有）/ 'failed' 通道报错。

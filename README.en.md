@@ -130,12 +130,12 @@ The billing channel is detected from the current session's model: DeepSeek meter
 
 ## 🚀 Quick start
 
-One codebase currently supports DSH `0.1.2-alpha.1` through `0.2.2-alpha.2`. Stable and preview releases share the same compatibility matrix: stable releases use npm `latest`, while previews use `alpha`. npm `latest` currently points to the stable `1.8.0` release, while `alpha` points to `1.8.1-alpha.2`.
+One codebase currently supports DSH `0.1.2-alpha.1` through `0.2.2-alpha.2`. Stable and preview releases share the same compatibility matrix: stable releases use npm `latest`, while previews use `alpha`. npm `latest` currently points to the stable `1.8.1` release, while `alpha` points to `1.8.1-alpha.2`.
 
 `dsh plugin add` requires an explicit `--profile`. Pinning an exact version is recommended so a package manager's release cooldown cannot resolve a different version. Install the current stable release with:
 
 ```sh
-dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@1.8.0
+dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@1.8.1
 ```
 
 Default installations can also use `@latest`. Check the host with `dsh --version` or `npm ls -g @deepseek-ai/dsh`.
@@ -268,7 +268,7 @@ For on-machine debugging: `dsh plugin --profile web add "link:<absolute path to 
 
 ## 📦 Release
 
-This standalone npm package maintains one `main` codebase. Stable releases use non-prerelease versions and npm `latest`; previews use prerelease versions and npm `alpha`. npm `latest` currently points to the stable `1.8.0` release, while `alpha` points to `1.8.1-alpha.2`; see [COMPATIBILITY.md](COMPATIBILITY.md).
+This standalone npm package maintains one `main` codebase. Stable releases use non-prerelease versions and npm `latest`; previews use prerelease versions and npm `alpha`. npm `latest` currently points to the stable `1.8.1` release, while `alpha` points to `1.8.1-alpha.2`; see [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ```sh
 pnpm test && pnpm run build   # full tests + build before release
@@ -283,7 +283,7 @@ The host discovers the browser side automatically via the `dsh.client` declarati
 
 - **Permission level: high**: reads durable Session logs, calls vendor / subscription / balance / pricing APIs, reads `apiKeyEnv` through the credentials seam, and writes the ledger, snapshots and task queue under the harness home. The plugin itself has **no** command-execution / shell capability; only explicit enqueueing creates a host Session and submits a Prompt, while Agent tools remain governed by the host's existing permissions and approvals.
 - **Update channel: `user-reviewed`**: with file / network / credential capabilities, DSH STORE requires local manual confirmation on every install; review the repo, pinned commit, lifecycle scripts, and impact scope before installing.
-- **Compatibility**: stable and preview releases from the current `main` share one matrix covering DSH `0.1.2-alpha.1` through `0.2.2-alpha.2`, with 31 per-version declarations. The current stable release is `1.8.0` (npm `latest`), and the current preview is `1.8.1-alpha.2` (npm `alpha`). Release channels and monitoring are documented in [COMPATIBILITY.md](COMPATIBILITY.md). Node.js `^22.19.0 || >=24.0.0`.
+- **Compatibility**: stable and preview releases from the current `main` share one matrix covering DSH `0.1.2-alpha.1` through `0.2.2-alpha.2`, with 31 per-version declarations. The current stable release is `1.8.1` (npm `latest`), and the current preview is `1.8.1-alpha.2` (npm `alpha`). Release channels and monitoring are documented in [COMPATIBILITY.md](COMPATIBILITY.md). Node.js `^22.19.0 || >=24.0.0`.
 - **Lifecycle**: no `preinstall` / `install` / `postinstall` / `prepare` (ready on install).
 - **No impersonation**: adds only its own entry id `ui-usage-billing`; `@deepseek-ai/dsh-*` packages are `peerDependencies` only (no reinstall / replace / shadowing of official components); the package uses the third-party namespace `@kenz1117/*`.
 - **Build artifacts**: runtime files `lib/*` and `cordis.patch.yml` are committed at the pinned commit and declared in `files`.

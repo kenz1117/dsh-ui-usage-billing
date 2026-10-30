@@ -19,6 +19,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { apply } from '../src/client/apply.ts'
 import { LiveCostBar, LiveCostChip } from '../src/client/live-cost.tsx'
 import { QuickQueueEnqueue, QuickQueueToggle } from '../src/client/task-queue-quick.tsx'
+import { NativeSettingsSection } from '../src/client/NativeSettingsSection.tsx'
 import { NS } from '../src/client/locales.ts'
 
 interface Registration {
@@ -27,6 +28,8 @@ interface Registration {
   order?: number
   locale?: string
   inject?: (sessionId: string) => Record<string, unknown>
+  store?: unknown
+  children?: Record<string, unknown>
   component: unknown
 }
 
@@ -110,6 +113,22 @@ describe('client apply(): live cost capsule seats (issue #101)', () => {
     expect(projectionFaceOf).toBeTypeOf('function')
     // A host without the public binding API degrades to an absent projection.
     expect(projectionFaceOf?.('workingDirectory')).toBeUndefined()
+  })
+
+  it('registers native Settings with the full shared runtime as a recovery entry', () => {
+    const section = byName('settings.section')
+    const sidebar = byName('sidebar.footer.action')
+    expect(section.id).toBe('usage-billing')
+    expect(section.component).toBe(NativeSettingsSection)
+    expect(section.locale).toBe(NS)
+    expect(section.store).toBe(sidebar.store)
+    // 只有侧栏声明装饰子槽位；重复声明会让宿主拒绝侧栏注册，导致完整卡片消失。
+    expect(section.children).toBeUndefined()
+    expect(sidebar.children).toEqual({ 'billing.dashboard.decor': { kind: 'list', scope: 'root' } })
+    // recordingContext 的 ctx.get 返回 undefined，因此 /usage 不可用；原生设置页仍提供恢复入口。
+    expect(sidebar.inject?.('')?.recoveryEntryAvailable).toBe(true)
+    expect(section.inject?.('')?.recoveryEntryAvailable).toBe(true)
+    expect(section.inject).toBe(sidebar.inject)
   })
 
   it('binds every capsule seat to the billing locale namespace', () => {

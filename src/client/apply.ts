@@ -24,7 +24,10 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls the ui-conversation SlotMap merge (the composer.dock / input.dock seats the live
 // cost bar rides, and the tool-row 'conversation.input.right' seat the chip injects into).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+// Type-only: pulls the native Settings SlotMap merge (the settings.section entry).
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { UsageBilling } from './UsageBilling.tsx'
+import { NativeSettingsSection } from './NativeSettingsSection.tsx'
 import type { ModelHealth, UsageBillingInjected } from './domain/types.ts'
 import type { CatalogModel } from './pricing.ts'
 import { LiveCostBar, LiveCostChip } from './live-cost.tsx'
@@ -102,10 +105,97 @@ export function apply(ctx: Context): void {
   // `/usage` 对话内命令：把仪表盘拉进对话流。老宿主无 commandUi 服务时静默跳过。
   // 文案取本包自带词典（不依赖宿主 locale.bind——那在 0.1.2 代宿主上未必存在，
   // 声明宿主能力会收窄兼容面）；语言读本插件自己的偏好（与面板一致）。
-  registerUsageCommand(ctx, {
+  const usageCommandAvailable = registerUsageCommand(ctx, {
     openDashboard: () => { metrics.openDashboard() },
     label: () => (loadLanguage() === 'en' ? en.commandUsageLabel : zh.commandUsageLabel),
     description: () => (loadLanguage() === 'en' ? en.commandUsageDescription : zh.commandUsageDescription),
+  })
+
+  // 宿主原生设置页：完全隐藏后的稳定恢复入口。老宿主没有 settings.section 时，
+  // inject 回调不会执行，nativeSettingsAvailable 保持 false；不新增启动期 inject 依赖。
+  let nativeSettingsAvailable = false
+  // 原生设置与侧栏实例共享数据桥、预算 store 与装饰孔位，完整设置逻辑只有一份。
+  const injectUsageBilling = (): UsageBillingInjected => ({
+    checkModels: async (): Promise<ModelHealth> => {
+      // 0.1.2 的 Remote 面不再有聚合 llm.models：先取活跃路由，再按可配置
+      // 目录逐项 discoverModels。已知 provider 走适配器本地目录，不额外打网络。
+      try {
+        const [registered, configurable] = await Promise.all([
+          ctx.remote.llm.listProviders(),
+          ctx.remote.llm.listConfigurableProviders(),
+        ])
+        if (!registered.ok || !configurable.ok) {
+          return { checked: true, available: false, models: 0, failures: 0, okProviders: [], badProviders: [] }
+        }
+        const declarations = new Map(configurable.value.map(entry => [entry.provider, entry]))
+        const probes = await Promise.all(registered.value.map(async provider => {
+          const declaration = declarations.get(provider.id)
+          // 活跃但未声明配置入口的路由仍可判定在线；新 Remote 面没有其模型目录地址。
+          if (declaration === undefined) return { provider, models: [] }
+          const discovered = await ctx.remote.llm.discoverModels(declaration.settingsNs, { provider: provider.id })
+          return discovered.ok
+            ? { provider, models: discovered.value }
+            : { provider, failed: true as const }
+        }))
+        const catalog: CatalogModel[] = []
+        const okProviders: string[] = []
+        const badProviders: string[] = []
+        let models = 0
+        for (const probe of probes) {
+          if ('failed' in probe) {
+            badProviders.push(probe.provider.name)
+            continue
+          }
+          okProviders.push(probe.provider.name)
+          models += probe.models.length
+          for (const model of probe.models) {
+            catalog.push({
+              id: model.id,
+              ...(typeof model.name === 'string' && model.name !== '' ? { name: model.name } : {}),
+              provider: probe.provider.name,
+            })
+          }
+        }
+        return {
+          checked: true,
+          available: okProviders.length > 0,
+          models,
+          failures: badProviders.length,
+          okProviders,
+          badProviders,
+          catalog,
+        }
+      } catch {
+        // 旧宿主没有 remote.llm（undefined 访问抛 TypeError 落到这里）：
+        // 返回 checked: false 让 UI 回到中性 idle 态（灰点、无告警徽章），
+        // 而不是渲染成「检查完成但全部不可用」的红色告警。
+        return { checked: false, available: false, models: 0, failures: 0, okProviders: [], badProviders: [] }
+      }
+    },
+    publishCosts: (costs) => { metrics.publishCosts(costs) },
+    registerOpen: handler => metrics.registerOpen(handler),
+    recoveryEntryAvailable: usageCommandAvailable || nativeSettingsAvailable,
+    navigateToSession: (sessionId) => navigator.open(sessionId),
+  })
+  const usageBillingSlotRuntime = {
+    store: budgetStore,
+    inject: injectUsageBilling,
+  } as const
+
+  ctx.slots.inject('settings.section', () => {
+    nativeSettingsAvailable = true
+    const dispose = ctx.slots.register({
+      name: 'settings.section',
+      id: 'usage-billing',
+      order: 30,
+      label: () => (loadLanguage() === 'en' ? en.nativeSettingsNav : zh.nativeSettingsNav),
+      locale: NS,
+      ...usageBillingSlotRuntime,
+    }, NativeSettingsSection)
+    return () => {
+      nativeSettingsAvailable = false
+      dispose()
+    }
   })
 
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
@@ -113,72 +203,11 @@ export function apply(ctx: Context): void {
     id: 'usage-billing',
     order: -10,
     locale: NS,
-    // 装饰孔位由主题插件注入；未注入时走 billing 默认视觉。
+    ...usageBillingSlotRuntime,
+    // 装饰子槽位只能声明一次；原生设置不渲染装饰，不能重复声明导致侧栏注册失败。
     children: {
       'billing.dashboard.decor': { kind: 'list', scope: 'root' },
     },
-    store: budgetStore,
-    inject: (): UsageBillingInjected => ({
-      checkModels: async (): Promise<ModelHealth> => {
-        // 0.1.2 的 Remote 面不再有聚合 llm.models：先取活跃路由，再按可配置
-        // 目录逐项 discoverModels。已知 provider 走适配器本地目录，不额外打网络。
-        try {
-          const [registered, configurable] = await Promise.all([
-            ctx.remote.llm.listProviders(),
-            ctx.remote.llm.listConfigurableProviders(),
-          ])
-          if (!registered.ok || !configurable.ok) {
-            return { checked: true, available: false, models: 0, failures: 0, okProviders: [], badProviders: [] }
-          }
-          const declarations = new Map(configurable.value.map(entry => [entry.provider, entry]))
-          const probes = await Promise.all(registered.value.map(async provider => {
-            const declaration = declarations.get(provider.id)
-            // 活跃但未声明配置入口的路由仍可判定在线；新 Remote 面没有其模型目录地址。
-            if (declaration === undefined) return { provider, models: [] }
-            const discovered = await ctx.remote.llm.discoverModels(declaration.settingsNs, { provider: provider.id })
-            return discovered.ok
-              ? { provider, models: discovered.value }
-              : { provider, failed: true as const }
-          }))
-          const catalog: CatalogModel[] = []
-          const okProviders: string[] = []
-          const badProviders: string[] = []
-          let models = 0
-          for (const probe of probes) {
-            if ('failed' in probe) {
-              badProviders.push(probe.provider.name)
-              continue
-            }
-            okProviders.push(probe.provider.name)
-            models += probe.models.length
-            for (const model of probe.models) {
-              catalog.push({
-                id: model.id,
-                ...(typeof model.name === 'string' && model.name !== '' ? { name: model.name } : {}),
-                provider: probe.provider.name,
-              })
-            }
-          }
-          return {
-            checked: true,
-            available: okProviders.length > 0,
-            models,
-            failures: badProviders.length,
-            okProviders,
-            badProviders,
-            catalog,
-          }
-        } catch {
-          // 旧宿主没有 remote.llm（undefined 访问抛 TypeError 落到这里）：
-          // 返回 checked: false 让 UI 回到中性 idle 态（灰点、无告警徽章），
-          // 而不是渲染成「检查完成但全部不可用」的红色告警。
-          return { checked: false, available: false, models: 0, failures: 0, okProviders: [], badProviders: [] }
-        }
-      },
-      publishCosts: (costs) => { metrics.publishCosts(costs) },
-      registerOpen: handler => metrics.registerOpen(handler),
-      navigateToSession: (sessionId) => navigator.open(sessionId),
-    }),
   }, UsageBilling))
 
   // 即时代费用条：随输入框常驻显示当前会话累计费用与最新一轮费用，无需打开

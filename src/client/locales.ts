@@ -129,6 +129,15 @@ export type UsageBillingKey =
   | 'floatNoTargetsHint'
   | 'cardDisplay'
   | 'cardDisplayHint'
+  | 'cardMode'
+  | 'cardModeFull'
+  | 'cardModeCompact'
+  | 'cardModeHidden'
+  | 'cardModeHiddenHint'
+  | 'cardModeFallback'
+  | 'nativeSettingsNav'
+  | 'nativeSettingsIntro'
+  | 'nativeSettingsHiddenHint'
   | 'cardMetric'
   | 'cardMetricMoney'
   | 'cardMetricTokens'
@@ -550,7 +559,16 @@ export const zh: Record<UsageBillingKey, string> = {
   'floatPrimaryMonth': '本月',
 
   'cardDisplay': '计费卡显示',
-  'cardDisplayHint': '切换左下角计费卡的主指标与主数字统计范围（迷你柱跟随视角，悬浮窗不受影响）；「今日环比」徽章太醒目可在此隐藏。',
+  'cardDisplayHint': '选择侧栏入口的占用方式，并切换主指标与统计范围；完全隐藏后可从宿主设置或 /usage 恢复。隐藏不会停止统计或提醒。',
+  'cardMode': '侧栏入口',
+  'cardModeFull': '完整卡片',
+  'cardModeCompact': '紧凑图标',
+  'cardModeHidden': '完全隐藏',
+  'cardModeHiddenHint': '恢复显示：打开宿主设置 → 用量与费用 → 完整卡片；也可通过 /usage 打开仪表盘后恢复。',
+  'cardModeFallback': '当前宿主没有原生设置页或 /usage 入口，完全隐藏已降级为紧凑图标，避免仪表盘无法打开。',
+  'nativeSettingsNav': '用量与费用',
+  'nativeSettingsIntro': '管理侧栏计费入口的显示方式。修改即时生效，并与仪表盘内的设置同步。',
+  'nativeSettingsHiddenHint': '侧栏入口当前已隐藏。选择「完整卡片」或「紧凑图标」即可恢复；统计与提醒一直保持运行。',
   'cardMetric': '主指标',
   'cardMetricMoney': '金额',
   'cardMetricTokens': 'Token',
@@ -973,7 +991,16 @@ export const en: Record<UsageBillingKey, string> = {
   'floatPrimaryMonth': 'Month',
 
   'cardDisplay': 'Billing card',
-  'cardDisplayHint': 'Switch the bottom-left billing card between cost and token usage, and pick the figure range (sparkline follows; the popover is unaffected). The day-over-day badge can be hidden here.',
+  'cardDisplayHint': 'Choose how much space the sidebar entry uses, then set its metric and range. Restore a hidden entry from native Settings or /usage. Tracking and alerts stay active.',
+  'cardMode': 'Sidebar entry',
+  'cardModeFull': 'Full card',
+  'cardModeCompact': 'Compact icon',
+  'cardModeHidden': 'Hidden',
+  'cardModeHiddenHint': 'Restore: open native Settings → Usage & billing → Full card, or open the dashboard with /usage and return to Settings.',
+  'cardModeFallback': 'This host has neither native Settings nor /usage, so Hidden falls back to the compact icon to keep the dashboard reachable.',
+  'nativeSettingsNav': 'Usage & billing',
+  'nativeSettingsIntro': 'Choose how the sidebar billing entry appears. Changes apply immediately and stay in sync with the dashboard settings.',
+  'nativeSettingsHiddenHint': 'The sidebar entry is hidden. Choose Full card or Compact icon to restore it; tracking and alerts remain active.',
   'cardMetric': 'Main metric',
   'cardMetricMoney': 'Cost',
   'cardMetricTokens': 'Tokens',

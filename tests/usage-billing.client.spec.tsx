@@ -102,7 +102,7 @@ describe('UsageBilling surface', () => {
     fireEvent.click(await screen.findByTestId('billing-tab-settings'))
     fireEvent.click(await screen.findByTestId('billing-card-tokens'))
     // 修改即写入 localStorage（span/showDelta 字段一并持久化，默认日口径+显示徽章）。
-    expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.card')!)).toEqual({ metric: 'tokens', span: 'day', showDelta: true })
+    expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.card')!)).toEqual({ mode: 'full', metric: 'tokens', span: 'day', showDelta: true })
     // 弹窗开着 trigger 也常驻：主行切为缩写 token（K/M/B），金额币符消失。
     expect(screen.getByTestId('billing-trigger-span-tokens').textContent).toBe('0')
     expect(screen.getByTestId('billing-trigger').textContent).not.toContain('¥')
@@ -131,7 +131,7 @@ describe('UsageBilling surface', () => {
     fireEvent.click(await screen.findByTestId('billing-tab-settings'))
     fireEvent.click(await screen.findByTestId('billing-card-delta-hide'))
     // 修改即持久化（showDelta: false），且卡面徽章立即消失。
-    expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.card')!)).toEqual({ metric: 'money', span: 'day', showDelta: false })
+    expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.card')!)).toEqual({ mode: 'full', metric: 'money', span: 'day', showDelta: false })
     expect(screen.queryByTestId('billing-trigger-delta')).toBeNull()
     // 重新打开开关徽章恢复。
     fireEvent.click(await screen.findByTestId('billing-card-delta-show'))

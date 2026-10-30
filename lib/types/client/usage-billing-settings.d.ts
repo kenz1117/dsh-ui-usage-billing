@@ -45,11 +45,15 @@ export declare function saveFloatWindowPrefs(prefs: FloatWindowPrefs): void;
 export type BillingCardMetric = 'money' | 'tokens';
 /** 计费卡主数字的统计范围（单值卡面，issue #47 反馈）。 */
 export type BillingCardSpan = 'day' | 'week' | 'month';
+/** 侧栏入口显示模式：完整卡片 / 紧凑图标 / 完全隐藏（issue #108）。 */
+export type BillingCardMode = 'full' | 'compact' | 'hidden';
 /**
- * 计费卡显示偏好：卡面主数字与迷你柱的计价视角 + 主数字统计范围。
+ * 计费卡显示偏好：侧栏入口模式 + 卡面主数字与迷你柱的计价视角 + 主数字统计范围。
  * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
  */
 export interface BillingCardPrefs {
+    /** 侧栏入口模式（默认完整卡片；老偏好缺字段时保持原体验）。 */
+    mode: BillingCardMode;
     /** 主指标：花费金额（CNY/USD 按币种）/ Token 消耗。 */
     metric: BillingCardMetric;
     /** 主数字统计范围：今日 / 本周 / 本月（默认今日）。 */
@@ -57,14 +61,20 @@ export interface BillingCardPrefs {
     /** 是否显示「今日环比」涨跌徽章（默认显示；issue #93：部分用户觉得红色横条太醒目）。 */
     showDelta: boolean;
 }
-/** 默认计费卡偏好：花费金额 + 今日口径 + 显示环比徽章（保持 v1.5.0 行为）。 */
+/** 默认计费卡偏好：完整卡片 + 花费金额 + 今日口径 + 显示环比徽章。 */
 export declare const DEFAULT_BILLING_CARD_PREFS: BillingCardPrefs;
 /** localStorage key（与 budget store 的 `dsh.ui-usage-billing.*` 命名空间一致）。 */
 export declare const BILLING_CARD_STORAGE_KEY = "dsh.ui-usage-billing.card";
+/** 同文档跨 React 树同步：仪表盘设置与宿主原生设置页共用这份偏好。 */
+export declare const BILLING_CARD_PREF_EVENT = "dsh.ui-usage-billing.card-changed";
 /** 读取计费卡偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
 export declare function loadBillingCardPrefs(): BillingCardPrefs;
 /** 写入计费卡偏好。失败静默（展示偏好非关键）。 */
 export declare function saveBillingCardPrefs(prefs: BillingCardPrefs): void;
+/** 订阅同文档 CustomEvent 与其他标签页的 storage 写入；仅在浏览器半区调用。 */
+export declare function subscribeBillingCardPrefs(listener: () => void): () => void;
+/** 防锁死：宿主没有任何恢复入口时，完全隐藏一律降级为紧凑图标。 */
+export declare function resolveBillingCardMode(mode: BillingCardMode, recoveryEntryAvailable: boolean): BillingCardMode;
 /** 概览 Hero + KPI 全局统计范围（预设或自定义起止日期），与组件内 AvgCostRange 同构。 */
 export type KpiRangePref = 'today' | '7d' | 'week' | 'month' | 'all' | 'custom';
 /** 自定义日期范围：本地日历日，起止均包含；不伪装成分钟级切片。 */

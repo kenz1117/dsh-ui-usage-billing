@@ -22,7 +22,10 @@ import { type UsageBillingInjected } from './domain/types.ts';
 /** 预算 store 的 props 份额（useStore 读取 + actions 写面）。 */
 type BillingBudgetStoreProps = PropsStore<ReturnType<typeof createBillingBudgetStore>>;
 /** Full props type for the UsageBilling component. */
-type UsageBillingProps = PropsRuntime<'sidebar.footer.action'> & SidebarFooterActionOwnerProps & InjectFace<UsageBillingInjected> & PropsRenderSlots<'billing.dashboard.decor'> & BillingBudgetStoreProps & PropsLocale<typeof NS>;
+export type UsageBillingProps = PropsRuntime<'sidebar.footer.action'> & SidebarFooterActionOwnerProps & InjectFace<UsageBillingInjected> & PropsRenderSlots<'billing.dashboard.decor'> & BillingBudgetStoreProps & PropsLocale<typeof NS> & {
+    /** 原生设置页嵌入模式：只渲染完整设置分区，不渲染侧栏入口与弹窗外壳。 */
+    embeddedSettings?: boolean;
+};
 /**
  * UsageBilling: sidebar trigger plus the billing dashboard modal.
  * @param props - framework-provided sidebar and locale props.

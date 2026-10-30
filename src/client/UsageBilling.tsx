@@ -24,10 +24,13 @@ import { Menu, Modal, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   type BillingCardPrefs,
+  resolveBillingCardMode,
   DEFAULT_ENABLE_USAGE_STATS_TOOL,
   type LiveCostBarPrefs,
   CURRENCY_PREF_EVENT,
   LIVE_COST_BAR_PREF_EVENT,
+  BILLING_CARD_PREF_EVENT,
+  subscribeBillingCardPrefs,
   loadBillingCardPrefs,
   loadKpiRange,
   loadKpiCustomRange,
@@ -198,13 +201,17 @@ function HelpTip({ label, t }: {
 type BillingBudgetStoreProps = PropsStore<ReturnType<typeof createBillingBudgetStore>>
 
 /** Full props type for the UsageBilling component. */
-type UsageBillingProps =
+export type UsageBillingProps =
   PropsRuntime<'sidebar.footer.action'>
   & SidebarFooterActionOwnerProps
   & InjectFace<UsageBillingInjected>
   & PropsRenderSlots<'billing.dashboard.decor'>
   & BillingBudgetStoreProps
   & PropsLocale<typeof NS>
+  & {
+    /** 原生设置页嵌入模式：只渲染完整设置分区，不渲染侧栏入口与弹窗外壳。 */
+    embeddedSettings?: boolean
+  }
 
 /** V-3 色弱友好：健康点的状态文本（绿=在线 / 红=失效 / 灰=未知）——三态不再
  *  仅靠颜色，读屏与悬停均可得（点本身保留形状，配 CSS ::after 差异化见模块）。 */
@@ -358,7 +365,10 @@ function UsageBillingTrigger(
     </svg>
   )
 
-  if (!wide) {
+  // 完全隐藏只移除视觉入口，面板与后台统计继续挂载；无 /usage 时父组件已降级。
+  if (cardPrefs.mode === 'hidden') return null
+
+  if (!wide || cardPrefs.mode === 'compact') {
     return (
       <button
         type="button"
@@ -591,6 +601,8 @@ interface BillingDashboardProps {
   // 双参签名：局部需要插值文案（如促销截止日期）时传 params。
   t: (key: UsageBillingKey, params?: Record<string, unknown>) => string
   onClose: () => void
+  /** 嵌入宿主原生设置页：固定设置 Tab，省略弹窗标题、其他 Tab 与页脚。 */
+  embeddedSettings?: boolean
   /** 用户自定义单价表（localStorage 持久化；设置面板读写）。 */
   userPrices: UserPriceMap
   /** 用户自定义单价更新（父组件写回 localStorage 并重估显示）。 */
@@ -641,6 +653,8 @@ interface BillingDashboardProps {
   cardPrefs: BillingCardPrefs
   /** 计费卡显示偏好更新（父组件持久化）。 */
   onCardPrefs: (next: BillingCardPrefs) => void
+  /** 原生设置页或 /usage 是否至少一个可用；不可用时禁用完全隐藏。 */
+  recoveryEntryAvailable: boolean
   /** 中转站列表展示偏好（issue #17：隐藏未识别条目，设置 Tab 编辑）。 */
   sitePrefs: SiteListPrefs
   /** 中转站列表展示偏好更新（父组件持久化）。 */
@@ -946,12 +960,13 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
 }
 
 function BillingDashboard({
-  stats, t, onClose, userPrices, onUserPrices, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, language, onLanguage, turns,
+  stats, t, onClose, embeddedSettings = false, userPrices, onUserPrices, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, language, onLanguage, turns,
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
   modelBudgets, monthModelCost, onModelBudget,
-  peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, sitePrefs, onSitePrefs,
+  peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, recoveryEntryAvailable, sitePrefs, onSitePrefs,
   liveCostPrefs, onLiveCostPrefs, quotasStale, balanceStale, navigateToSession,
 }: BillingDashboardProps): React.ReactNode {
+  const dashboardRoot = useRef<HTMLDivElement>(null)
   // 智能体网络：从会话行的 parentId 还原委派链，逐级算链合计（哪次委派最贵）。
   const agentRoots = useMemo(() => buildAgentTree(stats.bySession ?? []), [stats.bySession])
   const agentSummary = useMemo(() => agentTreeStats(agentRoots), [agentRoots])
@@ -968,8 +983,8 @@ function BillingDashboard({
   // 趋势图指标：费用（堆叠/默认）或 Token（单色总量）。
   const [trendMetric, setTrendMetric] = useState<TrendMetric>('cost')
   const { total, byModel, byDay } = stats
-  // 分区 Tab：默认概览；各区块已进入二级 Tab，全部默认展开（无折叠交互）。
-  const [tab, setTab] = useState<DashboardTab>('overview')
+  // 弹窗默认概览；原生设置嵌入模式固定展示同一份完整设置分区。
+  const [tab, setTab] = useState<DashboardTab>(embeddedSettings ? 'settings' : 'overview')
   // 趋势窗口：7 天 / 30 天切换（30 天窗口数据不足时按日补零）。
   const [trendDays, setTrendDays] = useState<7 | 30>(7)
   // 对账偏差忽略：用户可能同时在其它 agent / 直接接入 API 里消耗官方余额，此时 drift
@@ -1026,8 +1041,10 @@ function BillingDashboard({
   // 高亮，滚动不跟随——用户感知为「没有导航」）。这里真正接上：观察全部
   // settings-* 分区，滚动到哪个分区高亮哪个锚点（取视口内最靠上的可见分区）。
   useEffect(() => {
-    if (tab !== 'settings' || typeof IntersectionObserver === 'undefined') return
-    const sections = Array.from(document.querySelectorAll<HTMLElement>('[id^="settings-"]'))
+    const root = dashboardRoot.current
+    if (tab !== 'settings' || root === null || typeof IntersectionObserver === 'undefined') return
+    // 原生设置与弹窗可能同时挂载：只观察本面板，避免重复锚点互相抢高亮。
+    const sections = Array.from(root.querySelectorAll<HTMLElement>('[id^="settings-"]'))
       .filter(el => !el.closest('[hidden]'))
     if (sections.length === 0) return
     const observer = new IntersectionObserver((entries) => {
@@ -1048,17 +1065,18 @@ function BillingDashboard({
   }, [tab])
   const scrollToSettingsGroup = useCallback((id: string) => {
     setActiveSettingsGroup(id)
-    if (typeof document === 'undefined') return
-    const target = document.getElementById(`settings-${id}`)
-    if (target === null) return
-    // 不用 scrollIntoView：它会滚动所有可滚动祖先，目标在面板内已可见时宿主
-    // modal 外壳仍被继续滚动，标题栏随之错位（issue #94）。改为只滚本面板的
-    // dashboardBody 容器，宿主结构零波及。
+    const target = dashboardRoot.current?.querySelector<HTMLElement>(`[id="settings-${id}"]`)
+    if (target == null) return
+    // 原生设置由宿主页面滚动；弹窗仍只滚自己的 dashboardBody，避免标题错位（issue #94）。
+    if (embeddedSettings) {
+      target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      return
+    }
     const scroller = target.closest(`.${css.dashboardBody}`)
     if (scroller === null) return
     const delta = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
     scroller.scrollTo({ top: scroller.scrollTop + delta, behavior: 'smooth' })
-  }, [])
+  }, [embeddedSettings])
   const setDensity = useCallback((d: DensityPref) => {
     setDensityState(d)
     saveDensity(d)
@@ -1783,10 +1801,14 @@ function BillingDashboard({
   const prevDayCost = trend.length >= 2 ? (trend.at(-2)?.cost ?? 0) : 0
   const deltaPct = prevDayCost > 0 ? ((todayCost - prevDayCost) / prevDayCost) * 100 : 0
 
-  return (
-    <Modal open onClose={onClose} title={t('title')} headless className={clsx(css.dashboardModal, 'dsh-billing-modal')}>
-      <div className={css.dashboard} data-testid="billing-dashboard">
+  const dashboard = (
+    <div
+      ref={dashboardRoot}
+      className={clsx(css.dashboard, embeddedSettings && css.nativeSettingsDashboard)}
+      data-testid={embeddedSettings ? 'native-billing-settings-dashboard' : 'billing-dashboard'}
+    >
         {/* Header */}
+        {!embeddedSettings && (
         <div className={css.dashboardHead} data-testid="billing-dashboard-head">
           <div>
             {/* ZINE: 装饰孔位（head 锚点：窗口 chrome），由主题插件注入；未注入时为空 */}
@@ -1860,10 +1882,11 @@ function BillingDashboard({
             </button>
           </div>
         </div>
+        )}
 
         {/* 数据滞后提示（聚合超预算/失败时的回落下发）：标题栏下、Tab 区之上——
             所有页签都看得见，别让「上一次计算」的值被当成最新读（issue #103）。 */}
-        {stats.staleSnapshot === true && (
+        {!embeddedSettings && stats.staleSnapshot === true && (
           <div className={css.staleNotice} data-testid="billing-stale-snapshot">
             {t('staleSnapshotNotice')}
           </div>
@@ -1873,6 +1896,7 @@ function BillingDashboard({
            控件 + 徽章数据信号。data-testid 保留为 billing-tab-nav（兼容测试）。
            原 200px 左栏设计（.tabRail）保留在 CSS 里，待 v1.6 调研 modal 宽 ≥900
            后再启用（对应 desktop 全屏 modal 形态）。 */}
+        {!embeddedSettings && (
         <nav className={css.tabNav} data-testid="billing-tab-nav" role="tablist" aria-label={t('title')}>
           {DASHBOARD_TABS.map(item => {
             return (
@@ -1892,9 +1916,10 @@ function BillingDashboard({
             )
           })}
         </nav>
+        )}
 
-        {/* Scrollable body: 按 Tab 条件渲染分区。 */}
-        <div className={css.dashboardBody}>
+        {/* Scrollable body: 按 Tab 条件渲染分区；原生设置页复用同一容器。 */}
+        <div className={clsx(css.dashboardBody, embeddedSettings && css.nativeSettingsBody)}>
           {tab === 'queue' && (
             <TaskQueuePanel t={t} language={language} navigateToSession={navigateToSession} />
           )}
@@ -2396,7 +2421,8 @@ function BillingDashboard({
               {/* v1.5 设置页布局：左侧 180px 锚点 + 右侧分组 pane。5 组分类——预算 / 提醒 /
                   显示 / 高级 / 关于。每组对应原 section（id 兼容）。锚点导航点击
                   滚动；alpha.1 无 scroll-spy——v1.5.1 加 IntersectionObserver。 */}
-              <div className={css.settingsLayout}>
+              <div className={clsx(css.settingsLayout, embeddedSettings && css.nativeSettingsLayout)}>
+                {!embeddedSettings && (
                 <aside className={css.settingsNav} data-testid="billing-settings-nav" role="navigation" aria-label="settings">
                   {/* v1.5 alpha.1.5：锚点图标从 emoji/字符（🔔◐✱ⓘ 渲染不一致）换成
                       与 TAB_ICONS 同风格的内联 stroke SVG。 */}
@@ -2449,6 +2475,7 @@ function BillingDashboard({
                     </button>
                   ))}
                 </aside>
+                )}
                 <div className={css.settingsPane}>
                   {/* U-4 设置页全文搜索：按关键词过滤分区（hidden 属性，锚点 id 保留）。 */}
                   <input
@@ -2792,6 +2819,35 @@ function BillingDashboard({
                       </div>
                     </div>
                     <div className={css.ctlCol}>
+                      <div className={css.ctlRow}>
+                        <span className={css.ctlLabel}>{t('cardMode')}</span>
+                        <div className={css.ctlGroup} data-testid="billing-card-mode">
+                          {([
+                            ['full', 'cardModeFull'],
+                            ['compact', 'cardModeCompact'],
+                            ['hidden', 'cardModeHidden'],
+                          ] as const).map(([mode, key]) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              className={clsx(css.floatModeBtn, cardPrefs.mode === mode && css.floatModeBtnOn)}
+                              data-testid={`billing-card-mode-${mode}`}
+                              aria-pressed={cardPrefs.mode === mode}
+                              disabled={mode === 'hidden' && !recoveryEntryAvailable}
+                              title={mode === 'hidden' && !recoveryEntryAvailable ? t('cardModeFallback') : undefined}
+                              onClick={() => onCardPrefs({ ...cardPrefs, mode })}
+                            >
+                              {t(key)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {!recoveryEntryAvailable && (
+                        <p className={css.setCardDesc} data-testid="billing-card-mode-fallback">{t('cardModeFallback')}</p>
+                      )}
+                      {recoveryEntryAvailable && cardPrefs.mode === 'hidden' && (
+                        <p className={css.setCardDesc} data-testid="billing-card-mode-hidden-hint">{t('cardModeHiddenHint')}</p>
+                      )}
                       <div className={css.ctlRow}>
                         <span className={css.ctlLabel}>{t('floatMode')}</span>
                         <div className={css.ctlGroup} data-testid="billing-float-mode">
@@ -3907,16 +3963,23 @@ function BillingDashboard({
             </div>
           )}
 
-          {/* ZINE: 装饰孔位（footer 锚点：条码装饰底部），所有 Tab 共享常驻。 */}
-          {renderSlot('billing.dashboard.decor', { position: 'footer' })}
+          {/* ZINE: 装饰孔位（footer 锚点：条码装饰底部），所有弹窗 Tab 共享常驻。 */}
+          {!embeddedSettings && renderSlot('billing.dashboard.decor', { position: 'footer' })}
         </div>
 
-        {/* 底部公共细条（ub-footer）：轮询说明 + 版本/许可证，所有 Tab 共享。 */}
-        <footer className={css.modalFooter} data-testid="billing-footer">
-          <span>{t('footer')}</span>
-          <span>{t('footerCredit').replace('{version}', stats.pluginVersion === undefined ? '—' : `v${stats.pluginVersion}`)}</span>
-        </footer>
-      </div>
+        {/* 底部公共细条（ub-footer）：轮询说明 + 版本/许可证，仅弹窗展示。 */}
+        {!embeddedSettings && (
+          <footer className={css.modalFooter} data-testid="billing-footer">
+            <span>{t('footer')}</span>
+            <span>{t('footerCredit').replace('{version}', stats.pluginVersion === undefined ? '—' : `v${stats.pluginVersion}`)}</span>
+          </footer>
+        )}
+    </div>
+  )
+  if (embeddedSettings) return dashboard
+  return (
+    <Modal open onClose={onClose} title={t('title')} headless className={clsx(css.dashboardModal, 'dsh-billing-modal')}>
+      {dashboard}
     </Modal>
   )
 }
@@ -3935,7 +3998,7 @@ const SETTINGS_KEYWORDS = {
   budget: ['预算', '金额', '本月', '花费', '进度', 'budget', 'amount', 'spend', 'progress'],
   alert: ['峰谷', '峰', '谷', '提醒', '通知', '预览', '切换', 'peak', 'off-peak', 'alert', 'notify', 'preview'],
   toggles: ['usage_stats', '工具', '即时代费', '胶囊', '中转站', '站点', '隐藏', 'relay', 'site', 'live', 'cost', 'hide'],
-  displayExtra: ['悬浮', '订阅', '计费卡', '指标', '环比', '主数字', 'float', 'subscription', 'card', 'metric', 'delta'],
+  displayExtra: ['悬浮', '订阅', '计费卡', '指标', '环比', '主数字', '侧栏', '入口', '隐藏', 'float', 'subscription', 'card', 'metric', 'delta', 'sidebar', 'trigger', 'hidden'],
   advanced: ['自定义', '单价', '价格', '低谷', 'custom', 'price'],
   about: ['关于', '版本', '作者', '许可', '仓库', 'about', 'version', 'author', 'license', 'repo'],
 } as const
@@ -4006,7 +4069,10 @@ function PositionMenu({ liveCostPrefs, onLiveCostPrefs, t }: {
  * @param props - framework-provided sidebar and locale props.
  */
 export function UsageBilling(props: UsageBillingProps): React.ReactNode {
-  const { t: hostT, checkModels, publishCosts, registerOpen, navigateToSession, renderSlot, useStore, actions } = props
+  const {
+    t: hostT, checkModels, publishCosts, registerOpen, navigateToSession, renderSlot, useStore, actions,
+    embeddedSettings = false,
+  } = props
   // Start empty; swap in real host data when the server serves valid JSON.
   const [stats, setStats] = useState<UsageStats>(EMPTY_STATS)
   const [health, setHealth] = useState<ModelHealth>(IDLE_HEALTH)
@@ -4053,12 +4119,21 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     saveLiveCostBarPrefs(next)
     window.dispatchEvent(new CustomEvent(LIVE_COST_BAR_PREF_EVENT))
   }, [])
-  // 计费卡显示偏好：localStorage 持久化（修改即写回，仅 client 侧）。
+  // 计费卡显示偏好：localStorage 持久化；原生设置页与仪表盘设置跨 React 树即时同步。
   const [cardPrefs, setCardPrefs] = useState<BillingCardPrefs>(() => loadBillingCardPrefs())
+  useEffect(() => subscribeBillingCardPrefs(() => { setCardPrefs(loadBillingCardPrefs()) }), [])
+  const recoveryEntryAvailable = props.recoveryEntryAvailable
+  // 老宿主无原生设置页或 /usage 时，即便读到了新宿主写入的 hidden，也必须保留紧凑图标入口。
+  const effectiveCardPrefs = useMemo<BillingCardPrefs>(() => ({
+    ...cardPrefs,
+    mode: resolveBillingCardMode(cardPrefs.mode, recoveryEntryAvailable),
+  }), [cardPrefs, recoveryEntryAvailable])
   const updateCardPrefs = useCallback((next: BillingCardPrefs): void => {
-    setCardPrefs(next)
-    saveBillingCardPrefs(next)
-  }, [])
+    const safeNext = { ...next, mode: resolveBillingCardMode(next.mode, recoveryEntryAvailable) }
+    setCardPrefs(safeNext)
+    saveBillingCardPrefs(safeNext)
+    window.dispatchEvent(new CustomEvent(BILLING_CARD_PREF_EVENT))
+  }, [recoveryEntryAvailable])
   // 用户自定义单价：localStorage 读取一次性注入计价层（修改通过设置面板 applyUserPrices）。
   const [userPrices, setUserPrices] = useState<UserPriceMap>(() => {
     const stored = loadUserPrices()
@@ -4533,39 +4608,45 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     publishCosts({ todayCost, monthCost })
   }, [todayCost, monthCost, publishCosts])
 
-  // dashboard 打开回调同样始终注册，供主题插件（如 StickerPad）触发。
-  useEffect(() => registerOpen(openDashboard), [registerOpen, openDashboard])
+  // 仅侧栏实例注册打开回调；原生设置嵌入实例若覆盖它，/usage 将无法打开弹窗。
+  useEffect(() => {
+    if (embeddedSettings) return
+    return registerOpen(openDashboard)
+  }, [embeddedSettings, registerOpen, openDashboard])
 
   // 每轮费用明细：服务端按起始时间倒序下发；旧快照缺失时为空数组（面板不出现）。
   const turns: readonly RoundChartRow[] = useMemo(() => stats.byTurn ?? [], [stats.byTurn])
 
   return (
     <>
-      <UsageBillingTrigger
-        {...props}
-        t={t}
-        currency={currency}
-        onOpen={openDashboard}
-        monthCost={monthCost}
-        todayCost={todayCost}
-        weekCost={weekCost}
-        days={last7}
-        vendorStatus={vendorStatus}
-        dash={dash}
-        cardPrefs={cardPrefs}
-        monthTokens={monthTokens}
-        todayTokens={todayTokens}
-        weekTokens={weekTokens}
-        floatPrefs={floatPrefs}
-        subscriptions={quotas}
-        budgetPressure={budgetPressure}
-        deltaPct={deltaPct}
-      />
-      {open && (
+      {!embeddedSettings && (
+        <UsageBillingTrigger
+          {...props}
+          t={t}
+          currency={currency}
+          onOpen={openDashboard}
+          monthCost={monthCost}
+          todayCost={todayCost}
+          weekCost={weekCost}
+          days={last7}
+          vendorStatus={vendorStatus}
+          dash={dash}
+          cardPrefs={effectiveCardPrefs}
+          monthTokens={monthTokens}
+          todayTokens={todayTokens}
+          weekTokens={weekTokens}
+          floatPrefs={floatPrefs}
+          subscriptions={quotas}
+          budgetPressure={budgetPressure}
+          deltaPct={deltaPct}
+        />
+      )}
+      {(embeddedSettings || open) && (
         <BillingDashboard
           stats={displayStats}
           t={t}
           onClose={close}
+          embeddedSettings={embeddedSettings}
           navigateToSession={navigateToSession}
           userPrices={userPrices}
           onUserPrices={updateUserPrices}
@@ -4592,8 +4673,9 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           onPreviewPeak={previewPeak}
           floatPrefs={floatPrefs}
           onFloatPrefs={updateFloatPrefs}
-          cardPrefs={cardPrefs}
+          cardPrefs={effectiveCardPrefs}
           onCardPrefs={updateCardPrefs}
+          recoveryEntryAvailable={recoveryEntryAvailable}
           sitePrefs={sitePrefs}
           onSitePrefs={updateSitePrefs}
           liveCostPrefs={liveCostPrefs}
