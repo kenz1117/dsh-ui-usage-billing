@@ -42,6 +42,9 @@ function recordingContext(): { ctx: Context; injected: string[]; registered: Reg
     // cordis 的免 inject 服务读取：真实宿主必有，本桩返回 undefined 表示
     // 「宿主没有该服务」（会话跳转 / /usage 命令据此降级）。
     get: () => undefined,
+    // 可选服务的条件注入：本桩的宿主没有 shortcuts，故回调不执行。快捷键
+    // 注册本身由 apply-shortcut.client.spec.tsx 覆盖。
+    inject: () => () => {},
     locale: { register: () => () => {} },
     remote: {},
     sessions: {},

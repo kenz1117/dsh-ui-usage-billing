@@ -149,6 +149,7 @@
     "@deepseek-ai/dsh-client-connection": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-client-file-upload": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-client-locale": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-client-shortcuts": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-client-store": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-client-ui-conversation": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-client-ui-commands": "0.2.2-alpha.2",
