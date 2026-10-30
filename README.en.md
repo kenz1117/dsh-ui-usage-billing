@@ -306,10 +306,6 @@ Boundaries: the tool reads only this plugin's own aggregates — never Session b
 
 </details>
 
-## 📄 License
-
-[MIT](LICENSE) © 2026 KenZ (kenz1117)
-
 ## ❤️ Contributors
 
 <p align="center">
@@ -333,3 +329,7 @@ Boundaries: the tool reads only this plugin's own aggregates — never Session b
 - [@gitfangj](https://github.com/gitfangj) — `sync.sh` brace-variable compatibility under the macOS default bash 3.2
 
 </details>
+
+## 📄 License
+
+[MIT](LICENSE) © 2026 KenZ (kenz1117)

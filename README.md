@@ -315,10 +315,6 @@ npm dist-tag add @kenz1117/dsh-ui-usage-billing@<版本> latest  # 正式版
 
 </details>
 
-## 📄 许可证
-
-[MIT](LICENSE) © 2026 KenZ (kenz1117)
-
 ## ❤️ Contributors
 
 <p align="center">
@@ -342,3 +338,7 @@ npm dist-tag add @kenz1117/dsh-ui-usage-billing@<版本> latest  # 正式版
 - [@gitfangj](https://github.com/gitfangj) — `sync.sh` 在 macOS 缺省 bash 3.2 下的花括号变量兼容修复
 
 </details>
+
+## 📄 许可证
+
+[MIT](LICENSE) © 2026 KenZ (kenz1117)
