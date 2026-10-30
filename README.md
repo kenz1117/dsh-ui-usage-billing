@@ -313,7 +313,22 @@ npm dist-tag add @kenz1117/dsh-ui-usage-billing@<版本> latest  # 正式版
 - **账本从首次成功聚合开始生效**：升级前已经永久删除且不在旧快照中的会话无法恢复；手动删除 `.dsh-usage-ledger.json` 及其 `.bak` 会清空独立保留的历史。账本只保留本插件已经成功观测过的调用。
 - **历史回放预热**：插件加载 3 秒后台自动全量折叠宿主全部历史会话日志（账本幂等，重复折叠不重复计数），首次打开面板即可看到完整历史统计，无需等一遍首次折叠。历史会话按「首次折叠时的模型单价」计价；厂商改价前的历史消耗不会按新价重算（价格目录无历史时点价，属估算口径）。
 
+</details>
+
+## 📄 许可证
+
+[MIT](LICENSE) © 2026 KenZ (kenz1117)
+
 ## ❤️ Contributors
+
+<p align="center">
+  <a href="https://github.com/kenz1117/dsh-ui-usage-billing/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=kenz1117/dsh-ui-usage-billing" alt="DSH Usage Billing contributors" />
+  </a>
+</p>
+
+<details>
+<summary>查看具体贡献记录</summary>
 
 - [@lucagiftzek](https://github.com/lucagiftzek) — 费率表 CSS 修整（PR #59）、`trustedHosts` 反代支持（PR #60）、币种偏好持久化（PR #58）、费率表搜索（PR #67）、峰谷指示点与固定到输入框（PR #68）、EUR 展示币种与界面语言解耦（PR #70）、首次价目表拉取前置到预热回放（PR #55）、models.dev 收录按证据取舍（PR #56）、硬编码 UI 文案入词典（PR #61）
 - [@hwangjunjie](https://github.com/hwangjunjie) — 腾讯云 TokenHub / Token Plan 订阅额度适配（`src/tc3.ts`）、提供商优先通道分组与网关徽标、`routeAliases` / `modelKeyAliases` 配置（PR #35）、订阅徽标按三维格逐通道判定（PR #83）
@@ -327,7 +342,3 @@ npm dist-tag add @kenz1117/dsh-ui-usage-billing@<版本> latest  # 正式版
 - [@gitfangj](https://github.com/gitfangj) — `sync.sh` 在 macOS 缺省 bash 3.2 下的花括号变量兼容修复
 
 </details>
-
-## 📄 许可证
-
-[MIT](LICENSE) © 2026 KenZ (kenz1117)

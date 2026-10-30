@@ -304,7 +304,22 @@ Boundaries: the tool reads only this plugin's own aggregates — never Session b
 - **Cost is a catalog estimate**: models without published per-token pricing (iFlytek, SenseTime, Xiaomi) use estimates (feature-list footnote ¹); official billing is authoritative.
 - **The ledger starts at its first successful aggregation**: sessions permanently deleted before the upgrade and absent from the old snapshot cannot be recovered. Manually deleting `.dsh-usage-ledger.json` and its `.bak` clears independently retained history. Only calls successfully observed by this plugin are retained.
 
+</details>
+
+## 📄 License
+
+[MIT](LICENSE) © 2026 KenZ (kenz1117)
+
 ## ❤️ Contributors
+
+<p align="center">
+  <a href="https://github.com/kenz1117/dsh-ui-usage-billing/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=kenz1117/dsh-ui-usage-billing" alt="DSH Usage Billing contributors" />
+  </a>
+</p>
+
+<details>
+<summary>View contribution notes</summary>
 
 - [@lucagiftzek](https://github.com/lucagiftzek) — rate-table CSS polish (PR #59), `trustedHosts` reverse-proxy support (PR #60), currency preference persistence (PR #58), rate-table search (PR #67), peak/off-peak indicator dots with pin-to-composer (PR #68), the EUR display currency with language decoupling (PR #70), the first pricing fetch moved ahead of the warmup replay (PR #55), evidence-based models.dev listings (PR #56), and hardcoded UI strings routed through locale dictionaries (PR #61)
 - [@hwangjunjie](https://github.com/hwangjunjie) — Tencent Cloud TokenHub / Token Plan subscription quota adaptation (`src/tc3.ts`), provider-first channel grouping with gateway badges, the `routeAliases` / `modelKeyAliases` config (PR #35), and subscription badges decided per channel on the day × model × site cells (PR #83)
@@ -318,7 +333,3 @@ Boundaries: the tool reads only this plugin's own aggregates — never Session b
 - [@gitfangj](https://github.com/gitfangj) — `sync.sh` brace-variable compatibility under the macOS default bash 3.2
 
 </details>
-
-## 📄 License
-
-[MIT](LICENSE) © 2026 KenZ (kenz1117)
