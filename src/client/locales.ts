@@ -138,6 +138,7 @@ export type UsageBillingKey =
   | 'nativeSettingsNav'
   | 'nativeSettingsIntro'
   | 'nativeSettingsHiddenHint'
+  | 'shortcutOpenDashboard'
   | 'cardMetric'
   | 'cardMetricMoney'
   | 'cardMetricTokens'
@@ -564,11 +565,12 @@ export const zh: Record<UsageBillingKey, string> = {
   'cardModeFull': '完整卡片',
   'cardModeCompact': '紧凑图标',
   'cardModeHidden': '完全隐藏',
-  'cardModeHiddenHint': '恢复显示：打开宿主设置 → 用量与费用 → 完整卡片；也可通过 /usage 打开仪表盘后恢复。',
+  'cardModeHiddenHint': '恢复显示：打开宿主设置 → 用量与费用 → 完整卡片；也可通过 /usage 或「打开用量计费仪表盘」快捷键直接打开仪表盘后恢复。',
   'cardModeFallback': '当前宿主没有原生设置页或 /usage 入口，完全隐藏已降级为紧凑图标，避免仪表盘无法打开。',
   'nativeSettingsNav': '用量与费用',
   'nativeSettingsIntro': '管理侧栏计费入口的显示方式。修改即时生效，并与仪表盘内的设置同步。',
-  'nativeSettingsHiddenHint': '侧栏入口当前已隐藏。选择「完整卡片」或「紧凑图标」即可恢复；统计与提醒一直保持运行。',
+  'nativeSettingsHiddenHint': '侧栏入口当前已隐藏。选择「完整卡片」或「紧凑图标」即可恢复；隐藏期间也可用「打开用量计费仪表盘」快捷键直接打开面板（绑定在宿主设置 → 快捷键里修改）。统计与提醒一直保持运行。',
+  'shortcutOpenDashboard': '打开用量计费仪表盘',
   'cardMetric': '主指标',
   'cardMetricMoney': '金额',
   'cardMetricTokens': 'Token',
@@ -996,11 +998,12 @@ export const en: Record<UsageBillingKey, string> = {
   'cardModeFull': 'Full card',
   'cardModeCompact': 'Compact icon',
   'cardModeHidden': 'Hidden',
-  'cardModeHiddenHint': 'Restore: open native Settings → Usage & billing → Full card, or open the dashboard with /usage and return to Settings.',
+  'cardModeHiddenHint': 'Restore: open native Settings → Usage & billing → Full card, or open the dashboard with /usage or the Open usage billing dashboard shortcut and return to Settings.',
   'cardModeFallback': 'This host has neither native Settings nor /usage, so Hidden falls back to the compact icon to keep the dashboard reachable.',
   'nativeSettingsNav': 'Usage & billing',
   'nativeSettingsIntro': 'Choose how the sidebar billing entry appears. Changes apply immediately and stay in sync with the dashboard settings.',
-  'nativeSettingsHiddenHint': 'The sidebar entry is hidden. Choose Full card or Compact icon to restore it; tracking and alerts remain active.',
+  'nativeSettingsHiddenHint': 'The sidebar entry is hidden. Choose Full card or Compact icon to restore it; while hidden you can still open the dashboard with the Open usage billing dashboard shortcut (rebind it in native Settings → Shortcuts). Tracking and alerts remain active.',
+  'shortcutOpenDashboard': 'Open usage billing dashboard',
   'cardMetric': 'Main metric',
   'cardMetricMoney': 'Cost',
   'cardMetricTokens': 'Tokens',
