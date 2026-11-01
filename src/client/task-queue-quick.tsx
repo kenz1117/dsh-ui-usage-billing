@@ -28,6 +28,8 @@ import css from './TaskQueueQuick.module.css'
 
 const REFRESH_INTERVAL_MS = 30_000
 const SUCCESS_NOTICE_MS = 4_000
+// 错误需要读的时间更长，但同样不能常驻：否则会一直压在输入框上方（用户反馈）。
+const ERROR_NOTICE_MS = 8_000
 
 type Translate = (key: UsageBillingKey) => string
 type ProjectionKey = Extract<keyof SessionProjectionMap, string>
@@ -193,8 +195,9 @@ export function QuickQueueEnqueue({
   }, [])
 
   useEffect(() => {
-    if (notice?.kind !== 'success') return
-    const timer = window.setTimeout(() => { setNotice(null) }, SUCCESS_NOTICE_MS)
+    if (notice === null) return
+    const ms = notice.kind === 'success' ? SUCCESS_NOTICE_MS : ERROR_NOTICE_MS
+    const timer = window.setTimeout(() => { setNotice(null) }, ms)
     return () => { window.clearTimeout(timer) }
   }, [notice])
 

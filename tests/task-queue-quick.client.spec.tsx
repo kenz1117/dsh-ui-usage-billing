@@ -343,6 +343,37 @@ describe('quick queue mutation and feedback', () => {
     expect(await screen.findByRole('status')).toBeTruthy()
     expect(mutations).toHaveLength(1)
   })
+
+  it('auto-dismisses an error notice after 8s instead of lingering forever (user report 2026-10-31)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      stubQueue()
+      renderQuick({ input: { ...BASE_INPUT, draft: '   ' } })
+      fireEvent.click(await screen.findByTestId('quick-queue-enqueue'))
+      expect(screen.getByRole('alert')).toBeTruthy()
+      await act(async () => { await vi.advanceTimersByTimeAsync(8_000) })
+      expect(screen.queryByRole('alert')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('dismisses the success notice on its own 4s cadence', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      stubQueue()
+      renderQuick()
+      fireEvent.click(await screen.findByTestId('quick-queue-enqueue'))
+      expect(await screen.findByRole('status')).toBeTruthy()
+      // shouldAdvanceTime 下真实时间与假时间并走，边界断言留出漂移余量。
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+      expect(screen.queryByRole('status')).not.toBeNull()
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_500) })
+      expect(screen.queryByRole('status')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('quick queue late-response races', () => {
