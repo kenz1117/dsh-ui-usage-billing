@@ -37,16 +37,23 @@ jobs:
       - id: compat
         run: node scripts/check-compat.mjs --report drift-report.md
       - id: bundle-sync
+        # 两个漂移检查相互独立：compat 报漂移时种子检查也要跑（if: always()）。
         # 校验脚本退出非零（漂移或自身故障）→ 打 failed 标记给开 issue 步骤。
         # Actions 的 bash 带 -e，须用 || 捕获而非 echo $?（否则步骤直接中止）。
         # DSH_FETCH_HOST_TAG=1：宿主检出是 shallow clone（默认分支、无 tag），
         # 脚本据此补取「本仓声明的最新兼容版本」对应的 tag，让比对对着我们声称
         # 兼容的那一代宿主，而不是对着工作区/默认分支猜（后者会制造假警报）。
+        if: always()
         env:
           DSH_FETCH_HOST_TAG: '1'
         run: node scripts/check-clientbundle-sync.mjs --repo harness || echo "failed=1" >> "$GITHUB_OUTPUT"
       - name: 平台种子漂移时开/更新 issue
-        if: steps.bundle-sync.outputs.failed != '0'
+        # 显式状态函数 failure()/always() 才会关掉 GitHub Actions 的隐式
+        # success() 门禁；不带状态函数的 if 在前面步骤失败后会被跳过
+        # （2026-10-30~11-01 rc.5 漂移连报三天却没开 issue 的根因）。
+        # == '1' 精确匹配 bundle-sync 写入的失败标记；步骤被跳过时输出为空，
+        # 空串不等于 '1'，不会误触发（旧写法 != '0' 语义反了，全靠隐式门禁兜底）。
+        if: always() && steps.bundle-sync.outputs.failed == '1'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -61,7 +68,9 @@ jobs:
       - name: 漂移时开/更新 issue
         # 仅在「校验脚本判定漂移」时开 issue；pnpm 安装等基础设施故障
         # （compat 步骤根本没跑，outcome 为 skipped）不触发，避免误报噪音。
-        if: steps.compat.outcome == 'failure'
+        # failure() 是显式状态函数：没有它，隐式 success() 门禁会在 compat
+        # 失败后把本步直接跳过（连报三天不开 issue 的根因，见上方注释）。
+        if: failure() && steps.compat.outcome == 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
