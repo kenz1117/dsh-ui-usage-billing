@@ -2,7 +2,7 @@
 /** Queue panel: explicit opt-in on new hosts and read-only fallback on old hosts. */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { TaskQueuePanel } from '../src/client/TaskQueuePanel.tsx'
 import { zh } from '../src/client/locales.ts'
 import type { TaskQueueSnapshot } from '../src/task-queue-shared.ts'
@@ -131,5 +131,75 @@ describe('TaskQueuePanel', () => {
 
     expect((await screen.findByRole('alert')).textContent).toContain(t('queueImportFormat'))
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps an error visible past a reload and auto-dismisses it at 8s (audit B1/O4)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const fetchMock = vi.fn(async () => jsonResponse(BASE))
+      vi.stubGlobal('fetch', fetchMock)
+      render(<TaskQueuePanel t={t} language="zh" navigateToSession={navigateToSession} />)
+      const input = await screen.findByTestId('queue-import-file')
+      await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false))
+      fireEvent.change(input, { target: { files: [jsonFile('[]', 'empty.json')] } })
+      expect((await screen.findByRole('alert')).textContent).toContain(t('queueImportFormat'))
+
+      // O4：reload 成功（5s 轮询照跑）不再静默清除 error，读时间留足到 8s。
+      await act(async () => { await vi.advanceTimersByTimeAsync(5_500) })
+      expect(screen.getByRole('alert')).toBeTruthy()
+      await act(async () => { await vi.advanceTimersByTimeAsync(3_000) })
+      expect(screen.queryByRole('alert')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('auto-dismisses the import status notice at 4s (audit B1)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    try {
+      const imported: TaskQueueSnapshot = {
+        ...BASE,
+        tasks: [{ id: 'task-1', prompt: 'First', cwd: '/tmp/work', provider: 'deepseek-official', model: 'deepseek-flash', status: 'queued', createdAt: 1 }],
+      }
+      vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'POST') return jsonResponse({ ok: true, snapshot: imported })
+        return jsonResponse(BASE)
+      }))
+      render(<TaskQueuePanel t={t} language="zh" navigateToSession={navigateToSession} />)
+      const input = await screen.findByTestId('queue-import-file')
+      await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false))
+      fireEvent.change(input, { target: { files: [jsonFile(JSON.stringify(['First']), 'tasks.json')] } })
+      expect((await screen.findByRole('status')).textContent).toContain(t('queueImported', { count: 1 }).slice(0, 6))
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+      expect(screen.queryByRole('status')).not.toBeNull()
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_500) })
+      expect(screen.queryByRole('status')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('pauses polling while the page is hidden and resumes on return (audit B2)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const fetchMock = vi.fn(async () => jsonResponse(BASE))
+      vi.stubGlobal('fetch', fetchMock)
+      render(<TaskQueuePanel t={t} language="zh" navigateToSession={navigateToSession} />)
+      await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(1))
+      // jsdom 的 document.hidden 是原型 getter，用实例自有属性遮蔽后派发事件。
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+      act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+      const seen = fetchMock.mock.calls.length
+      await act(async () => { await vi.advanceTimersByTimeAsync(12_000) })
+      expect(fetchMock.mock.calls.length).toBe(seen)
+
+      Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+      act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+      await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(seen))
+    } finally {
+      delete (document as { hidden?: unknown }).hidden
+      vi.useRealTimers()
+    }
   })
 })

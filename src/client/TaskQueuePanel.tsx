@@ -20,6 +20,10 @@ const STATUS_KEY: Record<TaskQueueStatus, UsageBillingKey> = {
   completed: 'queueStatusCompleted', failed: 'queueStatusFailed',
 }
 
+/** 面板提示与 quick-queue 同纪律：错误 8s、状态 4s，自动消失不常驻（2026-11-01 用户反馈同源）。 */
+const ERROR_NOTICE_MS = 8_000
+const STATUS_NOTICE_MS = 4_000
+
 function isTerminal(task: TaskQueueTask): boolean {
   return task.status === 'completed' || task.status === 'failed'
 }
@@ -74,10 +78,9 @@ export function TaskQueuePanel({ t, language, navigateToSession }: TaskQueuePane
     inFlight.current = true
     try {
       const next = await loadTaskQueue()
-      if (mounted.current) {
-        setSnapshot(next)
-        setError(undefined)
-      }
+      // error 的生命周期归 8s 定时器管（含网络抖动的瞬时错误），不由下次
+      // reload 成功静默抹掉——用户可能还没读完。
+      if (mounted.current) setSnapshot(next)
     } catch (cause) {
       if (mounted.current) setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -85,15 +88,39 @@ export function TaskQueuePanel({ t, language, navigateToSession }: TaskQueuePane
     }
   }, [])
 
+  // 页面隐藏时暂停轮询：窗口最小化/遮挡时不打无意义请求（quick-queue 同款门禁）。
+  const [pageVisible, setPageVisible] = useState(() => typeof document === 'undefined' || !document.hidden)
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const onVisibility = (): void => { setPageVisible(!document.hidden) }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { document.removeEventListener('visibilitychange', onVisibility) }
+  }, [])
+
   useEffect(() => {
     mounted.current = true
+    if (!pageVisible) return
     void reload()
     const timer = setInterval(() => { void reload() }, 5_000)
     return () => {
       mounted.current = false
       clearInterval(timer)
     }
-  }, [reload])
+  }, [reload, pageVisible])
+
+  // 提示自动消失：错误 8s（含网络抖动，不再靠下次 reload 成功静默抹掉）、
+  // 状态 4s。两个槽位独立计时，互不覆盖。
+  useEffect(() => {
+    if (error === undefined) return
+    const timer = window.setTimeout(() => { setError(undefined) }, ERROR_NOTICE_MS)
+    return () => { window.clearTimeout(timer) }
+  }, [error])
+
+  useEffect(() => {
+    if (notice === undefined) return
+    const timer = window.setTimeout(() => { setNotice(undefined) }, STATUS_NOTICE_MS)
+    return () => { window.clearTimeout(timer) }
+  }, [notice])
 
   useEffect(() => {
     if (snapshot === undefined) return
@@ -120,7 +147,10 @@ export function TaskQueuePanel({ t, language, navigateToSession }: TaskQueuePane
       return false
     } finally {
       mutating.current = false
-      if (mounted.current) setBusy(false)
+      // 不用 mounted 门禁：窗口隐藏期间 cleanup 会把 mounted.current 置 false，
+      // 此处若跳过 setBusy(false)，按钮会卡在禁用态直到下次重渲染。
+      // React 18 起卸载后 setState 是无害 no-op，直接调用即可。
+      setBusy(false)
     }
   }, [busy])
 
