@@ -46,7 +46,7 @@ interface ShortcutCommand {
 
 const SHORTCUT_EFFECT_LABEL = 'ui-usage-billing: dashboard shortcut'
 
-function shortcutContext(): {
+function shortcutContext(registerThrows = false): {
   ctx: Context
   commands: ShortcutCommand[]
   provided: Map<string, unknown>
@@ -55,6 +55,8 @@ function shortcutContext(): {
   const provided = new Map<string, unknown>()
   const shortcuts = {
     register: (command: ShortcutCommand) => {
+      // 宿主的三种注册期失败：重复 id、默认绑定与既有命令冲突、Web 不放行的组合。
+      if (registerThrows) throw new Error('Duplicate shortcut command')
       commands.push(command)
       return () => {}
     },
@@ -93,8 +95,8 @@ describe('client apply(): dashboard shortcut', () => {
     expect(commands).toHaveLength(1)
     expect(command.id).toBe('usage-billing.open-dashboard')
     expect(command.aliases).toEqual(['usage', 'billing', 'dashboard'])
-    // 宿主现有默认占用 KeyB/KeyN/KeyK/KeyT/KeyP/Slash/Comma/Backquote；重复会
-    // 让 register() 直接抛错，连累整颗插件。
+    // 宿主现有默认占用 KeyB/KeyN/KeyK/KeyT/KeyP/Slash/Comma/Backquote；撞上就会
+    // 让 register() 抛错，由 apply 侧捕获后静默降级（见下一条用例）。
     expect(command.defaults['desktop:macos']).toEqual({ code: 'KeyU', modifiers: ['primary', 'shift'] })
     expect(command.defaults['desktop:windows']).toEqual({ code: 'KeyU', modifiers: ['primary', 'shift'] })
     expect(command.defaults['desktop:linux']).toEqual({ code: 'KeyU', modifiers: ['primary', 'shift'] })
@@ -140,5 +142,14 @@ describe('client apply(): dashboard shortcut', () => {
     } finally {
       saveLanguage('zh')
     }
+  })
+
+  it('degrades silently when the host rejects the command', () => {
+    // 重复 id / 默认绑定冲突 / Web 不放行的组合会让宿主 register 直接抛错。
+    // cordis 会按 fiber 隔离，但插件本身也不该让异常冒出去：apply 正常返回，
+    // 只是这条命令不出现（侧栏入口、/usage 与原生设置照常）。
+    const recorded = shortcutContext(true)
+    expect(() => apply(recorded.ctx)).not.toThrow()
+    expect(recorded.commands).toHaveLength(0)
   })
 })

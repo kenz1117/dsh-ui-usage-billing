@@ -42,6 +42,7 @@ import { installCompletionNotifier, loadNotifyConfig } from './completion-notify
 import { createSessionNavigator } from './session-navigation.ts'
 import { registerUsageCommand } from './usage-command.ts'
 import { loadLanguage } from './usage-billing-settings.ts'
+import { swallowed } from '../silent.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -123,21 +124,32 @@ export function apply(ctx: Context): void {
   // 用 ctx.inject 而非把 shortcuts 放进 apply 的 inject 列表：0.1.x 宿主没有
   // 这个服务，声明成必需依赖会挂起整颗插件树（同上面 remote.llm 的教训）。
   ctx.inject(['shortcuts'], (scoped) => {
-    scoped.effect(() => scoped.shortcuts.register({
-      id: 'usage-billing.open-dashboard' as ShortcutCommandId,
-      label: () => (loadLanguage() === 'en' ? en.shortcutOpenDashboard : zh.shortcutOpenDashboard),
-      aliases: ['usage', 'billing', 'dashboard'],
-      defaults: {
-        'desktop:macos': { code: 'KeyU', modifiers: ['primary', 'shift'] },
-        'desktop:windows': { code: 'KeyU', modifiers: ['primary', 'shift'] },
-        'desktop:linux': { code: 'KeyU', modifiers: ['primary', 'shift'] },
-        'web:macos': { code: 'KeyU', modifiers: ['primary', 'shift'] },
-        'web:windows': { code: 'KeyU', modifiers: ['primary', 'shift'] },
-      },
-      regions: ['page', 'editable'],
-      modals: [],
-      resolve: () => ({ status: 'handled', run: () => { metrics.openDashboard() } }),
-    }), 'ui-usage-billing: dashboard shortcut')
+    scoped.effect(() => {
+      try {
+        const dispose = scoped.shortcuts.register({
+          id: 'usage-billing.open-dashboard' as ShortcutCommandId,
+          label: () => (loadLanguage() === 'en' ? en.shortcutOpenDashboard : zh.shortcutOpenDashboard),
+          aliases: ['usage', 'billing', 'dashboard'],
+          defaults: {
+            'desktop:macos': { code: 'KeyU', modifiers: ['primary', 'shift'] },
+            'desktop:windows': { code: 'KeyU', modifiers: ['primary', 'shift'] },
+            'desktop:linux': { code: 'KeyU', modifiers: ['primary', 'shift'] },
+            'web:macos': { code: 'KeyU', modifiers: ['primary', 'shift'] },
+            'web:windows': { code: 'KeyU', modifiers: ['primary', 'shift'] },
+          },
+          regions: ['page', 'editable'],
+          modals: [],
+          resolve: () => ({ status: 'handled', run: () => { metrics.openDashboard() } }),
+        })
+        return () => { dispose() }
+      } catch (error: unknown) {
+        // 重复命令 id、默认绑定与既有命令冲突、Web 不放行的组合，宿主 register 会
+        // 直接抛错。cordis 已按 fiber 隔离，不会拖垮插件，但按「注册失败静默降级」
+        // 的纪律记一笔并放弃这条命令：面板与其余入口照常。
+        swallowed('shortcut-register-failed', error)
+        return () => {}
+      }
+    }, 'ui-usage-billing: dashboard shortcut')
   })
 
   // 宿主原生设置页：完全隐藏后的稳定恢复入口。老宿主没有 settings.section 时，
