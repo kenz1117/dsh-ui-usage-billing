@@ -27,7 +27,11 @@ beforeEach(() => {
 })
 
 const t = (key: string): string => (zh as Record<string, string>)[key] ?? key
+// 纯函数用例按参数传月份，固定串即可；UI 用例的 fixture 用当前月（见下方 CURRENT_MONTH）。
 const MONTH = '2026-10'
+// 组件按本地时区当前月过滤（today.slice(0, 7)）；fixture 跟随当前月，避免硬编码
+// 月份跨月后「本月消耗模型行」消失、测试静默失效（2026-11-02 审计实录）。
+const CURRENT_MONTH = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
 
 function dayModels(cells: Record<string, number>): Record<string, Record<string, { cost: number }>> {
   const out: Record<string, Record<string, { cost: number }>> = {}
@@ -109,7 +113,9 @@ describe('按模型预算（设置页 UI）', () => {
       byModel: { flash: { calls: 1, input: 200, output: 50, cacheHit: 100, cacheMiss: 100, cost: 1.5, reasoning: 0 } },
       byDay: {},
       byDayModels: {
-        [`${MONTH}-18`]: { flash: { calls: 1, input: 200, output: 50, cacheHit: 100, cacheMiss: 100, cost: 1.5 } },
+        // 组件按本地时区当前月过滤（today.slice(0, 7)）；fixture 跟随当前月，
+        // 避免硬编码月份跨月后「本月消耗模型行」消失、测试静默失效。
+        [`${CURRENT_MONTH}-18`]: { flash: { calls: 1, input: 200, output: 50, cacheHit: 100, cacheMiss: 100, cost: 1.5 } },
       },
       byDayModelsSite: {},
     }
