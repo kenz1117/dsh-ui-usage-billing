@@ -13,3 +13,7 @@ usage-billing-redesign/
 .design/
 .v2c/
 .video_agent/
+# 本地会话/验证产物（不入库）
+.validation/
+previews/
+test-results/
