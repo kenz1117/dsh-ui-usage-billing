@@ -11,7 +11,7 @@
 | **正式版** | 非预发布 SemVer（如 `1.8.0`） | `latest` | 正式 Release | 已完成验收、面向默认安装 |
 | **预览版** | 带预发布后缀（如 `1.8.1-alpha.2`） | `alpha` | Pre-release | 新功能与宿主适配的先行验证 |
 
-当前发行状态：npm `latest` 指向 `1.8.1` 正式版，`alpha` 指向 `1.8.1-alpha.2` 预览版。后续正式版只切 `latest`，预览版只切 `alpha`，不再同时切 `latest`。兼容状态以 [COMPATIBILITY.md](COMPATIBILITY.md) 为准。
+当前发行状态：npm `latest` 指向 `1.8.1` 正式版，`alpha` 指向 `1.8.2-alpha.1` 预览版。后续正式版只切 `latest`，预览版只切 `alpha`，不再同时切 `latest`。兼容状态以 [COMPATIBILITY.md](COMPATIBILITY.md) 为准。
 
 原则：
 
@@ -104,6 +104,6 @@ in-process DSH host 又不带桌面运行时（UI 组件加载不全）。双层
 - **竞品调研与改进计划**：[docs/store-benchmark-2026-10.md](docs/store-benchmark-2026-10.md)——DSH 商店「用量与计费」类目 214 个插件的横向调研（2026-10-23 快照），含差距矩阵（G1~G12）与分批执行计划。**新增功能前先查该文档**：宿主能力一律 **type-only import + `ctx.inject`/`ctx.get`**，**不得**把新的 `@deepseek-ai/*` 加进 `PLATFORM_MODULES`（会让老宿主 `require()` 到应答不了的 spec → 运行时抛错）；服务缺席即降级，不得因此收窄兼容矩阵；client bundle 是单文件 closure factory、无代码分割，新代码必须体积入账（`pnpm size` 查红线）。
 - **仪表盘分区（2026-10-27）**：8 个一级分区——概览 / 队列 / 账单 / 用量 / 趋势 / 智能体 / 费率 / 设置；**Tab 只留名称，不挂状态徽标**（信息都在各自分区内）。智能体网络树见 `src/client/domain/agent-tree.ts`（从 `parentId` 还原委派关系 + 链合计 + 环防护）。
 - **面板压缩防线**：`.dashboardBody` / `.tabPanel` 是列向 flex 容器，直系子块必须 `flex-shrink: 0`（列向 flex 默认会把内容高的卡片**压扁而不是滚动**——`overflow-y:auto` 挡不住 flex 收缩；2026-10-23 用户反馈「切到上下文 Tab 卡片被缩小」即此坑）。jsdom 不做布局、无法单测覆盖，由 lint **守卫 7「面板压缩防线」**兜底。
-- **体积现状（2026-10-27）**：`lib/client.js` = 337,952 字节（330.0 KiB），自设强线 500 KiB（余量 170.0 KiB）；每次发布仍须实测并记录增量，不为压数字牺牲可靠性或引入动态执行。
+- **体积现状（2026-11-03）**：`lib/client.js` = 355,088 字节（346.8 KiB），自设强线 500 KiB（余量 153.2 KiB）；每次发布仍须实测并记录增量，不为压数字牺牲可靠性或引入动态执行。
 - **已接入的宿主能力（均为特性探测 + 降级）**：会话跳转（`ctx.uiWorkspace.openSession` 新代 / `ctx.sessions.open` 老代，见 `src/client/session-navigation.ts`）、`/usage` 对话内命令（`ctx.commandUi.register`，见 `src/client/usage-command.ts`）、低谷任务队列（`sessionController`，见 `src/task-queue.ts`）。取服务一律走 `ctx.get()`（免 inject）——老宿主没有这些服务，声明成注入依赖会挂起等它、卡住整个 web 启动。
 - **DSH Community Market 目录（Path A）**：`catalog/catalog-source.json` + `catalog/v1/plugins.json`，由 `.github/workflows/pages.yml` 发到 GitHub Pages；本地/CI 用 `node scripts/check-catalog.mjs` 校验（strict schema：多余字段会让整个来源被市场拒收）。发布时序：**先 npm publish 精确版本，再并入 main 触发 Pages**——目录指向未发布版本时市场安装会 fail-closed（预期行为）。
