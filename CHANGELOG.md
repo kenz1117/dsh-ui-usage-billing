@@ -2,11 +2,18 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2。当前 `latest` 指向 `1.8.1` 正式版，`alpha` 指向 `1.8.1-alpha.2`；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2。当前 `latest` 指向 `1.8.1` 正式版，`alpha` 指向 `1.8.2-alpha.2`；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2）
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
+
+### v1.8.2-alpha.2（2026-11-03）
+
+- **新增：费率表表头 sticky 固定、列表内容独立滚动（issue #113）**。费率 Tab 的模型单价表改为自带滚动容器：表头（模型名称 / 输入缓存未命中 / 输入缓存命中 / 输出 / 时段）固定在表格顶部，表体纵向独立滚动，横向滚动保留（宽表仍可左右滑动）。表头底色取实色抬升层并带常驻分隔线，被滚过的行不会从表头底下透出；表格滚到底不连带拖动外层仪表盘。
+- **根因**：`position: sticky` 相对**最近的滚动容器**定位，而原先的表格容器高度随内容自适应、从不是滚动容器，sticky 等同未写——表头随仪表盘整体滚动跑出视野。现在给费率表单独设高度上限（随弹窗高度走，窄窗不至于把表压成两三行），让它真正成为滚动容器，表头才粘得住。
+- **口径边界**：价格、计价口径、目录与宿主兼容矩阵均不变；本版只含 issue #113，PR #110（仪表盘快捷键）与 PR #111（汇率兜底源）未并入。
+- **验证**：全量 85 个测试文件 / 851 条用例通过（新增一条锁「费率表挂独立滚动容器」的类名绑定；jsdom 不做布局，表头粘性另由 lint 守卫 8 在 CSS 文本层钉住 `max-height` / `position: sticky` / 不透明底色三条契约）。3080 dev host 真机：费率表 267 行，表体滚动 900px 后表头 top 与容器 top 仅差 1px（容器边框），行内容从表头下方滚过。客户端 bundle **355,430 字节（347.1 KiB）**，低于本仓自设 500 KiB 强警告线。
 
 ### v1.8.1（2026-10-30）
 
