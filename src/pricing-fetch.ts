@@ -20,9 +20,24 @@ const FETCH_TIMEOUT_MS = 8000
 const pricingGate = createCooldownGate({ failures: 3, cooldownMs: 60_000 })
 
 /**
+ * 解析 `{ rates: { CNY: number } }` 结构的汇率 JSON（open.er-api.com 与 AllRatesToday 通用）。
+ * @param text - 响应正文。
+ * @returns CNY 汇率；结构不符或非正数时 undefined。
+ */
+function parseRatesJsonCny(text: string): number | undefined {
+  try {
+    const data = JSON.parse(text) as { rates?: Record<string, unknown> }
+    const cny = data.rates?.CNY
+    return typeof cny === 'number' && Number.isFinite(cny) && cny > 0 ? cny : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * USD → CNY 汇率源，按顺序尝试：国内可达的腾讯财经行情（免 key、`~` 分隔
- * 第 4 个字段为价格）优先，国外 open.er-api.com 兜底。任一源失败自动落到
- * 下一个；全部失败由调用方降级内置汇率。
+ * 第 4 个字段为价格）优先，国外 open.er-api.com 兜底，再退到 AllRatesToday
+ * 免 key 端点（同结构）。任一源失败自动落到下一个；全部失败由调用方降级内置汇率。
  */
 const RATE_SOURCES: readonly { url: string; parse: (text: string) => number | undefined }[] = [
   {
@@ -35,15 +50,12 @@ const RATE_SOURCES: readonly { url: string; parse: (text: string) => number | un
   },
   {
     url: 'https://open.er-api.com/v6/latest/USD',
-    parse: (text) => {
-      try {
-        const data = JSON.parse(text) as { rates?: Record<string, unknown> }
-        const cny = data.rates?.CNY
-        return typeof cny === 'number' && Number.isFinite(cny) && cny > 0 ? cny : undefined
-      } catch {
-        return undefined
-      }
-    },
+    parse: parseRatesJsonCny,
+  },
+  {
+    // AllRatesToday 免 key 端点，响应结构与 open.er-api.com 相同（ECB 参考汇率，按日更新）。
+    url: 'https://allratestoday.com/api/open/latest/USD',
+    parse: parseRatesJsonCny,
   },
 ]
 
@@ -164,7 +176,7 @@ async function fetchJson(url: string): Promise<unknown> {
 /** Latest USD → CNY rate from the first working source, or undefined when none respond. */
 /**
  * EUR → CNY 汇率源。与 USD 同一套降级约定：腾讯行情优先（免 key、国内可达），
- * open.er-api.com 兑底；全部失败由调用方降级内置汇率，不阻塞其他价格拉取。
+ * open.er-api.com 兑底，AllRatesToday 再兜底；全部失败由调用方降级内置汇率，不阻塞其他价格拉取。
  */
 const EUR_RATE_SOURCES: readonly { url: string; parse: (text: string) => number | undefined }[] = [
   {
@@ -177,15 +189,11 @@ const EUR_RATE_SOURCES: readonly { url: string; parse: (text: string) => number 
   },
   {
     url: 'https://open.er-api.com/v6/latest/EUR',
-    parse: (text) => {
-      try {
-        const data = JSON.parse(text) as { rates?: Record<string, unknown> }
-        const cny = data.rates?.CNY
-        return typeof cny === 'number' && Number.isFinite(cny) && cny > 0 ? cny : undefined
-      } catch {
-        return undefined
-      }
-    },
+    parse: parseRatesJsonCny,
+  },
+  {
+    url: 'https://allratestoday.com/api/open/latest/EUR',
+    parse: parseRatesJsonCny,
   },
 ]
 
