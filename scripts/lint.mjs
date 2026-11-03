@@ -21,6 +21,10 @@
  * 6. 字体纪律（#100 复验）：font-family 只能引用令牌或关键字，font 简写只允许
  *    关键字，TSX 内联 fontFamily 只能是 var()——硬编码字体栈在 Windows 落到
  *    宋体，且绕过令牌统一调整。
+ * 7. 面板压缩防线：列向 flex 容器（.dashboardBody / .tabPanel）的直系子块必须
+ *    声明 flex-shrink: 0——否则卡片被纵向压扁而不是让容器滚动。
+ * 8. 费率表 sticky 表头契约（#113）：.ubTablewrapPricing 必须有 max-height
+ *    （自建滚动容器），表头必须 position:sticky + top:0 + 不透明底色。
  *
  * 全绿退出 0；违规打印 文件:行 退出 1。CI 与 `pnpm lint` 共用本脚本。
  */
@@ -227,9 +231,53 @@ function checkPanelShrinkGuard() {
 }
 checkPanelShrinkGuard()
 
+/**
+ * 守卫 8：费率表 sticky 表头契约（issue #113）——
+ * ①.ubTablewrapPricing 必须带高度上限（max-height）：没有上限它就不是滚动
+ *    容器，position:sticky 相对「最近的滚动容器」定位时会失效，表头随面板滚走；
+ * ②..ubTablewrapPricing .ubTable thead th 必须 position:sticky + top:0；
+ * ③.表头底色必须是不透明实色——半透明会让滚过去的行从表头底下透出来。
+ *
+ * jsdom 不做布局、无法单测覆盖（表头粘不粘住属于真机视觉），故在 CSS 文本层
+ * 把契约钉死，防止将来重构把这三行删掉。
+ */
+function checkStickyRateHeaderGuard() {
+  const css = readFileSync('src/client/UsageBilling.module.css', 'utf8')
+  const blockOf = (selector) => {
+    const at = css.indexOf(selector)
+    if (at < 0) return null
+    return css.slice(at, css.indexOf('}', at))
+  }
+  const wrap = blockOf('.ubTablewrapPricing {')
+  if (wrap === null) {
+    VIOLATIONS.push('src/client/UsageBilling.module.css  费率表 sticky 表头：缺少 .ubTablewrapPricing 规则（费率表需自建滚动容器）')
+  } else if (!/max-height\s*:/.test(wrap)) {
+    VIOLATIONS.push('src/client/UsageBilling.module.css  费率表 sticky 表头：.ubTablewrapPricing 必须声明 max-height（否则不构成滚动容器，sticky 失效）')
+  }
+  const head = blockOf('.ubTablewrapPricing .ubTable thead th')
+  if (head === null) {
+    VIOLATIONS.push('src/client/UsageBilling.module.css  费率表 sticky 表头：缺少 .ubTablewrapPricing .ubTable thead th 规则')
+  } else {
+    if (!/position\s*:\s*sticky/.test(head)) {
+      VIOLATIONS.push('src/client/UsageBilling.module.css  费率表 sticky 表头：表头必须 position: sticky')
+    }
+    if (!/top\s*:\s*0\b/.test(head)) {
+      VIOLATIONS.push('src/client/UsageBilling.module.css  费率表 sticky 表头：表头必须 top: 0（贴在滚动容器顶边）')
+    }
+    const bg = /background\s*:\s*([^;}]*)/.exec(head)
+    if (bg === null || /transparent/i.test(bg[1])) {
+      VIOLATIONS.push('src/client/UsageBilling.module.css  费率表 sticky 表头：表头底色必须不透明（transparent 会让滚过的行透出来）')
+    }
+  }
+  if (wrap !== null && head !== null) {
+    console.log('[lint] 费率表 sticky 表头：容器高度上限与表头粘性声明齐备')
+  }
+}
+checkStickyRateHeaderGuard()
+
 if (VIOLATIONS.length > 0) {
   console.error(`[lint] ${VIOLATIONS.length} 项纪律违规：`)
   for (const v of VIOLATIONS) console.error(`  ${v}`)
   process.exit(1)
 }
-console.log('[lint] 纪律守卫全绿（类型 / 日志 / 空 catch 注释 / CSS parity / 令牌 parity / 字体纪律 / 面板压缩防线）')
+console.log('[lint] 纪律守卫全绿（类型 / 日志 / 空 catch 注释 / CSS parity / 令牌 parity / 字体纪律 / 面板压缩防线 / 费率表 sticky 表头）')

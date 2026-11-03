@@ -3810,7 +3810,9 @@ function BillingDashboard({
                     onChange={event => { setPricingQuery(event.target.value) }}
                   />
                 </div>
-                <div className={css.ubTablewrap}>
+                {/* 费率表自带滚动容器（issue #113）：表头 sticky 固定，表体独立滚动。
+                    高度上限与 sticky 样式见 .ubTablewrapPricing。 */}
+                <div className={clsx(css.ubTablewrap, css.ubTablewrapPricing)} data-testid="billing-pricing-table">
                   <table className={css.ubTable}>
                     <thead>
                       <tr>

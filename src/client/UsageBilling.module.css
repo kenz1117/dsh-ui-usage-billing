@@ -2409,6 +2409,31 @@ body {
   border-radius: var(--ds-r-1);
 }
 
+/* 费率表独立滚动容器（issue #113）：表头 sticky 固定，表体自己滚。
+   根因：.ubTablewrap 高度随内容自适应，从不滚动，而 position:sticky 永远
+   相对**最近的滚动容器**定位——最近的那个不滚，sticky 就等于没写，表头随
+   仪表盘整体滚动跑出视野（表尾在视口外时更是完全看不到列名）。
+   给费率表单独设高度上限，让它真正成为滚动容器，表头才粘得住；
+   上限用 vh 跟着弹窗高度走（弹窗高 min(760px, 88vh)），窄窗不至于把表
+   压成两三行。overscroll-behavior:contain 阻断滚动链——表格滚到底不把
+   外层仪表盘一起带跑。 */
+.ubTablewrapPricing {
+  max-height: min(56vh, 520px);
+  overscroll-behavior: contain;
+}
+
+/* sticky 表头：不透明底色（否则滚过的行会从表头底下透出来）+ 常驻分隔线。
+   border-collapse:collapse 下 sticky 单元格的下边框不随行滚动，用 inset
+   阴影补一条线；表头底色取 --dsb-3（抬升表面，实色），与卡片玻璃底区分
+   出「表头是浮在表体之上的一层」。 */
+.ubTablewrapPricing .ubTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--dsb-3);
+  box-shadow: inset 0 -1px 0 var(--ds-border);
+}
+
 .ubTable {
   width: 100%;
   border-collapse: collapse;
