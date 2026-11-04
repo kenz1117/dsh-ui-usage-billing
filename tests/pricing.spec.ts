@@ -915,11 +915,58 @@ describe('applyUserModelAliases (config seam)', () => {
     expect(resolveCatalogKey('totally-new-model-y')).toBe('totally-new-model-y')
   })
 
-  it('hy4-preview 内置归一到独立目录键，不依赖用户别名', () => {
+  it('hy4-preview 与 hy4 正式版各自归一到独立目录键，不依赖用户别名', () => {
     expect(resolveCatalogKey('hy4-preview')).toBe('hunyuan-hy4-preview')
-    expect(resolveCatalogKey('hy4')).toBe('hunyuan-hy4-preview')
+    // 2026-11-03 正式版上线后 `hy4` 是官方正式版 id，不再归一到 preview 条目。
+    expect(resolveCatalogKey('hy4')).toBe('hunyuan-hy4')
+    expect(resolveCatalogKey('hunyuan-hy4')).toBe('hunyuan-hy4')
     expect(modelOf('glm-5.3-flashx')?.key).toBe('glm-5.3-flashx')
     expect(modelOf('glm-5.3-flashx')?.price).toEqual({ currency: 'CNY', input: 2, cacheHit: 0.57, output: 7 })
+  })
+})
+
+describe('混元 Hy4 正式版定价（2026-11-04 扩容）', () => {
+  // 官方价目页：Hy4 刊例价 ¥6/¥0.3/¥18，自说明发布之日起至 2026-12-31 23:59:59
+  // （北京时间）按目录价格的 50% 结算。
+  const PROMO_START = Date.UTC(2026, 10, 2, 16, 0, 0)
+  const PROMO_END = Date.UTC(2026, 11, 31, 15, 59, 59)
+
+  it('目录条目保存刊例价，折扣只存在于 promo 窗口', () => {
+    const entry = modelOf('hy4')
+    expect(entry.key).toBe('hunyuan-hy4')
+    expect(entry.price).toEqual({ currency: 'CNY', input: 6, cacheHit: 0.3, output: 18 })
+    expect(entry.promo?.factor).toBe(0.5)
+    expect(entry.promo?.startsAtMs).toBe(PROMO_START)
+    expect(entry.promo?.endsAtMs).toBe(PROMO_END)
+  })
+
+  it('促销期内按目录价的 5 折计费（¥3 / ¥0.15 / ¥9）', () => {
+    const priced = applyPromo(modelOf('hy4'), Date.UTC(2026, 10, 10))
+    expect(priced.price.input).toBe(3)
+    expect(priced.price.cacheHit).toBe(0.15)
+    expect(priced.price.output).toBe(9)
+  })
+
+  it('促销起止边界：起点前按刊例价，截止时刻起恢复刊例价', () => {
+    const entry = modelOf('hy4')
+    expect(applyPromo(entry, PROMO_START - 1).price.input).toBe(6)
+    expect(applyPromo(entry, PROMO_START).price.input).toBe(3)
+    expect(applyPromo(entry, PROMO_END - 1).price.input).toBe(3)
+    expect(applyPromo(entry, PROMO_END).price.input).toBe(6)
+  })
+
+  it('按事件时刻计价：促销起点前的事件按刊例价，不被折扣追溯', () => {
+    const entry = modelOf('hy4')
+    const buckets = { input: 1_000_000, cacheHit: 0, cacheMiss: 0, output: 0 }
+    expect(computeCostAt(entry, buckets, PROMO_START - 1)).toBeCloseTo(6, 6)
+    expect(computeCostAt(entry, buckets, PROMO_START + 3_600_000)).toBeCloseTo(3, 6)
+  })
+
+  it('Hy4 preview 条目不受正式版折扣影响（不同 id 的独立收录）', () => {
+    const preview = modelOf('hy4-preview')
+    expect(preview.key).toBe('hunyuan-hy4-preview')
+    expect(preview.promo).toBeUndefined()
+    expect(preview.price).toEqual({ currency: 'CNY', input: 6, cacheHit: 0.3, output: 18 })
   })
 })
 

@@ -281,6 +281,14 @@ export interface PricePromo {
     /** 折扣系数（0.5 = 五折，0 = 活动期免费）；仅 [0,1) 区间有效，非法值视为无促销。 */
     factor: number;
     /**
+     * 生效起始时刻（epoch ms）：该时刻起才按折扣计价。缺省表示自模型上线起
+     * 持续生效（多数厂商的「限时折扣」只公布截止日）。给出起点时，早于该
+     * 时刻的历史事件按刊例价计——与「按事件发生时刻适用当时的官方规则」
+     * 同一口径（如 Hy4 正式版：2026-11-03 上线，官方价目页同日挂出 5 折说明，
+     * 上线前不存在的流量不受折扣影响）。
+     */
+    startsAtMs?: number;
+    /**
      * 分档折扣覆盖：厂商对不同档位给不同折扣时逐档指定（如 GPT-5.6 Sol 促销为
      * 缓存 0.8 / 输入 0.8 / 输出 2/3）。缺省档位沿用 {@link factor}；单档取值
      * 仅 [0,1) 区间有效（0 = 该档活动期免费），非法值回落 factor。
@@ -383,7 +391,8 @@ export declare function modelOf(key: string): ModelEntry;
 export declare function isPriced(key: string): boolean;
 /**
  * 促销在 nowMs 是否生效：factor 必须落在 [0,1) 区间（0 = 活动期免费，issue #86），
- * 截止时刻及之后视为过期；endsAtMs 缺省表示长期活动，在 factor 合法期间持续生效。
+ * 截止时刻及之后视为过期；endsAtMs 缺省表示长期活动，在 factor 合法期间持续生效；
+ * startsAtMs 给出时，该时刻之前尚未开始（按刊例价计，不套折扣）。
  * 导出供测试：纯函数。
  * @param promo - 待判定的促销窗口。
  * @param nowMs - 判定时刻（epoch ms）。

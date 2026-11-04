@@ -34,7 +34,7 @@ Most billing plugins stop at "token count × unit price". dsh-ui-usage-billing t
     </td>
     <td width="50%" valign="top">
       <h3>Live prices, history never rewritten</h3>
-      <p>A live models.dev catalog + a built-in catalog of 241 models across 25 vendors + user-defined prices in the settings panel (bindable per relay origin) mean new models never wait for a release; DeepSeek time-of-day prices are <strong>segmented by official change boundaries</strong> (base price before 08-17, weekend peak hours 08-17~08-23, weekend all-day off-peak from 08-23) and later price changes never rewrite old bills.</p>
+      <p>A live models.dev catalog + a built-in catalog of 247 models across 25 vendors + user-defined prices in the settings panel (bindable per relay origin) mean new models never wait for a release; DeepSeek time-of-day prices are <strong>segmented by official change boundaries</strong> (base price before 08-17, weekend peak hours 08-17~08-23, weekend all-day off-peak from 08-23) and later price changes never rewrite old bills.</p>
     </td>
   </tr>
   <tr>
@@ -84,7 +84,7 @@ Overview / Queue / Billing / Usage / Trends / Agents / Rates / Settings. The her
 ## 💰 Billing engine
 
 - **Channel attribution**: official, direct, relay and unknown routes stay separate; route and model aliases repair historical attribution.
-- **Time-based pricing**: live models.dev data, 241 built-in models across 25 vendors, segmented peak pricing and live FX; later changes never rewrite history.
+- **Time-based pricing**: live models.dev data, 247 built-in models across 25 vendors, segmented peak pricing and live FX; later changes never rewrite history.
 - **Real-cost overrides**: set relay-specific prices for the same model and fill gaps for uncatalogued models.
 - **Budget controls**: global and per-model budgets, 50 / 80 / 100% alerts, balance warnings and last-40-turn spike attribution.
 
@@ -186,9 +186,9 @@ cost (CNY) = (missInput × p_input + cacheHit × p_cacheHit + output × p_output
 
 **Month-to-date forecast**: month-to-date spend + last-7-calendar-day pace × the days still left in the month. Only the days that have not happened yet are extrapolated, so a quiet recent week never inflates the number — earlier versions averaged over the month's *recorded* days and multiplied by the whole month length, which inflated sparsely used months several times over.
 
-### Supported models (2026-10 lineup, OpenAI-compatible series, 241 models)
+### Supported models (2026-11 lineup, OpenAI-compatible series, 247 models)
 
-The full catalog lives in the Rates tab and in `BUILTIN_MODEL_CATALOG` of `src/builtin-catalog.ts` (240 active + 1 retired model kept for historical repricing); representative models per vendor below.
+The full catalog lives in the Rates tab and in `BUILTIN_MODEL_CATALOG` of `src/builtin-catalog.ts` (246 active + 1 retired model kept for historical repricing); representative models per vendor below.
 
 | Provider  | Representatives                                        |
 | -------- | -------------------------------------------- |
@@ -201,11 +201,11 @@ The full catalog lives in the Rates tab and in `BUILTIN_MODEL_CATALOG` of `src/b
 | MiniMax   | MiniMax-M3, MiniMax-M2.7 (8 models)              |
 | Unisound  | U2 Flash, Unisound U2 (3 models)                 |
 | Baidu     | ERNIE-5.1, ERNIE-4.5 300B (2 models)             |
-| Tencent   | Hunyuan Hy3, Hunyuan T1 (3 models)                       |
+| Tencent   | Hunyuan Hy4 (limited 50% promo), Hunyuan Hy4 Preview, Hunyuan Hy3 (9 models) |
 | Anthropic | Claude Opus 5, Claude Sonnet 5 (14 models)    |
 | Mistral AI | Mistral Large 3, Mistral Small 4 (30 models)     |
 | Cohere    | Command A, Command R (7 models)                 |
-| OpenAI    | GPT-6 Astra, GPT-5.6 Sol / Terra / Luna (38 models) |
+| OpenAI    | GPT-6 Astra, GPT-5.6 Sol / Terra / Luna (39 models) |
 | Google    | Gemini 3.1 Pro, Gemini 3.6 Flash (25 models)      |
 | xAI       | Grok 4.7, Grok 4.20 (8 models)                     |
 | Meta      | Llama 4 Maverick, Muse Spark 1.3 (8 models)                     |

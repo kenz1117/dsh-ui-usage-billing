@@ -23,6 +23,14 @@ import type { ModelEntry } from './client/pricing.ts'
  * （models.dev 的 -cn 目录），该目录缺项时按 USD 价 × 汇率折算。既有条目一律
  * 不动——存量价格的更正走独立的调价节点，不与扩容混在一起。
  *
+ * 2026-11-04 扩容：补录腾讯混元 TokenHub 官方在售的 6 条新条目——Hy4 正式版
+ * （2026-11-03 上线，刊例价 ¥6/¥0.3/¥18，与 Preview 同价；官方同期公布「按
+ * 目录价格 5 折结算至 2026-12-31 23:59:59（北京时间）」的限时折扣，按 promo
+ * 建模：刊例价留在 price 表，折扣只在计价/显示出口折算）与混元 MT2-Pro/Plus/
+ * Lite、Role-Latest/Role 两个系列（翻译与角色扮演专用模型，无缓存命中档）。
+ * 价源 = 腾讯云 TokenHub「模型价格」页（2026-11-04 更新）的官方 CN 价。
+ * Hy4 preview 条目与其价格一律不动——同 id 不同模型的收录不构成调价。
+ *
  * Time-of-day billing (peak/off-peak) is now real: DeepSeek V4 officially
  * splits peak (09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate
  * from 2026-08-17, and Gemini's Flex tier discounts spare-capacity traffic.
@@ -522,6 +530,62 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'dsw-static-amber-400',
     // 官方刊例价（元 / 每百万 token）：输入 ¥6（未命中）/ ¥0.3（命中）/ 输出 ¥18（TokenHub 价目与新华网发布稿 2026-08-28）。
     price: { currency: 'CNY', input: 6, cacheHit: 0.3, output: 18 },
+  },
+  {
+    key: 'hunyuan-hy4',
+    name: '混元 Hy4',
+    provider: '腾讯混元',
+    colorVar: 'dsw-static-amber-400',
+    // 官方刊例价（元 / 每百万 token）：输入 ¥6（未命中）/ ¥0.3（命中）/ 输出 ¥18
+    // （腾讯云 TokenHub「模型价格」页 2026-11-04 更新，与 Hy4 preview 同价）。
+    // 官方同期挂出限时折扣：自说明发布之日起至 2026-12-31 23:59:59（北京时间），
+    // Hy4 调用费用按目录价格的 50% 结算——活动期内按 ¥3 / ¥0.15 / ¥9 计
+    // （与 models.dev / OpenRouter 的 tencent/hy4 实时美元价 0.417/1.2505/0.021 折算一致）。
+    // 促销起点取正式版上线日（北京时间 2026-11-03），此前不存在的流量不受折扣影响。
+    price: { currency: 'CNY', input: 6, cacheHit: 0.3, output: 18 },
+    promo: {
+      factor: 0.5,
+      startsAtMs: Date.UTC(2026, 10, 2, 16, 0, 0),
+      endsAtMs: Date.UTC(2026, 11, 31, 15, 59, 59),
+      note: '限时 5 折至 2026-12-31',
+    },
+  },
+  // 腾讯混元 TokenHub 在售补充档（官方价目页 2026-11-04；翻译 / 角色扮演专用模型，
+  // 无缓存命中档——模型清单未标注 Cache 能力，缓存命中价记 0）。
+  {
+    key: 'hy-mt2-pro',
+    name: '混元 MT2-Pro',
+    provider: '腾讯混元',
+    colorVar: 'dsw-static-amber-300',
+    price: { currency: 'CNY', input: 0.5, cacheHit: 0, output: 2 },
+  },
+  {
+    key: 'hy-mt2-plus',
+    name: '混元 MT2-Plus',
+    provider: '腾讯混元',
+    colorVar: 'dsw-static-amber-300',
+    price: { currency: 'CNY', input: 0.5, cacheHit: 0, output: 2 },
+  },
+  {
+    key: 'hy-mt2-lite',
+    name: '混元 MT2-Lite',
+    provider: '腾讯混元',
+    colorVar: 'dsw-static-amber-300',
+    price: { currency: 'CNY', input: 0.3, cacheHit: 0, output: 1.2 },
+  },
+  {
+    key: 'hunyuan-role-latest',
+    name: '混元 Role-Latest',
+    provider: '腾讯混元',
+    colorVar: 'dsw-static-amber-300',
+    price: { currency: 'CNY', input: 2.4, cacheHit: 0, output: 9.6 },
+  },
+  {
+    key: 'hy-role',
+    name: '混元 Role',
+    provider: '腾讯混元',
+    colorVar: 'dsw-static-amber-300',
+    price: { currency: 'CNY', input: 2.4, cacheHit: 0, output: 9.6 },
   },
   {
     key: 'hunyuan-t1',
@@ -2157,11 +2221,12 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   // 国产新兴/开源模型 id 变体。
   // 腾讯混元 TokenHub 短 id（控制台/网关常用形态；价格口径 = hunyuan 条目）。
   'hy3': 'hunyuan',
-  // Hy4 preview（2026-08-28 发布）：官方 id `hy4-preview`，短名/带前缀形态归一到独立目录键。
+  // Hy4 正式版（2026-11-03）与 Hy4 preview（2026-08-28）各自独立目录键：
+  // 官方 id 分别是 `hy4` / `hy4-preview`，短名与带前缀形态归一到对应键。
+  'hy4': 'hunyuan-hy4',
+  'hunyuan-hy4': 'hunyuan-hy4',
   'hy4-preview': 'hunyuan-hy4-preview',
-  'hy4': 'hunyuan-hy4-preview',
   'hunyuan-hy4-preview': 'hunyuan-hy4-preview',
-  'hunyuan-hy4': 'hunyuan-hy4-preview',
   'longcat-2.0': 'longcat-2.0',
   'longcat-2': 'longcat-2.0',
   'minicpm-v-4.5': 'minicpm-v-4.5',
