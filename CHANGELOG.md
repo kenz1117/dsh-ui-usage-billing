@@ -2,11 +2,18 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.3。当前 `latest` 指向 `1.8.2` 正式版，`alpha` 指向 `1.8.2-alpha.2`（1.8.2 预览线的历史节点，下一轮预览从 `1.8.3-alpha.x` 起）；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.3。当前 `latest` 指向 `1.8.2` 正式版，`alpha` 指向 `1.8.3-alpha.1`（混元 Hy4 正式版目录扩容）；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.3）
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
+
+### v1.8.3-alpha.1（2026-11-04）
+
+- **新增：收录混元 Hy4 正式版（2026-11-03 上线）**。官方刊例价 ¥6 / ¥0.3 / ¥18（输入未命中 / 缓存命中 / 输出，元每百万 token），与 Hy4 preview 同价（腾讯云 TokenHub「模型价格」页 2026-11-04）。官方同期公布限时折扣——「自说明发布之日起至 2026-12-31 23:59:59（北京时间），Hy4 调用费用按目录价格的 50% 结算」，故活动期内按 ¥3 / ¥0.15 / ¥9 计（与 models.dev / OpenRouter 的 `tencent/hy4` 实时美元价 0.417 / 1.2505 / 0.021 折算一致）。折扣按既有 promo 机制建模：刊例价留在目录的 `price` 表，折扣只在计价与费率表出口折算，截止后自动恢复刊例价。
+- **口径纪律**：促销窗口补上起点（`promo.startsAtMs`），取正式版上线日（北京时间 2026-11-03）为界——折扣不追溯到模型上线前，与「历史事件按事件发生时刻生效的官方规则计价」同一口径；`hy4` id 此前归一到 Preview 条目，那段历史流量仍按刊例价计，账单口径不被改写。`hy4-preview` / `hunyuan-hy4-preview` 与 Hy4 preview 条目的价格一律不动——同 id 不同模型的收录不构成调价。
+- **目录扩容**：另补录腾讯混元 TokenHub 同页在售的 5 条既有未收录条目——混元 MT2-Pro / MT2-Plus / MT2-Lite（翻译专用）与 Role-Latest / Role（角色扮演），官方 CN 价，无缓存命中档（模型清单未标注 Cache 能力）。本批为扩容，不动任何既有条目的价格。
+- **验证**：全量 85 个测试文件 / 860 条用例通过（新增 5 条：正式版 id 归一、刊例价与促销字段、促销期内 5 折、促销起止边界、事件时刻不追溯、Preview 不受折扣影响）；lint 八条纪律守卫全绿；6 条 API 契约 e2e 通过；3080 dev host 真机核对 `/api/billing/pricing` 返回 248 条目录（含 `hunyuan-hy4` 与促销字段）、别名 `hy4` → `hunyuan-hy4`、`hy4-preview` → `hunyuan-hy4-preview`。客户端 bundle **356,813 字节（348.5 KiB）**，低于本仓自设 500 KiB 强警告线。宿主兼容矩阵不变（33 项声明）。
 
 ### v1.8.2（2026-11-04）
 
