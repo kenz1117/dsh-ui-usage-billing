@@ -407,6 +407,8 @@ export type UsageBillingKey =
   | 'queueStatusCompleted'
   | 'queueStatusFailed'
   | 'quickQueueToggle'
+  | 'quickQueueEntry'
+  | 'quickQueueEntryHint'
   | 'quickQueueEnqueue'
   | 'quickQueueEnqueueing'
   | 'quickQueueWaiting'
@@ -849,6 +851,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'queueStatusCompleted': '已完成',
   'queueStatusFailed': '需核对',
   'quickQueueToggle': '低谷队列',
+  'quickQueueEntry': '低谷队列入口',
+  'quickQueueEntryHint': '在输入框旁显示低谷队列按钮与入队控件',
   'quickQueueEnqueue': '入队',
   'quickQueueEnqueueing': '入队中…',
   'quickQueueWaiting': '{count} 个等待任务',
@@ -1281,6 +1285,8 @@ export const en: Record<UsageBillingKey, string> = {
   'queueStatusCompleted': 'Completed',
   'queueStatusFailed': 'Needs review',
   'quickQueueToggle': 'Off-peak queue',
+  'quickQueueEntry': 'Off-peak queue entry',
+  'quickQueueEntryHint': 'Show the off-peak queue button and enqueue controls beside the composer',
   'quickQueueEnqueue': 'Enqueue',
   'quickQueueEnqueueing': 'Enqueuing…',
   'quickQueueWaiting': '{count} waiting tasks',

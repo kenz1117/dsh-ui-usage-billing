@@ -168,11 +168,16 @@ afterEach(() => {
 describe('quick queue preferences and opt-in gate', () => {
   it('fails closed on missing, corrupt, or non-boolean preferences', () => {
     localStorage.clear()
-    expect(loadQuickQueuePrefs()).toEqual({ enabled: false, clearAfterEnqueue: false })
+    expect(loadQuickQueuePrefs()).toEqual({ enabled: false, clearAfterEnqueue: false, showEntry: true })
     localStorage.setItem(QUICK_QUEUE_STORAGE_KEY, '{broken')
-    expect(loadQuickQueuePrefs()).toEqual({ enabled: false, clearAfterEnqueue: false })
+    expect(loadQuickQueuePrefs()).toEqual({ enabled: false, clearAfterEnqueue: false, showEntry: true })
     localStorage.setItem(QUICK_QUEUE_STORAGE_KEY, '{"enabled":"yes","clearAfterEnqueue":1}')
-    expect(loadQuickQueuePrefs()).toEqual({ enabled: false, clearAfterEnqueue: false })
+    expect(loadQuickQueuePrefs()).toEqual({ enabled: false, clearAfterEnqueue: false, showEntry: true })
+  })
+
+  it('keeps the entry visible for preferences stored before the display switch existed (issue #114)', () => {
+    localStorage.setItem(QUICK_QUEUE_STORAGE_KEY, '{"enabled":true,"clearAfterEnqueue":false}')
+    expect(loadQuickQueuePrefs().showEntry).toBe(true)
   })
 
   it('does not render controls or poll by default; the persistent switch enables them live', async () => {
@@ -187,6 +192,23 @@ describe('quick queue preferences and opt-in gate', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(call => String(call[0]).endsWith('/task-queue-summary'))).toBe(true))
     expect(loadQuickQueuePrefs().enabled).toBe(true)
     view.unmount()
+  })
+
+  it('hides the switch and the enqueue controls when the entry display is off (issue #114)', async () => {
+    saveQuickQueuePrefs({ enabled: true, clearAfterEnqueue: false, showEntry: false })
+    const { fetchMock } = stubQueue()
+    render(<><QuickQueueToggle t={t} /><QuickQueueEnqueue sessionId={SESSION} t={t} /></>)
+
+    expect(screen.queryByTestId('quick-queue-toggle')).toBeNull()
+    expect(screen.queryByTestId('quick-queue-controls')).toBeNull()
+    // 入口关掉后不再轮询队列摘要：省掉无意义请求。
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps the composer switch state when only the entry display is toggled (issue #114)', () => {
+    saveQuickQueuePrefs({ enabled: true, clearAfterEnqueue: true, showEntry: true })
+    saveQuickQueuePrefs({ showEntry: false })
+    expect(loadQuickQueuePrefs()).toEqual({ enabled: true, clearAfterEnqueue: true, showEntry: false })
   })
 })
 

@@ -27,9 +27,11 @@ import {
   resolveBillingCardMode,
   DEFAULT_ENABLE_USAGE_STATS_TOOL,
   type LiveCostBarPrefs,
+  type QuickQueuePrefs,
   CURRENCY_PREF_EVENT,
   LIVE_COST_BAR_PREF_EVENT,
   BILLING_CARD_PREF_EVENT,
+  QUICK_QUEUE_PREF_EVENT,
   subscribeBillingCardPrefs,
   loadBillingCardPrefs,
   loadKpiRange,
@@ -46,6 +48,7 @@ import {
   saveProvidersTodayOnly,
   loadLanguage,
   loadLiveCostBarPrefs,
+  loadQuickQueuePrefs,
   loadSiteListPrefs,
   loadUserPrices,
   saveBillingCardPrefs,
@@ -57,6 +60,7 @@ import {
   togglePinnedModel,
   saveLanguage,
   saveLiveCostBarPrefs,
+  saveQuickQueuePrefs,
   saveSiteListPrefs,
   saveUserPrices,
   loadDensity,
@@ -663,6 +667,10 @@ interface BillingDashboardProps {
   liveCostPrefs: LiveCostBarPrefs
   /** 即时代费条显示偏好更新（父组件持久化并广播）。 */
   onLiveCostPrefs: (next: LiveCostBarPrefs) => void
+  /** 低谷队列入口显示偏好（issue #114：设置 Tab 编辑，跨树经 CustomEvent 通知 composer）。 */
+  quickQueuePrefs: QuickQueuePrefs
+  /** 低谷队列入口显示偏好更新（父组件持久化并广播）。 */
+  onQuickQueuePrefs: (next: QuickQueuePrefs) => void
   /** 订阅刷新是否失败（保留旧快照并标记缓存）。 */
   quotasStale: boolean
   /** 余额刷新超预算：本次余额来自上一次成功的查询（issue #104）。 */
@@ -964,7 +972,7 @@ function BillingDashboard({
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
   modelBudgets, monthModelCost, onModelBudget,
   peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, recoveryEntryAvailable, sitePrefs, onSitePrefs,
-  liveCostPrefs, onLiveCostPrefs, quotasStale, balanceStale, navigateToSession,
+  liveCostPrefs, onLiveCostPrefs, quickQueuePrefs, onQuickQueuePrefs, quotasStale, balanceStale, navigateToSession,
 }: BillingDashboardProps): React.ReactNode {
   const dashboardRoot = useRef<HTMLDivElement>(null)
   // 智能体网络：从会话行的 parentId 还原委派链，逐级算链合计（哪次委派最贵）。
@@ -2805,6 +2813,26 @@ function BillingDashboard({
                       </button>
                     </div>
                   </div>
+                  {/* issue #114：关掉后输入框旁的低谷队列按钮与入队控件一并隐藏；
+                      队列页与用量计费功能不受影响，随时可在此改回。 */}
+                  <div className={css.setCell} data-testid="billing-quick-queue-entry-setting">
+                    <div className={css.setCardHead}>
+                      <div className={css.setCardMeta}>
+                        <h3 className={css.setCardTitle}>{t('quickQueueEntry')}<HelpTip label={t('quickQueueEntryHint')} t={t} /></h3>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={quickQueuePrefs.showEntry}
+                        aria-label={t('quickQueueEntry')}
+                        data-testid="billing-quick-queue-entry-toggle"
+                        className={clsx(css.switch, quickQueuePrefs.showEntry && css.switchOn)}
+                        onClick={() => onQuickQueuePrefs({ ...quickQueuePrefs, showEntry: !quickQueuePrefs.showEntry })}
+                      >
+                        <span className={css.switchKnob} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </section>
 
@@ -3999,7 +4027,7 @@ const SETTINGS_KEYWORDS = {
   display: ['显示', '密度', '动效', '紧凑', '舒适', '克制', '丰富', 'display', 'density', 'motion', 'compact', 'comfortable'],
   budget: ['预算', '金额', '本月', '花费', '进度', 'budget', 'amount', 'spend', 'progress'],
   alert: ['峰谷', '峰', '谷', '提醒', '通知', '预览', '切换', 'peak', 'off-peak', 'alert', 'notify', 'preview'],
-  toggles: ['usage_stats', '工具', '即时代费', '胶囊', '中转站', '站点', '隐藏', 'relay', 'site', 'live', 'cost', 'hide'],
+  toggles: ['usage_stats', '工具', '即时代费', '胶囊', '中转站', '站点', '隐藏', '低谷', '队列', 'relay', 'site', 'live', 'cost', 'hide', 'queue', 'off-peak'],
   displayExtra: ['悬浮', '订阅', '计费卡', '指标', '环比', '主数字', '侧栏', '入口', '隐藏', 'float', 'subscription', 'card', 'metric', 'delta', 'sidebar', 'trigger', 'hidden'],
   advanced: ['自定义', '单价', '价格', '低谷', 'custom', 'price'],
   about: ['关于', '版本', '作者', '许可', '仓库', 'about', 'version', 'author', 'license', 'repo'],
@@ -4120,6 +4148,21 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     setLiveCostPrefs(next)
     saveLiveCostBarPrefs(next)
     window.dispatchEvent(new CustomEvent(LIVE_COST_BAR_PREF_EVENT))
+  }, [])
+  // 低谷队列入口显示偏好（issue #114）：设置 Tab 与输入框旁的入口分属两个 React 树，
+  // 写回后广播 CustomEvent 让 composer 树即时显隐。
+  const [quickQueuePrefs, setQuickQueuePrefs] = useState<QuickQueuePrefs>(() => loadQuickQueuePrefs())
+  useEffect(() => {
+    const reread = (): void => { setQuickQueuePrefs(loadQuickQueuePrefs()) }
+    window.addEventListener(QUICK_QUEUE_PREF_EVENT, reread)
+    return () => { window.removeEventListener(QUICK_QUEUE_PREF_EVENT, reread) }
+  }, [])
+  const updateQuickQueuePrefs = useCallback((next: QuickQueuePrefs): void => {
+    // 只回写本设置页负责的字段：composer 树可能已改过 enabled/clearAfterEnqueue，
+    // 用这里的旧快照整份覆盖会把它们悄悄回滚。
+    const merged = { ...loadQuickQueuePrefs(), showEntry: next.showEntry }
+    setQuickQueuePrefs(merged)
+    saveQuickQueuePrefs({ showEntry: merged.showEntry })
   }, [])
   // 计费卡显示偏好：localStorage 持久化；原生设置页与仪表盘设置跨 React 树即时同步。
   const [cardPrefs, setCardPrefs] = useState<BillingCardPrefs>(() => loadBillingCardPrefs())
@@ -4682,6 +4725,8 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           onSitePrefs={updateSitePrefs}
           liveCostPrefs={liveCostPrefs}
           onLiveCostPrefs={updateLiveCostPrefs}
+          quickQueuePrefs={quickQueuePrefs}
+          onQuickQueuePrefs={updateQuickQueuePrefs}
           quotasStale={quotasStale}
           balanceStale={balanceStale}
         />

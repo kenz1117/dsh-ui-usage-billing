@@ -271,12 +271,29 @@ export interface QuickQueuePrefs {
     enabled: boolean;
     /** Clear only the exact enqueued draft revision after a successful mutation. */
     clearAfterEnqueue: boolean;
+    /**
+     * Show the off-peak queue entry beside the composer at all (issue #114).
+     *
+     * Off hides the persistent switch *and* the enqueue controls; the queue page
+     * stays usable. Default true keeps the entry visible for everyone who never
+     * touched the setting.
+     */
+    showEntry: boolean;
 }
 export declare const DEFAULT_QUICK_QUEUE_PREFS: QuickQueuePrefs;
 export declare const QUICK_QUEUE_STORAGE_KEY = "dsh.ui-usage-billing.quick-queue";
 export declare const QUICK_QUEUE_PREF_EVENT = "dsh.ui-usage-billing.quick-queue-pref";
 /** Read composer queue preferences, failing closed on missing or malformed values. */
 export declare function loadQuickQueuePrefs(): QuickQueuePrefs;
-/** Persist and broadcast to the independent left/right composer React trees. */
-export declare function saveQuickQueuePrefs(prefs: QuickQueuePrefs): void;
+/**
+ * Persist a composer queue preference patch and broadcast to the independent
+ * left/right composer React trees.
+ *
+ * The patch merges over a fresh read instead of overwriting the stored object:
+ * the composer switch and the settings page live in separate React trees, so a
+ * write built from a stale snapshot would silently roll back the other tree's
+ * field (issue #114 — settings page writes `showEntry`, composer writes
+ * `enabled`).
+ */
+export declare function saveQuickQueuePrefs(patch: Partial<QuickQueuePrefs>): void;
 //# sourceMappingURL=usage-billing-settings.d.ts.map

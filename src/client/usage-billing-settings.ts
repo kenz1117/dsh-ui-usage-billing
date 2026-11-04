@@ -595,9 +595,17 @@ export interface QuickQueuePrefs {
   enabled: boolean
   /** Clear only the exact enqueued draft revision after a successful mutation. */
   clearAfterEnqueue: boolean
+  /**
+   * Show the off-peak queue entry beside the composer at all (issue #114).
+   *
+   * Off hides the persistent switch *and* the enqueue controls; the queue page
+   * stays usable. Default true keeps the entry visible for everyone who never
+   * touched the setting.
+   */
+  showEntry: boolean
 }
 
-export const DEFAULT_QUICK_QUEUE_PREFS: QuickQueuePrefs = { enabled: false, clearAfterEnqueue: false }
+export const DEFAULT_QUICK_QUEUE_PREFS: QuickQueuePrefs = { enabled: false, clearAfterEnqueue: false, showEntry: true }
 export const QUICK_QUEUE_STORAGE_KEY = 'dsh.ui-usage-billing.quick-queue'
 export const QUICK_QUEUE_PREF_EVENT = 'dsh.ui-usage-billing.quick-queue-pref'
 
@@ -609,12 +617,24 @@ export function loadQuickQueuePrefs(): QuickQueuePrefs {
   return {
     enabled: prefs.enabled === true,
     clearAfterEnqueue: prefs.clearAfterEnqueue === true,
+    // 只有显式 false 才隐藏入口：老用户存的那份偏好没有这个字段，缺字段一律按显示兜底
+    // （issue #114 —— 偏好损坏不该顺手把入口藏了）。
+    showEntry: prefs.showEntry !== false,
   }
 }
 
-/** Persist and broadcast to the independent left/right composer React trees. */
-export function saveQuickQueuePrefs(prefs: QuickQueuePrefs): void {
-  writeStored(QUICK_QUEUE_STORAGE_KEY, JSON.stringify(prefs))
+/**
+ * Persist a composer queue preference patch and broadcast to the independent
+ * left/right composer React trees.
+ *
+ * The patch merges over a fresh read instead of overwriting the stored object:
+ * the composer switch and the settings page live in separate React trees, so a
+ * write built from a stale snapshot would silently roll back the other tree's
+ * field (issue #114 — settings page writes `showEntry`, composer writes
+ * `enabled`).
+ */
+export function saveQuickQueuePrefs(patch: Partial<QuickQueuePrefs>): void {
+  writeStored(QUICK_QUEUE_STORAGE_KEY, JSON.stringify({ ...loadQuickQueuePrefs(), ...patch }))
   if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
     window.dispatchEvent(new CustomEvent(QUICK_QUEUE_PREF_EVENT))
   }

@@ -2,11 +2,19 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2。当前 `latest` 指向 `1.8.1` 正式版，`alpha` 指向 `1.8.2-alpha.2`；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.3。当前 `latest` 指向 `1.8.2` 正式版，`alpha` 指向 `1.8.2-alpha.2`（1.8.2 预览线的历史节点，下一轮预览从 `1.8.3-alpha.x` 起）；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
-## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.2）
+## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.3）
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
+
+### v1.8.2（2026-11-04）
+
+- **正式版发布**：完整包含 `1.8.2-alpha.1` 的宿主 `0.2.1-rc.5` 兼容与 `1.8.2-alpha.2` 的费率表头 sticky 固定，并新增下述「低谷队列入口」显示开关与宿主 `0.2.2-alpha.3` 兼容；npm `latest` 切至本版，`alpha` 保持指向 `1.8.2-alpha.2`。
+- **新增：设置页可隐藏「低谷队列」入口（issue #114）**。设置 →「显示」新增「低谷队列入口」开关，默认开启；关闭后对话输入框旁的「低谷队列」常驻开关与右侧入队控件一并隐藏，队列页、入队表单与已排队任务的可见性、用量费用统计均不受影响，随时可在同一处重新开启。此前只有关闭开关本身（隐藏右侧控件）的入口常驻，无法让不用峰谷队列的用户把它从输入框旁收走。
+- **偏好纪律**：该开关与既有偏好同存 localStorage，跨 React 树经 CustomEvent 即时生效；写回改为**按字段合并**（写前重读最新值），避免设置页与输入框旁两棵树各自持有旧快照时互相覆盖——本仓此前踩过「整份覆盖把另一处改动悄悄回滚」的坑。入口隐藏时摘要轮询一并停掉，不留看不见的后台请求。
+- **兼容：DSH 0.2.2-alpha.3**（自动漂移 issue #115）。逐包核对插件实际依赖面（20 个 peer / runtime 包）：客户端运行时只碰 `dsh-session/types`、`client-ui-primitives`、`client-store`，服务端只碰 `atomic-write` / `credentials` / `home-paths` / `tools`，变更均为加法；宿主新增的 `client-ui-context-menu`、右键菜单与 `settings.section.icon` 等能力本插件未使用，不纳入依赖面。平台种子 11 个模块对着 tag `dsh-v0.2.2-alpha.3` 逐字一致（权威比对，非工作区参考）。隔离 `DSH_HOME` 真机验收（宿主 `0.2.2-alpha.3`）：插件装载正常、8 个分区与设置分区完整、队列面板档位倒计时正确、输入框两个槽位（低谷队列按钮、平价消耗胶囊）均渲染、6 条 API 契约全通，最终日志无插件装载失败或宿主模块导入错误。兼容矩阵扩为 33 项。
+- **验证**：全量 85 个测试文件 / 855 条用例通过；lint 八条纪律守卫全绿；平台种子守卫对着声明 tag `dsh-v0.2.2-alpha.3` 通过；3080 dev host 真机核对新开关：关闭后输入框旁入口消失、重新开启后原样恢复，队列页与用量统计不受影响。客户端 bundle **356,769 字节（348.4 KiB）**，服务端 **368,611 字节（360.0 KiB）**，低于本仓自设 500 KiB 强警告线。
 
 ### v1.8.2-alpha.2（2026-11-03）
 

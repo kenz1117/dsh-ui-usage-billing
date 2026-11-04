@@ -140,8 +140,11 @@ function useQueuedCount(enabled: boolean): {
 export function QuickQueueToggle({ t }: QuickQueueToggleProps): React.ReactNode {
   const prefs = useQuickQueuePrefs()
   const toggle = (): void => {
-    saveQuickQueuePrefs({ ...prefs, enabled: !prefs.enabled })
+    saveQuickQueuePrefs({ enabled: !prefs.enabled })
   }
+  // 设置里关掉「显示低谷队列入口」后，常驻开关本身一并消失（issue #114）——
+  // 开关藏起来后它自己就成了死物，用户只能回设置页改回来。
+  if (!prefs.showEntry) return null
   return (
     <button
       type="button"
@@ -181,7 +184,8 @@ export function QuickQueueEnqueue({
   const input = readInput(state => state)
   const cwd = useProjectionValue(projectionFaceOf ?? unavailableProjection, 'workingDirectory')
   const selection = useProjectionValue(projectionFaceOf ?? unavailableProjection, 'modelSelection')?.next
-  const { count, applySnapshot } = useQueuedCount(prefs.enabled)
+  // 入口整体关闭时（issue #114）连摘要轮询一并停掉：看不见的徽标不值得打请求。
+  const { count, applySnapshot } = useQueuedCount(prefs.enabled && prefs.showEntry)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const inFlight = useRef(false)
@@ -201,7 +205,8 @@ export function QuickQueueEnqueue({
     return () => { window.clearTimeout(timer) }
   }, [notice])
 
-  if (!prefs.enabled) return null
+  // 入口整体关闭时（issue #114）连右侧入队控件一并隐藏；关闭开关本身只隐藏右侧控件。
+  if (!prefs.enabled || !prefs.showEntry) return null
 
   const fail = (text: string): void => { setNotice({ kind: 'error', text }) }
   const enqueue = async (): Promise<void> => {
@@ -315,7 +320,7 @@ export function QuickQueueEnqueue({
           type="checkbox"
           checked={prefs.clearAfterEnqueue}
           disabled={busy}
-          onChange={event => { saveQuickQueuePrefs({ ...prefs, clearAfterEnqueue: event.target.checked }) }}
+          onChange={event => { saveQuickQueuePrefs({ clearAfterEnqueue: event.target.checked }) }}
         />
         {t('quickQueueClear')}
       </label>

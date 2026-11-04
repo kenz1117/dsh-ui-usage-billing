@@ -283,6 +283,32 @@ describe('UsageBilling surface', () => {
       window.removeEventListener('dsh.ui-usage-billing.livecost-pref', listener)
     }
   })
+
+  it('shows the off-peak queue entry toggle by default and hides the composer entry with it (issue #114)', async () => {
+    // 设置面板与输入框旁的入口分属两个 React 树：切换要广播 CustomEvent 通知 composer 侧。
+    const events: string[] = []
+    const listener = (): void => { events.push('quick-queue') }
+    window.addEventListener('dsh.ui-usage-billing.quick-queue-pref', listener)
+    try {
+      render(<UsageBilling {...makeProps()} />)
+      fireEvent.click(screen.getByTestId('billing-trigger'))
+      await screen.findByText('使用统计')
+      fireEvent.click(await screen.findByTestId('billing-tab-settings'))
+      // 默认显示：开关 aria-checked=true，localStorage 无记录（升级用户零感知）。
+      const toggle = await screen.findByTestId('billing-quick-queue-entry-toggle')
+      expect(toggle.getAttribute('aria-checked')).toBe('true')
+      expect(localStorage.getItem('dsh.ui-usage-billing.quick-queue')).toBeNull()
+      // 关闭：状态翻转、localStorage 持久化、广播 CustomEvent（composer 侧即时显隐信号）。
+      fireEvent.click(toggle)
+      expect(toggle.getAttribute('aria-checked')).toBe('false')
+      expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.quick-queue')!)).toEqual({
+        enabled: false, clearAfterEnqueue: false, showEntry: false,
+      })
+      expect(events).toEqual(['quick-queue'])
+    } finally {
+      window.removeEventListener('dsh.ui-usage-billing.quick-queue-pref', listener)
+    }
+  })
 })
 
 describe('providerFromModelKey (B5 model-id fallback)', () => {
