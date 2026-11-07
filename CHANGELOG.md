@@ -2,11 +2,19 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.3。当前 `latest` 指向 `1.8.2` 正式版，`alpha` 指向 `1.8.3-alpha.1`（混元 Hy4 正式版目录扩容）；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-rc.1。当前 `latest` 指向 `1.8.2` 正式版，`alpha` 指向 `1.8.3-alpha.2`（宿主 0.2.2-rc.1 兼容 + 输入栏悬浮闪烁修复）；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
-## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.2-alpha.3）
+## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.2-rc.1）
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
+
+### v1.8.3-alpha.2（2026-11-07）
+
+- **修复：指针移入输入栏时整个会话画面闪烁（issue #117）**。症状是悬停输入框工具行时整块正文瞬间消失、输入框跳到顶部，过零点几秒又跳回来——反复闪烁。对用户录屏逐帧拆解后定位到触发点：悬停对象是本插件挂在输入框工具行的「平价消耗胶囊」（`¥0.49`）。宿主槽位契约（`ui-conversation` 的 `conversation.input.right`）明写「fixed 浮层必须 portal 到 body」——宿主的 `.composerSeat` 带 `will-change: transform`，会成为 `position: fixed` 后代的包含块。胶囊用的宿主 `Tooltip` 未传 `portal`，气泡按视口坐标写进 seat 下方：既错位（浮在离胶囊很远的地方），又把会话滚动区撑开，消息列表随之塌陷成 0 高，输入框被顶到顶部——正是录屏里的那一下闪。修法是给该 `Tooltip` 补 `portal`。
+- **验证（隔离宿主 0.2.2-rc.1 真机 A/B）**：同一会话、同样的悬停与连拍，旧构建 16 帧内出现 1 次塌陷（变化区域 27,285 px，与用户录屏的塌陷区域一致），修复后 16 帧 0 次；气泡的父节点也从 seat 内部变为 `document.body`、位置落回胶囊正上方。对照实验：指针停在正文区 26 帧 0 次塌陷，宿主自己的模型选择器、访问模式菜单与本插件的低谷队列开关均不触发——确认触发点唯一。
+- **新增 lint 第 9 条守卫「座位浮层 portal」**：从 `apply.ts` 的槽位注册反解出注册进 `conversation.*` 座位的组件，逐个检查其宿主浮层（`Tooltip` / `Menu`）是否显式带 `portal`；缺了就报错。该纪律此前没有任何本地检查兜底，只会在真机上闪，故在源码层钉死。
+- **兼容：DSH 0.2.2-rc.1**（自动漂移 issue #116）。宿主 `0.2.2-rc.1` 与 `0.2.2-alpha.3` 的源码**逐字相同**（tag 间 387 个文件差异全部是 `package.json` 的版本号字段，vendor 目录亦无一处源码变更），因此这不是一次功能适配，而是版本号跟进：客户端平台种子对着 tag `dsh-v0.2.2-rc.1` 权威比对通过（11 个模块一致）；`devDependencies` 随宿主重锁（56 个 `@deepseek-ai/dsh-*` 子包 → `0.2.2-rc.1`，cordis 系随宿主 vendor 升到 `4.1.0` / `1.1.0`、schemastery → `3.19.0`，`dsh-invariants` 仍停在已发布的 `0.2.0-rc.2`）。隔离 `DSH_HOME`（宿主 `0.2.2-rc.1`，端口 3091）真机验收：插件装载正常、会话正文与队列面板正常、输入框两个槽位（低谷队列开关、平价消耗胶囊）均渲染、悬浮气泡位置正确且不再引发塌陷。兼容矩阵扩为 34 项。
+- **验证**：全量 85 个测试文件 / 860 条用例通过；lint 九条纪律守卫全绿；`check-compat` 与平台种子守卫通过；客户端 bundle **356,823 字节（348.5 KiB）**（较上一版 +1,393 字节），低于本仓自设 500 KiB 强警告线。
 
 ### v1.8.3-alpha.1（2026-11-04）
 
