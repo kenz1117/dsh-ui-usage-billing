@@ -174,6 +174,11 @@ export interface UsageStats {
      * 避免把旧值（如重命名前的会话标题）当成最新值读。
      */
     staleSnapshot?: boolean;
+    /**
+     * 会话列表整体读不到时的降级原因（issue #119）：本档数字全部出自持久账本
+     * （可能是空）。面板据此显示「读取失败」，而不是把空账本当成「没有用量」。
+     */
+    sessionListError?: string;
     /** 宿主进程时区（IANA 名 + UTC 偏移）：天按此切分，副标题据此标注；旧快照可能缺失。 */
     timezone?: {
         name: string;

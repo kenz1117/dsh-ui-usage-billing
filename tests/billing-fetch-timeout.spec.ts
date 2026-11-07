@@ -50,12 +50,17 @@ describe('billing fetch timeout (issue #104)', () => {
     await expect(pending).resolves.toEqual({ balances: [] })
   })
 
-  it('degrades to null stats when the usage-stats request times out', async () => {
+  it('degrades to an explicit failure when the usage-stats request times out', async () => {
     vi.useFakeTimers()
     vi.stubGlobal('fetch', hangingFetch())
     const pending = loadUsageStats()
     await vi.advanceTimersByTimeAsync(16_000)
-    await expect(pending).resolves.toBeNull()
+    // 超时不再吞成 null（issue #119）：失败带原因返回，界面据此显示「读取失败」，
+    // 而不是把「没取到」渲染成一片 0。
+    const result = await pending
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason.length).toBeGreaterThan(0)
   })
 
   it('passes the stale marker through when the server serves a timed-out balance', async () => {

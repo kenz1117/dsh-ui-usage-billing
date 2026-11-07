@@ -357,6 +357,12 @@ body {
   color: var(--ds-red);
 }
 
+/* 取数失败态（issue #119）：图标转红——卡片上的数字此刻不可信（可能是空账本），
+ * 不能让它看起来像「今天真没花钱」。红色沿用预算临界态的语义（需要注意）。 */
+.triggerStatsError {
+  color: var(--ds-red);
+}
+
 /* 文本主体：当月（标签 + ¥ + 数字分离）+ 今日/本周 副行。 */
 .triggerMain {
   flex: 1;
@@ -643,6 +649,28 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ds-t-3);
+}
+/* 取数失败提示（issue #119）：速览卡顶部一行红色说明——数字不可信时先说清
+ * 「读不到」，别让用户把 0 当成真实用量。 */
+.popError {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--ds-red);
+  background: color-mix(in srgb, var(--ds-red) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ds-red) 30%, transparent);
+}
+.popErrorDetail {
+  color: var(--ds-t-3);
+  word-break: break-word;
+}
+.popErrorTitle {
+  font-weight: 600;
 }
 .metricGrid {
   display: grid;

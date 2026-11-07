@@ -525,6 +525,12 @@ export interface UsageStatsDocument {
    * （issue #103 加的 staleSnapshot 通道，此前无生产方），零新增客户端体积。
    */
   staleSnapshot?: boolean
+  /**
+   * 会话列表整体读不到时的降级原因（issue #119）：目录里有读不了/对不上的
+   * 日志、宿主后端临时故障等。此时本档数字全部出自持久账本（可能是空），
+   * 客户端据此显示「读取失败」，而不是把空账本当成「没有用量」。
+   */
+  sessionListError?: string
 }
 
 /** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
@@ -1957,6 +1963,31 @@ export function configFingerprint(
   return [subs, officials, aliases, String(searchEstimate), modelKeys, registered, origins].join('|')
 }
 
+/** 失败原因摘要：给文档与日志用的短文本（截断，避免超长路径撑爆响应体）。
+ *  Error 取 message；非 Error 取字符串化值。截断上限与 task-queue 路由一致（300）。 */
+function reasonOf(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error)
+  const trimmed = text.trim()
+  return trimmed.length > 300 ? `${trimmed.slice(0, 300)}…` : trimmed
+}
+
+/**
+ * 会话列表整体读不到（issue #119）：宿主持久化后端整体故障，或会话目录里有
+ * 读不了/对不上的日志。聚合无法枚举会话，只能降级到持久账本或磁盘快照——
+ * 但「降级」必须让用户看得见，否则新装用户看到的是一片 ¥0（分不清没花钱
+ * 还是没读到）。携带原因随文档下发，客户端据此显示「读取失败」。
+ */
+export class SessionListUnavailableError extends Error {
+  /** 失败原因摘要（面向用户的中文/英文提示语，由调用方决定措辞）。 */
+  readonly reason: string
+  constructor(reason: string, cause?: unknown) {
+    super(`session list unavailable: ${reason}`)
+    this.name = 'SessionListUnavailableError'
+    this.reason = reason
+    if (cause !== undefined) this.cause = cause
+  }
+}
+
 /** 会话格式拒读（宿主 SessionFormatUnsupportedError）：日志完好，仅本构建读不了。
  * 宿主错误类显式落 error.name；经包装/重建的路径只在 message 里保留类名，两处都认。
  * 据此把「格式不受支持」与「损坏/其他读取失败」分开计数，供面板按原因归因（issue #84）。 */
@@ -2217,15 +2248,24 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       let formatUnreadable = 0
       let noLedgerUnreadable = 0
       let staleLedgerSessions = 0
+      // 会话列表读取失败的原因（issue #119）：只在 full 模式出现过，随文档下发。
+      let sessionListError: string | undefined
       if (mode === 'full') {
       let metas: readonly SessionHeader[]
       try {
         metas = await persistence.list()
       } catch (error) {
-        if (options.ledger === undefined || ledger.size === 0) throw error
-        // The independent ledger is also the last-resort source when the session
-        // backend itself is temporarily unavailable; no live rows are pruned.
+        // 会话列表整体读不到（目录里有读不了/对不上的日志、宿主后端故障）时
+        // 降级到持久账本，并把原因写进文档（issue #119）：此前降级是静默的，
+        // 新装用户（账本空）看到的是一片 ¥0，分不清「没花钱」还是「没读到」。
+        // 账本也空时仍抛错（沿用既有契约：路由回退到磁盘快照），但错误带上
+        // 原因，路由据此把原因一并下发。
+        const reason = reasonOf(error)
+        sessionListError = reason
         console.warn('[usage-billing] session list unavailable; serving durable usage ledger:', error)
+        if (options.ledger === undefined || ledger.size === 0) {
+          throw new SessionListUnavailableError(reason, error)
+        }
         metas = []
       }
       // 墙钟分片游标（FOLD_SLICE_MS）：与上一片让出点的间隔超过预算就让出。
@@ -2668,6 +2708,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         // 冷phase轻文档标记（issue #105）：「本档出自账本存档、未读任何日志」。
         // 客户端复用 #103 的 staleSnapshot「数据滞后」横幅呈现，零新增客户端体积。
         ...(mode === 'ledger-only' ? { staleSnapshot: true } : {}),
+        // 会话列表读不到的原因（issue #119）：数字全部来自账本（可能为空），
+        // 客户端据此显示「读取失败」而非「没有用量」。
+        ...(sessionListError === undefined ? {} : { sessionListError }),
       }
       // 轻文档不进 TTL 缓存（lastDoc 仍是上一份完整折叠或空）：缓存它会让开门后
       // 的首个请求继续命中轻文档、多等一个 TTL。轻文档的行反序列化有 WeakMap

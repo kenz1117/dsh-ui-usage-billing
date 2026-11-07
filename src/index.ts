@@ -827,7 +827,10 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     const now = Date.now()
     if (now - lastSnapshotAt < SNAPSHOT_INTERVAL_MS) return
     lastSnapshotAt = now
-    const payload = JSON.stringify(doc)
+    // 快照是「数据」，不是「当前故障状态」：会话列表失败原因（issue #119）是
+    // 活的状态，随每轮聚合重新判定——写进快照会让故障修好后仍显示旧原因。
+    const { sessionListError: _liveError, ...data } = doc
+    const payload = JSON.stringify(data)
     // P0-3 崩溃恢复：写入前先把当前的上一版快照备份为 `.bak`。主文件一旦损坏
     //（旧版本非原子写入 / 磁盘写坏），聚合失败路径的 fallback 会用 `.bak` 重建。
     void (async () => {

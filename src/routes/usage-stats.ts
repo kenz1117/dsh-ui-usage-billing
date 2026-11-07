@@ -22,6 +22,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { UsageAggregator } from '../aggregate.ts'
+import { SessionListUnavailableError } from '../aggregate.ts'
 import type { UsageBillingConfig } from '../config.ts'
 import { guardLoopback } from '../guard.ts'
 
@@ -170,6 +171,10 @@ export function registerUsageStatsRoute(ctx: Context, deps: UsageStatsDeps): voi
           () => { /* 失败路径由下方快照兜底，此处只抑制未处理拒绝 */ },
         )
         let fresh: Record<string, unknown> | undefined
+        // 会话列表读不到时的原因（issue #119）：随回落文档一并下发，客户端
+        // 据此显示「读取失败」——否则回落的空快照/空账本会被渲染成一片 0，
+        // 用户分不清「没花钱」与「没读到」。
+        let sessionListError: string | undefined
         try {
           fresh = await Promise.race([
             aggregating.then(stats => stats as unknown as Record<string, unknown>),
@@ -180,6 +185,7 @@ export function registerUsageStatsRoute(ctx: Context, deps: UsageStatsDeps): voi
           // 记录异常尾部（含已折叠会话数），避免「只能靠猜」——聚合失败时用户
           // 至少能从日志看到原因（单会话损坏已在 aggregate 内跳过并告警）。
           console.error('[usage-billing] usage-stats aggregate failed, falling back to snapshot:', error)
+          if (error instanceof SessionListUnavailableError) sessionListError = error.reason
         }
         if (fresh !== undefined) {
           res.end(statsBodyOf(fresh))
@@ -188,9 +194,10 @@ export function registerUsageStatsRoute(ctx: Context, deps: UsageStatsDeps): voi
         // 超预算 / 聚合失败：先回内存里最近一次完成的聚合文档（比磁盘快照新），
         // 再回磁盘快照。两者的数据都「落后于本轮」，用 staleSnapshot 标记，
         // 面板据此提示「数据来自上次计算」，避免把旧值当成最新值读。
+        const degraded = sessionListError === undefined ? {} : { sessionListError }
         const recent = deps.lastDoc?.()
         if (recent !== undefined) {
-          res.end(JSON.stringify({ ...decorate(recent), staleSnapshot: true }))
+          res.end(JSON.stringify({ ...decorate(recent), staleSnapshot: true, ...degraded }))
           return
         }
         for (const candidate of deps.candidates) {
@@ -198,10 +205,10 @@ export function registerUsageStatsRoute(ctx: Context, deps: UsageStatsDeps): voi
           // Accept only parseable JSON so a stale or partial file never
           // reaches the dashboard as if it were real.
           if (doc === null) continue
-          res.end(JSON.stringify({ ...decorate(doc), staleSnapshot: true }))
+          res.end(JSON.stringify({ ...decorate(doc), staleSnapshot: true, ...degraded }))
           return
         }
-        res.end(JSON.stringify({ error: 'usage stats unavailable' }))
+        res.end(JSON.stringify({ error: 'usage stats unavailable', ...degraded }))
       },
     }),
     'usage-billing: usage-stats route',

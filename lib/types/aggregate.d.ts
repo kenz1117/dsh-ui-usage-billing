@@ -365,6 +365,12 @@ export interface UsageStatsDocument {
      * （issue #103 加的 staleSnapshot 通道，此前无生产方），零新增客户端体积。
      */
     staleSnapshot?: boolean;
+    /**
+     * 会话列表整体读不到时的降级原因（issue #119）：目录里有读不了/对不上的
+     * 日志、宿主后端临时故障等。此时本档数字全部出自持久账本（可能是空），
+     * 客户端据此显示「读取失败」，而不是把空账本当成「没有用量」。
+     */
+    sessionListError?: string;
 }
 /** 按角色费用归因：user / tool 为输入成本的启发式摊分，assistant 为输出成本实测。 */
 export interface RoleCost {
@@ -801,6 +807,17 @@ export interface SessionUsageSummary {
  * 判定函数无法序列化，统一记为 `fn`（任何函数形态互视为同一指纹）。
  */
 export declare function configFingerprint(subscriptionMatcher: SubscriptionMatcher, officialProviderIds: ReadonlySet<string> | undefined, routeAliases: Readonly<Record<string, string>>, searchEstimate: number, modelKeyAliases?: Readonly<Record<string, string>>, registeredProviders?: ReadonlySet<string>, routeOrigins?: Readonly<Record<string, string>>): string;
+/**
+ * 会话列表整体读不到（issue #119）：宿主持久化后端整体故障，或会话目录里有
+ * 读不了/对不上的日志。聚合无法枚举会话，只能降级到持久账本或磁盘快照——
+ * 但「降级」必须让用户看得见，否则新装用户看到的是一片 ¥0（分不清没花钱
+ * 还是没读到）。携带原因随文档下发，客户端据此显示「读取失败」。
+ */
+export declare class SessionListUnavailableError extends Error {
+    /** 失败原因摘要（面向用户的中文/英文提示语，由调用方决定措辞）。 */
+    readonly reason: string;
+    constructor(reason: string, cause?: unknown);
+}
 /**
  * Create the incremental usage aggregator.
  * @param persistence - the session persistence service.

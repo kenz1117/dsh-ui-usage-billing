@@ -264,8 +264,10 @@ function UsageBillingTrigger(
   floatPrefs: FloatWindowPrefs
   /** 订阅配额列表（「指定订阅卡」模式的数据来源）。 */
   subscriptions: readonly SubscriptionQuota[]
-  /** 预算临界态：≥80% 进入警示（指针变红 + 卡片边缘红色脉冲），≥100% 加速脉冲。 */
-  budgetPressure: 'none' | 'warn' | 'over'
+    /** 预算临界态：≥80% 进入警示（指针变红 + 卡片边缘红色脉冲），≥100% 加速脉冲。 */
+    budgetPressure: 'none' | 'warn' | 'over'
+    /** 取数失败原因（issue #119）：非空时速览卡显示「读取失败」而不是一片 0。 */
+    statsError?: string
   },
 ): React.ReactNode {
   // 币种跟随仪表盘选择：与 heatmap / round-chart / TrendChart 同一句式，先换算再格式化。
@@ -273,6 +275,7 @@ function UsageBillingTrigger(
   const {
     wide, t, onOpen, monthCost, todayCost, weekCost, days, vendorStatus, dash,
     floatPrefs, subscriptions, cardPrefs, monthTokens, todayTokens, weekTokens, budgetPressure, deltaPct = 0,
+    statsError,
   } = props
 
   // 「指定订阅卡」浮窗：可用订阅列表 + 当前展示索引（每次一张，可前后切换）。
@@ -369,6 +372,9 @@ function UsageBillingTrigger(
     </svg>
   )
 
+  // 触发卡 title：取数失败时附上失败标记，鼠标悬停即可看到（issue #119）。
+  const triggerTitle = `${t('title')} · ${money(cardPrefs.span === 'day' ? todayCost : cardPrefs.span === 'week' ? weekCost : monthCost)}${statsError === undefined ? '' : ` · ${t('statsLoadFailed')}`}`
+
   // 完全隐藏只移除视觉入口，面板与后台统计继续挂载；无 /usage 时父组件已降级。
   if (cardPrefs.mode === 'hidden') return null
 
@@ -383,7 +389,7 @@ function UsageBillingTrigger(
         )}
         data-testid="billing-rail-button"
         onClick={onOpen}
-        title={`${t('title')} · ${money(cardPrefs.span === 'day' ? todayCost : cardPrefs.span === 'week' ? weekCost : monthCost)}`}
+        title={triggerTitle}
       >
         {cardIcon}
       </button>
@@ -414,10 +420,14 @@ function UsageBillingTrigger(
         )}
         data-testid="billing-trigger"
         onClick={onOpen}
-        title={`${t('title')} · ${money(cardPrefs.span === 'day' ? todayCost : cardPrefs.span === 'week' ? weekCost : monthCost)}`}
+        title={triggerTitle}
       >
         <span
-          className={clsx(css.triggerIcon, budgetPressure !== 'none' && css.triggerBudgetHot)}
+          className={clsx(
+            css.triggerIcon,
+            budgetPressure !== 'none' && css.triggerBudgetHot,
+            statsError !== undefined && css.triggerStatsError,
+          )}
           data-testid="billing-trigger-icon"
         >
           {cardIcon}
@@ -523,6 +533,14 @@ function UsageBillingTrigger(
             <span className={css.popHead}>
               <span className={css.popTitle}>{t('popTitle')}</span>
             </span>
+            {/* 取数失败提示（issue #119）：失败时数字不可信（可能是空账本），
+                先说清「读不到」再给数字，别让用户把 0 当成真实用量。 */}
+            {statsError !== undefined && (
+              <span className={css.popError} data-testid="billing-stats-error" role="note">
+                <span className={css.popErrorTitle}>{t('statsLoadFailed')}</span>
+                <span className={css.popErrorDetail}>{statsError}</span>
+              </span>
+            )}
             <span className={css.metricGrid}>
               <span className={css.metricCell}>
                 <span className={css.metricLabel}>{t('floatPrimaryToday')}</span>
@@ -602,6 +620,11 @@ type DashboardRenderSlots = PropsRenderSlots<'billing.dashboard.decor'>
 /** Props of the billing dashboard modal. */
 interface BillingDashboardProps {
   stats: UsageStats
+  /**
+   * 取数失败原因（issue #119）：非空时面板顶部显示「读取失败」提示——此前失败
+   * 被吞成空统计，用户只看到一片 0，分不清「没花钱」和「没读到」。
+   */
+  statsError?: string
   // 双参签名：局部需要插值文案（如促销截止日期）时传 params。
   t: (key: UsageBillingKey, params?: Record<string, unknown>) => string
   onClose: () => void
@@ -973,7 +996,7 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
 }
 
 function BillingDashboard({
-  stats, t, onClose, embeddedSettings = false, userPrices, onUserPrices, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, language, onLanguage, turns,
+  stats, statsError, t, onClose, embeddedSettings = false, userPrices, onUserPrices, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, language, onLanguage, turns,
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
   modelBudgets, monthModelCost, onModelBudget,
   peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, recoveryEntryAvailable, sitePrefs, onSitePrefs,
@@ -1895,6 +1918,17 @@ function BillingDashboard({
             </button>
           </div>
         </div>
+        )}
+
+        {/* 取数失败提示（issue #119）：读取失败时数字不可信（可能是空账本），
+            在所有页签之上明说「读不到」并给出原因，别让用户把 0 当成真实用量。 */}
+        {!embeddedSettings && statsError !== undefined && (
+          <div className={css.staleNotice} data-testid="billing-stats-error">
+            <div className={css.staleNoticeBody}>
+              <span>{t('statsLoadFailed')}</span>
+              <span className={css.staleNoticeSub}>{statsError}</span>
+            </div>
+          </div>
         )}
 
         {/* 数据滞后提示（聚合超预算/失败时的回落下发）：标题栏下、Tab 区之上——
@@ -4137,6 +4171,9 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   } = props
   // Start empty; swap in real host data when the server serves valid JSON.
   const [stats, setStats] = useState<UsageStats>(EMPTY_STATS)
+  // 取数失败原因（issue #119）：非空时界面显示「读取失败」而不是一片 0——把
+  // 「没取到」和「真的是 0」区分开。服务端报的会话列表失败也走这个通道。
+  const [statsError, setStatsError] = useState<string | undefined>(undefined)
   const [health, setHealth] = useState<ModelHealth>(IDLE_HEALTH)
   const [balances, setBalances] = useState<readonly ProviderBalance[]>([])
   const [reconcile, setReconcile] = useState<ReconcileNotice | undefined>(undefined)
@@ -4256,11 +4293,19 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     if (statsInFlight.current && !force) return
     statsInFlight.current = true
     void Promise.all([
-      loadUsageStats().then((data) => {
+      loadUsageStats().then((result) => {
         // 存服务端原始文档：用户价显示重估的唯一出口是下方 displayStats memo。
         // 此前这里预存重估结果，memo 又重估一次——删除用户价后 recost 原样返回
         // 旧值，已重估的费用会粘到下一次轮询（最长 5 分钟）才被覆盖。
-        if (data !== null) setStats(data)
+        if (result.ok) {
+          setStats(result.stats)
+          // 服务端报的会话列表失败也算「读不到」：本档数字全部来自账本（可能
+          // 是空），显示错误态而不是让它看起来像「今天真没花钱」。
+          setStatsError(result.stats.sessionListError)
+        } else {
+          // 取数失败：保留上一次成功的数字，同时给出原因（issue #119）。
+          setStatsError(result.reason)
+        }
       }),
       fetchBalanceDoc().then(({ balances, reconcile, stale }) => {
         // 余额服务端恒返回内置行（空=失败），失败时保留旧快照。
@@ -4720,11 +4765,13 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           subscriptions={quotas}
           budgetPressure={budgetPressure}
           deltaPct={deltaPct}
+          {...(statsError === undefined ? {} : { statsError })}
         />
       )}
       {(embeddedSettings || open) && (
         <BillingDashboard
           stats={displayStats}
+          {...(statsError === undefined ? {} : { statsError })}
           t={t}
           onClose={close}
           embeddedSettings={embeddedSettings}

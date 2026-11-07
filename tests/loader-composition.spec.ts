@@ -495,10 +495,13 @@ describe('usage-billing real Loader composition', () => {
     const port = loaded.webServer.port
     const stats = await getJson(port, '/api/billing/usage-stats')
     expect(stats.status).toBe(200)
-    const doc = stats.json as { source: string; total: { calls: number; cost: number } }
+    const doc = stats.json as { source: string; total: { calls: number; cost: number }; sessionListError?: string }
     expect(doc.source).toBe('session-logs')
     expect(doc.total.calls).toBe(42)
     expect(doc.total.cost).toBe(0)
+    // issue #119：回落数据必须带失败原因，否则用户只看到数字，分不清「没花钱」
+    // 还是「没读到」——这里回落的是快照（数字旧但真实），提示语说明白。
+    expect(doc.sessionListError).toContain('corrupt session store')
     await rm(snapshotDir, { recursive: true, force: true })
   })
 

@@ -104,4 +104,41 @@ describe('侧栏触发卡', () => {
     const { getByTestId } = render(<UsageBilling {...props} />)
     expect(getByTestId('billing-trigger')).toBeTruthy()
   })
+
+  it('取数失败时显示「读取失败」而不是一片 0（issue #119）', async () => {
+    // 服务端回 403（回环守卫：Host 头非回环且未列入 trustedHosts）——此前
+    // 客户端把失败吞成空统计，用户只看到 ¥0，分不清没花钱还是没读到。
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/billing/usage-stats')) {
+        return new Response(
+          JSON.stringify({ error: 'forbidden: loopback only (host "mybox.local:3080" not in trustedHosts)' }),
+          { status: 403, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as unknown as typeof fetch)
+
+    const budgetStore = createBillingBudgetStore().create()
+    const props = {
+      wide: true,
+      t,
+      checkModels: async () => ({
+        checked: true, available: true, models: 0, failures: 0, okProviders: [], badProviders: [],
+      }),
+      publishCosts: () => {},
+      registerOpen: () => () => {},
+      renderSlot: () => null,
+      useStore: bindSnapshotSelector(budgetStore),
+      actions: budgetStore.actions,
+    } as unknown as Parameters<typeof UsageBilling>[0]
+
+    const { getByTestId, findByTestId } = render(<UsageBilling {...props} />)
+    // 速览弹层里的失败提示（hover 打开）：文案 + 服务端给出的原因。
+    const notice = await findByTestId('billing-stats-error')
+    expect(notice.textContent).toContain(t('statsLoadFailed'))
+    expect(notice.textContent).toContain('not in trustedHosts')
+    // 触发卡本身仍在（不崩），标题带失败标记。
+    expect(getByTestId('billing-trigger')).toBeTruthy()
+  })
 })
