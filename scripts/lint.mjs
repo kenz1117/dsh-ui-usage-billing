@@ -275,9 +275,82 @@ function checkStickyRateHeaderGuard() {
 }
 checkStickyRateHeaderGuard()
 
+/**
+ * 守卫 9：宿主会话座位里的浮层必须 portal（issue #117）——
+ * 宿主槽位契约（ui-conversation/src/client/contract/slots.ts）对 conversation.*
+ * 每个座位都写着同一句：「fixed overlays must portal to the document body
+ * because the docked composer contains them」。原因是宿主 .composerSeat 带
+ * will-change:transform，会成为 fixed 后代的包含块；浮层不 portal 就会按视口
+ * 坐标写进 seat 下方——既错位，又把会话滚动区撑开，消息列表随之塌陷成 0 高
+ * （输入框跳到顶部、画面闪一下，issue #117 的现象）。
+ *
+ * 宿主 Tooltip / Menu 的 portal 默认都是 false，所以「忘了写」不会有任何本地
+ * 报错，只会在真机上闪。故在源码层把契约钉死：注册进 conversation.* 座位的
+ * 组件，其宿主浮层必须显式带 portal。
+ */
+function checkSeatOverlayPortalGuard() {
+  const apply = readFileSync('src/client/apply.ts', 'utf8')
+  // conversation.* 座位上注册的组件名（register 的最后一个参数）
+  const comps = new Set()
+  for (const m of apply.matchAll(/ctx\.slots\.inject\('conversation\.[^']+'[\s\S]*?,\s*([A-Z][A-Za-z0-9]*)\)\)/g)) {
+    comps.add(m[1])
+  }
+  if (comps.size === 0) {
+    VIOLATIONS.push('src/client/apply.ts  座位浮层 portal 守卫：解析不到 conversation.* 座位注册（守卫本身失效，请检查注册写法）')
+    return
+  }
+  // 组件名 → 源文件
+  const files = [...walk('src/client')]
+  const fileOf = new Map()
+  for (const file of files) {
+    const text = readFileSync(file, 'utf8')
+    for (const comp of comps) {
+      if (new RegExp(`export (function|const) ${comp}\\b`).test(text)) fileOf.set(comp, { file, text })
+    }
+  }
+  for (const comp of comps) {
+    if (!fileOf.has(comp)) {
+      VIOLATIONS.push(`src/client/apply.ts  座位浮层 portal 守卫：组件 ${comp} 未在 src/client/*.tsx 中找到定义（座位注册与实现对不上）`)
+    }
+  }
+  // 取 JSX 开标签文本（跳过字符串里的 '>'，并排除箭头函数 '=>'）
+  const openTag = (text, from) => {
+    let quote = null
+    for (let i = from; i < text.length; i++) {
+      const ch = text[i]
+      if (quote !== null) {
+        if (ch === quote && text[i - 1] !== '\\') quote = null
+        continue
+      }
+      if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue }
+      if (ch === '>' && text[i - 1] !== '=') return text.slice(from, i + 1)
+    }
+    return null
+  }
+  let checked = 0
+  const seen = new Set()
+  for (const [comp, { file, text }] of fileOf) {
+    for (const m of text.matchAll(/<(Tooltip|Menu)\b/g)) {
+      const tag = openTag(text, m.index)
+      if (tag === null) continue
+      if (!/\bportal\b/.test(tag)) {
+        const key = `${file}:${m.index}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          VIOLATIONS.push(`${file}  座位浮层 portal 守卫：<${m[1]}> 未声明 portal（宿主 conversation.* 座位要求 fixed 浮层 portal 到 body，否则会撑塌会话消息列表，issue #117）`)
+        }
+        continue
+      }
+      checked += 1
+    }
+  }
+  console.log(`[lint] 座位浮层 portal：${String(comps.size)} 个会话座位组件的 ${String(checked)} 处宿主浮层均带 portal`)
+}
+checkSeatOverlayPortalGuard()
+
 if (VIOLATIONS.length > 0) {
   console.error(`[lint] ${VIOLATIONS.length} 项纪律违规：`)
   for (const v of VIOLATIONS) console.error(`  ${v}`)
   process.exit(1)
 }
-console.log('[lint] 纪律守卫全绿（类型 / 日志 / 空 catch 注释 / CSS parity / 令牌 parity / 字体纪律 / 面板压缩防线 / 费率表 sticky 表头）')
+console.log('[lint] 纪律守卫全绿（类型 / 日志 / 空 catch 注释 / CSS parity / 令牌 parity / 字体纪律 / 面板压缩防线 / 费率表 sticky 表头 / 座位浮层 portal）')

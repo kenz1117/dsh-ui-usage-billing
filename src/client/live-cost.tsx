@@ -472,7 +472,11 @@ export function LiveCostChip({ sessionId, t }: LiveCostChipProps): React.ReactNo
     ...chips.map(chip => `${chip.name} ${t(windowLabelKey(chip.kind))} ${chip.pct}%`),
   ].join(' · ')
   return (
-    <Tooltip label={title} side="top" delayMs={500}>
+    // portal：宿主 conversation.input.right 槽位契约明写「fixed 浮层必须 portal 到
+    // body」——composerSeat 带 will-change:transform，会成为 fixed 后代的包含块。
+    // 不 portal 时气泡按视口坐标写进 seat 之下，既错位又把会话滚动区撑开，
+    // 消息列表随之塌陷成 0 高（输入框跳到顶部、画面闪一下即回，issue #117）。
+    <Tooltip label={title} side="top" delayMs={500} portal>
       <span className={cls} data-testid="billing-live-cost-chip" role="note" aria-label={title}>
         <PinnedBandDots hasBandPlan={hasBandPlan} />
         {tier !== null && (
