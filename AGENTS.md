@@ -11,7 +11,7 @@
 | **正式版** | 非预发布 SemVer（如 `1.8.0`） | `latest` | 正式 Release | 已完成验收、面向默认安装 |
 | **预览版** | 带预发布后缀（如 `1.8.1-alpha.2`） | `alpha` | Pre-release | 新功能与宿主适配的先行验证 |
 
-当前发行状态：npm `latest` 指向 `1.8.3` 正式版（宿主 0.2.2-rc.1 兼容 + 输入栏悬浮闪烁修复 + 混元 Hy4 正式版目录扩容）；`alpha` 指向 `1.8.3-alpha.2`，下一轮预览从 `1.8.3-alpha.3` 起。后续正式版只切 `latest`，预览版只切 `alpha`，不再同时切 `latest`。兼容状态以 [COMPATIBILITY.md](COMPATIBILITY.md) 为准。
+当前发行状态：npm `latest` 指向 `1.8.3` 正式版（宿主 0.2.2-rc.1 兼容 + 输入栏悬浮闪烁修复 + 混元 Hy4 正式版目录扩容）；`alpha` 指向 `1.8.3-alpha.3`（队列任务在来源会话续跑，#118），下一轮预览从 `1.8.3-alpha.4` 起。后续正式版只切 `latest`，预览版只切 `alpha`，不再同时切 `latest`。兼容状态以 [COMPATIBILITY.md](COMPATIBILITY.md) 为准。
 
 原则：
 
