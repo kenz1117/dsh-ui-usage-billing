@@ -8,6 +8,10 @@ export interface TaskQueueInput {
   readonly cwd?: unknown
   readonly provider?: unknown
   readonly model?: unknown
+  /** 来源会话（issue #118）：入队时所在的会话，执行期据此续跑。 */
+  readonly sourceSessionId?: unknown
+  /** 入队时是否授权复用来源会话（把设置开关的状态冻结进任务）。 */
+  readonly reuseSource?: unknown
 }
 
 export interface TaskQueueTask {
@@ -20,7 +24,14 @@ export interface TaskQueueTask {
   readonly createdAt: number
   readonly startedAt?: number | undefined
   readonly finishedAt?: number | undefined
+  /** 实际执行任务的会话（复用来源会话时等于 sourceSessionId）。 */
   readonly sessionId?: string | undefined
+  /** 来源会话 id（issue #118）：入队时所在的会话。 */
+  readonly sourceSessionId?: string | undefined
+  /** 是否授权在该来源会话内续跑（入队时冻结的开关状态）。 */
+  readonly reuseSource?: boolean | undefined
+  /** 从「续跑来源会话」降级为「新建会话」的原因（卡片展示）。 */
+  readonly fallbackReason?: string | undefined
   readonly error?: string | undefined
 }
 

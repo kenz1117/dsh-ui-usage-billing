@@ -158,6 +158,11 @@ export interface UsageBillingInjected {
      * 返回 'opened' 已跳转 / 'unavailable' 宿主无通道（老到没有）/ 'failed' 通道报错。
      */
     navigateToSession: (sessionId: string) => 'opened' | 'unavailable' | 'failed';
+    /**
+     * 会话标题（issue #118）：队列卡片显示「将在会话 X 继续」时用。取不到时返回
+     * undefined，界面退化为会话 id 短码——不编造标题。
+     */
+    sessionTitleOf: (sessionId: string) => string | undefined;
 }
 /** Usage stats structure from `.dsh-usage-stats.json`. */
 export interface UsageStats {

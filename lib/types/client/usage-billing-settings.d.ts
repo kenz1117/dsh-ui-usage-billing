@@ -279,6 +279,15 @@ export interface QuickQueuePrefs {
      * touched the setting.
      */
     showEntry: boolean;
+    /**
+     * Run a queued task inside the Session it was queued from (issue #118).
+     *
+     * Off keeps every task in its own Session. On prefers continuing in the
+     * source Session — same context, same workspace grouping — and falls back to
+     * a new Session when the source is gone, busy or archived. Default off: the
+     * isolated-Session design is the safe default.
+     */
+    reuseSourceSession: boolean;
 }
 export declare const DEFAULT_QUICK_QUEUE_PREFS: QuickQueuePrefs;
 export declare const QUICK_QUEUE_STORAGE_KEY = "dsh.ui-usage-billing.quick-queue";

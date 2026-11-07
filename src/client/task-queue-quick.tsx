@@ -245,6 +245,9 @@ export function QuickQueueEnqueue({
       draftRev: input.draftRev,
       cwd,
       clearAfterEnqueue,
+      // issue #118：把来源会话与「是否授权续跑」一起发给后端。开关状态在这里
+      // 冻结进任务，之后改设置不影响已经排队的任务。
+      reuseSource: prefs.reuseSourceSession,
     }
     inFlight.current = true
     setBusy(true)
@@ -274,6 +277,8 @@ export function QuickQueueEnqueue({
         cwd: captured.cwd,
         provider: effectiveSelection.provider,
         model: effectiveSelection.model,
+        sourceSessionId: String(captured.sessionId),
+        reuseSource: captured.reuseSource,
       })
       applySnapshot(snapshot)
 

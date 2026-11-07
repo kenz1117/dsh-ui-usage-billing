@@ -382,6 +382,12 @@ export type UsageBillingKey =
   | 'queueUnsupportedTitle'
   | 'queueUnsupportedBody'
   | 'queueSafety'
+  | 'queueSafetyIsolated'
+  | 'queueSafetyReuse'
+  | 'queueReusePlanned'
+  | 'queueReuseDone'
+  | 'queueFallbackReason'
+  | 'queueReuseModelNote'
   | 'queueWorkspace'
   | 'queueModel'
   | 'queueNoOptions'
@@ -409,6 +415,8 @@ export type UsageBillingKey =
   | 'quickQueueToggle'
   | 'quickQueueEntry'
   | 'quickQueueEntryHint'
+  | 'quickQueueReuseEntry'
+  | 'quickQueueReuseEntryHint'
   | 'quickQueueEnqueue'
   | 'quickQueueEnqueueing'
   | 'quickQueueWaiting'
@@ -825,13 +833,19 @@ export const zh: Record<UsageBillingKey, string> = {
   'queueUntilOffPeak': '距低谷',
   'queueUnsupportedTitle': '当前宿主不支持任务队列',
   'queueUnsupportedBody': '任务队列需要新版宿主的会话创建、Prompt 提交与结果订阅能力。当前宿主会保持只读降级；用量、费用和峰谷提醒不受影响，也不会创建只排队却无法执行的任务。',
-  'queueSafety': '安全边界：任务开始后即使进入高峰也会继续，不会强行暂停；失败或结果无法确认时不自动重试。每个任务在独立会话执行，并按宿主现有权限使用工具。',
+  'queueSafety': '安全边界：任务开始后即使进入高峰也会继续，不会强行暂停；失败或结果无法确认时不自动重试。',
+  'queueSafetyIsolated': '当前模式：每个任务在独立会话执行，并按宿主现有权限使用工具。',
+  'queueSafetyReuse': '当前模式：任务优先在入队时的来源会话内继续（保留上下文与工作区分组），来源会话不可用时改为新建会话；按宿主现有权限使用工具。',
+  'queueReusePlanned': '计划在会话 {session} 继续（来源会话不可用时改为新建）',
+  'queueReuseDone': '在会话 {session} 继续',
+  'queueFallbackReason': '已改为新建会话：{reason}',
+  'queueReuseModelNote': '沿用来源会话当前模型',
   'queueWorkspace': '工作区',
   'queueModel': '官方峰谷模型',
   'queueNoOptions': '未发现可用工作区或内置 DeepSeek 官方峰谷模型，请先完成宿主配置。中转站同名模型不参与。',
   'queuePromptLabel': '任务 Prompt',
-  'queuePromptPlaceholder': '描述一个非紧急、可无人值守完成的任务。入队即授权宿主在下一低谷创建会话并执行。',
-  'queuePrivacy': '队列文件仅当前用户可读；执行后 Prompt 也会进入宿主会话日志。请勿填入密码或密钥。',
+  'queuePromptPlaceholder': '描述一个非紧急、可无人值守完成的任务。入队即授权宿主在下一低谷执行。',
+  'queuePrivacy': '队列文件仅当前用户可读；执行后 Prompt 也会进入宿主会话日志（复用来源会话时进入那个会话）。请勿填入密码或密钥。',
   'queueEnqueue': '加入低谷队列',
   'queueImport': '导入 JSON',
   'queueImportHint': 'JSON 数组项可为 Prompt 字符串或 { prompt, cwd?, provider?, model? }；缺省沿用当前工作区与模型，整批校验后一次入队。',
@@ -853,6 +867,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'quickQueueToggle': '低谷队列',
   'quickQueueEntry': '低谷队列入口',
   'quickQueueEntryHint': '在输入框旁显示低谷队列按钮与入队控件',
+  'quickQueueReuseEntry': '任务在来源会话继续',
+  'quickQueueReuseEntryHint': '开启后，从会话入队的任务到点时优先在该会话内继续（保留上下文与工作区分组）；来源会话已删除、正在使用或已归档时改为新建会话，并在卡片上注明原因。默认关闭。',
   'quickQueueEnqueue': '入队',
   'quickQueueEnqueueing': '入队中…',
   'quickQueueWaiting': '{count} 个等待任务',
@@ -1259,13 +1275,19 @@ export const en: Record<UsageBillingKey, string> = {
   'queueUntilOffPeak': 'Off-peak in',
   'queueUnsupportedTitle': 'This host does not support the task queue',
   'queueUnsupportedBody': 'The queue requires Session creation, Prompt admission and result streaming from a newer host. This host stays in read-only fallback: usage, billing and band alerts keep working, and no non-executing placeholder tasks are created.',
-  'queueSafety': 'Safety: an admitted task continues if peak pricing begins; it is never forcibly paused. Failures and unknown outcomes never auto-retry. Each task runs in its own Session with the host’s existing tool permissions.',
+  'queueSafety': 'Safety: an admitted task continues if peak pricing begins; it is never forcibly paused. Failures and unknown outcomes never auto-retry.',
+  'queueSafetyIsolated': 'Current mode: each task runs in its own Session with the host’s existing tool permissions.',
+  'queueSafetyReuse': 'Current mode: tasks continue inside the Session they were queued from (keeping its context and workspace grouping) and fall back to a new Session when the source is unavailable, using the host’s existing tool permissions.',
+  'queueReusePlanned': 'Will continue in Session {session} (a new Session is used if the source is unavailable)',
+  'queueReuseDone': 'Continued in Session {session}',
+  'queueFallbackReason': 'Switched to a new Session: {reason}',
+  'queueReuseModelNote': 'Uses the source Session’s current model',
   'queueWorkspace': 'Workspace',
   'queueModel': 'Official time-of-day model',
   'queueNoOptions': 'No workspace or built-in DeepSeek official time-of-day model is available. Relay mirrors are not eligible.',
   'queuePromptLabel': 'Task Prompt',
-  'queuePromptPlaceholder': 'Describe a non-urgent task that can run unattended. Enqueuing authorizes the host to create a Session and run it at the next off-peak window.',
-  'queuePrivacy': 'The queue file is owner-only; executed Prompts also enter host Session logs. Do not enter passwords or secrets.',
+  'queuePromptPlaceholder': 'Describe a non-urgent task that can run unattended. Enqueuing authorizes the host to run it at the next off-peak window.',
+  'queuePrivacy': 'The queue file is owner-only; executed Prompts also enter host Session logs (the source Session when it is reused). Do not enter passwords or secrets.',
   'queueEnqueue': 'Enqueue for off-peak',
   'queueImport': 'Import JSON',
   'queueImportHint': 'A JSON array of Prompt strings or { prompt, cwd?, provider?, model? } objects; omitted fields use the current selection. The whole batch is validated before one atomic enqueue.',
@@ -1287,6 +1309,8 @@ export const en: Record<UsageBillingKey, string> = {
   'quickQueueToggle': 'Off-peak queue',
   'quickQueueEntry': 'Off-peak queue entry',
   'quickQueueEntryHint': 'Show the off-peak queue button and enqueue controls beside the composer',
+  'quickQueueReuseEntry': 'Continue tasks in the source Session',
+  'quickQueueReuseEntryHint': 'When on, a task queued from a Session continues inside that Session at the next off-peak window (keeping its context and workspace grouping). A deleted, busy or archived source falls back to a new Session, with the reason shown on the card. Off by default.',
   'quickQueueEnqueue': 'Enqueue',
   'quickQueueEnqueueing': 'Enqueuing…',
   'quickQueueWaiting': '{count} waiting tasks',

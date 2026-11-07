@@ -17,3 +17,6 @@ usage-billing-redesign/
 .validation/
 previews/
 test-results/
+
+# 本地工具产物（不入库）
+.zcode/

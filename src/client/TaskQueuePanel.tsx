@@ -13,6 +13,10 @@ interface TaskQueuePanelProps {
   readonly t: (key: UsageBillingKey, params?: Record<string, unknown>) => string
   readonly language: BillingLanguage
   readonly navigateToSession: (sessionId: string) => 'opened' | 'unavailable' | 'failed'
+  /** 会话标题（issue #118）：卡片显示「将在会话 X 继续」；取不到就显示 id 短码。 */
+  readonly sessionTitleOf?: (sessionId: string) => string | undefined
+  /** 「在来源会话继续」开关当前状态：决定安全提示文案。 */
+  readonly reuseSourceSession?: boolean
 }
 
 const STATUS_KEY: Record<TaskQueueStatus, UsageBillingKey> = {
@@ -30,6 +34,12 @@ function isTerminal(task: TaskQueueTask): boolean {
 
 function modelValue(provider: string, model: string): string {
   return JSON.stringify([provider, model])
+}
+
+/** 会话 id 短码：标题取不到时用它，别把整串 uuid 怼到界面上。 */
+function shortSessionId(sessionId: string): string {
+  const bare = sessionId.startsWith('session-') ? sessionId.slice('session-'.length) : sessionId
+  return bare.length <= 8 ? bare : bare.slice(0, 8)
 }
 
 interface ImportDefaults {
@@ -60,7 +70,7 @@ export function parseTaskQueueImport(text: string, defaults: ImportDefaults): Ta
   })
 }
 
-export function TaskQueuePanel({ t, language, navigateToSession }: TaskQueuePanelProps): React.ReactNode {
+export function TaskQueuePanel({ t, language, navigateToSession, sessionTitleOf, reuseSourceSession }: TaskQueuePanelProps): React.ReactNode {
   const [snapshot, setSnapshot] = useState<TaskQueueSnapshot | undefined>()
   const [prompt, setPrompt] = useState('')
   const [cwd, setCwd] = useState('')
@@ -191,6 +201,22 @@ export function TaskQueuePanel({ t, language, navigateToSession }: TaskQueuePane
 
   const taskRow = (task: TaskQueueTask): React.ReactNode => {
     const workspace = snapshot?.workspaces.find(item => item.path === task.cwd)
+    // issue #118：目标会话在**执行前**就可知——复用时是来源会话；降级为新建时
+    // 才知道新会话在哪。标题取不到就退回 id 短码，不编造标题。
+    const plannedSessionId = task.reuseSource === true ? task.sourceSessionId : undefined
+    const reused = task.sourceSessionId !== undefined && task.sessionId === task.sourceSessionId
+    const label = (sessionId: string): string => sessionTitleOf?.(sessionId) ?? shortSessionId(sessionId)
+    const targetText = task.fallbackReason !== undefined
+      ? t('queueFallbackReason', { reason: task.fallbackReason })
+      : reused
+        ? t('queueReuseDone', { session: label(task.sessionId!) })
+        : plannedSessionId !== undefined
+          ? t('queueReusePlanned', { session: label(plannedSessionId) })
+          : undefined
+    // 降级后的目标是一个还没建出来的新会话：执行前没有可跳的会话。
+    const jumpSessionId = task.fallbackReason === undefined
+      ? (task.sessionId ?? plannedSessionId)
+      : task.sessionId
     return (
       <li className={css.queueTask} key={task.id} data-testid={`queue-task-${task.id}`}>
         <div className={css.queueTaskHead}>
@@ -198,14 +224,20 @@ export function TaskQueuePanel({ t, language, navigateToSession }: TaskQueuePane
           <span className={css.queueTaskMeta}>{workspace?.title ?? task.cwd} · {task.model}</span>
           <time className={css.queueTaskTime} dateTime={new Date(task.createdAt).toISOString()}>{timeOf(task.createdAt)}</time>
         </div>
+        {targetText !== undefined && (
+          <div className={css.queueTaskTarget} data-testid={`queue-task-target-${task.id}`}>
+            <span>{targetText}</span>
+            {reused && <span className={css.queueTaskTargetNote}>{t('queueReuseModelNote')}</span>}
+          </div>
+        )}
         <details className={css.queuePrompt}>
           <summary>{task.prompt.trim().slice(0, 180) || task.prompt.slice(0, 180)}</summary>
           <pre>{task.prompt}</pre>
         </details>
         {task.error !== undefined && <div className={css.queueTaskError} role="note">{task.error}</div>}
         <div className={css.queueTaskActions}>
-          {task.sessionId !== undefined && (
-            <button type="button" className={css.queueLinkButton} onClick={() => { openSession(task.sessionId!) }}>
+          {jumpSessionId !== undefined && (
+            <button type="button" className={css.queueLinkButton} onClick={() => { openSession(jumpSessionId) }}>
               {t('queueOpenSession')}
             </button>
           )}
@@ -250,7 +282,12 @@ export function TaskQueuePanel({ t, language, navigateToSession }: TaskQueuePane
       ) : (
         <>
           <section className={css.queueComposer}>
-            <div className={css.queueSafety}>{t('queueSafety')}</div>
+            <div className={css.queueSafety}>
+              {t('queueSafety')}
+              <span className={css.queueSafetyMode}>
+                {t(reuseSourceSession === true ? 'queueSafetyReuse' : 'queueSafetyIsolated')}
+              </span>
+            </div>
             <div className={css.queueSelectors}>
               <label className={css.queueField}>
                 <span>{t('queueWorkspace')}</span>

@@ -8,6 +8,10 @@ export type TaskQueueAction = {
     cwd: string;
     provider: string;
     model: string;
+    /** 来源会话（issue #118）：入队时所在的会话。 */
+    sourceSessionId?: string;
+    /** 是否授权在该来源会话内续跑（入队时冻结的开关状态）。 */
+    reuseSource?: boolean;
 } | {
     action: 'enqueueMany';
     tasks: readonly TaskQueueInput[];

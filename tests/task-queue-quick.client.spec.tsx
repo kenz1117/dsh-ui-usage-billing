@@ -168,11 +168,11 @@ afterEach(() => {
 describe('quick queue preferences and opt-in gate', () => {
   it('fails closed on missing, corrupt, or non-boolean preferences', () => {
     localStorage.clear()
-    expect(loadQuickQueuePrefs()).toEqual({ enabled: false, clearAfterEnqueue: false, showEntry: true })
+    expect(loadQuickQueuePrefs()).toEqual({ enabled: false, clearAfterEnqueue: false, showEntry: true, reuseSourceSession: false })
     localStorage.setItem(QUICK_QUEUE_STORAGE_KEY, '{broken')
-    expect(loadQuickQueuePrefs()).toEqual({ enabled: false, clearAfterEnqueue: false, showEntry: true })
+    expect(loadQuickQueuePrefs()).toEqual({ enabled: false, clearAfterEnqueue: false, showEntry: true, reuseSourceSession: false })
     localStorage.setItem(QUICK_QUEUE_STORAGE_KEY, '{"enabled":"yes","clearAfterEnqueue":1}')
-    expect(loadQuickQueuePrefs()).toEqual({ enabled: false, clearAfterEnqueue: false, showEntry: true })
+    expect(loadQuickQueuePrefs()).toEqual({ enabled: false, clearAfterEnqueue: false, showEntry: true, reuseSourceSession: false })
   })
 
   it('keeps the entry visible for preferences stored before the display switch existed (issue #114)', () => {
@@ -208,7 +208,7 @@ describe('quick queue preferences and opt-in gate', () => {
   it('keeps the composer switch state when only the entry display is toggled (issue #114)', () => {
     saveQuickQueuePrefs({ enabled: true, clearAfterEnqueue: true, showEntry: true })
     saveQuickQueuePrefs({ showEntry: false })
-    expect(loadQuickQueuePrefs()).toEqual({ enabled: true, clearAfterEnqueue: true, showEntry: false })
+    expect(loadQuickQueuePrefs()).toEqual({ enabled: true, clearAfterEnqueue: true, showEntry: false, reuseSourceSession: false })
   })
 })
 
@@ -287,6 +287,7 @@ describe('quick queue mutation and feedback', () => {
     expect(mutations).toEqual([{
       action: 'enqueue', prompt: PROMPT, cwd: '/tmp/work',
       provider: 'deepseek-official', model: 'deepseek-flash',
+      sourceSessionId: SESSION, reuseSource: false,
     }])
   })
 
@@ -310,10 +311,21 @@ describe('quick queue mutation and feedback', () => {
     expect(mutations).toEqual([{
       action: 'enqueue', prompt: PROMPT, cwd: '/tmp/work',
       provider: 'deepseek-official', model: 'deepseek-flash',
+      sourceSessionId: SESSION, reuseSource: false,
     }])
     expect(harness.setDraft).not.toHaveBeenCalled()
     expect(harness.submit).not.toHaveBeenCalled()
     expect(screen.getByTestId('quick-queue-count').textContent).toBe('1')
+  })
+
+  it('freezes the reuse authorization into the queued task (issue #118)', async () => {
+    saveQuickQueuePrefs({ enabled: true, reuseSourceSession: true })
+    const { mutations } = stubQueue()
+    renderQuick()
+    fireEvent.click(await screen.findByTestId('quick-queue-enqueue'))
+    expect(await screen.findByRole('status')).toBeTruthy()
+    // 复用授权与来源会话一起冻结进任务：之后改开关不影响已经排队的任务。
+    expect(mutations[0]).toMatchObject({ sourceSessionId: SESSION, reuseSource: true })
   })
 
   it('clears exactly once after success when explicitly enabled and the revision is unchanged', async () => {

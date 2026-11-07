@@ -603,9 +603,18 @@ export interface QuickQueuePrefs {
    * touched the setting.
    */
   showEntry: boolean
+  /**
+   * Run a queued task inside the Session it was queued from (issue #118).
+   *
+   * Off keeps every task in its own Session. On prefers continuing in the
+   * source Session — same context, same workspace grouping — and falls back to
+   * a new Session when the source is gone, busy or archived. Default off: the
+   * isolated-Session design is the safe default.
+   */
+  reuseSourceSession: boolean
 }
 
-export const DEFAULT_QUICK_QUEUE_PREFS: QuickQueuePrefs = { enabled: false, clearAfterEnqueue: false, showEntry: true }
+export const DEFAULT_QUICK_QUEUE_PREFS: QuickQueuePrefs = { enabled: false, clearAfterEnqueue: false, showEntry: true, reuseSourceSession: false }
 export const QUICK_QUEUE_STORAGE_KEY = 'dsh.ui-usage-billing.quick-queue'
 export const QUICK_QUEUE_PREF_EVENT = 'dsh.ui-usage-billing.quick-queue-pref'
 
@@ -620,6 +629,9 @@ export function loadQuickQueuePrefs(): QuickQueuePrefs {
     // 只有显式 false 才隐藏入口：老用户存的那份偏好没有这个字段，缺字段一律按显示兜底
     // （issue #114 —— 偏好损坏不该顺手把入口藏了）。
     showEntry: prefs.showEntry !== false,
+    // 复用来源会话是 opt-in：只有显式 true 才开（issue #118 —— 默认维持「每任务
+    // 独立会话」的安全设计）。
+    reuseSourceSession: prefs.reuseSourceSession === true,
   }
 }
 

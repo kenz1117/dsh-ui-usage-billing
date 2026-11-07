@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyBuiltinCatalog } from '../src/client/pricing.ts'
 import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from '../src/builtin-catalog.ts'
-import { TaskQueueEngine, type TaskQueueController } from '../src/task-queue.ts'
+import { TaskQueueEngine, type TaskQueueControllerFace, type TaskQueueWorkspaceContext } from '../src/task-queue.ts'
 
 applyBuiltinCatalog(BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES)
 
@@ -32,6 +32,16 @@ interface FakeControllerOptions {
   readonly reason?: { kind: string; error?: { message: string } }
   readonly emptyFollow?: boolean
   readonly relayMirror?: boolean
+  /**
+   * 宿主会话列表（issue #118）。给出这个字段，宿主才有会话列表读面；不给就
+   * 当作「老宿主没有这个能力」——复用路径会一律降级。
+   */
+  readonly sessions?: readonly {
+    sessionId: string
+    running?: boolean
+    cwd?: string
+    origin?: string
+  }[]
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -43,10 +53,12 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 function fakeController(options: FakeControllerOptions = {}) {
   const prompts: PromptCall[] = []
   const promptSignals: (AbortSignal | undefined)[] = []
+  const createCalls: { cwd?: string; workspaceId?: string }[] = []
   let session = 0
   const controller = {
-    create: vi.fn(async () => {
+    create: vi.fn(async (request: { cwd?: string; workspaceId?: string }) => {
       if (options.createGate !== undefined) await options.createGate
+      createCalls.push(request)
       return { sessionId: `session-${++session}` }
     }),
     selectModel: vi.fn(async () => {
@@ -88,8 +100,12 @@ function fakeController(options: FakeControllerOptions = {}) {
         }] : []),
       ],
     })),
-  } as unknown as TaskQueueController
-  return { controller, prompts, promptSignals }
+    // 会话列表读面是可选能力（issue #118）：宿主没给 sessions 就当作没有这个方法。
+    ...(options.sessions === undefined ? {} : {
+      list: vi.fn(async () => ({ items: options.sessions ?? [] })),
+    }),
+  } as unknown as TaskQueueControllerFace
+  return { controller, prompts, promptSignals, createCalls }
 }
 
 let root = ''
@@ -111,15 +127,17 @@ afterEach(async () => {
 })
 
 function makeEngine(
-  controller: TaskQueueController,
+  controller: TaskQueueControllerFace,
   now: () => number,
   ownerId?: string,
+  workspaceContext?: TaskQueueWorkspaceContext,
 ): TaskQueueEngine {
   let id = 0
   const engine = new TaskQueueEngine({
     filePath: join(root, 'queue.json'),
     getController: () => controller,
     getWorkspaces: () => [{ path: workspace, title: 'Test workspace' }],
+    ...(workspaceContext === undefined ? {} : { getWorkspaceContext: () => workspaceContext }),
     now,
     createId: () => `id-${++id}`,
     ...(ownerId === undefined ? {} : { ownerId }),
@@ -129,8 +147,15 @@ function makeEngine(
   return engine
 }
 
-async function enqueue(engine: TaskQueueEngine, prompt = 'harmless task'): Promise<void> {
-  await engine.enqueue({ prompt, cwd: workspace, provider: 'deepseek-official', model: 'deepseek-flash' })
+async function enqueue(
+  engine: TaskQueueEngine,
+  prompt = 'harmless task',
+  source: { sourceSessionId?: string; reuseSource?: boolean } = {},
+): Promise<void> {
+  await engine.enqueue({
+    prompt, cwd: workspace, provider: 'deepseek-official', model: 'deepseek-flash',
+    ...source,
+  })
 }
 
 describe('TaskQueueEngine safety and persistence', () => {
@@ -453,5 +478,156 @@ describe('TaskQueueEngine safety and persistence', () => {
     await expect(engine.enqueueMany([])).rejects.toThrow('at least one task')
     await expect(engine.enqueueMany(Array.from({ length: 51 }, () => task))).rejects.toMatchObject({ status: 409 })
     expect((await engine.snapshot()).tasks).toEqual([])
+  })
+})
+
+/**
+ * 来源会话续跑（issue #118）。
+ *
+ * 契约：入队时记录来源会话 → 执行时优先在该会话内续跑（保留上下文与分组）；
+ * 来源会话不可用时回退为新建会话，并把原因写在卡片上；复用路径不新建会话、
+ * 也不动来源会话的模型。
+ */
+describe('TaskQueueEngine source Session reuse (issue #118)', () => {
+  it('continues inside the source Session when it is idle and available', async () => {
+    const { controller, prompts } = fakeController({
+      sessions: [{ sessionId: 'session-source', cwd: workspace, running: false }],
+    })
+    const engine = makeEngine(controller, () => OFF_PEAK)
+    engine.start()
+    await enqueue(engine, 'continue here', { sourceSessionId: 'session-source', reuseSource: true })
+
+    await vi.waitFor(async () => {
+      expect((await engine.snapshot()).tasks[0]?.status).toBe('completed')
+    })
+    expect(prompts.map(prompt => prompt.sessionId)).toEqual(['session-source'])
+    // 复用路径不新建会话；也不对来源会话调 selectModel——那会改用户的全局默认模型
+    // 并在用户自己的会话日志里留下 model/selection 事件。
+    expect(controller.create).not.toHaveBeenCalled()
+    expect(controller.selectModel).not.toHaveBeenCalled()
+    const task = (await engine.snapshot()).tasks[0]
+    expect(task?.sessionId).toBe('session-source')
+    expect(task?.sourceSessionId).toBe('session-source')
+    expect(task?.reuseSource).toBe(true)
+    expect(task?.fallbackReason).toBeUndefined()
+  })
+
+  it.each([
+    ['source session no longer exists', [{ sessionId: 'session-other', running: false }]],
+    ['source session is busy', [{ sessionId: 'session-source', running: true }]],
+    ['source session belongs to a subagent', [{ sessionId: 'session-source', origin: 'subagent' }]],
+    ['source session working directory changed', [{ sessionId: 'session-source', cwd: '/somewhere/else' }]],
+  ] as const)('falls back to a new Session when %s', async (reason, sessions) => {
+    const { controller, prompts, createCalls } = fakeController({ sessions })
+    const engine = makeEngine(controller, () => OFF_PEAK)
+    engine.start()
+    await enqueue(engine, 'fallback task', { sourceSessionId: 'session-source', reuseSource: true })
+
+    await vi.waitFor(async () => {
+      expect((await engine.snapshot()).tasks[0]?.status).toBe('completed')
+    })
+    expect(createCalls).toHaveLength(1)
+    expect(prompts[0]?.sessionId).not.toBe('session-source')
+    const task = (await engine.snapshot()).tasks[0]
+    expect(task?.fallbackReason).toBe(reason)
+  })
+
+  it('falls back when the source Session is archived', async () => {
+    const { controller, prompts } = fakeController({
+      sessions: [{ sessionId: 'session-source', running: false }],
+    })
+    const engine = makeEngine(controller, () => OFF_PEAK, undefined, {
+      archivedSessionIds: ['session-source'],
+      workspaceIdOfPath: () => undefined,
+    })
+    engine.start()
+    await enqueue(engine, 'archived source', { sourceSessionId: 'session-source', reuseSource: true })
+
+    await vi.waitFor(async () => {
+      expect((await engine.snapshot()).tasks[0]?.status).toBe('completed')
+    })
+    expect(prompts[0]?.sessionId).not.toBe('session-source')
+    expect((await engine.snapshot()).tasks[0]?.fallbackReason).toBe('source session is archived')
+  })
+
+  it('falls back when the host cannot list Sessions', async () => {
+    const { controller, prompts } = fakeController()
+    const engine = makeEngine(controller, () => OFF_PEAK)
+    engine.start()
+    await enqueue(engine, 'no session list', { sourceSessionId: 'session-source', reuseSource: true })
+
+    await vi.waitFor(async () => {
+      expect((await engine.snapshot()).tasks[0]?.status).toBe('completed')
+    })
+    expect(prompts[0]?.sessionId).not.toBe('session-source')
+    expect((await engine.snapshot()).tasks[0]?.fallbackReason).toBe('this host cannot inspect Sessions')
+  })
+
+  it('keeps the isolated-Session default when reuse is not authorized', async () => {
+    const { controller, prompts, createCalls } = fakeController({
+      sessions: [{ sessionId: 'session-source', cwd: workspace, running: false }],
+    })
+    const engine = makeEngine(controller, () => OFF_PEAK)
+    engine.start()
+    await enqueue(engine, 'still isolated', { sourceSessionId: 'session-source', reuseSource: false })
+
+    await vi.waitFor(async () => {
+      expect((await engine.snapshot()).tasks[0]?.status).toBe('completed')
+    })
+    expect(createCalls).toHaveLength(1)
+    expect(prompts[0]?.sessionId).not.toBe('session-source')
+    const task = (await engine.snapshot()).tasks[0]
+    expect(task?.reuseSource).toBe(false)
+    expect(task?.fallbackReason).toBeUndefined()
+  })
+
+  it('creates the Session inside its workspace so it is not orphaned', async () => {
+    const { controller, createCalls } = fakeController()
+    const engine = makeEngine(controller, () => OFF_PEAK, undefined, {
+      archivedSessionIds: [],
+      workspaceIdOfPath: (path) => (path === workspace ? 'workspace-1' : undefined),
+    })
+    engine.start()
+    await enqueue(engine, 'grouped task')
+
+    await vi.waitFor(async () => {
+      expect((await engine.snapshot()).tasks[0]?.status).toBe('completed')
+    })
+    // 归组走 create({ workspaceId })：宿主据此把会话挂进工作区，且不能再带 cwd。
+    expect(createCalls).toEqual([{ workspaceId: 'workspace-1' }])
+  })
+
+  it('creates a cwd Session when no workspace matches the task directory', async () => {
+    const { controller, createCalls } = fakeController()
+    const engine = makeEngine(controller, () => OFF_PEAK, undefined, {
+      archivedSessionIds: [],
+      workspaceIdOfPath: () => undefined,
+    })
+    engine.start()
+    await enqueue(engine, 'ungrouped task')
+
+    await vi.waitFor(async () => {
+      expect((await engine.snapshot()).tasks[0]?.status).toBe('completed')
+    })
+    expect(createCalls).toEqual([{ cwd: workspace }])
+  })
+
+  it('reads a queue file written before the source Session fields existed', async () => {
+    await writeFile(join(root, 'queue.json'), JSON.stringify({
+      version: 1,
+      tasks: [{
+        id: 'legacy-1', prompt: 'legacy task', cwd: workspace,
+        provider: 'deepseek-official', model: 'deepseek-flash',
+        status: 'queued', createdAt: OFF_PEAK,
+      }],
+    }), { mode: 0o600 })
+    const { controller, prompts } = fakeController()
+    const engine = makeEngine(controller, () => OFF_PEAK)
+    engine.start()
+
+    await vi.waitFor(async () => {
+      expect((await engine.snapshot()).tasks[0]?.status).toBe('completed')
+    })
+    expect(prompts).toHaveLength(1)
   })
 })

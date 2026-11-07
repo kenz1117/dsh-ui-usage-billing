@@ -302,9 +302,33 @@ describe('UsageBilling surface', () => {
       fireEvent.click(toggle)
       expect(toggle.getAttribute('aria-checked')).toBe('false')
       expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.quick-queue')!)).toEqual({
-        enabled: false, clearAfterEnqueue: false, showEntry: false,
+        enabled: false, clearAfterEnqueue: false, showEntry: false, reuseSourceSession: false,
       })
       expect(events).toEqual(['quick-queue'])
+    } finally {
+      window.removeEventListener('dsh.ui-usage-billing.quick-queue-pref', listener)
+    }
+  })
+
+  it('keeps the source-Session reuse switch off by default and persists it when turned on (issue #118)', async () => {
+    const events: string[] = []
+    const listener = (): void => { events.push('quick-queue') }
+    window.addEventListener('dsh.ui-usage-billing.quick-queue-pref', listener)
+    try {
+      render(<UsageBilling {...makeProps()} />)
+      fireEvent.click(screen.getByTestId('billing-trigger'))
+      await screen.findByText('使用统计')
+      fireEvent.click(await screen.findByTestId('billing-tab-settings'))
+      // 默认关闭：维持「每任务独立会话」的安全设计，升级用户零感知。
+      const toggle = await screen.findByTestId('billing-quick-queue-reuse-toggle')
+      expect(toggle.getAttribute('aria-checked')).toBe('false')
+      expect(localStorage.getItem('dsh.ui-usage-billing.quick-queue')).toBeNull()
+      fireEvent.click(toggle)
+      expect(toggle.getAttribute('aria-checked')).toBe('true')
+      expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.quick-queue')!)).toMatchObject({
+        reuseSourceSession: true,
+      })
+      expect(events.length).toBeGreaterThan(0)
     } finally {
       window.removeEventListener('dsh.ui-usage-billing.quick-queue-pref', listener)
     }

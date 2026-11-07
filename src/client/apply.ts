@@ -176,6 +176,20 @@ export function apply(ctx: Context): void {
     registerOpen: handler => metrics.registerOpen(handler),
     recoveryEntryAvailable: usageCommandAvailable || nativeSettingsAvailable,
     navigateToSession: (sessionId) => navigator.open(sessionId),
+    // 会话标题（issue #118）：队列卡片显示「将在会话 X 继续」。宿主会话列表里的
+    // displayTitle 依次是持久标题 → 项目名 → 会话 id；取不到就返回 undefined，
+    // 界面退化为 id 短码，不编造标题。
+    sessionTitleOf: (sessionId: string): string | undefined => {
+      try {
+        const list = ctx.sessions.list
+        if (list === undefined) return undefined
+        const row = list.getSnapshot().byId?.[sessionId as SessionId]
+        const title = row?.displayTitle ?? row?.title
+        return typeof title === 'string' && title.trim() !== '' ? title : undefined
+      } catch {
+        return undefined
+      }
+    },
   })
   const usageBillingSlotRuntime = {
     store: budgetStore,

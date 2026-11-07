@@ -9,11 +9,34 @@
 import type { SessionController } from '@deepseek-ai/dsh-api-session-controller';
 import type { TaskQueueInput, TaskQueueSnapshot, TaskQueueSummary, TaskQueueWorkspace } from './task-queue-shared.ts';
 export type TaskQueueController = Pick<SessionController, 'create' | 'selectModel' | 'prompt' | 'follow' | 'modelCatalog'>;
-type ControllerFace = TaskQueueController;
+/**
+ * 会话列表读面（可选能力，issue #118）：复用来源会话前用它校验该会话是否仍可用
+ * （存在 / 非子智能体 / 空闲 / 项目未变）。**缺席不降级整个队列**——只是复用
+ * 路径不可用，任务一律走新建会话。
+ */
+export type TaskQueueSessionLister = Pick<SessionController, 'list'>;
+/** 引擎看到的宿主会话控制面：基本 5 方法必备，list 可选。 */
+export type TaskQueueControllerFace = TaskQueueController & Partial<TaskQueueSessionLister>;
+/**
+ * 工作区上下文（可选能力）：新建会话归组 + 来源会话归档判定。宿主没有这个服务
+ * 时一律降级（不归组、归档不可判），队列其余行为不变。
+ */
+export interface TaskQueueWorkspaceContext {
+    /** 已归档的会话 id：归档会话的轮次会以 blocked 结束，不会真的跑。 */
+    readonly archivedSessionIds: readonly string[];
+    /**
+     * 路径 → 工作区 id。**必须严格相等**：宿主的成员资格规则是「account slot +
+     * canonical cwd 严格等于工作区 path」，前缀匹配不算数——本仓计费口径里的子目录
+     * 前缀匹配只用于账单归组，不能拿来给会话归组。
+     */
+    readonly workspaceIdOfPath: (path: string) => string | undefined;
+}
 export interface TaskQueueEngineOptions {
     readonly filePath: string;
-    readonly getController: () => ControllerFace | undefined;
+    readonly getController: () => TaskQueueControllerFace | undefined;
     readonly getWorkspaces: () => readonly TaskQueueWorkspace[];
+    /** 工作区上下文（可选）：缺席 → 不归组、复用路径不可用。 */
+    readonly getWorkspaceContext?: () => TaskQueueWorkspaceContext | undefined;
     readonly now?: () => number;
     readonly createId?: () => string;
     readonly ownerId?: string;
@@ -50,6 +73,21 @@ export declare class TaskQueueEngine {
     private claimNext;
     private recoverExpired;
     private execute;
+    /**
+     * issue #118：判断来源会话能否续跑。不能就给出降级原因（写进卡片）。
+     *
+     * 判据来自 issue 的安全边界：来源会话已删除 / 正在跑别的轮次 / 工作区变了时，
+     * 回退为新建会话，不要往用户正在使用的会话里硬塞一轮。另外子智能体会话与
+     * 归档会话也不能复用——前者归属子智能体路由，后者轮次会以 blocked 结束、
+     * 看起来跑了其实没跑。
+     */
+    private resolveSourceSession;
+    /**
+     * 新建会话：cwd 恰好等于某个工作区时用 create({ workspaceId })，让宿主把会话挂进
+     * 该工作区——create({ cwd }) 从不归组，这正是队列会话在侧栏里没有分组的原因。
+     * 两者互斥：带 workspaceId 时不能再带 cwd。
+     */
+    private createGroupedSession;
     private watch;
     private renewLease;
     private requeue;
@@ -59,5 +97,4 @@ export declare class TaskQueueEngine {
     private readDocument;
     private readDocumentWithRaw;
 }
-export {};
 //# sourceMappingURL=task-queue.d.ts.map

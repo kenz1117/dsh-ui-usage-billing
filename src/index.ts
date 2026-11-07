@@ -59,7 +59,7 @@ import { registerSubscriptionsRoute } from './routes/subscriptions.ts'
 import { registerRelayQuotasRoute } from './routes/relay-quotas.ts'
 import { registerUsageStatsRoute } from './routes/usage-stats.ts'
 import { registerTaskQueueRoute } from './routes/task-queue.ts'
-import { TaskQueueEngine, type TaskQueueController } from './task-queue.ts'
+import { TaskQueueEngine, type TaskQueueControllerFace } from './task-queue.ts'
 
 // Re-export guard helpers for backward compat with tests/clients that import
 // from src/index.ts (e.g. tests/trusted-hosts.spec.ts).
@@ -877,7 +877,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     filePath: config.taskQueuePath ?? join(dshHome, '.dsh-usage-task-queue.json'),
     getController: () => {
       try {
-        return ctx.get('sessionController') as TaskQueueController | undefined
+        return ctx.get('sessionController') as TaskQueueControllerFace | undefined
       } catch {
         return undefined
       }
@@ -892,6 +892,31 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
           .map(workspace => ({ path: workspace.path, title: workspace.title || workspace.path }))
       } catch {
         return []
+      }
+    },
+    // issue #118：工作区上下文（可选能力，同为 ctx.get 探测，不进 inject）。它给
+    // 两件事：新建会话时按工作区归组（宿主只认「account slot + canonical cwd
+    // 严格相等」，所以这里也必须严格相等），以及来源会话的归档判定。
+    getWorkspaceContext: () => {
+      try {
+        const registry = ctx.get('workspaceRegistry') as {
+          archivedSessionIds?: readonly string[]
+          list?: () => readonly { id?: unknown; path?: string }[]
+        } | undefined
+        if (registry === undefined) return undefined
+        const byPath = new Map<string, string>()
+        for (const workspace of registry.list?.() ?? []) {
+          if (typeof workspace.path === 'string' && workspace.path !== '' && typeof workspace.id === 'string') {
+            byPath.set(workspace.path, workspace.id)
+          }
+        }
+        const archivedSessionIds = registry.archivedSessionIds ?? []
+        return {
+          archivedSessionIds,
+          workspaceIdOfPath: (path: string) => byPath.get(path),
+        }
+      } catch {
+        return undefined
       }
     },
   })

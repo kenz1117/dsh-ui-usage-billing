@@ -7,7 +7,12 @@ import { TaskQueuePanel } from '../src/client/TaskQueuePanel.tsx'
 import { zh } from '../src/client/locales.ts'
 import type { TaskQueueSnapshot } from '../src/task-queue-shared.ts'
 
-const t = (key: string): string => (zh as Record<string, string>)[key] ?? key
+const t = (key: string, params?: Record<string, unknown>): string => {
+  const raw = (zh as Record<string, string>)[key] ?? key
+  if (params === undefined) return raw
+  // 与面板里的 t 同口径：{name} 占位符替换。
+  return raw.replace(/\{(\w+)\}/g, (match, name: string) => String(params[name] ?? match))
+}
 const navigateToSession = vi.fn(() => 'opened' as const)
 
 const BASE: TaskQueueSnapshot = {
@@ -201,5 +206,87 @@ describe('TaskQueuePanel', () => {
       delete (document as { hidden?: unknown }).hidden
       vi.useRealTimers()
     }
+  })
+
+  it('shows the planned target Session before the task runs and jumps to it (issue #118)', async () => {
+    const queued: TaskQueueSnapshot = {
+      ...BASE,
+      tasks: [{
+        id: 'task-1', prompt: 'Continue me', cwd: '/tmp/work',
+        provider: 'deepseek-official', model: 'deepseek-flash', status: 'queued', createdAt: 1,
+        sourceSessionId: 'session-source', reuseSource: true,
+      }],
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(queued)))
+    render(
+      <TaskQueuePanel
+        t={t}
+        language="zh"
+        navigateToSession={navigateToSession}
+        sessionTitleOf={(id: string) => (id === 'session-source' ? '我的会话' : undefined)}
+      />,
+    )
+
+    const target = await screen.findByTestId('queue-task-target-task-1')
+    expect(target.textContent).toContain('我的会话')
+    // 目标会话在执行前就可知：按钮当场可点，直接跳到来源会话。
+    fireEvent.click(screen.getByRole('button', { name: t('queueOpenSession') }))
+    expect(navigateToSession).toHaveBeenCalledWith('session-source')
+  })
+
+  it('explains why the task fell back to a new Session (issue #118)', async () => {
+    const queued: TaskQueueSnapshot = {
+      ...BASE,
+      tasks: [{
+        id: 'task-1', prompt: 'Continue me', cwd: '/tmp/work',
+        provider: 'deepseek-official', model: 'deepseek-flash', status: 'queued', createdAt: 1,
+        sourceSessionId: 'session-source', reuseSource: true,
+        fallbackReason: 'source session is busy',
+      }],
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(queued)))
+    render(<TaskQueuePanel t={t} language="zh" navigateToSession={navigateToSession} />)
+
+    const target = await screen.findByTestId('queue-task-target-task-1')
+    expect(target.textContent).toContain('source session is busy')
+    // 降级后的目标是一个还没建出来的新会话：执行前没有可跳的会话。
+    expect(screen.queryByRole('button', { name: t('queueOpenSession') })).toBeNull()
+  })
+
+  it('reports the Session the task actually ran in (issue #118)', async () => {
+    const done: TaskQueueSnapshot = {
+      ...BASE,
+      tasks: [{
+        id: 'task-1', prompt: 'Continue me', cwd: '/tmp/work',
+        provider: 'deepseek-official', model: 'deepseek-flash', status: 'completed', createdAt: 1,
+        sessionId: 'session-source', sourceSessionId: 'session-source', reuseSource: true,
+      }],
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(done)))
+    render(
+      <TaskQueuePanel
+        t={t}
+        language="zh"
+        navigateToSession={navigateToSession}
+        sessionTitleOf={(id: string) => (id === 'session-source' ? '我的会话' : undefined)}
+      />,
+    )
+
+    const target = await screen.findByTestId('queue-task-target-task-1')
+    expect(target.textContent).toContain('我的会话')
+    // 复用任务不切来源会话的模型，注记说清楚这一点。
+    expect(target.textContent).toContain(t('queueReuseModelNote'))
+  })
+
+  it('states the current execution mode in the safety note (issue #118)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(BASE)))
+    const { unmount } = render(
+      <TaskQueuePanel t={t} language="zh" navigateToSession={navigateToSession} reuseSourceSession={false} />,
+    )
+    expect(await screen.findByText(t('queueSafetyIsolated'))).toBeTruthy()
+    unmount()
+
+    render(<TaskQueuePanel t={t} language="zh" navigateToSession={navigateToSession} reuseSourceSession />)
+    expect(await screen.findByText(t('queueSafetyReuse'))).toBeTruthy()
   })
 })

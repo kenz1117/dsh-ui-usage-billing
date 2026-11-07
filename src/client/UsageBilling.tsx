@@ -675,6 +675,11 @@ interface BillingDashboardProps {
   quotasStale: boolean
   /** 余额刷新超预算：本次余额来自上一次成功的查询（issue #104）。 */
   balanceStale?: boolean
+  /**
+   * 会话标题（issue #118）：队列卡片显示「将在会话 X 继续」。取不到时界面退化为
+   * 会话 id 短码——没有这个能力也不影响队列其余功能。
+   */
+  sessionTitleOf?: (sessionId: string) => string | undefined
 }
 
 /**
@@ -972,7 +977,7 @@ function BillingDashboard({
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
   modelBudgets, monthModelCost, onModelBudget,
   peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, recoveryEntryAvailable, sitePrefs, onSitePrefs,
-  liveCostPrefs, onLiveCostPrefs, quickQueuePrefs, onQuickQueuePrefs, quotasStale, balanceStale, navigateToSession,
+  liveCostPrefs, onLiveCostPrefs, quickQueuePrefs, onQuickQueuePrefs, quotasStale, balanceStale, navigateToSession, sessionTitleOf,
 }: BillingDashboardProps): React.ReactNode {
   const dashboardRoot = useRef<HTMLDivElement>(null)
   // 智能体网络：从会话行的 parentId 还原委派链，逐级算链合计（哪次委派最贵）。
@@ -1929,7 +1934,13 @@ function BillingDashboard({
         {/* Scrollable body: 按 Tab 条件渲染分区；原生设置页复用同一容器。 */}
         <div className={clsx(css.dashboardBody, embeddedSettings && css.nativeSettingsBody)}>
           {tab === 'queue' && (
-            <TaskQueuePanel t={t} language={language} navigateToSession={navigateToSession} />
+            <TaskQueuePanel
+              t={t}
+              language={language}
+              navigateToSession={navigateToSession}
+              {...(sessionTitleOf === undefined ? {} : { sessionTitleOf })}
+              reuseSourceSession={quickQueuePrefs.reuseSourceSession}
+            />
           )}
           {tab === 'overview' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-overview">
@@ -2828,6 +2839,27 @@ function BillingDashboard({
                         data-testid="billing-quick-queue-entry-toggle"
                         className={clsx(css.switch, quickQueuePrefs.showEntry && css.switchOn)}
                         onClick={() => onQuickQueuePrefs({ ...quickQueuePrefs, showEntry: !quickQueuePrefs.showEntry })}
+                      >
+                        <span className={css.switchKnob} />
+                      </button>
+                    </div>
+                  </div>
+                  {/* issue #118：开启后，从会话入队的任务到点时优先在该会话里继续
+                      （保留上下文与工作区分组）；来源会话不可用时改为新建会话并在
+                      卡片上注明原因。默认关闭，维持「每任务独立会话」的安全设计。 */}
+                  <div className={css.setCell} data-testid="billing-quick-queue-reuse-setting">
+                    <div className={css.setCardHead}>
+                      <div className={css.setCardMeta}>
+                        <h3 className={css.setCardTitle}>{t('quickQueueReuseEntry')}<HelpTip label={t('quickQueueReuseEntryHint')} t={t} /></h3>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={quickQueuePrefs.reuseSourceSession}
+                        aria-label={t('quickQueueReuseEntry')}
+                        data-testid="billing-quick-queue-reuse-toggle"
+                        className={clsx(css.switch, quickQueuePrefs.reuseSourceSession && css.switchOn)}
+                        onClick={() => onQuickQueuePrefs({ ...quickQueuePrefs, reuseSourceSession: !quickQueuePrefs.reuseSourceSession })}
                       >
                         <span className={css.switchKnob} />
                       </button>
@@ -4100,7 +4132,7 @@ function PositionMenu({ liveCostPrefs, onLiveCostPrefs, t }: {
  */
 export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   const {
-    t: hostT, checkModels, publishCosts, registerOpen, navigateToSession, renderSlot, useStore, actions,
+    t: hostT, checkModels, publishCosts, registerOpen, navigateToSession, sessionTitleOf, renderSlot, useStore, actions,
     embeddedSettings = false,
   } = props
   // Start empty; swap in real host data when the server serves valid JSON.
@@ -4159,10 +4191,14 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   }, [])
   const updateQuickQueuePrefs = useCallback((next: QuickQueuePrefs): void => {
     // 只回写本设置页负责的字段：composer 树可能已改过 enabled/clearAfterEnqueue，
-    // 用这里的旧快照整份覆盖会把它们悄悄回滚。
-    const merged = { ...loadQuickQueuePrefs(), showEntry: next.showEntry }
+    // 用这里的旧快照整份覆盖会把它们悄悄回滚。issue #118 的复用开关也归这里。
+    const merged = {
+      ...loadQuickQueuePrefs(),
+      showEntry: next.showEntry,
+      reuseSourceSession: next.reuseSourceSession,
+    }
     setQuickQueuePrefs(merged)
-    saveQuickQueuePrefs({ showEntry: merged.showEntry })
+    saveQuickQueuePrefs({ showEntry: merged.showEntry, reuseSourceSession: merged.reuseSourceSession })
   }, [])
   // 计费卡显示偏好：localStorage 持久化；原生设置页与仪表盘设置跨 React 树即时同步。
   const [cardPrefs, setCardPrefs] = useState<BillingCardPrefs>(() => loadBillingCardPrefs())
@@ -4693,6 +4729,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           onClose={close}
           embeddedSettings={embeddedSettings}
           navigateToSession={navigateToSession}
+          sessionTitleOf={sessionTitleOf}
           userPrices={userPrices}
           onUserPrices={updateUserPrices}
           health={health}
