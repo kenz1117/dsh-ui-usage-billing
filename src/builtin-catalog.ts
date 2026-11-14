@@ -39,7 +39,47 @@ import type { ModelEntry } from './client/pricing.ts'
 const DEEPSEEK_PEAK_HOURS = '09:00-12:00 / 14:00-18:00'
 const GEMINI_PEAK_HOURS = 'Standard / Flex'
 
-export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
+/**
+ * 厂商「缓存写入」加价系数（issue #123）：厂商对「把内容写入缓存」按输入价的
+ * 倍数单独计费，models.dev 原生字段 `cache_write` 即该倍率。
+ * 2026-11-14 核对 models.dev 实时目录：OpenAI 11/11 恒为 125%、Anthropic 18/18
+ * 恒为 125%、百炼（阿里通义）约 125%（`qwen3.8-flash` 例外 156%）。
+ * 未列的厂商不落数值 → 缓存写入按输入价计（DeepSeek、月之暗面等本就不单列
+ * 缓存写入费，与旧口径逐字一致；MiniMax 高速档倍率不恒定，故不给规则）。
+ */
+const CACHE_WRITE_FACTORS: Readonly<Record<string, number>> = {
+  'OpenAI': 1.25,
+  'Anthropic': 1.25,
+  '阿里通义': 1.25,
+}
+
+/** 条目内官方「显式缓存创建」价（extraRows 行标签）——厂商公布的缓存写入单价。 */
+const CACHE_WRITE_ROW_LABEL = '显式缓存创建'
+
+/** 单价取整到 6 位小数：消除浮点乘法的尾数噪声（0.3 × 1.25 = 0.375 而非 0.37499…）。 */
+function roundUnitPrice(value: number): number {
+  return Number(value.toFixed(6))
+}
+
+/**
+ * 给目录条目补出缓存写入单价（issue #123）：条目自带官方「显式缓存创建」价时
+ * 以官方值为准（百炼各档比例不恒定），否则按厂商加价系数从输入价派生；
+ * 两者皆无 → 不落该字段，计价回退按输入价（与旧口径一致）。
+ * 只动主档：分时计价（offPeak）目前只有 DeepSeek，其缓存写入本就按输入价。
+ */
+function withCacheWritePrice(entry: ModelEntry): ModelEntry {
+  if (entry.price.cacheWrite !== undefined) return entry
+  const official = entry.extraRows?.find(row => row.label === CACHE_WRITE_ROW_LABEL)?.input
+  if (official !== undefined && official > 0) {
+    return { ...entry, price: { ...entry.price, cacheWrite: official } }
+  }
+  const factor = CACHE_WRITE_FACTORS[entry.provider]
+  if (factor === undefined || !(entry.price.input > 0)) return entry
+  return { ...entry, price: { ...entry.price, cacheWrite: roundUnitPrice(entry.price.input * factor) } }
+}
+
+/** 内置目录原始条目（缓存写入单价由 {@link withCacheWritePrice} 派生后导出）。 */
+const RAW_MODEL_CATALOG: readonly ModelEntry[] = [
   // DeepSeek — V4 peak/off-peak rates (cloud.tencent.com TokenHub 2026-08-14),
   // RMB per 1M tokens: peak / off-peak (50%).
   {
@@ -2112,6 +2152,13 @@ export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = [
     price: { currency: 'CNY', input: 0, cacheHit: 0, cacheMiss: 0, output: 0 },
   },
 ]
+
+/**
+ * 内置计费目录（导出态）：在原始条目上派生缓存写入单价（issue #123），
+ * 使「缓存写入」成为独立计价维度——厂商对写入缓存单独计价时（OpenAI/
+ * Anthropic/百炼），缓存写入 token 不再按普通输入价估算。
+ */
+export const BUILTIN_MODEL_CATALOG: readonly ModelEntry[] = RAW_MODEL_CATALOG.map(withCacheWritePrice)
 
 /**
  * 真实 provider model id → 计费目录键（`MODEL_CATALOG[].key`）的映射。未知 id

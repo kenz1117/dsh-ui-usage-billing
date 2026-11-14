@@ -329,6 +329,9 @@ export function buildExtraModels(data: unknown): ExtraModelPrice[] {
       if (input === undefined || output === undefined) continue
       const declaredCacheRead = asPrice((cost as { cache_read?: unknown }).cache_read)
       const cacheRead = declaredCacheRead ?? input * 0.1
+      // 缓存写入价（issue #123）：models.dev 原生 `cache_write`。声明缺失不猜——
+      // 缺省按输入价计（与目录同口径）。
+      const declaredCacheWrite = asPrice((cost as { cache_write?: unknown }).cache_write)
       const name = (modelDoc as { name?: unknown }).name
       const familyValue = (modelDoc as { family?: unknown }).family
       const family = typeof familyValue === 'string' && familyValue !== '' ? familyValue : undefined
@@ -357,7 +360,12 @@ export function buildExtraModels(data: unknown): ExtraModelPrice[] {
           key,
           name: typeof name === 'string' && name !== '' ? name : modelId,
           provider: providerDisplay,
-          price: { input, cacheHit: cacheRead, output },
+          price: {
+            input,
+            cacheHit: cacheRead,
+            output,
+            ...(declaredCacheWrite !== undefined ? { cacheWrite: declaredCacheWrite } : {}),
+          },
         },
         input,
         output,

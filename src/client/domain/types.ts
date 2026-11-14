@@ -230,6 +230,8 @@ export interface UsageStats {
     output: number
     cacheHit: number
     cacheMiss: number
+    /** 显式缓存写入（cacheMiss 子集，部分厂商单独报告）；issue #123 起按其单价计价。 */
+    cacheWrite?: number
     cost: number
     reasoning: number
     /** Billed through a subscription plan (no per-token cost). */
@@ -245,6 +247,8 @@ export interface UsageStats {
     output: number
     cacheHit: number
     cacheMiss: number
+    /** 显式缓存写入（cacheMiss 子集）；issue #123 起按其单价计价。 */
+    cacheWrite?: number
     cost: number
     reasoning: number
   }>
@@ -255,6 +259,8 @@ export interface UsageStats {
     output: number
     cacheHit: number
     cacheMiss: number
+    /** 显式缓存写入（cacheMiss 子集）；issue #123 起按其单价计价。 */
+    cacheWrite?: number
     cost: number
   }>>
   /** 模型 × 日期 × 站点 三维统计（[date][modelKey][siteKey]）：按 origin 绑定自定义价的
@@ -265,6 +271,8 @@ export interface UsageStats {
     output: number
     cacheHit: number
     cacheMiss: number
+    /** 显式缓存写入（cacheMiss 子集）；issue #123 起按其单价计价。 */
+    cacheWrite?: number
     cost: number
     /** 该格全部调用都走订阅通道（聚合侧按三维格置位）；旧快照缺失，回退全局口径。 */
     plan?: boolean

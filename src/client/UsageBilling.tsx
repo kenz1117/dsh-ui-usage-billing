@@ -1494,6 +1494,8 @@ function BillingDashboard({
           input: data.input,
           cacheHit: data.cacheHit,
           cacheMiss: data.cacheMiss,
+          // 缓存写入单列计价（issue #123）：目录价预估与服务端口径一致。
+          cacheWrite: data.cacheWrite ?? 0,
           output: data.output,
         }
         return {
@@ -1547,7 +1549,7 @@ function BillingDashboard({
       const today = localDayStamp()
       siteSource = { [today]: stats.byDayModelsSite?.[today] ?? {} }
     }
-    const cells = new Map<string, Map<string, { calls: number; input: number; output: number; cacheHit: number; cacheMiss: number; cost: number; allPlan: boolean }>>()
+    const cells = new Map<string, Map<string, { calls: number; input: number; output: number; cacheHit: number; cacheMiss: number; cacheWrite: number; cost: number; allPlan: boolean }>>()
     for (const models of Object.values(siteSource ?? {})) {
       for (const [modelKey, sites] of Object.entries(models)) {
         for (const [siteKey, usage] of Object.entries(sites)) {
@@ -1556,12 +1558,14 @@ function BillingDashboard({
             bucket = new Map()
             cells.set(siteKey, bucket)
           }
-          const cell = bucket.get(modelKey) ?? { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0, allPlan: true }
+          const cell = bucket.get(modelKey) ?? { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cacheWrite: 0, cost: 0, allPlan: true }
           cell.calls += usage.calls
           cell.input += usage.input
           cell.output += usage.output
           cell.cacheHit += usage.cacheHit
           cell.cacheMiss += usage.cacheMiss
+          // 缓存写入单列计价（issue #123）：目录价预估与服务端口径一致。
+          cell.cacheWrite += usage.cacheWrite ?? 0
           cell.cost += usage.cost
           // 行 plan 按本格（通道）判定：聚合侧按三维格置位后，混通道模型在纯订阅
           // 通道的行也正确挂「订阅」徽标，不再借模型全局 plan（其它提供商的按量
@@ -1594,7 +1598,7 @@ function BillingDashboard({
             output: cell.output,
             cacheHitRate: cell.cacheHit + cell.cacheMiss > 0 ? (cell.cacheHit / (cell.cacheHit + cell.cacheMiss)) * 100 : 0,
             // 目录价预估：订阅通道行即「套餐内预估开销」，按量行即未重估前的目录口径。
-            estimated: unknownChannel ? 0 : computeCost(entry, { input: cell.input, cacheHit: cell.cacheHit, cacheMiss: cell.cacheMiss, output: cell.output }),
+            estimated: unknownChannel ? 0 : computeCost(entry, { input: cell.input, cacheHit: cell.cacheHit, cacheMiss: cell.cacheMiss, cacheWrite: cell.cacheWrite, output: cell.output }),
             plan: cell.allPlan,
             ...(cell.cost > 0 ? { actual: cell.cost } : {}),
             uncatalogued,
