@@ -2,11 +2,21 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-rc.3。当前 `latest` 指向 `1.8.5` 正式版，`alpha` 指向 `1.8.3-alpha.6`；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-rc.3。当前 `latest` 指向 `1.8.5` 正式版，`alpha` 指向 `1.8.3-alpha.7`；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.2-rc.3）
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
+
+### v1.8.3-alpha.7（2026-11-14）
+
+- **修复：动效强度设置越界压平全页面动画（issue #124）**。设置里的「动效强度」原先把 `data-motion` 写在 `<html>` 上，配 `[data-motion="off"] *` 通配符 + `!important` —— 选择器从 `<html>` 起算又是通配符，页面上**每一个元素**的动画时长都被压成 `.001ms`。报告者在 Windows + DSH 官方桌面版 0.2.2-rc.3 实测：切到「克制」后，DSH 自己的右键菜单、对话框动画全部消失（变成瞬间出现），其他插件加的动画同样失效，且对方同为 `!important` 无法覆盖，只能切回「丰富」或刷新页面恢复。
+  - **修法（作用域限定）**：压制规则收进**本插件自有 DOM 根容器** `.dsh-billing-root` 之内 —— 本插件每处自有根（侧栏触发卡 / compact 图标钮 / 悬浮速览 / 仪表盘内容 / 弹窗外壳 / 宿主设置页内嵌区 / 峰谷提醒浮层 / 即时代费条与 chip / 低谷队列控件）都挂这个作用域类，规则只命中其子树，宿主与其他插件不再被波及。
+  - **全局属性名命名空间化**：`<html>` 上改挂 `data-dsh-billing-motion` / `data-dsh-billing-density`（原 `data-motion` / `data-density`）—— 通用属性名会被宿主或第三方插件的同名属性互相覆盖（谁后写谁赢），本插件的偏好也会被别人的同名属性改写。
+  - **本插件内部行为不变**：三档语义（关闭 / 克制 / 丰富）与此前逐字一致 ——「克制」仍把本插件内的关键帧动画压成瞬时、保留 transition 微交互；变的只有作用域。
+- **纪律守卫 10（新增）**：lint 守卫「全局属性与动效作用域」—— 禁止裸 `[data-density]` / `[data-motion]` 属性选择器（必须 `data-dsh-billing-*` 命名空间化）、凡提到动效属性的 CSS 选择器必须同时带 `.dsh-billing-root` 作用域类、TSX 侧禁止 `dataset.density` / `dataset.motion` 旧写法。防止将来重构把越界写法改回来。
+- **验证**：全量 88 个测试文件 / 902 条用例通过（新增 6 条 issue #124 回归用例：各自有根容器挂作用域类、偏好写到命名空间化属性且不留通用名属性、CSS 文本契约）；lint 十条纪律守卫全绿；`check-compat` / 平台种子守卫通过；客户端 bundle **363,899 字节（355.4 KiB）**（较 1.8.5 正式版 +731 字节），低于本仓自设 500 KiB 强警告线。3080 dev host 真机（宿主 0.2.2-rc.3 + 本地构建）：设置切「克制」后，插件根容器**之外**的宿主动画时长保持 0.2s（`hHd-Xa_wide-in` 等，不再被压成 1e-06s），本插件根容器**之内**的动画仍为 1e-06s；选择器命中核对 —— 宿主元素不匹配新作用域规则、插件元素匹配。
+- **兼容矩阵**：本次改动全在插件自身的样式与偏好层，未新增任何宿主 API 依赖 —— 不收窄兼容矩阵（仍 36 项，至宿主 0.2.2-rc.3）。
 
 ### v1.8.5（2026-11-14）
 
