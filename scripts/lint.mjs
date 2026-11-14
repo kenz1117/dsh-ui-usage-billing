@@ -25,6 +25,10 @@
  *    声明 flex-shrink: 0——否则卡片被纵向压扁而不是让容器滚动。
  * 8. 费率表 sticky 表头契约（#113）：.ubTablewrapPricing 必须有 max-height
  *    （自建滚动容器），表头必须 position:sticky + top:0 + 不透明底色。
+ * 9. 座位浮层 portal 契约（#117）：注册进 conversation.* 座位的组件，其宿主
+ *    Tooltip/Menu 必须显式带 portal（否则浮层被 composerSeat 的 transform 吃掉）。
+ * 10. 全局偏好属性与动效作用域（#124）：写 <html> 上的偏好属性必须命名空间化
+ *    （data-dsh-billing-*），且动效压制选择器必须带 .dsh-billing-root 作用域类。
  *
  * 全绿退出 0；违规打印 文件:行 退出 1。CI 与 `pnpm lint` 共用本脚本。
  */
@@ -348,9 +352,58 @@ function checkSeatOverlayPortalGuard() {
 }
 checkSeatOverlayPortalGuard()
 
+/**
+ * 守卫 10（issue #124）：全局偏好属性必须命名空间化，且动效压制只在本插件根
+ * 容器内生效。
+ *
+ * 背景（报告者实测）：「动效强度」设置把 data-motion 写在 <html> 上，配
+ * `[data-motion="off"] *` 通配符 + !important —— 选择器从 <html> 起算又是通配
+ * 符，页面上**每一个元素**的动画时长被压成 .001ms，宿主自己的右键菜单/对话框
+ * 与第三方插件的动画全部失效；其他插件同为 !important 也无法覆盖。
+ *
+ * 三条契约：
+ * ① 属性名必须带命名空间（data-dsh-billing-*）——通用名会被宿主或第三方插件
+ *    的同名属性互相覆盖（谁后写谁赢）；
+ * ② 凡提到动效属性的 CSS 选择器必须同时带 .dsh-billing-root 作用域类——否则
+ *    又退回「插件设置影响整个页面」；
+ * ③ TSX 侧不再写 dataset.density / dataset.motion 旧写法。
+ */
+function checkMotionScopeGuard() {
+  const ROOT_CLASS = 'dsh-billing-root'
+  let cssChecked = 0
+  for (const path of walkCss('src/client')) {
+    const rel = relative('.', path)
+    const cssCode = readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    for (const [index, line] of cssCode.split('\n').entries()) {
+      // ① 通用属性名：密度/动效只允许命名空间化写法
+      for (const m of line.matchAll(/\[data-(density|motion)[=\]]/g)) {
+        VIOLATIONS.push(`${rel}:${index + 1}  全局属性命名空间：属性选择器 [data-${m[1]}] 必须写成 [data-dsh-billing-${m[1]}]（通用名会被宿主/第三方插件的同名属性覆盖，issue #124）`)
+      }
+      // ② 动效压制必须限定在本插件根容器内
+      if (line.includes('[data-dsh-billing-motion')) {
+        cssChecked += 1
+        if (!line.includes(ROOT_CLASS)) {
+          VIOLATIONS.push(`${rel}:${index + 1}  动效作用域：提到 [data-dsh-billing-motion] 的选择器必须同时带 .${ROOT_CLASS}（裸通配符会把宿主与其他插件的动画一起压平，issue #124）`)
+        }
+      }
+    }
+  }
+  // ③ TSX 侧禁止旧写法：documentElement.dataset.density / .motion
+  for (const path of walk('src/client')) {
+    const rel = relative('.', path)
+    for (const [index, line] of readFileSync(path, 'utf8').split('\n').entries()) {
+      for (const m of line.matchAll(/dataset\.(density|motion)\b/g)) {
+        VIOLATIONS.push(`${rel}:${index + 1}  全局属性命名空间：dataset.${m[1]} 必须写成 dataset.dshBilling${m[1][0].toUpperCase()}${m[1].slice(1)}（issue #124）`)
+      }
+    }
+  }
+  console.log(`[lint] 动效作用域：${String(cssChecked)} 处动效选择器均限定在 .${ROOT_CLASS} 内，全局属性已命名空间化`)
+}
+checkMotionScopeGuard()
+
 if (VIOLATIONS.length > 0) {
   console.error(`[lint] ${VIOLATIONS.length} 项纪律违规：`)
   for (const v of VIOLATIONS) console.error(`  ${v}`)
   process.exit(1)
 }
-console.log('[lint] 纪律守卫全绿（类型 / 日志 / 空 catch 注释 / CSS parity / 令牌 parity / 字体纪律 / 面板压缩防线 / 费率表 sticky 表头 / 座位浮层 portal）')
+console.log('[lint] 纪律守卫全绿（类型 / 日志 / 空 catch 注释 / CSS parity / 令牌 parity / 字体纪律 / 面板压缩防线 / 费率表 sticky 表头 / 座位浮层 portal / 全局属性与动效作用域）')

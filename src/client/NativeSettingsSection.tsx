@@ -1,7 +1,9 @@
 /** 宿主原生设置页：复用仪表盘的完整设置分区（issue #108）。 */
 
 import type { ReactNode } from 'react'
+import clsx from 'clsx'
 import { UsageBilling, type UsageBillingProps } from './UsageBilling.tsx'
+import { BILLING_ROOT_CLASS } from './constants.ts'
 import css from './UsageBilling.module.css'
 
 type NativeSettingsSectionProps = Omit<UsageBillingProps, 'wide' | 'embeddedSettings' | 'renderSlot' | '__renders'>
@@ -12,7 +14,7 @@ type NativeSettingsSectionProps = Omit<UsageBillingProps, 'wide' | 'embeddedSett
  */
 export function NativeSettingsSection(props: NativeSettingsSectionProps): ReactNode {
   return (
-    <div className={css.nativeSettingsRoot} data-testid="native-billing-settings">
+    <div className={clsx(css.nativeSettingsRoot, BILLING_ROOT_CLASS)} data-testid="native-billing-settings">
       <UsageBilling {...props} renderSlot={() => null} wide embeddedSettings />
     </div>
   )

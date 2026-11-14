@@ -92,7 +92,7 @@ body {
   --ds-t-pulse: 1.2s cubic-bezier(0.2,0.8,0.2,1);
   --ds-t-countup: 400ms cubic-bezier(0.22,1,0.36,1);
   --ds-t-scan: 900ms cubic-bezier(0.2,0.8,0.2,1);
-  /* 密度模式派生（v1.5）：默认挂 :root；紧凑/舒适档通过 [data-density]
+  /* 密度模式派生（v1.5）：默认挂 :root；紧凑/舒适档通过 [data-dsh-billing-density]
      选择器改写。读取侧从 .row/.panel 等派生 pad 与 row-h，省去各表面
      重复声明。 */
   --ds-density-pad-y: 10px;
@@ -103,15 +103,16 @@ body {
 
 /* 密度模式：紧凑档减小行高/字号/内边距，舒适档加大。
    触发由 client 端读 localStorage `dsh.ui-usage-billing.density` 写到
-   documentElement.dataset.density；切换瞬时生效。alpha 默认 'default'
-   ——用户主动开启才生效，老用户感官零变化。 */
-[data-density="compact"] {
+   documentElement.dataset.dshBillingDensity（= data-dsh-billing-density，属性名
+   命名空间化，避免与宿主/其他插件的同名属性互相覆盖，issue #124）；切换瞬时
+   生效。alpha 默认 'default' ——用户主动开启才生效，老用户感官零变化。 */
+[data-dsh-billing-density="compact"] {
   --ds-density-pad-y: 6px;
   --ds-density-pad-x: 10px;
   --ds-density-row-h: 26px;
   --ds-density-font: 11.5px;
 }
-[data-density="comfortable"] {
+[data-dsh-billing-density="comfortable"] {
   --ds-density-pad-y: 14px;
   --ds-density-pad-x: 18px;
   --ds-density-row-h: 40px;
@@ -122,34 +123,34 @@ body {
    default 档不写任何规则（保持 v1.4 精调值，零回归）。
    表面基准不同（panel 12/14、kpiTile 14/16、setCard 16/18、表格 7-10px），
    无法用单一令牌缩放，直接按档位覆盖最直白。 */
-:global([data-density="compact"]) .panel { padding: 8px 10px; }
-:global([data-density="compact"]) .kpiTile { padding: 10px 12px; }
-:global([data-density="compact"]) .setCard { padding: 10px 12px; }
-:global([data-density="compact"]) .ubCard { padding: 10px 12px; }
-:global([data-density="compact"]) .providerGroup { padding: 8px 10px; }
-:global([data-density="compact"]) .providerStatRow { padding: 6px 8px; gap: 8px; }
-:global([data-density="compact"]) .modelTable th,
-:global([data-density="compact"]) .modelTable td { padding: 6px 8px; }
-:global([data-density="compact"]) .ubTable th,
-:global([data-density="compact"]) .ubTable td { padding: 4px 7px; }
-:global([data-density="compact"]) .dashboardBody { padding: 12px 16px 16px; gap: 10px; }
-:global([data-density="compact"]) .tabNav { margin: 10px 16px 0; }
-:global([data-density="compact"]) .hero { padding: 12px 14px; gap: 8px; }
-:global([data-density="compact"]) .heroValue { font-size: 42px; line-height: 46px; }
+:global([data-dsh-billing-density="compact"]) .panel { padding: 8px 10px; }
+:global([data-dsh-billing-density="compact"]) .kpiTile { padding: 10px 12px; }
+:global([data-dsh-billing-density="compact"]) .setCard { padding: 10px 12px; }
+:global([data-dsh-billing-density="compact"]) .ubCard { padding: 10px 12px; }
+:global([data-dsh-billing-density="compact"]) .providerGroup { padding: 8px 10px; }
+:global([data-dsh-billing-density="compact"]) .providerStatRow { padding: 6px 8px; gap: 8px; }
+:global([data-dsh-billing-density="compact"]) .modelTable th,
+:global([data-dsh-billing-density="compact"]) .modelTable td { padding: 6px 8px; }
+:global([data-dsh-billing-density="compact"]) .ubTable th,
+:global([data-dsh-billing-density="compact"]) .ubTable td { padding: 4px 7px; }
+:global([data-dsh-billing-density="compact"]) .dashboardBody { padding: 12px 16px 16px; gap: 10px; }
+:global([data-dsh-billing-density="compact"]) .tabNav { margin: 10px 16px 0; }
+:global([data-dsh-billing-density="compact"]) .hero { padding: 12px 14px; gap: 8px; }
+:global([data-dsh-billing-density="compact"]) .heroValue { font-size: 42px; line-height: 46px; }
 
-:global([data-density="comfortable"]) .panel { padding: 16px 18px; }
-:global([data-density="comfortable"]) .kpiTile { padding: 18px 20px; }
-:global([data-density="comfortable"]) .setCard { padding: 20px 22px; }
-:global([data-density="comfortable"]) .ubCard { padding: 20px 22px; }
-:global([data-density="comfortable"]) .providerGroup { padding: 16px 18px; }
-:global([data-density="comfortable"]) .providerStatRow { padding: 14px 16px; gap: 14px; }
-:global([data-density="comfortable"]) .modelTable th,
-:global([data-density="comfortable"]) .modelTable td { padding: 13px 14px; }
-:global([data-density="comfortable"]) .ubTable th,
-:global([data-density="comfortable"]) .ubTable td { padding: 10px 12px; }
-:global([data-density="comfortable"]) .dashboardBody { padding: 20px 28px 28px; gap: 18px; }
-:global([data-density="comfortable"]) .hero { padding: 22px 24px; gap: 16px; }
-:global([data-density="comfortable"]) .heroValue { font-size: 56px; line-height: 60px; }
+:global([data-dsh-billing-density="comfortable"]) .panel { padding: 16px 18px; }
+:global([data-dsh-billing-density="comfortable"]) .kpiTile { padding: 18px 20px; }
+:global([data-dsh-billing-density="comfortable"]) .setCard { padding: 20px 22px; }
+:global([data-dsh-billing-density="comfortable"]) .ubCard { padding: 20px 22px; }
+:global([data-dsh-billing-density="comfortable"]) .providerGroup { padding: 16px 18px; }
+:global([data-dsh-billing-density="comfortable"]) .providerStatRow { padding: 14px 16px; gap: 14px; }
+:global([data-dsh-billing-density="comfortable"]) .modelTable th,
+:global([data-dsh-billing-density="comfortable"]) .modelTable td { padding: 13px 14px; }
+:global([data-dsh-billing-density="comfortable"]) .ubTable th,
+:global([data-dsh-billing-density="comfortable"]) .ubTable td { padding: 10px 12px; }
+:global([data-dsh-billing-density="comfortable"]) .dashboardBody { padding: 20px 28px 28px; gap: 18px; }
+:global([data-dsh-billing-density="comfortable"]) .hero { padding: 22px 24px; gap: 16px; }
+:global([data-dsh-billing-density="comfortable"]) .heroValue { font-size: 56px; line-height: 60px; }
 
 /* ── Sidebar footer trigger ─────────────────────────────────────────── */
 
@@ -309,18 +310,27 @@ body {
 }
 
 /* 动效强度档：用户可在设置 Tab 关闭/降低。
-   `off` 直接冻结所有 transition+animation；`subtle` 保留 160ms 微交互、
-   抑制更长动画（240ms / 1.2s / 400ms）；`rich` 即默认（无视觉差异）。 */
-[data-motion="off"] *,
-[data-motion="off"] *::before,
-[data-motion="off"] *::after {
+   `off` 冻结本插件内的全部 transition+animation；`subtle` 保留 transition 微交互
+   （按钮 hover / 状态过渡），把本插件内的关键帧动画压成瞬时；`rich` 即默认。
+
+   作用域限定（issue #124）：规则只作用在**本插件自有根容器** `.dsh-billing-root`
+   之内。此前属性挂在 <html> 上配通配符 `*` + !important，会把宿主与第三方插件的
+   全部动画一起压平（报告者实测右键菜单展开动画消失）。新增挂载点记得一并给根
+   容器挂 BILLING_ROOT_CLASS，漏标只会让该处动画不再被压制，不会外溢。
+   守卫：scripts/lint.mjs 守卫 10（动效选择器必须带 .dsh-billing-root）。 */
+:global([data-dsh-billing-motion="off"] .dsh-billing-root),
+:global([data-dsh-billing-motion="off"] .dsh-billing-root *),
+:global([data-dsh-billing-motion="off"] .dsh-billing-root *::before),
+:global([data-dsh-billing-motion="off"] .dsh-billing-root *::after) {
   transition: none !important;
   animation: none !important;
 }
-[data-motion="subtle"] *,
-[data-motion="subtle"] *::before,
-[data-motion="subtle"] *::after {
-  /* 仅抑制 240ms 以上动画；160ms 微交互保留（按钮 hover / 状态过渡）。 */
+:global([data-dsh-billing-motion="subtle"] .dsh-billing-root),
+:global([data-dsh-billing-motion="subtle"] .dsh-billing-root *),
+:global([data-dsh-billing-motion="subtle"] .dsh-billing-root *::before),
+:global([data-dsh-billing-motion="subtle"] .dsh-billing-root *::after) {
+  /* 关键帧动画压成瞬时（弹窗入场 / Tab 切换 / 呼吸脉冲 / 扫描 / 数据闪烁）；
+     transition 微交互保留。 */
   animation-duration: 0.001ms !important;
   animation-iteration-count: 1 !important;
 }

@@ -105,6 +105,7 @@ import css from './UsageBilling.module.css'
 // v1.5.2 拆分：以下 import 来自新抽出的模块
 import {
   BUDGET_ALERT_TIERS,
+  BILLING_ROOT_CLASS,
   CHART_PALETTE,
   DEFAULT_LOW_BALANCE_THRESHOLD,
   EMPTY_STATS,
@@ -384,6 +385,7 @@ function UsageBillingTrigger(
         type="button"
         className={clsx(
           css.railButton,
+          BILLING_ROOT_CLASS,
           budgetPressure !== 'none' && css.triggerBudgetPulse,
           budgetPressure === 'over' && css.triggerBudgetOver,
         )}
@@ -405,7 +407,7 @@ function UsageBillingTrigger(
   return (
     <span
       ref={wrapRef}
-      className={css.triggerWrap}
+      className={clsx(css.triggerWrap, BILLING_ROOT_CLASS)}
       onMouseEnter={() => { updatePopPos(); openPop() }}
       onMouseLeave={schedulePopClose}
       onFocusCapture={() => { updatePopPos(); openPop() }}
@@ -494,7 +496,7 @@ function UsageBillingTrigger(
           与触发卡互为 hover 桥接（120ms 关闭延迟见 schedulePopClose）。 */}
       {createPortal(
       <span
-        className={clsx(css.triggerPop, popOpen && css.triggerPopShown)}
+        className={clsx(css.triggerPop, BILLING_ROOT_CLASS, popOpen && css.triggerPopShown)}
         style={{ left: `${popPos.left}px`, top: `${popPos.top}px` }}
         data-testid="billing-trigger-pop"
         aria-hidden={!popOpen}
@@ -1063,7 +1065,8 @@ function BillingDashboard({
   const [heatmapRange, setHeatmapRange] = useState<'month' | 'half' | 'year'>('month')
   const [heatmapMetric, setHeatmapMetric] = useState<'cost' | 'tokens'>('cost')
   /* v1.5 密度模式 / 动效强度：写 localStorage 即时同步 CustomEvent，
-     触发 documentElement.dataset.density/motion 重写 CSS 变量。 */
+     触发 documentElement.dataset.dshBillingDensity/dshBillingMotion 重写 CSS
+     变量（属性名命名空间化，issue #124）。 */
   const [density, setDensityState] = useState<DensityPref>(loadDensity)
   const [motion, setMotionState] = useState<MotionPref>(loadMotion)
   /* v1.5 设置页当前活动组（左侧锚点高亮跟随）。alpha.1 用 click-set
@@ -1121,11 +1124,14 @@ function BillingDashboard({
     setMotionState(m)
     saveMotion(m)
   }, [])
-  /* 把偏好应用到 documentElement——CSS 选择器 [data-density]/[data-motion] 派生 */
+  /* 把偏好应用到 documentElement——CSS 选择器 [data-dsh-billing-density] /
+     [data-dsh-billing-motion] 派生。属性名带命名空间（issue #124）：通用属性名
+     会被宿主或第三方插件的同名属性互相覆盖。动效压制规则还额外限定在本插件
+     根容器 .dsh-billing-root 之内，不外溢到宿主与其他插件。 */
   useEffect(() => {
     if (typeof document === 'undefined') return
-    document.documentElement.dataset.density = density
-    document.documentElement.dataset.motion = motion
+    document.documentElement.dataset.dshBillingDensity = density
+    document.documentElement.dataset.dshBillingMotion = motion
   }, [density, motion])
   /* 监听其他 React 树（同文档）的偏好变更——多仪表盘实例一致。 */
   useEffect(() => {
@@ -1844,7 +1850,7 @@ function BillingDashboard({
   const dashboard = (
     <div
       ref={dashboardRoot}
-      className={clsx(css.dashboard, embeddedSettings && css.nativeSettingsDashboard)}
+      className={clsx(css.dashboard, BILLING_ROOT_CLASS, embeddedSettings && css.nativeSettingsDashboard)}
       data-testid={embeddedSettings ? 'native-billing-settings-dashboard' : 'billing-dashboard'}
     >
         {/* Header */}
@@ -4078,7 +4084,7 @@ function BillingDashboard({
   )
   if (embeddedSettings) return dashboard
   return (
-    <Modal open onClose={onClose} title={t('title')} headless className={clsx(css.dashboardModal, 'dsh-billing-modal')}>
+    <Modal open onClose={onClose} title={t('title')} headless className={clsx(css.dashboardModal, 'dsh-billing-modal', BILLING_ROOT_CLASS)}>
       {dashboard}
     </Modal>
   )

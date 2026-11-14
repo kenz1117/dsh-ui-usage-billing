@@ -213,6 +213,9 @@ describe('LiveCostBar seat gate (issue #101：「上方」挂 input.dock，「�
     // above 座位挂第二个类（feeBarAbove：在 composerStack 整行座位里居中）。
     expect(bar.className).toMatch(/feeBarAbove|Above/)
     expect(bar.getAttribute('data-seat')).toBe('above')
+    // issue #124：即时代费条挂本插件根容器标记——动效压制只在本插件内生效，
+    // 少了它这条 bar 的 tick 脉冲就不会被「克制」档压住。
+    expect(bar.className.split(/\s+/)).toContain('dsh-billing-root')
     above.unmount()
     // 同一偏好下 below 座位让位：composer.dock 槽拿到 null，不会两处同时出现。
     const below = render(<LiveCostBar sessionId={sessionId} t={t} seat="below" />)

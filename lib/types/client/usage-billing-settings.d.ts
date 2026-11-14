@@ -234,8 +234,9 @@ export declare function loadPerfViewPrefs(): PerfViewPrefs;
 export declare function savePerfViewPrefs(prefs: PerfViewPrefs): void;
 /**
  * 显示密度档位（v1.5 新增）。紧凑档减小行高/字号/内边距，舒适档加大；
- * 默认档保持历史感官。client 端写到 `documentElement.dataset.density`，
- * CSS `[data-density="..."]` 选择器派生 `--ds-density-*` 变量。
+ * 默认档保持历史感官。client 端写到 `documentElement.dataset.dshBillingDensity`
+ * （= `data-dsh-billing-density`，命名空间化防同名属性互相覆盖，issue #124），
+ * CSS `[data-dsh-billing-density="..."]` 选择器派生 `--ds-density-*` 变量。
  */
 export type DensityPref = 'compact' | 'default' | 'comfortable';
 /** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
@@ -250,9 +251,11 @@ export declare function loadDensity(): DensityPref;
  *  失败静默（展示偏好非关键）。 */
 export declare function saveDensity(density: DensityPref): void;
 /**
- * 动效强度档位（v1.5 新增）。`off` 冻结全部 transition+animation，
- * `subtle` 抑制 240ms 以上的入场/计数动画但保留 160ms 微交互，
- * `rich` 即默认（全开）。写到 `documentElement.dataset.motion`。
+ * 动效强度档位（v1.5 新增）。`off` 冻结本插件内的全部 transition+animation，
+ * `subtle` 保留 transition 微交互、把关键帧动画压成瞬时，`rich` 即默认（全开）。
+ * 写到 `documentElement.dataset.dshBillingMotion`（= `data-dsh-billing-motion`），
+ * 且压制规则只作用在本插件根容器 `.dsh-billing-root` 之内（issue #124：
+ * 此前通用属性 + 通配符会把宿主与第三方插件的动画一起压平）。
  */
 export type MotionPref = 'off' | 'subtle' | 'rich';
 /** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */

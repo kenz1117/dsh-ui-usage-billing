@@ -22,6 +22,16 @@ export const STATS_REFRESH_INTERVAL_MS = 30_000
  *  省宿主聚合（每轮都是折叠 + 五个端点的串行响应）。 */
 export const STATS_REFRESH_CLOSED_MS = 300_000
 
+/**
+ * 插件自有 DOM 根容器标记（issue #124）：动效压制规则只在本插件根容器内生效。
+ *
+ * 此前「动效强度」开关把 data-motion 写在 <html> 上，配 `*` 通配符 + !important，
+ * 会把宿主与第三方插件的全部动画一起压平（报告者实测右键菜单动画消失）。改为
+ * 给每个自有根容器挂这个类，压制规则收进根容器内，宿主与其他插件不受影响。
+ * 新增挂载点时记得一并打标——漏标只会让该处动画不再被压制，不会外溢。
+ */
+export const BILLING_ROOT_CLASS = 'dsh-billing-root'
+
 /** Empty snapshot: shown before (or without) real host data — zeros, never fabricated samples. */
 export const EMPTY_STATS: UsageStats = {
   total: { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0, reasoning: 0 },

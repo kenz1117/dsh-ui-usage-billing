@@ -30,6 +30,7 @@ import { loadPeakAlertConfig } from './peak-alert.ts'
 import { CURRENCY_PREF_EVENT, LIVE_COST_BAR_PREF_EVENT, PINNED_MODELS_EVENT, loadCurrency, loadLiveCostBarPrefs, loadPinnedModels } from './usage-billing-settings.ts'
 import type { LiveCostBarPrefs } from './usage-billing-settings.ts'
 import type { UsageBillingKey } from './locales.ts'
+import { BILLING_ROOT_CLASS } from './constants.ts'
 import css from './UsageBilling.module.css'
 
 /** The usage-stats shape the composer bar needs (a thin slice, not the whole doc). */
@@ -389,7 +390,7 @@ export function LiveCostBar({ sessionId, t, seat, session }: LiveCostBarProps): 
   //（flex column），feeBarAbove 只负责在整行座位里居中，不再借 CSS order 挪位。
   return (
     <span
-      className={seat === 'above' ? clsx(css.feeBar, css.feeBarAbove) : css.feeBar}
+      className={seat === 'above' ? clsx(css.feeBar, css.feeBarAbove, BILLING_ROOT_CLASS) : clsx(css.feeBar, BILLING_ROOT_CLASS)}
       data-testid="billing-live-cost-bar"
       data-seat={seat}
     >
@@ -477,7 +478,7 @@ export function LiveCostChip({ sessionId, t }: LiveCostChipProps): React.ReactNo
     // 不 portal 时气泡按视口坐标写进 seat 之下，既错位又把会话滚动区撑开，
     // 消息列表随之塌陷成 0 高（输入框跳到顶部、画面闪一下即回，issue #117）。
     <Tooltip label={title} side="top" delayMs={500} portal>
-      <span className={cls} data-testid="billing-live-cost-chip" role="note" aria-label={title}>
+      <span className={clsx(cls, BILLING_ROOT_CLASS)} data-testid="billing-live-cost-chip" role="note" aria-label={title}>
         <PinnedBandDots hasBandPlan={hasBandPlan} />
         {tier !== null && (
           <span className={isPeak ? css.feeChipPrimary : css.feeChipOff} data-testid="billing-live-tier">

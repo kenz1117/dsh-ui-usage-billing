@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import type { PeakAlertConfig, PeakAlertHit } from './peak-alert.ts'
 import type { UsageBillingKey } from './locales.ts'
+import { BILLING_ROOT_CLASS } from './constants.ts'
 import css from './UsageBilling.module.css'
 
 /** Props: 命中的切档、偏好、国际化、关闭回调。 */
@@ -50,6 +51,7 @@ export function PeakAlertBanner({ hit, config, t, onDismiss }: PeakAlertBannerPr
     <div
       className={clsx(
         css.peakCard,
+        BILLING_ROOT_CLASS,
         isPeak ? css.peakCardPeak : css.peakCardOff,
         config.position === 'center' ? css.peakCardCenter : css.peakCardCorner,
       )}

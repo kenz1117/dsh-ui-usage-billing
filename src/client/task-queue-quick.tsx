@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import clsx from 'clsx'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { InputActions, InputState } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
@@ -24,6 +25,7 @@ import {
   saveQuickQueuePrefs,
   type QuickQueuePrefs,
 } from './usage-billing-settings.ts'
+import { BILLING_ROOT_CLASS } from './constants.ts'
 import css from './TaskQueueQuick.module.css'
 
 const REFRESH_INTERVAL_MS = 30_000
@@ -151,7 +153,7 @@ export function QuickQueueToggle({ t }: QuickQueueToggleProps): React.ReactNode 
       role="switch"
       aria-checked={prefs.enabled}
       aria-label={t('quickQueueToggle')}
-      className={css.quickQueueToggle}
+      className={clsx(css.quickQueueToggle, BILLING_ROOT_CLASS)}
       data-testid="quick-queue-toggle"
       onClick={toggle}
     >
@@ -319,7 +321,7 @@ export function QuickQueueEnqueue({
   }
 
   return (
-    <span className={css.quickQueue} data-testid="quick-queue-controls">
+    <span className={clsx(css.quickQueue, BILLING_ROOT_CLASS)} data-testid="quick-queue-controls">
       <label className={css.quickQueueClear}>
         <input
           type="checkbox"
