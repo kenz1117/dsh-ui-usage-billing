@@ -12,6 +12,12 @@ export interface LivePrice {
     cacheHit: number;
     /** Output price per 1M tokens. */
     output: number;
+    /**
+     * 缓存写入单价（每百万 token，issue #123）：厂商对「写入缓存」单独计价时给出
+     * （models.dev 原生 `cache_write`）。**缺省 = 按 `input` 价计**——上游未声明
+     * 时不猜（与 `cacheHit` 的声明优先口径一致）。
+     */
+    cacheWrite?: number;
 }
 /** Response of `/api/billing/pricing` consumed by the dashboard. */
 export interface LivePricing {

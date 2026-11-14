@@ -4,6 +4,11 @@
  * （瘦身：lib/client.js 约 -30 KiB）。条目结构与消费逻辑见 ./client/pricing.ts。
  */
 import type { ModelEntry } from './client/pricing.ts';
+/**
+ * 内置计费目录（导出态）：在原始条目上派生缓存写入单价（issue #123），
+ * 使「缓存写入」成为独立计价维度——厂商对写入缓存单独计价时（OpenAI/
+ * Anthropic/百炼），缓存写入 token 不再按普通输入价估算。
+ */
 export declare const BUILTIN_MODEL_CATALOG: readonly ModelEntry[];
 /**
  * 真实 provider model id → 计费目录键（`MODEL_CATALOG[].key`）的映射。未知 id

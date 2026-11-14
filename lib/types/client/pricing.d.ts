@@ -252,6 +252,12 @@ export interface TokenUsageBuckets {
     cacheHit: number;
     /** Cache-miss input tokens (already included in `input` by some providers). */
     cacheMiss: number;
+    /**
+     * 显式缓存写入 token（issue #123）：**已包含在 `cacheMiss` 内**的子集——
+     * 厂商对「写入缓存」单独计价时（OpenAI/Anthropic 恒为输入价 125%），
+     * 这部分按缓存写入价计，不再按普通输入价。
+     */
+    cacheWrite?: number;
     /** Output tokens. */
     output: number;
 }
@@ -263,6 +269,13 @@ export interface PriceBand {
     cacheHit: number;
     /** Cache-miss input price per 1M tokens (absent when folded into `input`). */
     cacheMiss?: number;
+    /**
+     * 缓存写入单价（每百万 token，issue #123）：厂商对「把内容写入缓存」单独
+     * 计价时给出（models.dev 原生 `cache_write`：OpenAI/Anthropic 恒为输入价
+     * 125%）。**缺省 = 按 `input` 价计**——厂商不单列缓存写入费时（如 DeepSeek、
+     * 月之暗面）缓存写入本就按输入价出账，与旧口径一致。
+     */
+    cacheWrite?: number;
     /** Output price per 1M tokens. */
     output: number;
 }
@@ -293,7 +306,7 @@ export interface PricePromo {
      * 缓存 0.8 / 输入 0.8 / 输出 2/3）。缺省档位沿用 {@link factor}；单档取值
      * 仅 [0,1) 区间有效（0 = 该档活动期免费），非法值回落 factor。
      */
-    factors?: Partial<Record<'input' | 'cacheHit' | 'cacheMiss' | 'output', number>>;
+    factors?: Partial<Record<'input' | 'cacheHit' | 'cacheMiss' | 'cacheWrite' | 'output', number>>;
     /**
      * 截止时刻（epoch ms）：该时刻及之后恢复刊例价。缺省表示厂商未公布截止日
      * 的长期活动（如「限时 5 折直至另行通知」），持续生效直至收到公告后补填。

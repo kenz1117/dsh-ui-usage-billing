@@ -697,7 +697,7 @@ export declare function mergeUsageLedgerDocuments(document: UsageLedgerDocument,
  * 会话费用只剩最近一段，issue #29）。
  * 持久账本行据此区分新旧算法：日志已删/不可读而只能沿用旧行时，UI 标注置信度提示。
  */
-export declare const FOLD_VERSION = 23;
+export declare const FOLD_VERSION = 24;
 /** 账本里拒读记录的条数上限：防异常环境（大量损坏日志）把账本撑爆；
  *  超限按 Map 插入序保留前 N 条（最早发现的先留，stamp 失效的自然被清理让位）。 */
 export declare const LEDGER_REFUSED_CAP = 500;

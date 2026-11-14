@@ -182,11 +182,15 @@ GitHub Pages 发布。
 单价表（`src/client/pricing.ts`）采用**原生币种**存储：国内厂商直接录入人民币价格，国外厂商录入美元价格。费用统一以人民币计算与展示——美元模型按**实时汇率**折算，国内模型全程不经过汇率换算。启动时服务端拉取实时汇率与模型价（`src/pricing-fetch.ts`）：USD→CNY 优先腾讯财经行情（免 key、国内可达），失败依次降级 open.er-api 与内置默认值；之后每 6 小时后台刷新，单价表弹窗标注「今日汇率」与实时 / 内置徽标。金额与费率表的**展示币种跟随用户所选**：切 ¥ / $ 时把每条每百万 token 单价经 `convertUnitPrice` 按实时汇率换算到目标币种再显示（汇率缺失时回退原生币种）。
 
 ```
-cost（CNY）= (missInput × p_input + cacheHit × p_cacheHit + output × p_output) / 10⁶
+cost（CNY）= (missInput × p_input + cacheWrite × p_cacheWrite + cacheHit × p_cacheHit + output × p_output) / 10⁶
            —— 价格为原生币种；美元模型按实时 USD → CNY 汇率折算
 ```
 
 统计中的 `input` 为总输入（cacheHit + cacheMiss），估算按命中 / 未命中分拆计价，避免重复计费。支持双档计费的模型按 `DEFAULT_PEAK_SHARE`（默认 0.5）混合高峰与低谷档；周末（北京时间周六 / 周日）全天按低谷价计费。
+
+**缓存写入独立计价（issue #123）**：厂商上报的「写入缓存」token（`cacheWriteTokens`）是未命中输入的子集，厂商对它**单独收费**时按其单价计——OpenAI / Anthropic 恒为输入价的 125%（models.dev 原生 `cache_write`），百炼按官方「显式缓存创建」价。插件把这部分从普通输入价里拆出来单列计价，厂商不单列缓存写入费时（DeepSeek、月之暗面等）仍按输入价计——与旧口径一致。目录里的缓存写入单价只从有据来源派生：厂商加价规则 + 条目内官方价，不凭空取值。
+
+**上下文压缩调用计入统计（issue #123）**：DSH 触发上下文压缩时会产生一次真实的模型调用（厂商照常计费），宿主把它落成 `compaction/summary` 事件（自带 provider / model / usage）。插件此前只统计对话主循环的 `assistant/message`，压缩调用整段漏计（报告者实测 222 次 ≈ $25.33）。现在压缩调用与普通调用同一口径计入：调用数、输入 / 输出 / 缓存 token、费用，以及模型 / 日期 / 通道 / 峰谷各维度。
 
 **联网搜索请求按次估算**（issue #15）：DSH 的联网搜索绕过对话通道直连官方 `api.deepseek.com`，会话日志只记请求、无用量事件，而开放平台照常计费。插件对这类 `web/deepseek-search-llm-request` 事件按次估值计入费用（默认 0.02 元/次，配置 `searchCallEstimateCny` 可调整；设 0 关闭），并单独累计 `searchCalls` 供面板提示估算口径。
 
