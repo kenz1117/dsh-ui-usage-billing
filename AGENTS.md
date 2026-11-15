@@ -11,7 +11,7 @@
 | **正式版** | 非预发布 SemVer（如 `1.8.0`） | `latest` | 正式 Release | 已完成验收、面向默认安装 |
 | **预览版** | 带预发布后缀（如 `1.8.1-alpha.2`） | `alpha` | Pre-release | 新功能与宿主适配的先行验证 |
 
-当前发行状态：npm `latest` 指向 `1.8.6` 正式版（中转站模型 id 归一 + 未收录模型补价入口 #125，报告者已验收）；`alpha` 指向 `1.8.3-alpha.8`（与正式版同内容），下一轮预览从 `1.8.3-alpha.9` 起。后续正式版只切 `latest`，预览版只切 `alpha`，不再同时切 `latest`。兼容状态以 [COMPATIBILITY.md](COMPATIBILITY.md) 为准（当前矩阵 36 项，至宿主 `0.2.2-rc.3`）。
+当前发行状态：npm `latest` 指向 `1.8.6` 正式版（中转站模型 id 归一 + 未收录模型补价入口 #125，报告者已验收）；`alpha` 指向 `1.8.3-alpha.9`（通道可见性 + 用量行提供方标注 #126 需求），下一轮预览从 `1.8.3-alpha.10` 起。后续正式版只切 `latest`，预览版只切 `alpha`，不再同时切 `latest`。兼容状态以 [COMPATIBILITY.md](COMPATIBILITY.md) 为准（当前矩阵 36 项，至宿主 `0.2.2-rc.3`）。
 
 原则：
 
@@ -108,6 +108,6 @@ in-process DSH host 又不带桌面运行时（UI 组件加载不全）。双层
 - **面板压缩防线**：`.dashboardBody` / `.tabPanel` 是列向 flex 容器，直系子块必须 `flex-shrink: 0`（列向 flex 默认会把内容高的卡片**压扁而不是滚动**——`overflow-y:auto` 挡不住 flex 收缩；2026-10-23 用户反馈「切到上下文 Tab 卡片被缩小」即此坑）。jsdom 不做布局、无法单测覆盖，由 lint **守卫 7「面板压缩防线」**兜底。
 - **失败必须可见（2026-11-07，issue #119）**：插件端点取数失败（会话列表读不到 / 请求被拒 / 超时 / 端点 404）**不得渲染成「用量是 0」**——降级一律带原因（`sessionListError` 随聚合文档与回落响应下发），界面显示错误态（侧栏速览红框 + 触发卡图标转红 + 仪表盘顶部提示条 + 触发卡 tooltip）。此前两条降级链路全程静默：新装用户看到一片 ¥0，分不清「今天没花钱」与「根本没读到」。**新增降级分支时同步回答：这条路径失败时用户看到什么？**
 - **插件的全局样式不得外溢（2026-11-14，issue #124）**：动效压制（`关闭`/`克制`）只允许作用在**本插件自有 DOM 根容器** `.dsh-billing-root` 之内——此前把 `data-motion` 写在 `<html>` 上配通配符 `*` + `!important`，把宿主右键菜单、对话框与第三方插件的动画一起压平（报告者实测）。写 `<html>` 上的偏好属性**一律命名空间化**（`data-dsh-billing-motion` / `data-dsh-billing-density`，通用名会被别人的同名属性覆盖，谁后写谁赢）。新增自有挂载点时给根容器挂上 `BILLING_ROOT_CLASS`（`src/client/constants.ts`）；漏挂只会让该处动画不再被压制，不会外溢。由 lint **守卫 10「全局属性与动效作用域」**兜底。
-- **体积现状（2026-11-15）**：`lib/client.js` = 365,183 字节（356.6 KiB），自设强线 500 KiB（余量 143.4 KiB）；每次发布仍须实测并记录增量，不为压数字牺牲可靠性或引入动态执行。
+- **体积现状（2026-11-15）**：`lib/client.js` = 372,581 字节（363.8 KiB），自设强线 500 KiB（余量 136.2 KiB）；每次发布仍须实测并记录增量，不为压数字牺牲可靠性或引入动态执行。
 - **已接入的宿主能力（均为特性探测 + 降级）**：会话跳转（`ctx.uiWorkspace.openSession` 新代 / `ctx.sessions.open` 老代，见 `src/client/session-navigation.ts`）、`/usage` 对话内命令（`ctx.commandUi.register`，见 `src/client/usage-command.ts`）、低谷任务队列（`sessionController`，见 `src/task-queue.ts`）。取服务一律走 `ctx.get()`（免 inject）——老宿主没有这些服务，声明成注入依赖会挂起等它、卡住整个 web 启动。
 - **DSH Community Market 目录（Path A）**：`catalog/catalog-source.json` + `catalog/v1/plugins.json`，由 `.github/workflows/pages.yml` 发到 GitHub Pages；本地/CI 用 `node scripts/check-catalog.mjs` 校验（strict schema：多余字段会让整个来源被市场拒收）。发布时序：**先 npm publish 精确版本，再并入 main 触发 Pages**——目录指向未发布版本时市场安装会 fail-closed（预期行为）。
