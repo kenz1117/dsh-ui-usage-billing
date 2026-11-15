@@ -776,7 +776,7 @@ function extraModelByKey(): ReadonlyMap<string, ExtraModelPrice> {
  * - 剥离组织前缀（`deepseek/deepseek-v4-flash` → `deepseek-v4-flash`）；
  * - 剥离尾部纯数字段（`deepseek-v4-flash-202605` / `-0731` → `deepseek-v4-flash`，
  *   覆盖 TokenHub / 官方按日期滚动的快照 id）；
- * - 剥离冒号分段：中转站路由前缀（`cn:deepseek v4.1` → `deepseek v4.1`）与
+ * - 剥离冒号分段：中转站路由前缀（`cn:deepseek-v4.1-flash` → `deepseek-v4.1-flash`）与
  *   变体后缀（`deepseek-v4.1-flash:fast` → `deepseek-v4.1-flash`）——中转站
  *   常按线路给模型加前缀（cn:/us:），网关常加变体后缀（:free / :1017），
  *   这些形态此前一律落「未收录」记 0（issue #125）；
