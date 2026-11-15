@@ -198,6 +198,8 @@ cost（CNY）= (missInput × p_input + cacheWrite × p_cacheWrite + cacheHit × 
 
 **自定义单价（设置 Tab，issue #16）**：结构化条目表（模型 + 可选来源 + 输入/缓存命中/输出 + 币种），不再手编 JSON。来源（中转站域名）留空 = 该模型默认价；填入中转站域名（如 `https://api.my-relay.com`）= 仅该来源的同名模型用此价（同名模型可同时存在默认价与多个来源价，互不覆盖）。显示层按「模型 × 来源」精确匹配重算，命中不到来源时回落该模型默认价，再无则用内置目录价。
 
+**未收录模型的补价入口（issue #125）**：概览顶部的「N 个模型未收录计价」提示条现在**直接列出未收录的模型 id**，并带「去补价」按钮（跳到设置页的自定义单价分区）；这些 id 同时进入自定义单价的候选列表（下拉直接选），不必回会话日志手抄——中转站的 id 常带路由前缀与全角冒号，抄错就是「自定义价没效果」。
+
 ### 支持模型（2026-11 主流阵容，OpenAI 兼容系列，共 247 款）
 
 完整目录见费率 Tab 及源码 `src/builtin-catalog.ts` 的 `BUILTIN_MODEL_CATALOG`（246 款在售 + 1 款退役型号保留历史回算），此处每厂商仅列代表型号。
@@ -234,6 +236,8 @@ cost（CNY）= (missInput × p_input + cacheWrite × p_cacheWrite + cacheHit × 
 > ¹ 讯飞、商汤及美团 / 面壁智能 / 小红书等未公布官方按量单价的模型，表内为估算价（`estimated`）；这些模型走订阅通道（coding / token plan / opencode）时费用记 0。订阅通道与 pi-ai 内置提供方对齐（kimi-coding、zai-coding-cn、opencode、opencode-go、qwen / xiaomi 的 token-plan 各区域变体），可按 `subscriptionProviders` 配置覆盖。
 
 新增模型：在 `src/builtin-catalog.ts` 的 `BUILTIN_MODEL_CATALOG` 追加条目（别名表 `BUILTIN_MODEL_KEY_ALIASES` 同文件维护；目录只随 node 半构建，经 `/api/billing/pricing` 由宿主下发注入客户端）。**价源口径**：海外厂商取 models.dev 实时目录原生 USD；国内厂商优先取官方 CN 价（models.dev 的 `-cn` 目录），该目录缺项时按 USD 价 × 汇率折算并在条目注释标注。存量条目的价格更正走独立的调价节点，不与扩容混在一起。
+
+**模型 id 归一口径**：日志里的真实 model id 先按别名表精确匹配，再做归一化匹配（忽略大小写 / 分隔符 / 括号附注），最后由「派生候选」兜底 —— 剥组织前缀（`deepseek/deepseek-v4.1-flash`）、剥冒号分段（中转站的线路前缀 `cn:` / `us:`、网关的变体后缀 `:free` / `:1017`，全角「：」等价）、剥尾部日期段（`-202605` / `-0731`）。派生只用于**找到同一模型的另一种写法**：剥完仍不命中目录就保持原样（回退「其他模型」，费用记 0），绝不按别的模型的价格记账。
 
 ## 🔌 HTTP API
 

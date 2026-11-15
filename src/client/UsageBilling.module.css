@@ -1421,6 +1421,28 @@ body {
   min-width: 0;
 }
 
+/* 未收录提示条的「去补价」动作（issue #125）：文字按钮，跳设置页的自定义单价
+   分区——未收录模型 id 在横幅里直接列出，用户不必回会话日志抄 id。 */
+.noticeAction {
+  flex: none;
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  line-height: 15px;
+  cursor: pointer;
+  transition: background-color var(--ds-t-fast);
+}
+
+.noticeAction:hover,
+.noticeAction:focus-visible {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  outline: none;
+}
+
 /* v1.5：提示条 × 关闭按钮（琥珀幽灵钮，hover 加深）。 */
 .noticeDismiss {
   flex: none;

@@ -765,10 +765,15 @@ function BalanceDetailRow({ label, value }: { label: string; value: string }): R
  * （三价非负有限数；currency 仅认 USD），写回 localStorage 并触发显示重估；
  * 覆盖优先级高于内置目录 / models.dev / dsh-spend。
  */
-function UserPriceCard({ userPrices, onUserPrices, t }: {
+function UserPriceCard({ userPrices, onUserPrices, t, unpricedIds }: {
   userPrices: UserPriceMap
   onUserPrices: (next: UserPriceMap) => void
   t: (key: UsageBillingKey, params?: Record<string, unknown>) => string
+  /**
+   * 本期实际出现但未收录的模型 id（issue #125）：一并进候选列表，用户直接选，
+   * 不必回会话日志手抄——中转站的 id 常带路由前缀与全角冒号，抄错就是「无效果」。
+   */
+  unpricedIds?: readonly string[]
 }): React.ReactNode {
   // 本地编辑副本：增删改都在列表内完成，点「保存」才提交；行内价格输入框不会改坏结构。
   const [drafts, setDrafts] = useState<UserPriceMap>(() => [...userPrices])
@@ -827,8 +832,14 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
         ? {}
         : { origin: normalizeOriginInput(row.origin.trim()) }),
     })))
-  // 模型输入指引：目录键 + 探活命中的模型 id（datalist——key 填错是「无效果」的另一主因）。
-  const modelKeys = catalogEntries().map(entry => entry.key)
+  // 模型输入指引：目录键 + 探活命中的模型 id + 本期未收录的实际 id（datalist——
+  // key 填错是「无效果」的另一主因，issue #125：未收录 id 直接进候选，省掉手抄）。
+  const modelKeys = useMemo(() => {
+    const out: string[] = []
+    for (const entry of catalogEntries()) out.push(entry.key)
+    for (const id of unpricedIds ?? []) if (!out.includes(id)) out.push(id)
+    return out
+  }, [unpricedIds])
   // 币种切换：CNY = 移除 currency 字段（缺省即 CNY），USD = 显式标记（exactOptionalPropertyTypes）。
   const setCurrency = (i: number, cur: 'CNY' | 'USD'): void =>
     setDrafts(list => list.map((row, idx) => {
@@ -995,6 +1006,25 @@ function UserPriceCard({ userPrices, onUserPrices, t }: {
       </div>
     </section>
   )
+}
+
+/**
+ * 未收录模型 id 的横幅文案（issue #125）：最多列 3 个，其余折成「等 N 个」——
+ * 中转站每家一套命名，id 可能几十个，横幅不是清单。分隔符随界面语言。
+ * @param ids - 聚合层给出的未收录模型 id 列表。
+ * @param t - 文案取值函数。
+ * @param language - 界面语言（决定分隔符与「等 N 个」措辞）。
+ * @returns 可直接放进横幅正文的 id 摘要。
+ */
+function unpricedModelIdsText(
+  ids: readonly string[],
+  t: (key: UsageBillingKey, params?: Record<string, unknown>) => string,
+  language: BillingLanguage,
+): string {
+  if (ids.length === 0) return ''
+  const shown = ids.slice(0, 3).join(language === 'zh' ? '、' : ', ')
+  const rest = ids.length - 3
+  return rest > 0 ? `${shown} ${t('unpricedMore', { count: rest })}` : shown
 }
 
 function BillingDashboard({
@@ -2127,12 +2157,30 @@ function BillingDashboard({
               </section>
 
               {/* 未计价模型提示：目录外/无价模型费用按 0 计，提醒用户自查并反馈。
-                  v1.5：加 × 关闭（按天持久化，次日恢复）。 */}
+                  v1.5：加 × 关闭（按天持久化，次日恢复）。
+                  issue #125：直接列出未收录的模型 id + 「去补价」入口——用户此前
+                  只能自己回会话日志抄 id，且常抄错（全角/半角冒号、路由前缀）。 */}
               {(stats.unpricedModels?.length ?? 0) > 0 && !dismissedNotices.has('unpriced') && (
                 <div className={css.unpricedHint} data-testid="billing-unpriced-hint">
                   <span className={css.unpricedHintBody}>
-                    {t('unpricedHint').replace('{count}', String(stats.unpricedModels?.length ?? 0))}
+                    {t('unpricedHint')
+                      .replace('{count}', String(stats.unpricedModels?.length ?? 0))
+                      .replace('{models}', unpricedModelIdsText(stats.unpricedModels ?? [], t, language))}
                   </span>
+                  <button
+                    type="button"
+                    className={css.noticeAction}
+                    data-testid="billing-unpriced-fix"
+                    onClick={() => {
+                      setTab('settings')
+                      // 设置页按关键词过滤分区：查询串须是分区关键词的子串（见
+                      // settings-search.ts）——用「单价 / price」命中高级分区
+                      // （自定义单价卡），其余分区收起。
+                      setSettingsQuery(language === 'zh' ? '单价' : 'price')
+                    }}
+                  >
+                    {t('unpricedFix')}
+                  </button>
                   <button
                     type="button"
                     className={css.noticeDismiss}
@@ -3084,7 +3132,7 @@ function BillingDashboard({
               </section>
 
               {/* 5. 自定义单价：set-card——已存价列表 + 新增行；显示层重估，口径差异见说明。 */}
-              <div hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.advanced)} id="settings-advanced"><UserPriceCard userPrices={userPrices} onUserPrices={onUserPrices} t={t} /></div>
+              <div hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.advanced)} id="settings-advanced"><UserPriceCard userPrices={userPrices} onUserPrices={onUserPrices} t={t} unpricedIds={stats.unpricedModels ?? []} /></div>
 
               {/* 6. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
               <div hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.about)} id="settings-about"><PluginInfoCard t={t} version={stats.pluginVersion} /></div>

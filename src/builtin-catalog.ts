@@ -2191,6 +2191,11 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'deepseek-v4-flash-vision-exp': 'flash-vision-exp',
   // V4.1 Flash 正式版 id（官方公告 2026-09-10 前后发布）：计费同 flash 系时间线。
   'deepseek-v4.1-flash': 'flash',
+  // 裸 V4.1 代名（issue #125）：中转站把模型写成 `cn:deepseek v4.1` 这类带路由
+  // 前缀的形态，剥前缀后即本键。DeepSeek 的 V4.1 代就是 V4.1 Flash（官方价目页
+  // 规范名 deepseek-flash，目录键 flash）——models.dev 的 deepseek 厂商条目里也
+  // 没有独立的 V4.1，故归一到 flash，按 V4.1 Flash 价与峰谷时间线计。
+  'deepseek-v4.1': 'flash',
   // V4.1 Flash 限时内测端点（expires-on-0910，09-10 过期）：内测价 = flash 同价，
   // 收录它让存量账单的内测用量按 flash 时间线正确归并计费（issue #40 反馈）。
   'deepseek-v4.1-flash-expires-on-0910': 'flash',

@@ -349,6 +349,8 @@ export type UsageBillingKey =
   | 'popDirectLead'
   | 'popSubLead'
   | 'unpricedHint'
+  | 'unpricedMore'
+  | 'unpricedFix'
   | 'searchEstimateHint'
   | 'siteListDisplay'
   | 'siteListDisplayHint'
@@ -792,7 +794,9 @@ export const zh: Record<UsageBillingKey, string> = {
   'popNoConsumption': '暂无消耗',
   'popDirectLead': '直联',
   'popSubLead': '订阅',
-  'unpricedHint': '{count} 个模型未收录计价，费用已按 0 计',
+  'unpricedHint': '{count} 个模型未收录计价，费用已按 0 计：{models}',
+  'unpricedMore': '等 {count} 个',
+  'unpricedFix': '去补价',
   'searchEstimateHint': '含 {count} 次联网搜索请求的估算费用（每次约 {each}；日志无用量事件，按次估算，可在配置 searchCallEstimateCny 调整或关闭）',
   'siteListDisplay': '中转站列表',
   'siteListDisplayHint': '隐藏「未识别」占位条目与「未知路由」分组，净化列表',
@@ -1235,7 +1239,9 @@ export const en: Record<UsageBillingKey, string> = {
   'popNoConsumption': 'No usage yet',
   'popDirectLead': 'Direct',
   'popSubLead': 'Subscription',
-  'unpricedHint': '{count} models not priced; their cost counts as 0',
+  'unpricedHint': '{count} models not priced; their cost counts as 0: {models}',
+  'unpricedMore': '+{count} more',
+  'unpricedFix': 'Set price',
   'searchEstimateHint': 'Includes estimated cost of {count} web-search requests (~{each} each; no usage events logged, per-call estimate; tune via searchCallEstimateCny)',
   'siteListDisplay': 'Relay lists',
   'siteListDisplayHint': 'Hide "unidentified" placeholder rows in the relay quota list',

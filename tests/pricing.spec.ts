@@ -9,7 +9,7 @@ import {
   applyBuiltinCatalog, applyLiveCatalogModels, applyLivePricing, applyPromo, canonModelId, catalogEntries, cnyToUsd, computeCost,
   computeCostAt, convertUnitPrice, formatMoney, formatPercent, formatTokens, formatUnitPrice,
   applyUserModelAliases,
-  getRateInfo, isPeakHour, isPromoActive, modelOf, resolveCatalogKey, tierAt, tierCountdown,
+  getRateInfo, isPeakHour, isPriced, isPromoActive, modelOf, resolveCatalogKey, tierAt, tierCountdown,
 } from '../src/client/pricing.ts'
 import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from '../src/builtin-catalog.ts'
 import { PROVIDER_ALIASES } from '../src/client/domain/provider-aliases.ts'
@@ -55,6 +55,41 @@ describe('canonModelId / resolveCatalogKey', () => {
     expect(resolveCatalogKey('k3')).toBe('kimi-k3')
     // 完全未知 id 原样返回（回退 other，不计费）。
     expect(resolveCatalogKey('no-such-model')).toBe('no-such-model')
+  })
+})
+
+describe('issue #125：中转站路由前缀 / 变体后缀的模型 id 归一', () => {
+  it('strips a relay route prefix so a known model is priced again', () => {
+    // 报告者形态：自定义模型 id `cn:deepseek v4.1`（中转站按线路加前缀）。
+    // 此前整个 id 落「未收录」→ 费用恒为 0（token 照常统计）。
+    expect(resolveCatalogKey('cn:deepseek v4.1')).toBe('flash')
+    expect(isPriced('cn:deepseek v4.1')).toBe(true)
+    // 全角冒号等价（手输 id 常见）。
+    expect(resolveCatalogKey('cn：deepseek v4.1')).toBe('flash')
+    // 前缀形态的已知模型同样归位（不只 DeepSeek 一家）。
+    expect(resolveCatalogKey('cn:deepseek-v4.1-flash')).toBe('flash')
+    expect(resolveCatalogKey('us:gpt-5.6-sol')).toBe('gpt-5.6-sol')
+  })
+
+  it('strips a variant suffix so the base model is priced', () => {
+    // 网关变体后缀（:free / :1017 一类）：去掉后按同模型计价。
+    expect(resolveCatalogKey('deepseek-v4.1-flash:fast')).toBe('flash')
+    expect(resolveCatalogKey('cn:deepseek-v4.1-flash:fast')).toBe('flash')
+  })
+
+  it('maps the bare V4.1 generation name onto the V4.1 Flash catalog key', () => {
+    // DeepSeek 的 V4.1 代即 V4.1 Flash（官方价目页规范名 deepseek-flash）。
+    expect(resolveCatalogKey('deepseek-v4.1')).toBe('flash')
+    expect(resolveCatalogKey('deepseek v4.1')).toBe('flash')
+    expect(modelOf('deepseek v4.1')).toMatchObject({ key: 'flash', name: 'DeepSeek V4.1 Flash' })
+    expect(modelOf('deepseek v4.1').price).toMatchObject({ currency: 'CNY', input: 2, cacheHit: 0.04, output: 8 })
+  })
+
+  it('never guesses: an unknown id stays unknown (no pricing by another model)', () => {
+    // 剥段只是找同一模型的另一种写法：剥完仍不命中就保持原样（回退 other）。
+    expect(resolveCatalogKey('cn:totally-unknown-xyz')).toBe('cn:totally-unknown-xyz')
+    expect(isPriced('cn:totally-unknown-xyz')).toBe(false)
+    expect(modelOf('cn:totally-unknown-xyz').key).toBe('other')
   })
 })
 
