@@ -349,6 +349,11 @@ export type UsageBillingKey =
   | 'popDirectLead'
   | 'popSubLead'
   | 'unpricedHint'
+  | 'channelVisibility'
+  | 'channelVisibilityHint'
+  | 'channelVisibilityShowAll'
+  | 'channelVisibilityHidden'
+  | 'channelVisibilityEmpty'
   | 'unpricedMore'
   | 'unpricedFix'
   | 'searchEstimateHint'
@@ -795,6 +800,11 @@ export const zh: Record<UsageBillingKey, string> = {
   'popDirectLead': '直联',
   'popSubLead': '订阅',
   'unpricedHint': '{count} 个模型未收录计价，费用已按 0 计：{models}',
+  'channelVisibility': '通道可见性',
+  'channelVisibilityHint': '隐藏的通道不参与统计口径：账单分组、概览数字、趋势与用量随之联动。会话 / 工具 / 角色等没有通道维度的指标仍为全量。',
+  'channelVisibilityShowAll': '全部显示',
+  'channelVisibilityHidden': '已隐藏 {count} 个通道，统计口径已排除其用量',
+  'channelVisibilityEmpty': '暂无通道数据',
   'unpricedMore': '等 {count} 个',
   'unpricedFix': '去补价',
   'searchEstimateHint': '含 {count} 次联网搜索请求的估算费用（每次约 {each}；日志无用量事件，按次估算，可在配置 searchCallEstimateCny 调整或关闭）',
@@ -1240,6 +1250,11 @@ export const en: Record<UsageBillingKey, string> = {
   'popDirectLead': 'Direct',
   'popSubLead': 'Subscription',
   'unpricedHint': '{count} models not priced; their cost counts as 0: {models}',
+  'channelVisibility': 'Channel visibility',
+  'channelVisibilityHint': 'Hidden channels are excluded from the statistics scope: billing groups, overview numbers, trends and usage follow along. Session / tool / role metrics have no channel dimension and stay global.',
+  'channelVisibilityShowAll': 'Show all',
+  'channelVisibilityHidden': '{count} channel(s) hidden — their usage is excluded from the statistics scope',
+  'channelVisibilityEmpty': 'No channel data yet',
   'unpricedMore': '+{count} more',
   'unpricedFix': 'Set price',
   'searchEstimateHint': 'Includes estimated cost of {count} web-search requests (~{each} each; no usage events logged, per-call estimate; tune via searchCallEstimateCny)',

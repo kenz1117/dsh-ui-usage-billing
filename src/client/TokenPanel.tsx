@@ -57,6 +57,14 @@ interface DayModelsRow {
   total: number
 }
 
+/** 一个模型用过的通道（按 token 降序）：同名模型经不同通道时据此区分。 */
+interface ModelChannelRow {
+  /** 通道桶 key（`site:<origin>` / `direct:<provider>` / `unknown`）。 */
+  siteKey: string
+  tokens: number
+  cost: number
+}
+
 /** 模型 token 行。 */
 interface ModelTokenRow {
   key: string
@@ -118,6 +126,8 @@ export function TokenPanel(props: {
   models?: readonly TrendSeriesModel[]
   /** 金额格式化（跟随仪表盘币种切换）：费用构成区块展示用。 */
   money: (cny: number) => string
+  /** 通道桶 key → 通道显示名（issue #126：模型行标注提供方）。 */
+  channelName?: (siteKey: string) => string
   t: (key: UsageBillingKey) => string
 }): React.ReactNode {
   const { stats, trendDays, onTrendDays, t } = props
@@ -257,6 +267,32 @@ export function TokenPanel(props: {
       .sort((a, b) => b.total - a.total)
     return rows.map(r => ({ ...r, share: grand > 0 ? r.total / grand : 0 }))
   }, [byModel])
+
+  // 模型 → 通道分布（issue #126 需求）：同名模型经不同通道（官方 / 直连 / 中转）
+  // 时，用量行能看出分别走了哪些通道、各占多少 token。数据源 byDayModelsSite
+  // （模型 × 日 × 通道三维格）；缺该维度的旧快照不标注。
+  const modelChannels = useMemo(() => {
+    const out = new Map<string, ModelChannelRow[]>()
+    for (const models of Object.values(stats.byDayModelsSite ?? {})) {
+      for (const [modelKey, sites] of Object.entries(models)) {
+        const rows = out.get(modelKey) ?? []
+        for (const [siteKey, cell] of Object.entries(sites)) {
+          const hit = rows.find(row => row.siteKey === siteKey)
+          if (hit === undefined) {
+            rows.push({ siteKey, tokens: cell.input + cell.output, cost: cell.cost })
+            continue
+          }
+          hit.tokens += cell.input + cell.output
+          hit.cost += cell.cost
+        }
+        out.set(modelKey, rows)
+      }
+    }
+    for (const [modelKey, rows] of out) {
+      out.set(modelKey, [...rows].sort((a, b) => b.tokens - a.tokens))
+    }
+    return out
+  }, [stats.byDayModelsSite])
 
   // 结构 KPI 已并入概览 KPI 七卡（issue #47 反馈），此处不再重复渲染。
 
@@ -568,7 +604,22 @@ export function TokenPanel(props: {
                       }
                     } : undefined}
                   >
-                    <td><span className={css.modelName}>{m.name}</span></td>
+                    <td>
+                      <span className={css.modelName}>{m.name}</span>
+                      {(modelChannels.get(m.key) ?? []).length > 0 && (
+                        <span className={css.modelChannels} data-testid={`billing-token-model-channels-${m.key}`}>
+                          {(modelChannels.get(m.key) ?? []).slice(0, 3).map(row => (
+                            <span
+                              key={row.siteKey}
+                              className={css.modelChannelTag}
+                              title={`${props.channelName?.(row.siteKey) ?? row.siteKey} · ${formatTokens(row.tokens)} token · ${money(row.cost)}`}
+                            >
+                              {props.channelName?.(row.siteKey) ?? row.siteKey} · {m.total > 0 ? `${((row.tokens / m.total) * 100).toFixed(0)}%` : '—'}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </td>
                     <td className={css.numCol}>{formatTokens(m.input)}</td>
                     <td className={css.numCol}>{formatTokens(m.output)}</td>
                     <td className={css.numCol}>{m.reasoning > 0 ? formatTokens(m.reasoning) : <span className={css.na}>—</span>}</td>

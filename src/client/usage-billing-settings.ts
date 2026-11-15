@@ -259,6 +259,38 @@ export function saveSiteListPrefs(prefs: SiteListPrefs): void {
 }
 
 /**
+ * 通道可见性偏好（issue #126 需求）：隐藏部分提供商 / 通道。
+ * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）。
+ *
+ * 存**通道桶 key**（`site:<origin>` / `direct:<provider>` / `unknown`）而不是
+ * 显示名——显示名随界面语言变（中英），桶 key 稳定，偏好能跨语言沿用。
+ */
+export interface ChannelVisibilityPrefs {
+  /** 隐藏的通道桶 key 列表；空 = 全部显示。 */
+  hidden: readonly string[]
+}
+
+/** 默认通道可见性偏好：全部显示（保持历史行为）。 */
+export const DEFAULT_CHANNEL_VISIBILITY_PREFS: ChannelVisibilityPrefs = { hidden: [] }
+
+/** localStorage key（与其他 `dsh.ui-usage-billing.*` 偏好同命名空间）。 */
+export const CHANNEL_VISIBILITY_STORAGE_KEY = 'dsh.ui-usage-billing.channels'
+
+/** 读取通道可见性偏好（含损坏/缺失回退到默认）。仅在浏览器半区调用。 */
+export function loadChannelVisibilityPrefs(): ChannelVisibilityPrefs {
+  const parsed = readJson(CHANNEL_VISIBILITY_STORAGE_KEY)
+  if (parsed === null || typeof parsed !== 'object') return { ...DEFAULT_CHANNEL_VISIBILITY_PREFS }
+  const hidden = (parsed as Partial<ChannelVisibilityPrefs>).hidden
+  if (!Array.isArray(hidden)) return { ...DEFAULT_CHANNEL_VISIBILITY_PREFS }
+  return { hidden: hidden.filter((key): key is string => typeof key === 'string' && key !== '') }
+}
+
+/** 写入通道可见性偏好。失败静默（展示偏好非关键）。 */
+export function saveChannelVisibilityPrefs(prefs: ChannelVisibilityPrefs): void {
+  writeStored(CHANNEL_VISIBILITY_STORAGE_KEY, JSON.stringify(prefs))
+}
+
+/**
  * 即时代费条（平价消耗胶囊，composer dock 的 LiveCostBar）的显示偏好。
  * 纯 client 偏好，存 localStorage（不依赖 node 半区接口/设置 schema）；
  * 设置 Tab 与 LiveCostBar 分属两个 React 树，跨树同步走 localStorage +

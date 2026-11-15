@@ -51,6 +51,7 @@ import {
   loadQuickQueuePrefs,
   loadSiteListPrefs,
   loadUserPrices,
+  loadChannelVisibilityPrefs,
   saveBillingCardPrefs,
   saveFloatWindowPrefs,
   saveKpiRange,
@@ -63,12 +64,14 @@ import {
   saveQuickQueuePrefs,
   saveSiteListPrefs,
   saveUserPrices,
+  saveChannelVisibilityPrefs,
   loadDensity,
   saveDensity,
   loadMotion,
   saveMotion,
   DENSITY_PREF_EVENT,
   MOTION_PREF_EVENT,
+  type ChannelVisibilityPrefs,
   type DensityPref,
   type MotionPref,
   type SiteListPrefs,
@@ -137,6 +140,7 @@ import { normalizeProvider, providerFromModelKey } from './domain/provider-alias
 import { subscriptionVendorOf } from './domain/subscription-vendors.ts'
 import { rechargeUrlOf } from './domain/recharge.ts'
 import { recostWithUserPrices } from './domain/recost.ts'
+import { channelUsageOf, filterStatsByChannels, groupChannelsByName, type ChannelGroup } from './domain/channel-visibility.ts'
 import { notifyAcrossInstances, notifyAllowed } from './domain/notify.ts'
 import { buildSessionDisplay } from './domain/provider-merge.ts'
 import { agentTreeStats, buildAgentTree } from './domain/agent-tree.ts'
@@ -688,6 +692,12 @@ interface BillingDashboardProps {
   sitePrefs: SiteListPrefs
   /** 中转站列表展示偏好更新（父组件持久化）。 */
   onSitePrefs: (next: SiteListPrefs) => void
+  /** 通道可见性偏好（issue #126：隐藏的通道不参与统计口径）。 */
+  channelPrefs: ChannelVisibilityPrefs
+  /** 通道可见性偏好更新（父组件持久化到 localStorage）。 */
+  onChannelPrefs: (next: ChannelVisibilityPrefs) => void
+  /** 通道清单（按显示名归并，含已隐藏的通道——用户要能把隐藏的重新打开）。 */
+  channelGroups: readonly ChannelGroup[]
   /** 即时代费条（平价消耗胶囊）显示偏好（设置 Tab 编辑，跨树经 CustomEvent 通知 dock）。 */
   liveCostPrefs: LiveCostBarPrefs
   /** 即时代费条显示偏好更新（父组件持久化并广播）。 */
@@ -1027,11 +1037,93 @@ function unpricedModelIdsText(
   return rest > 0 ? `${shown} ${t('unpricedMore', { count: rest })}` : shown
 }
 
+/**
+ * 通道可见性设置卡（issue #126 需求）：逐个通道勾选「显示」。
+ *
+ * 隐藏的通道不参与统计口径——账单分组、概览数字、趋势与用量随之联动
+ * （过滤在 {@link filterStatsByChannels} 里一次做完，各视图不各算一套）。
+ * 同显示名的多个桶（直连与官方同名的两桶）归为一行，隐藏任一即整行隐藏。
+ * @param props.prefs - 当前可见性偏好（隐藏的桶 key 列表）。
+ * @param props.onPrefs - 提交新偏好。
+ * @param props.groups - 通道分组（显示名 + 桶 key + 用量）。
+ * @param props.t - 文案取值函数。
+ * @param props.money - 金额格式化（跟随仪表盘币种）。
+ */
+function ChannelVisibilityCell({ prefs, onPrefs, groups, t, money }: {
+  prefs: ChannelVisibilityPrefs
+  onPrefs: (next: ChannelVisibilityPrefs) => void
+  groups: readonly ChannelGroup[]
+  t: (key: UsageBillingKey, params?: Record<string, unknown>) => string
+  money: (cny: number) => string
+}): React.ReactNode {
+  const hidden = new Set(prefs.hidden)
+  const toggle = (group: ChannelGroup, hide: boolean): void => {
+    const next = new Set(hidden)
+    for (const key of group.siteKeys) {
+      if (hide) next.add(key)
+      else next.delete(key)
+    }
+    onPrefs({ hidden: [...next] })
+  }
+  const hiddenCount = groups.filter(group => group.siteKeys.some(key => hidden.has(key))).length
+  return (
+    <div className={css.setCell} data-testid="billing-channel-visibility-setting">
+      <div className={css.setCardHead}>
+        <div className={css.setCardMeta}>
+          <h3 className={css.setCardTitle}>{t('channelVisibility')}<HelpTip label={t('channelVisibilityHint')} t={t} /></h3>
+        </div>
+        <button
+          type="button"
+          className={css.exportButton}
+          data-testid="billing-channel-visibility-reset"
+          disabled={prefs.hidden.length === 0}
+          onClick={() => { onPrefs({ hidden: [] }) }}
+        >
+          {t('channelVisibilityShowAll')}
+        </button>
+      </div>
+      {groups.length === 0 ? (
+        <div className={css.setHint}>{t('channelVisibilityEmpty')}</div>
+      ) : (
+        <div className={css.channelVisList}>
+          {groups.map(group => {
+            const isHidden = group.siteKeys.some(key => hidden.has(key))
+            return (
+              <div key={group.name} className={css.channelVisRow} data-testid={`billing-channel-row-${group.name}`}>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!isHidden}
+                  aria-label={group.name}
+                  data-testid={`billing-channel-toggle-${group.name}`}
+                  className={clsx(css.switch, !isHidden && css.switchOn)}
+                  onClick={() => { toggle(group, !isHidden) }}
+                >
+                  <span className={css.switchKnob} />
+                </button>
+                <span className={css.channelVisName} title={group.name}>{group.name}</span>
+                <span className={css.channelVisUsage}>
+                  {money(group.cost)} · {formatTokens(group.tokens)}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {hiddenCount > 0 && (
+        <div className={css.setHint} data-testid="billing-channel-visibility-hint">
+          {t('channelVisibilityHidden').replace('{count}', String(hiddenCount))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function BillingDashboard({
   stats, statsError, t, onClose, embeddedSettings = false, userPrices, onUserPrices, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, language, onLanguage, turns,
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
   modelBudgets, monthModelCost, onModelBudget,
-  peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, recoveryEntryAvailable, sitePrefs, onSitePrefs,
+  peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, recoveryEntryAvailable, sitePrefs, onSitePrefs, channelPrefs, onChannelPrefs, channelGroups,
   liveCostPrefs, onLiveCostPrefs, quickQueuePrefs, onQuickQueuePrefs, quotasStale, balanceStale, navigateToSession, sessionTitleOf,
 }: BillingDashboardProps): React.ReactNode {
   const dashboardRoot = useRef<HTMLDivElement>(null)
@@ -1577,9 +1669,18 @@ function BillingDashboard({
   // 厂商）只是行内徽标 + 副标——付费视角下「钱花给了哪个提供商」优先于「用了
   // 哪家的模型」。数据源：byDayModelsSite 模型×日×通道三维（FOLD_VERSION 8 起
   // 全量快照必含；旧快照缺失时模型统一落「未知路由」组，首次聚合后即恢复）。
+  // 通道桶 key → 显示名（用量行的提供方标注，issue #126）。
+  const channelNameOf = useCallback(
+    (siteKey: string): string => channelDisplayName(siteKey, lang) ?? t('channelUnknown'),
+    [lang, t],
+  )
+
   const providerGroups: ProviderBillingGroup[] = useMemo(() => {
     // 仅看今日（issue #77）：数据源收缩到当日（本地时区）一个桶——模型行与花费
     // 小计随之按当日计；余额与订阅额度是账户状态，数值本身不参与按日过滤。
+    // 通道可见性（issue #126）：隐藏通道的用量在父组件的过滤里已扣除——
+    // 本组件收到的 stats 已是过滤+重估后的文档，账单分组随之少掉这些通道，
+    // 不另做一层过滤，避免两处口径分叉。
     let siteSource = stats.byDayModelsSite
     if (providersTodayOnly) {
       const today = localDayStamp()
@@ -2916,6 +3017,14 @@ function BillingDashboard({
                       </button>
                     </div>
                   </div>
+                  {/* 通道可见性（issue #126）：逐通道勾选显示；隐藏的通道不参与统计口径。 */}
+                  <ChannelVisibilityCell
+                    prefs={channelPrefs}
+                    onPrefs={onChannelPrefs}
+                    groups={channelGroups}
+                    t={t}
+                    money={money}
+                  />
                   {/* issue #114：关掉后输入框旁的低谷队列按钮与入队控件一并隐藏；
                       队列页与用量计费功能不受影响，随时可在此改回。 */}
                   <div className={css.setCell} data-testid="billing-quick-queue-entry-setting">
@@ -3900,7 +4009,7 @@ function BillingDashboard({
           {tab === 'token' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-token">
               {/* Token 洞察：独立于费用的 token 统计（每日堆叠[结构/模型双视角] / 模型占比 / 结构 KPI / 导出）。 */}
-              <TokenPanel stats={stats} trendDays={trendDays} onTrendDays={setTrendDays} models={chartModels} money={money} t={t} />
+              <TokenPanel stats={stats} trendDays={trendDays} onTrendDays={setTrendDays} models={chartModels} money={money} channelName={channelNameOf} t={t} />
               {/* 性能：按模型 TTFT/P50/P90/生成速度/总延迟 + 按小时曲线（并入「用量」分区）。 */}
               {stats.perf !== undefined && (
                 <section className={css.panel} data-testid="billing-panel-perf">
@@ -4152,7 +4261,7 @@ const SETTINGS_KEYWORDS = {
   budget: ['预算', '金额', '本月', '花费', '进度', 'budget', 'amount', 'spend', 'progress'],
   alert: ['峰谷', '峰', '谷', '提醒', '通知', '预览', '切换', 'peak', 'off-peak', 'alert', 'notify', 'preview'],
   toggles: ['usage_stats', '工具', '即时代费', '胶囊', '中转站', '站点', '隐藏', '低谷', '队列', 'relay', 'site', 'live', 'cost', 'hide', 'queue', 'off-peak'],
-  displayExtra: ['悬浮', '订阅', '计费卡', '指标', '环比', '主数字', '侧栏', '入口', '隐藏', 'float', 'subscription', 'card', 'metric', 'delta', 'sidebar', 'trigger', 'hidden'],
+  displayExtra: ['悬浮', '订阅', '计费卡', '指标', '环比', '主数字', '侧栏', '入口', '隐藏', '通道', '可见', 'float', 'subscription', 'card', 'metric', 'delta', 'sidebar', 'trigger', 'hidden', 'channel', 'visibility'],
   advanced: ['自定义', '单价', '价格', '低谷', 'custom', 'price'],
   about: ['关于', '版本', '作者', '许可', '仓库', 'about', 'version', 'author', 'license', 'repo'],
 } as const
@@ -4321,8 +4430,18 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     applyUserPrices(next)
     saveUserPrices(next)
   }, [])
+  // 通道可见性（issue #126 需求）：设置里勾掉的通道不参与统计口径（账单 / 概览 /
+  // 趋势 / 用量联动）。偏好存 localStorage，纯展示层过滤，服务端账本不动。
+  const [channelPrefs, setChannelPrefs] = useState<ChannelVisibilityPrefs>(() => loadChannelVisibilityPrefs())
+  const updateChannelPrefs = useCallback((next: ChannelVisibilityPrefs): void => {
+    setChannelPrefs(next)
+    saveChannelVisibilityPrefs(next)
+  }, [])
+  const hiddenSiteKeys = useMemo(() => new Set(channelPrefs.hidden), [channelPrefs.hidden])
+  // 过滤后的原始统计（隐藏通道的用量在此扣除；无通道维度时原样返回）。
+  const visibleStats = useMemo(() => filterStatsByChannels(stats, hiddenSiteKeys), [stats, hiddenSiteKeys])
   // 显示重估后的统计：用户价变化或新快照到达时重新计算（无用户价时原样返回）。
-  const displayStats = useMemo(() => recostWithUserPrices(stats), [stats, userPrices])
+  const displayStats = useMemo(() => recostWithUserPrices(visibleStats), [visibleStats, userPrices])
   // 严格联动（仅本插件，不影响宿主全局语言）：币种=USD 时面板文案切英文，CNY 时切中文。
   // 用本包自带 zh/en 字典构建本地 t；key 未覆盖时回退宿主 t。
   const lang = language
@@ -4335,6 +4454,15 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     for (const [k, v] of Object.entries(params)) out = out.replaceAll(`{${k}}`, String(v))
     return out
   }, [lang, hostT])
+  // 通道清单（issue #126 设置项）：按显示名归并的通道分组 + 各自用量。
+  // 用**未过滤**的原始 stats —— 清单要列出全部通道，用户才能把隐藏的重新打开。
+  const channelGroups: readonly ChannelGroup[] = useMemo(
+    () => groupChannelsByName(
+      channelUsageOf(stats),
+      siteKey => channelDisplayName(siteKey, lang) ?? t('channelUnknown'),
+    ),
+    [stats, lang, t],
+  )
   const [open, setOpen] = useState(false)
   const close = useCallback(() => { setOpen(false) }, [])
 
@@ -4865,6 +4993,9 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           recoveryEntryAvailable={recoveryEntryAvailable}
           sitePrefs={sitePrefs}
           onSitePrefs={updateSitePrefs}
+          channelPrefs={channelPrefs}
+          onChannelPrefs={updateChannelPrefs}
+          channelGroups={channelGroups}
           liveCostPrefs={liveCostPrefs}
           onLiveCostPrefs={updateLiveCostPrefs}
           quickQueuePrefs={quickQueuePrefs}

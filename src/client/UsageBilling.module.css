@@ -1421,6 +1421,35 @@ body {
   min-width: 0;
 }
 
+/* 通道可见性清单（issue #126）：逐通道一行（开关 + 名称 + 用量）。 */
+.channelVisList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.channelVisRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.channelVisName {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channelVisUsage {
+  flex: none;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
 /* 未收录提示条的「去补价」动作（issue #125）：文字按钮，跳设置页的自定义单价
    分区——未收录模型 id 在横幅里直接列出，用户不必回会话日志抄 id。 */
 .noticeAction {
@@ -2803,6 +2832,28 @@ span.bandDot { cursor: default; }
 .modelProvider {
   display: block;
   font-size: 10.5px;
+  line-height: 14px;
+  color: var(--ds-t-3);
+}
+
+/* 模型行的通道标注（issue #126）：同名模型经不同通道时据此区分。 */
+.modelChannels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.modelChannelTag {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 5px;
+  border: 1px solid var(--ds-border);
+  border-radius: 4px;
+  font-size: 10px;
   line-height: 14px;
   color: var(--ds-t-3);
 }
@@ -4654,6 +4705,13 @@ span.bandDot { cursor: default; }
   border: 1px solid var(--ds-border);
   border-radius: var(--ds-r-1);
   min-width: 0;
+}
+
+/* 设置卡内的说明行（issue #126 通道可见性：已隐藏几个通道、统计口径已排除）。 */
+.setHint {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--ds-t-3);
 }
 
 .setCardHead {

@@ -71,6 +71,8 @@ export declare function TokenPanel(props: {
     models?: readonly TrendSeriesModel[];
     /** 金额格式化（跟随仪表盘币种切换）：费用构成区块展示用。 */
     money: (cny: number) => string;
+    /** 通道桶 key → 通道显示名（issue #126：模型行标注提供方）。 */
+    channelName?: (siteKey: string) => string;
     t: (key: UsageBillingKey) => string;
 }): React.ReactNode;
 export {};
