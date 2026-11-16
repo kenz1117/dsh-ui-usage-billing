@@ -2,11 +2,19 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-rc.3。当前 `latest` 指向 `1.8.6` 正式版，`alpha` 指向 `1.8.3-alpha.9`；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-rc.3。当前 `latest` 指向 `1.8.6` 正式版，`alpha` 指向 `1.8.3-alpha.10`；后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.2-rc.3）
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
+
+### v1.8.3-alpha.10（2026-11-16）
+
+- **修复：设置 Tab「通道可见性」清单的通道名不再被截断（issue #126 复访）**。上一版把清单放在三列网格里，每格只有 1/3 宽，通道名被省略号砍成「a...」「12...」「直...」——前缀雷同，根本分不出哪一行对应哪条中转线（报告者实测）。现在：
+  - **清单卡整行铺开**（「通道可见性」横跨设置网格整行，不再挤在三列里）；
+  - **通道名不再截断**：名称改为可换行的整名呈现（「哪个通道」是这一页唯一的决策依据，金额与用量让位）；行尾仍保留该通道的费用与 token 合计作参考，悬停名称可见完整文本。
+- **验证**：全量 91 个测试文件 / 917 条用例通过（新增 1 条客户端用例钉住「整行铺开 + 名称整名」契约；修好一条此前会随当天日期假失败的用例——概览断言改为只钉 Hero 主读数，不再整块扫面板文本，避免与「本月预计」的外推值撞数）；lint 十一条纪律守卫全绿（新增**守卫 11「通道名可读」**：`.channelVisCell` 必须声明 `grid-column: 1 / -1`、`.channelVisName` 不得再声明 `text-overflow: ellipsis` / `white-space: nowrap`——jsdom 不做布局，由 lint 兜底防止回归）。客户端 bundle **372,684 字节（363.9 KiB）**（较 1.8.3-alpha.9 +103 字节），低于本仓自设 500 KiB 强警告线。3080 dev host 真机（宿主 `0.2.2-rc.3`）：仪表盘弹窗与宿主设置页（用量与费用分区）两处的通道清单均为整行布局，6 个通道分组名称完整可读（「DeepSeek 官方」「直连 · xiaomi-token-plan-cn」「直连 · zai-coding-cn」等）；隐藏开关与统计联动照旧生效（隐藏后提示「已隐藏 1 个通道，统计口径已排除其用量」，取消隐藏后恢复）。
+- **兼容矩阵**：纯 CSS 布局改动，未新增任何宿主 API 依赖 —— 不收窄兼容矩阵（仍 36 项，至宿主 `0.2.2-rc.3`）。
 
 ### v1.8.3-alpha.9（2026-11-15）
 

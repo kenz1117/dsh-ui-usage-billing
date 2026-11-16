@@ -11,7 +11,7 @@
 | 正式版 | 非预发布 SemVer，如 `1.8.0` | `latest` | 正式 Release | 已完成验收的默认安装版本 |
 | 预览版 | 带预发布后缀，如 `1.8.1-alpha.2` | `alpha` | Pre-release | 新功能与宿主适配的先行验证 |
 
-当前 npm `latest` 指向 `1.8.6` 正式版——中转站带路由前缀的模型 id 归一（`cn:deepseek-v4.1-flash` 一类）与未收录模型的补价入口（issue #125，报告者已验收）；`alpha` 指向 `1.8.3-alpha.9`（通道可见性：设置里逐通道勾选显示，隐藏通道不参与统计口径；用量行标注提供方，issue #126 需求）；下一轮预览将从 `1.8.3-alpha.10` 起。后续正式版只切 `latest`，预览版只切 `alpha`，不再同时切 `latest`。历史 npm 标签与分支保持原状，但不属于现行产品线、发布指引或 CI 校验范围。
+当前 npm `latest` 指向 `1.8.6` 正式版——中转站带路由前缀的模型 id 归一（`cn:deepseek-v4.1-flash` 一类）与未收录模型的补价入口（issue #125，报告者已验收）；`alpha` 指向 `1.8.3-alpha.10`（通道可见性清单整行铺开、通道名不再截断，issue #126 复访）；下一轮预览将从 `1.8.3-alpha.11` 起。后续正式版只切 `latest`，预览版只切 `alpha`，不再同时切 `latest`。历史 npm 标签与分支保持原状，但不属于现行产品线、发布指引或 CI 校验范围。
 
 ## 当前宿主兼容范围
 
@@ -46,4 +46,4 @@ dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@latest
 
 ## English summary
 
-This repository maintains one current `main` codebase and one host compatibility matrix. Stable releases use non-prerelease SemVer, npm `latest`, and regular GitHub Releases; previews use prerelease SemVer, npm `alpha`, and GitHub Pre-releases. npm `latest` currently points to the stable `1.8.6` release (relay-prefixed model ids such as `cn:deepseek-v4.1-flash` are now priced, and uncatalogued model ids are listed with a one-click path to a custom price, issue #125, verified by the reporter); `alpha` points to `1.8.3-alpha.9` (channel visibility: pick which providers/channels to show, hidden channels leave the statistics scope; usage rows now label the channel behind a model, issue #126). The declared host range is DSH `0.1.2-alpha.1` through `0.2.2-rc.3`, with 36 per-version declarations. Run `node scripts/check-compat.mjs` before and after compatibility or release changes.
+This repository maintains one current `main` codebase and one host compatibility matrix. Stable releases use non-prerelease SemVer, npm `latest`, and regular GitHub Releases; previews use prerelease SemVer, npm `alpha`, and GitHub Pre-releases. npm `latest` currently points to the stable `1.8.6` release (relay-prefixed model ids such as `cn:deepseek-v4.1-flash` are now priced, and uncatalogued model ids are listed with a one-click path to a custom price, issue #125, verified by the reporter); `alpha` points to `1.8.3-alpha.10` (the channel-visibility list now spans the full settings row and channel names are no longer ellipsised, issue #126 follow-up). The declared host range is DSH `0.1.2-alpha.1` through `0.2.2-rc.3`, with 36 per-version declarations. Run `node scripts/check-compat.mjs` before and after compatibility or release changes.
