@@ -1354,6 +1354,12 @@ function BillingDashboard({
     () => filterSessionsForViewer(stats.bySession ?? [], sessionViewerQuery),
     [stats.bySession, sessionViewerQuery],
   )
+  // 会话真实总数：服务端 bySession 被封顶（花费前 100），真实总数另下发
+  // （旧快照没有该字段 → 回退按明细行数）。面板的「共 N 个会话」按它说。
+  const sessionRowCount = stats.bySession?.length ?? 0
+  const sessionTotal = stats.bySessionTotal ?? sessionRowCount
+  // 明细被封顶时查看器只能列出「花费前 N 个」——按钮文案不说「全部」。
+  const sessionRowsTruncated = sessionTotal > sessionRowCount
   // U-3 按模型预算行：本月有消耗的模型 ∪ 已设预算的模型，按本月消耗降序；
   // 目录内模型显示人类名，「其他」兜底条目显示原始 key。
   const modelBudgetRows = useMemo(() => {
@@ -3806,8 +3812,8 @@ function BillingDashboard({
                       {stats.bySession.length > SESSION_DISPLAY_LIMIT
                         ? t('sessionOverflow')
                           .replace('{limit}', String(SESSION_DISPLAY_LIMIT))
-                          .replace('{total}', String(stats.bySession.length))
-                        : `${stats.bySession.length}`}
+                          .replace('{total}', String(sessionTotal))
+                        : `${sessionTotal}`}
                     </span>
                     {/* U-7 会话全屏查看器：面板只显示前 20 行，全量（服务端封顶 100）+ 搜索走浮层。 */}
                     {stats.bySession.length > 0 && (
@@ -3817,7 +3823,7 @@ function BillingDashboard({
                         data-testid="billing-sessions-view-all"
                         onClick={() => { setSessionViewerOpen(true) }}
                       >
-                        {t('sessionsViewAll').replace('{count}', String(stats.bySession.length))}
+                        {t(sessionRowsTruncated ? 'sessionsViewTop' : 'sessionsViewAll').replace('{count}', String(stats.bySession.length))}
                       </button>
                     )}
                   </div>

@@ -74,7 +74,7 @@ describe('会话全屏查看器（组件集成）', () => {
     } as unknown as ComponentProps<typeof UsageBilling>
   }
 
-  async function openProvidersTab(sessions: ReturnType<typeof makeSessions>) {
+  async function openProvidersTab(sessions: ReturnType<typeof makeSessions>, total?: number) {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/api/billing/usage-stats')) {
@@ -82,6 +82,8 @@ describe('会话全屏查看器（组件集成）', () => {
           total: { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0, reasoning: 0 },
           byModel: {}, byDay: {}, byDayModels: {}, byDayModelsSite: {},
           bySession: sessions,
+          // 真实会话总数（服务端未封顶下发）；旧快照没有该字段 → 省略。
+          ...(total === undefined ? {} : { bySessionTotal: total }),
         }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
@@ -125,5 +127,62 @@ describe('会话全屏查看器（组件集成）', () => {
     await waitFor(() => {
       expect(getByTestId('billing-session-viewer-list')?.querySelectorAll('tbody tr').length).toBe(25)
     })
+  })
+})
+
+describe('会话真实总数（1.8.7：bySessionTotal）', () => {
+  // 服务端 bySession 封顶 100 行、真实总数另下发——面板此前把封顶行数当总数，
+  // 会话更多时「共 N 个会话」是错的（审计 P1-6）。
+  function makeProps(): ComponentProps<typeof UsageBilling> {
+    const budgetStore = createBillingBudgetStore().create()
+    return {
+      wide: true,
+      t,
+      checkModels: async () => ({
+        checked: true, available: true, models: 0, failures: 0, okProviders: [], badProviders: [],
+      }),
+      publishCosts: () => {},
+      registerOpen: () => () => {},
+      renderSlot: () => null,
+      useStore: bindSnapshotSelector(budgetStore),
+      actions: budgetStore.actions,
+    } as unknown as ComponentProps<typeof UsageBilling>
+  }
+
+  async function openSessionsTab(sessions: ReturnType<typeof makeSessions>, total?: number) {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/billing/usage-stats')) {
+        return new Response(JSON.stringify({
+          total: { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0, reasoning: 0 },
+          byModel: {}, byDay: {}, byDayModels: {}, byDayModelsSite: {},
+          bySession: sessions,
+          ...(total === undefined ? {} : { bySessionTotal: total }),
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as unknown as typeof fetch)
+    const rendered = render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(rendered.getByTestId('billing-trigger'))
+    await waitFor(() => { expect(rendered.getByTestId('billing-dashboard')).toBeTruthy() })
+    fireEvent.click(rendered.getByTestId('billing-tab-providers'))
+    await waitFor(() => { expect(rendered.getByTestId('billing-panel-sessions')).toBeTruthy() })
+    return rendered
+  }
+
+  it('下发真实总数时面板说真话：共 300 个会话；查看按钮说明只看花费前 25 个', async () => {
+    const { getByTestId } = await openSessionsTab(makeSessions(25), 300)
+    const panel = getByTestId('billing-panel-sessions')
+    expect(panel.textContent).toContain('共 300 个会话')
+    expect(panel.textContent).not.toContain('共 25 个会话')
+    // 明细被封顶 → 查看器只能列出花费前 N 个，按钮不说「全部」
+    expect(getByTestId('billing-sessions-view-all').textContent).toContain('花费前 25')
+  })
+
+  it('旧快照没有 bySessionTotal 时回退按明细行数（既有行为不变）', async () => {
+    const { getByTestId } = await openSessionsTab(makeSessions(25))
+    const panel = getByTestId('billing-panel-sessions')
+    expect(panel.textContent).toContain('共 25 个会话')
+    expect(getByTestId('billing-sessions-view-all').textContent).toContain('查看全部 25 个会话')
   })
 })

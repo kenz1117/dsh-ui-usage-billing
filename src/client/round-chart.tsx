@@ -5,6 +5,9 @@
  * maximum. Turns flagged by {@link flagAnomalies} get a warning outline and a
  * corner marker; hover shows the turn's model, cost, and window time. Styling
  * lives in the billing CSS module (`.rounds*`).
+ *
+ * 入参按服务端口径是**倒序**（`byTurn` 按 startedAt 倒序下发，最新在前），
+ * 组件内部排成升序再取末尾 N 轮——展示的是「最新 N 轮、最新在右」。
  */
 
 import { useMemo } from 'react'
@@ -53,7 +56,7 @@ function duration(ms: number): string {
 
 /**
  * Render the per-turn cost bars.
- * @param props.rounds - turns, most recent last (ascending startedAt); oldest beyond the limit are dropped.
+ * @param props.rounds - 逐轮行（服务端按 startedAt 倒序下发；组件内部排升序后取最新 N 轮）。
  * @param props.flags - spike flags matched by sessionId+turn.
  * @param props.currency - display currency for the amount labels.
  * @param props.t - locale function for the model label.
@@ -64,7 +67,13 @@ export function RoundCostChart({ rounds, flags, currency, t }: {
   currency: CostCurrency
   t: (key: 'model' | 'costAbbr' | 'roundsUnit') => string
 }): React.ReactNode {
-  const visible = useMemo(() => rounds.slice(-DISPLAY_LIMIT), [rounds])
+  // 窗口口径：展示**最新** N 轮、且最新的在右边（升序）。
+  // 服务端 byTurn 是倒序（最新在前）——此前直接 slice(-N) 取到的是「最近 200 轮里
+  // 最旧的 40 轮」，左右顺序也是反的（看图等于看错轮次）。这里排升序再取末尾 N 轮。
+  const visible = useMemo(() => {
+    const ascending = [...rounds].sort((a, b) => a.startedAt - b.startedAt)
+    return ascending.slice(-DISPLAY_LIMIT)
+  }, [rounds])
   const flagKey = useMemo(() => new Set(flags.map(flag => `${flag.sessionId}:${flag.turn}`)), [flags])
   const maxCost = useMemo(() => Math.max(0.0001, ...visible.map(round => round.cost)), [visible])
   if (visible.length === 0) return <div className={css.roundsEmpty}>{t('model')} —</div>

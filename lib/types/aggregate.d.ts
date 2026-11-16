@@ -324,6 +324,12 @@ export interface UsageStatsDocument {
     byTool?: Record<string, number>;
     /** 会话明细：按费用倒序，封顶 {@link SESSION_ROW_LIMIT} 行；旧快照可能缺失。 */
     bySession: SessionUsageRow[];
+    /**
+     * 会话总数（未封顶）：`bySession` 只带花费前 {@link SESSION_ROW_LIMIT} 行，
+     * 真实总数此前从未下发——会话数超过封顶时面板只能说「共 100 个会话」，是错的。
+     * 旧快照缺该字段，客户端回退按明细行数。
+     */
+    bySessionTotal?: number;
     /** 每轮费用明细：按起始时间倒序，封顶 {@link TURN_ROW_LIMIT} 行；旧快照可能缺失。 */
     byTurn?: TurnUsageRow[];
     /** 工作区聚合：按 cwd 末级目录归并，按费用倒序；旧快照可能缺失。 */

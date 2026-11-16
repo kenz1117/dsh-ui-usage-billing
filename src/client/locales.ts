@@ -303,6 +303,7 @@ export type UsageBillingKey =
   | 'settingsSearchPlaceholder'
   | 'settingsSearchEmpty'
   | 'sessionsViewAll'
+  | 'sessionsViewTop'
   | 'sessionViewerSearch'
   | 'modelBudgetTitle'
   | 'modelBudgetHint'
@@ -759,6 +760,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'settingsSearchPlaceholder': '搜索设置…（如：预算、峰谷、单价）',
   'settingsSearchEmpty': '没有匹配「{query}」的设置项',
   'sessionsViewAll': '查看全部 {count} 个会话',
+  'sessionsViewTop': '查看花费前 {count} 个会话',
   'sessionViewerSearch': '搜索会话…（标题 / 项目 / id）',
   'modelBudgetTitle': '按模型预算',
   'modelBudgetHint': '为单个模型设本月上限（人民币元）；跨 80% / 100% 各提醒一次，留空 = 不限。',
@@ -1207,6 +1209,7 @@ export const en: Record<UsageBillingKey, string> = {
   'settingsSearchPlaceholder': 'Search settings… (e.g. budget, peak, price)',
   'settingsSearchEmpty': 'No settings match "{query}"',
   'sessionsViewAll': 'View all {count} sessions',
+  'sessionsViewTop': 'View top {count} sessions by cost',
   'sessionViewerSearch': 'Search sessions… (title / project / id)',
   'modelBudgetTitle': 'Per-model budget',
   'modelBudgetHint': 'Set a monthly cap per model (CNY); alerts fire once each at 80% / 100%. Empty = unlimited.',

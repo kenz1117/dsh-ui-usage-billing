@@ -15,8 +15,6 @@ type ProviderLang = 'zh' | 'en';
  * @returns 本地化后的显示名。
  */
 export declare function localizeProviderName(name: string, lang: ProviderLang): string;
-/** 判断一个厂商显示名是否包含中文（用于测试/守卫：保证映射覆盖完整）。 */
-export declare function hasCjk(name: string): boolean;
 /**
  * 站点桶 key（`site:<origin>` / `direct:<provider>` / `unknown`）→ 通道显示名。
  * @param siteKey - 聚合文档 bySite 的桶 key。

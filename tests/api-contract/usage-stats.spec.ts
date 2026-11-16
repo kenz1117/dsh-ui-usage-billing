@@ -28,4 +28,7 @@ test('GET /api/billing/usage-stats 返回 200 + 核心聚合字段', async ({ re
   // 类型断言：calls 是 number（即便 0 会话也是 0，不为 undefined）
   expect(typeof total.calls).toBe('number')
   expect(typeof total.cost).toBe('number')
+  // bySessionTotal（1.8.7）：会话真实总数（bySession 封顶 100，真实总数另下发）。
+  expect(typeof doc.bySessionTotal).toBe('number')
+  expect(doc.bySessionTotal as number).toBeGreaterThanOrEqual((doc.bySession as unknown[]).length)
 })

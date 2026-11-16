@@ -47,11 +47,6 @@ export function localizeProviderName(name: string, lang: ProviderLang): string {
   return name
 }
 
-/** 判断一个厂商显示名是否包含中文（用于测试/守卫：保证映射覆盖完整）。 */
-export function hasCjk(name: string): boolean {
-  return /[\u4e00-\u9fff]/.test(name)
-}
-
 // ── 通道显示名（站点 origin → 人话）─────────────────────────────────────────
 // 「按通道聚合」视图与厂商行的通道徽标用：已知网关/官方端点给品牌名，
 // 未收录 origin 回退主机名，direct/unknown 由渲染层结合文案键处理。

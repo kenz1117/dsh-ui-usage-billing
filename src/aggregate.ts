@@ -569,6 +569,12 @@ export interface UsageStatsDocument {
   byTool?: Record<string, number>
   /** 会话明细：按费用倒序，封顶 {@link SESSION_ROW_LIMIT} 行；旧快照可能缺失。 */
   bySession: SessionUsageRow[]
+  /**
+   * 会话总数（未封顶）：`bySession` 只带花费前 {@link SESSION_ROW_LIMIT} 行，
+   * 真实总数此前从未下发——会话数超过封顶时面板只能说「共 100 个会话」，是错的。
+   * 旧快照缺该字段，客户端回退按明细行数。
+   */
+  bySessionTotal?: number
   /** 每轮费用明细：按起始时间倒序，封顶 {@link TURN_ROW_LIMIT} 行；旧快照可能缺失。 */
   byTurn?: TurnUsageRow[]
   /** 工作区聚合：按 cwd 末级目录归并，按费用倒序；旧快照可能缺失。 */
@@ -2769,6 +2775,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         byDayModels: toModelDayRecord(byDayModels),
         ...(byDayModelsSite.size === 0 ? {} : { byDayModelsSite: toModelDaySiteRecord(byDayModelsSite) }),
         bySession: sessionRows.slice(0, SESSION_ROW_LIMIT),
+        // 真实会话总数（未封顶）：面板的「共 N 个会话」按它说，不再把封顶行数
+        // 当成总数（旧快照缺该字段，客户端回退按行数）。
+        bySessionTotal: sessionRows.length,
         byTurn: turnRows.slice(0, TURN_ROW_LIMIT),
         byWorkspace: workspaces.slice(0, SESSION_ROW_LIMIT),
         ...(byTier.size === 0 ? {} : { byTier: { peak: byTier.get('peak') ?? emptyUsage(), offPeak: byTier.get('offPeak') ?? emptyUsage() } }),

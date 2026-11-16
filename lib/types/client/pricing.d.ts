@@ -431,8 +431,6 @@ export declare function applyPromo(entry: ModelEntry, nowMs: number): ModelEntry
  * @param nowMs - 促销判定时刻；缺省当前时刻。
  */
 export declare function catalogEntries(nowMs?: number): readonly ModelEntry[];
-/** Resolve a price-table row by its CSS variable name (theme token or fallback color). */
-export declare function resolveToken(name: string): string;
 /**
  * Estimate the CNY cost of one model's token usage, mixing the peak and
  * off-peak bands by the given peak share (flat-priced models cost the same in

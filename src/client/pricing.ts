@@ -1072,12 +1072,6 @@ export function catalogEntries(nowMs: number = Date.now()): readonly ModelEntry[
   })
 }
 
-/** Resolve a price-table row by its CSS variable name (theme token or fallback color). */
-export function resolveToken(name: string): string {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim()
-  return value !== '' ? value : '#8b95a3'
-}
-
 /**
  * Price one band's token usage in CNY. The stats `input` field is the TOTAL
  * prompt tokens (cacheHit + cacheMiss), so billing splits it: the cache-hit

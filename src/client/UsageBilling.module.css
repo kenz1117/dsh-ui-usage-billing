@@ -33,7 +33,7 @@
  */
 
 /* 设计令牌（精致科技风）。暗亮机制：本文件无 [data-theme] 或媒体查询机制，取色全部经宿主 --dsw-* 别名（亮=body、暗=body[data-ds-dark-theme]），故表面/文字/描边令牌从宿主别名派生以自动跟随暗亮；因 var() 在声明元素上求值而宿主别名定义于 body，派生块挂 body 而非 :root。语义色/图表色/圆角/动效两主题同值，冻结硬编码。 */
-/* 语义六色挂 :root：硬编码两主题同值，且 pricing.ts 的 resolveToken 从 documentElement 读取，body 声明不向上继承、html 读不到。 */
+/* 语义六色挂 :root：硬编码两主题同值；宿主别名声明在 body，body 声明不向上继承、:root 读不到，故这六个只能冻结硬编码。 */
 :root {
   --ds-blue: #4f8cff;
   --ds-cyan: #2dd4bf;

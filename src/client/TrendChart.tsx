@@ -12,15 +12,8 @@
 import { useMemo, useState } from 'react'
 import css from './UsageBilling.module.css'
 import { zh } from './locales.ts'
-import { convertFromCny, formatMoney, type CostCurrency } from './pricing.ts'
+import { convertFromCny, formatMoney, localDayStamp, type CostCurrency } from './pricing.ts'
 import { shortNumber } from './TokenPanel.tsx'
-
-/** 本地日期戳：YYYY-MM-DD（与 stats.byDay 的键一致）。 */
-function localDayStamp(): string {
-  const d = new Date()
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
 
 /** One model's legend identity: key, display name, and brand color. */
 export interface TrendSeriesModel {

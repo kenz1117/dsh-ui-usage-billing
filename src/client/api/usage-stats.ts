@@ -74,6 +74,8 @@ export async function loadUsageStats(): Promise<UsageStatsLoad> {
       ...(typeof candidate.budget === 'number' ? { budget: candidate.budget } : {}),
       ...(typeof candidate.lowBalanceThreshold === 'number' ? { lowBalanceThreshold: candidate.lowBalanceThreshold } : {}),
       ...(Array.isArray(candidate.bySession) ? { bySession: candidate.bySession } : {}),
+      // 会话真实总数（未封顶）：bySession 只带花费前 N 行，总数另下发（1.8.7）。
+      ...(typeof candidate.bySessionTotal === 'number' ? { bySessionTotal: candidate.bySessionTotal } : {}),
       ...(Array.isArray(candidate.byTurn) ? { byTurn: candidate.byTurn } : {}),
       ...(Array.isArray(candidate.byWorkspace) ? { byWorkspace: candidate.byWorkspace } : {}),
       // 可选聚合维度：旧快照缺失。此前白名单漏掉 bySite / unpricedModels /

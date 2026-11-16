@@ -190,6 +190,12 @@ export interface UsageStats {
     lowBalanceThreshold?: number;
     /** 会话明细（按费用倒序，服务端已封顶）；旧快照可能缺失。 */
     bySession?: readonly SessionBillingRow[];
+    /**
+     * 会话总数（未封顶）：`bySession` 只带花费前 N 行，真实总数此前从未下发——
+     * 会话数超过封顶时面板只能说「共 100 个会话」，是错的。缺省回退按明细行数
+     * （旧快照没有该字段）。
+     */
+    bySessionTotal?: number;
     total: {
         calls: number;
         input: number;
