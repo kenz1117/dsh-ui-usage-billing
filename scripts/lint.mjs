@@ -401,9 +401,54 @@ function checkMotionScopeGuard() {
 }
 checkMotionScopeGuard()
 
+/**
+ * 守卫 11（issue #126 复访）：通道可见性清单的「名称可读」契约——
+ * ①.通道可见性卡必须整行铺开（grid-column: 1 / -1）：它在三列网格里只占 1/3 格，
+ *    名称被宽度挤成「a...」「12...」，前缀雷同根本分不出是哪条中转线；
+ * ②.名称不得再声明 text-overflow: ellipsis / white-space: nowrap——宁可换行
+ *    也要让用户看清通道名（这一页唯一的决策依据就是「哪个通道」）；
+ * ③.TSX 侧该卡必须挂 css.channelVisCell，否则整行铺开不会生效。
+ *
+ * jsdom 不做布局、无法单测覆盖（省略号截断属于真机视觉），故在 CSS 文本层
+ * 把契约钉死，防止将来重构把这几行删掉。
+ */
+function checkChannelNameReadableGuard() {
+  const css = readFileSync('src/client/UsageBilling.module.css', 'utf8')
+  const tsx = readFileSync('src/client/UsageBilling.tsx', 'utf8')
+  const blockOf = (selector) => {
+    const at = css.indexOf(selector)
+    if (at < 0) return null
+    return css.slice(at, css.indexOf('}', at))
+  }
+  const cell = blockOf('.channelVisCell {')
+  if (cell === null) {
+    VIOLATIONS.push('src/client/UsageBilling.module.css  通道名可读：缺少 .channelVisCell 规则（通道可见性卡需整行铺开）')
+  } else if (!/grid-column\s*:\s*1\s*\/\s*-1/.test(cell)) {
+    VIOLATIONS.push('src/client/UsageBilling.module.css  通道名可读：.channelVisCell 必须声明 grid-column: 1 / -1（否则卡只占 1/3 格，通道名被挤成省略号）')
+  }
+  const name = blockOf('.channelVisName {')
+  if (name === null) {
+    VIOLATIONS.push('src/client/UsageBilling.module.css  通道名可读：缺少 .channelVisName 规则')
+  } else {
+    if (/text-overflow\s*:\s*ellipsis/.test(name)) {
+      VIOLATIONS.push('src/client/UsageBilling.module.css  通道名可读：.channelVisName 不得截断（text-overflow: ellipsis 会把通道名砍成「a...」，issue #126）')
+    }
+    if (/white-space\s*:\s*nowrap/.test(name)) {
+      VIOLATIONS.push('src/client/UsageBilling.module.css  通道名可读：.channelVisName 不得 nowrap（通道名过长时应换行，不是截断，issue #126）')
+    }
+  }
+  if (!/css\.channelVisCell/.test(tsx)) {
+    VIOLATIONS.push('src/client/UsageBilling.tsx  通道名可读：通道可见性卡必须挂 css.channelVisCell（整行铺开才生效）')
+  }
+  if (cell !== null && name !== null) {
+    console.log('[lint] 通道名可读：通道可见性卡整行铺开，名称不截断')
+  }
+}
+checkChannelNameReadableGuard()
+
 if (VIOLATIONS.length > 0) {
   console.error(`[lint] ${VIOLATIONS.length} 项纪律违规：`)
   for (const v of VIOLATIONS) console.error(`  ${v}`)
   process.exit(1)
 }
-console.log('[lint] 纪律守卫全绿（类型 / 日志 / 空 catch 注释 / CSS parity / 令牌 parity / 字体纪律 / 面板压缩防线 / 费率表 sticky 表头 / 座位浮层 portal / 全局属性与动效作用域）')
+console.log('[lint] 纪律守卫全绿（类型 / 日志 / 空 catch 注释 / CSS parity / 令牌 parity / 字体纪律 / 面板压缩防线 / 费率表 sticky 表头 / 座位浮层 portal / 全局属性与动效作用域 / 通道名可读）')

@@ -121,11 +121,32 @@ describe('issue #126 通道可见性', () => {
     })
 
     fireEvent.click(screen.getByTestId('billing-tab-overview'))
-    const overview = await screen.findByTestId('billing-tab-panel-overview')
+    await screen.findByTestId('billing-tab-panel-overview')
     await waitFor(() => {
-      expect(overview.textContent).not.toContain('¥30')
-      expect(overview.textContent).toContain('¥10')
+      // 只钉 Hero 主读数（概览累计）：被隐藏的中转站扣掉后 ¥30 → ¥10。
+      // 不扫整块面板文本——面板里还有「本月预计」（本月已发生 + 近 7 日节奏 ×
+      // 本月剩余天数），它随当天日期变，整块扫会在某些日子撞上同一个数字
+      // （2026-11-16 恰好外推出 ¥30.0，让老断言假失败）。
+      const hero = screen.getByTestId('billing-hero-range-value').textContent ?? ''
+      expect(hero).toContain('10')
+      expect(hero).not.toContain('30')
     })
+  })
+
+  it('通道可见性卡整行铺开、通道名整名呈现（issue #126 复访：名称被截成「a...」）', async () => {
+    stubFetch()
+    await openDashboard()
+    fireEvent.click(screen.getByTestId('billing-tab-settings'))
+    const cell = await screen.findByTestId('billing-channel-visibility-setting')
+
+    // ① 整行铺开：三列网格里 1/3 格放不下通道名，卡必须横跨整行。
+    expect(cell.className).toContain('channelVisCell')
+
+    // ② 名称整名呈现：CSS 侧不再 text-overflow 截断（lint 守卫 11 钉住契约）。
+    // CSS 模块类名带内容哈希，用属性子串匹配（不写死 .channelVisName）。
+    const name = cell.querySelector('[class*="channelVisName"]')
+    expect(name?.textContent).toBe(RELAY)
+    expect(cell.textContent).toContain(OFFICIAL)
   })
 
   it('用量分区的模型行标注该模型走过的通道', async () => {

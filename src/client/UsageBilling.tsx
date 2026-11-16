@@ -1067,7 +1067,7 @@ function ChannelVisibilityCell({ prefs, onPrefs, groups, t, money }: {
   }
   const hiddenCount = groups.filter(group => group.siteKeys.some(key => hidden.has(key))).length
   return (
-    <div className={css.setCell} data-testid="billing-channel-visibility-setting">
+    <div className={clsx(css.setCell, css.channelVisCell)} data-testid="billing-channel-visibility-setting">
       <div className={css.setCardHead}>
         <div className={css.setCardMeta}>
           <h3 className={css.setCardTitle}>{t('channelVisibility')}<HelpTip label={t('channelVisibilityHint')} t={t} /></h3>

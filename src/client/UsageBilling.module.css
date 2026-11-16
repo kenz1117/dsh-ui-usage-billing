@@ -1428,6 +1428,13 @@ body {
   gap: 6px;
 }
 
+/* 通道可见性卡整行铺开（issue #126 复访）：清单有十来行通道名，三列网格里每格
+   只有 1/3 宽，名称被省略号截成「a...」「12...」，前缀雷同根本分不出是哪条
+   中转线（报告者实测）。整卡横跨三列 → 名称有整行宽度可读。 */
+.channelVisCell {
+  grid-column: 1 / -1;
+}
+
 .channelVisRow {
   display: flex;
   align-items: center;
@@ -1435,19 +1442,21 @@ body {
   min-width: 0;
 }
 
+/* 名称优先可读：宁可换行也不截断——「哪个通道」是这一页唯一的决策依据，
+   金额与用量只是参考，挤掉名称才是真的没法用。 */
 .channelVisName {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 16px;
+  overflow-wrap: anywhere;
 }
 
 .channelVisUsage {
   flex: none;
   font-size: 11px;
   color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
 }
 
 /* 未收录提示条的「去补价」动作（issue #125）：文字按钮，跳设置页的自定义单价
