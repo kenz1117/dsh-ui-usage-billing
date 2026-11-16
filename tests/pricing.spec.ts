@@ -1005,6 +1005,69 @@ describe('混元 Hy4 正式版定价（2026-11-04 扩容）', () => {
   })
 })
 
+describe('混元 Hy4 flash 定价（2026-11-16 扩容）', () => {
+  // 官方价目页（2026-11-16 更新）：Hy4 flash 刊例价 ¥0.5/¥0.02/¥2，自该说明发布
+  // 之日起至 2026-11-30 12:00:00（北京时间）按目录价格的 50% 结算。起点取官方
+  // 价目页「最近更新时间」——本仓能取证的上线时刻，官方未给更早日期，不向前追溯。
+  const PROMO_START = Date.UTC(2026, 10, 16, 4, 15, 30)
+  const PROMO_END = Date.UTC(2026, 10, 30, 4, 0, 0)
+
+  it('官方 id hy4-flash 归一到独立目录键（不与 Hy4 / preview 打架）', () => {
+    expect(resolveCatalogKey('hy4-flash')).toBe('hunyuan-hy4-flash')
+    expect(resolveCatalogKey('hunyuan-hy4-flash')).toBe('hunyuan-hy4-flash')
+    // 同族三个模型各自独立（扩容不是改价，也不是让 Hy4 flash 蹭 Hy4 的价）。
+    expect(resolveCatalogKey('hy4')).toBe('hunyuan-hy4')
+    expect(resolveCatalogKey('hy4-preview')).toBe('hunyuan-hy4-preview')
+  })
+
+  it('目录条目保存刊例价，折扣只存在于 promo 窗口', () => {
+    const entry = modelOf('hy4-flash')
+    expect(entry.key).toBe('hunyuan-hy4-flash')
+    expect(entry.price).toEqual({ currency: 'CNY', input: 0.5, cacheHit: 0.02, output: 2 })
+    expect(entry.promo?.factor).toBe(0.5)
+    expect(entry.promo?.startsAtMs).toBe(PROMO_START)
+    expect(entry.promo?.endsAtMs).toBe(PROMO_END)
+  })
+
+  it('促销期内按目录价的 5 折计费（¥0.25 / ¥0.01 / ¥1）', () => {
+    const priced = applyPromo(modelOf('hy4-flash'), Date.UTC(2026, 10, 16, 12, 0, 0))
+    expect(priced.price.input).toBe(0.25)
+    expect(priced.price.cacheHit).toBe(0.01)
+    expect(priced.price.output).toBe(1)
+  })
+
+  it('促销起止边界：起点前按刊例价，截止时刻起恢复刊例价', () => {
+    const entry = modelOf('hy4-flash')
+    expect(applyPromo(entry, PROMO_START - 1).price.input).toBe(0.5)
+    expect(applyPromo(entry, PROMO_START).price.input).toBe(0.25)
+    expect(applyPromo(entry, PROMO_END - 1).price.input).toBe(0.25)
+    expect(applyPromo(entry, PROMO_END).price.input).toBe(0.5)
+  })
+
+  it('按事件时刻计价：促销起点前的事件按刊例价，不被折扣追溯', () => {
+    const entry = modelOf('hy4-flash')
+    const buckets = { input: 1_000_000, cacheHit: 0, cacheMiss: 0, output: 0 }
+    expect(computeCostAt(entry, buckets, PROMO_START - 1)).toBeCloseTo(0.5, 6)
+    expect(computeCostAt(entry, buckets, PROMO_START + 3_600_000)).toBeCloseTo(0.25, 6)
+  })
+
+  it('扩容只加新条目：Hy4 / Hy4 preview 的价格与折扣窗口一律不动', () => {
+    expect(modelOf('hy4').price).toEqual({ currency: 'CNY', input: 6, cacheHit: 0.3, output: 18 })
+    expect(modelOf('hy4-preview').price).toEqual({ currency: 'CNY', input: 6, cacheHit: 0.3, output: 18 })
+    expect(modelOf('hy4-preview').promo).toBeUndefined()
+    expect(modelOf('hy4').promo?.endsAtMs).toBe(Date.UTC(2026, 11, 31, 15, 59, 59))
+  })
+
+  it('费率表面板能列出该条目（补录要真的出现在面板行里）', () => {
+    const row = catalogEntries().find(entry => entry.key === 'hunyuan-hy4-flash')
+    expect(row).toBeDefined()
+    expect(row?.provider).toBe('腾讯混元')
+    // 面板价随 promo 窗口变动（窗口内是 5 折，窗口外回刊例价）——按「此刻」的
+    // 折算结果断言，不写死某一档，免得促销结束后用例假失败。
+    expect(row?.price).toMatchObject(applyPromo(modelOf('hy4-flash'), Date.now()).price)
+  })
+})
+
 describe('unseeded client catalog degradation', () => {
   afterEach(() => {
     // 用例结束还原全量注入，避免模块级状态泄漏给后续 describe。

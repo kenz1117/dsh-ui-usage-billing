@@ -31,6 +31,18 @@ import type { ModelEntry } from './client/pricing.ts'
  * 价源 = 腾讯云 TokenHub「模型价格」页（2026-11-04 更新）的官方 CN 价。
  * Hy4 preview 条目与其价格一律不动——同 id 不同模型的收录不构成调价。
  *
+ * 2026-11-16 扩容：补录腾讯混元 TokenHub 新上架的 **Hy4 flash**（官方 id
+ * `hy4-flash`，刊例价 ¥0.5 / ¥0.02（缓存命中）/ ¥2 每百万 token；官方价目页
+ * 2026-11-16 更新）。价源 = 腾讯云 TokenHub「模型价格」页的官方 CN 价
+ * （models.dev 实时目录尚无该模型条目，国内厂商按官方 CN 价优先的价源口径取
+ * 官方价，不做 USD 折算）。官方同期挂出限时折扣：**自该说明发布之日起至
+ * 2026-11-30 12:00:00（北京时间）按目录价格的 50% 结算** —— 刊例价留在 price
+ * 表，折扣按 promo 建模（只在计价/显示出口折算）。折扣起点取官方价目页
+ * 「最近更新时间」2026-11-16 12:15:30（北京时间）——这是本仓能取证的该说明上线
+ * 时刻，官方未给出更早的明确日期，故不向前追溯（promo 起点规则同 Hy4）。
+ * 本批只加新条目：既有 Hy4 / Hy4 preview 条目的价格与折扣窗口一律不动
+ * （本次官方价目页上 Hy4 仍是 ¥6/¥0.3/¥18，与目录现状逐字一致，不构成调价）。
+ *
  * Time-of-day billing (peak/off-peak) is now real: DeepSeek V4 officially
  * splits peak (09:00-12:00 / 14:00-18:00 Beijing) at 2x the off-peak rate
  * from 2026-08-17, and Gemini's Flex tier discounts spare-capacity traffic.
@@ -588,6 +600,26 @@ const RAW_MODEL_CATALOG: readonly ModelEntry[] = [
       startsAtMs: Date.UTC(2026, 10, 2, 16, 0, 0),
       endsAtMs: Date.UTC(2026, 11, 31, 15, 59, 59),
       note: '限时 5 折至 2026-12-31',
+    },
+  },
+  {
+    key: 'hunyuan-hy4-flash',
+    name: '混元 Hy4 flash',
+    provider: '腾讯混元',
+    colorVar: 'dsw-static-amber-400',
+    // 官方刊例价（元 / 每百万 token）：输入 ¥0.5（未命中）/ ¥0.02（命中）/ 输出 ¥2
+    // （腾讯云 TokenHub「模型价格」页 2026-11-16 更新；models.dev 实时目录尚无该模型，
+    //  国内厂商按「官方 CN 价优先」的价源口径取官方价，不做 USD 折算）。
+    price: { currency: 'CNY', input: 0.5, cacheHit: 0.02, output: 2 },
+    // 官方同期挂出限时折扣：自该说明发布之日起至 2026-11-30 12:00:00（北京时间），
+    // Hy4 flash 调用费用按目录价格的 50% 结算——活动期内按 ¥0.25 / ¥0.01 / ¥1 计。
+    // 起点取官方价目页「最近更新时间」2026-11-16 12:15:30（北京时间）：这是本仓
+    // 能取证的该说明上线时刻，官方未给出更早的明确日期，故不向前追溯。
+    promo: {
+      factor: 0.5,
+      startsAtMs: Date.UTC(2026, 10, 16, 4, 15, 30),
+      endsAtMs: Date.UTC(2026, 10, 30, 4, 0, 0),
+      note: '限时 5 折至 2026-11-30 12:00',
     },
   },
   // 腾讯混元 TokenHub 在售补充档（官方价目页 2026-11-04；翻译 / 角色扮演专用模型，
@@ -2282,6 +2314,10 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'hunyuan-hy4': 'hunyuan-hy4',
   'hy4-preview': 'hunyuan-hy4-preview',
   'hunyuan-hy4-preview': 'hunyuan-hy4-preview',
+  // Hy4 flash（2026-11-16 上架）：官方 id `hy4-flash`，与 Hy4 / Hy4 preview 各自
+  // 独立目录键——同族不同模型各记各的价与折扣窗口。
+  'hy4-flash': 'hunyuan-hy4-flash',
+  'hunyuan-hy4-flash': 'hunyuan-hy4-flash',
   'longcat-2.0': 'longcat-2.0',
   'longcat-2': 'longcat-2.0',
   'minicpm-v-4.5': 'minicpm-v-4.5',
