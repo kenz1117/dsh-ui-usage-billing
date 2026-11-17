@@ -2,11 +2,30 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-rc.3。当前 `latest` 指向 `1.8.8` 正式版（= 1.8.7 + issue #127 兜底账本行补价，报告者已验收）；`alpha` 指向 `1.8.3-alpha.12`（内容为 1.8.8 的子集），下一轮预览从 `1.8.3-alpha.13` 起。后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-rc.3。当前 `latest` 指向 `1.8.8` 正式版（= 1.8.7 + issue #127 兜底账本行补价，报告者已验收）；`alpha` 指向 `1.8.3-alpha.13`（= 1.8.8 + 仪表盘快捷键与 `/usage` 注册修正 + 汇率兜底源），下一轮预览从 `1.8.3-alpha.14` 起。后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.2-rc.3）
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
+
+### v1.8.3-alpha.13（2026-11-17）
+
+**预览版**：两个外部贡献 PR 的合并（均 rebase 到当前 `main` 后逐条复核）。
+
+- **新增：仪表盘快捷键 `⌘⇧U`（PR #110，贡献者 zhangzygit）**。侧栏入口设为「完全隐藏」后，仍能一键拉起仪表盘：命令注册进宿主快捷键目录，用户可在「设置 → 快捷键」里改绑或清空。
+  - 桌面与 Web 统一 `primary+shift+KeyU`；**`web:linux` 有意不声明默认** —— 宿主的浏览器放行集合更窄，声明了会被 `register` 直接拒掉。
+  - 注册走 `ctx.inject(['shortcuts'])`：宿主服务缺席时整条分支不执行（老宿主不受影响）；宿主 `register` 抛错（重复 id / 默认键与既有命令冲突 / Web 不放行）时静默降级，只记一笔，其余功能照常。
+- **修复：`/usage` 对话内命令此前从未真正注册（PR #110）**。宿主 `commandUi` 是 Service，要等 inputTriggers / remote.commands 就绪才构造，**晚于本插件 apply**；此前在 apply 期用 `ctx.get('commandUi')` 采样，必然拿到 `undefined` → 命令永远注册不上（宿主自己的业务包也用 `ctx.inject(['commandUi'])`）。现在改为等服务就位再注册。
+  - 连带修好「完全隐藏」的降级判断：恢复入口是否可用此前取的是 apply 期的快照（恒为 false），现在改为注册状态 getter。
+  - 服务缺席时行为不变：不注册、不报错、面板功能完全不受影响，兼容矩阵不收窄。
+- **新增：汇率兜底链追加 AllRatesToday（PR #111，贡献者 cahthuranag）**。USD→CNY 与 EUR→CNY 的取价链在腾讯财经行情、open.er-api.com 之后，再退到 AllRatesToday 免 key 端点（ECB 参考汇率，按日更新），全部失败才落内置默认值。两个端点响应同结构，共用同一个 `parseRatesJsonCny` 解析器；README（中英）按该站要求加了署名链接。
+- **验证**：
+  - 全量 95 个测试文件 / **944 条用例**通过（新增 12 条：快捷键注册契约 5 条 + 注册失败降级 1 条、`/usage` 注册与缺席两分支、汇率源三级降级 4 条）。
+  - lint 十一条纪律守卫全绿；兼容 / 目录 / 平台种子校验通过。
+  - 客户端 bundle **374,143 字节（365.4 KiB）**（较 1.8.8 +1,280 字节：快捷键逻辑与新文案），服务端半 `lib/index.js` 397,914 字节（+372，不设门禁）。
+  - **真机**（3080 dev host，宿主 `0.2.1-rc.3` + 含本批改动的本地构建）：输入框打 `/` → 菜单出现「**打开计费仪表盘** usage · 查看今日/本月费用、用量明细与费率」；`⌘⇧U` → 仪表盘弹窗直接打开（宿主快捷键目录登记成功，无冲突降级）。
+  - 汇率兜底源已实测端点形状（`rates.CNY = 6.6665`），三级降级由用例覆盖；该源只在腾讯行情与 open.er-api 都失败时才会被请求。
+- **兼容矩阵**：不变（36 项，至宿主 `0.2.2-rc.3`）—— 新增的宿主能力（shortcuts）走 `ctx.inject` + type-only import，未新增任何宿主 API 依赖。
 
 ### v1.8.8（2026-11-17）
 
