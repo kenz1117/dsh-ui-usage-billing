@@ -11,7 +11,7 @@
 | 正式版 | 非预发布 SemVer，如 `1.8.0` | `latest` | 正式 Release | 已完成验收的默认安装版本 |
 | 预览版 | 带预发布后缀，如 `1.8.1-alpha.2` | `alpha` | Pre-release | 新功能与宿主适配的先行验证 |
 
-当前 npm `latest` 指向 `1.8.7` 正式版——通道可见性（设置里逐通道勾选显示，隐藏通道不参与统计口径）、用量行标注提供方、通道可见性清单整行铺开且通道名不再截断（issue #126）、混元 Hy4 flash 补录计价（官方 CN 价 + 限时 5 折窗口），并入逐轮图窗口与会话总数两处修正；`alpha` 指向 `1.8.3-alpha.12`（= 1.8.7 + issue #127：日志已删的存量账本行键归一与按目录价补价，不再分裂成两行同名模型）；下一轮预览将从 `1.8.3-alpha.13` 起。后续正式版只切 `latest`，预览版只切 `alpha`，不再同时切 `latest`。历史 npm 标签与分支保持原状，但不属于现行产品线、发布指引或 CI 校验范围。
+当前 npm `latest` 指向 `1.8.8` 正式版——issue #127：日志已删的存量账本行按目录键归一并同键合并、按目录价补算，不再分裂成两行同名模型（报告者已验收）；内容 = `1.8.7`（通道可见性、用量行标注提供方、通道名不截断、混元 Hy4 flash 计价，及逐轮图窗口与会话总数两处修正）+ 本次晋升；`alpha` 指向 `1.8.3-alpha.12`（内容为 `1.8.8` 的子集）；下一轮预览将从 `1.8.3-alpha.13` 起。后续正式版只切 `latest`，预览版只切 `alpha`，不再同时切 `latest`。历史 npm 标签与分支保持原状，但不属于现行产品线、发布指引或 CI 校验范围。
 
 ## 当前宿主兼容范围
 
@@ -27,7 +27,7 @@
 当前正式版建议钉精确版本：
 
 ```sh
-dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@1.8.5
+dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@1.8.8
 ```
 
 默认安装也可使用：
@@ -46,4 +46,4 @@ dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@latest
 
 ## English summary
 
-This repository maintains one current `main` codebase and one host compatibility matrix. Stable releases use non-prerelease SemVer, npm `latest`, and regular GitHub Releases; previews use prerelease SemVer, npm `alpha`, and GitHub Pre-releases. npm `latest` currently points to the stable `1.8.7` release (channel visibility with per-channel show/hide, usage rows labelled with the channel behind a model, the visibility list now spanning the full settings row with names no longer ellipsised, issue #126; Tencent Hunyuan Hy4 flash priced from the official CN price sheet with its limited-time 50% discount window; plus fixes for the per-turn chart window and the session total). `alpha` points to `1.8.3-alpha.11` (a subset of the stable release). The declared host range is DSH `0.1.2-alpha.1` through `0.2.2-rc.3`, with 36 per-version declarations. Run `node scripts/check-compat.mjs` before and after compatibility or release changes.
+This repository maintains one current `main` codebase and one host compatibility matrix. Stable releases use non-prerelease SemVer, npm `latest`, and regular GitHub Releases; previews use prerelease SemVer, npm `alpha`, and GitHub Pre-releases. npm `latest` currently points to the stable `1.8.8` release (issue #127: ledger rows whose session logs were deleted are now merged by catalog key and repriced from the catalog, so the same data no longer splits into two identically named model rows — verified by the reporter; content = `1.8.7` plus this promotion). `alpha` points to `1.8.3-alpha.12` (a subset of the stable release). The declared host range is DSH `0.1.2-alpha.1` through `0.2.2-rc.3`, with 36 per-version declarations. Run `node scripts/check-compat.mjs` before and after compatibility or release changes.
