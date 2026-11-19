@@ -15,9 +15,9 @@
 
 ## 当前宿主兼容范围
 
-- 插件声明范围：DSH `0.1.2-alpha.1` ~ `0.2.2-rc.3`，即 `dsh: >=0.1.2-alpha.1`。
-- `package.json` 的 `dsh.compatibility.dshReleases` 逐版本声明，当前共 36 项。
-- 已核对的宿主 npm 标签：`alpha = 0.2.2-alpha.3`、`latest = 0.2.2-rc.1`、`next = 0.2.2-rc.3`。
+- 插件声明范围：DSH `0.1.2-alpha.1` ~ `0.2.2-rc.5`，即 `dsh: >=0.1.2-alpha.1`。
+- `package.json` 的 `dsh.compatibility.dshReleases` 逐版本声明，当前共 38 项。
+- 已核对的宿主 npm 标签：`alpha = 0.2.2-alpha.3`、`latest = 0.2.2-rc.5`、`next = 0.2.2-rc.5`。
 - Node.js：`^22.19.0 || >=24.0.0`。
 
 兼容以实际依赖与验证结果为准，不因版本号相邻就自动宣称兼容。宿主能力通过特性探测接入，缺席时按功能降级，不因此收窄整个插件的兼容矩阵。
@@ -46,4 +46,4 @@ dsh plugin --profile web add npm:@kenz1117/dsh-ui-usage-billing@latest
 
 ## English summary
 
-This repository maintains one current `main` codebase and one host compatibility matrix. Stable releases use non-prerelease SemVer, npm `latest`, and regular GitHub Releases; previews use prerelease SemVer, npm `alpha`, and GitHub Pre-releases. npm `latest` currently points to the stable `1.8.8` release (issue #127: ledger rows whose session logs were deleted are now merged by catalog key and repriced from the catalog, so the same data no longer splits into two identically named model rows — verified by the reporter; content = `1.8.7` plus this promotion). `alpha` points to `1.8.3-alpha.13` (`1.8.8` plus the `⌘⇧U` dashboard shortcut, the `/usage` command registration-timing fix, and an extra keyless FX source). The declared host range is DSH `0.1.2-alpha.1` through `0.2.2-rc.3`, with 36 per-version declarations. Run `node scripts/check-compat.mjs` before and after compatibility or release changes.
+This repository maintains one current `main` codebase and one host compatibility matrix. Stable releases use non-prerelease SemVer, npm `latest`, and regular GitHub Releases; previews use prerelease SemVer, npm `alpha`, and GitHub Pre-releases. npm `latest` currently points to the stable `1.8.8` release (issue #127: ledger rows whose session logs were deleted are now merged by catalog key and repriced from the catalog, so the same data no longer splits into two identically named model rows — verified by the reporter; content = `1.8.7` plus this promotion). `alpha` points to `1.8.3-alpha.13` (`1.8.8` plus the `⌘⇧U` dashboard shortcut, the `/usage` command registration-timing fix, and an extra keyless FX source). The declared host range is DSH `0.1.2-alpha.1` through `0.2.2-rc.5`, with 38 per-version declarations. Run `node scripts/check-compat.mjs` before and after compatibility or release changes.
