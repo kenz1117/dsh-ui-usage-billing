@@ -24,7 +24,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { UsageAggregator } from '../aggregate.ts'
 import { SessionListUnavailableError } from '../aggregate.ts'
 import type { UsageBillingConfig } from '../config.ts'
-import { guardLoopback } from '../guard.ts'
+import { ANONYMOUS_ROUTE_AUTH, guardLoopback } from '../guard.ts'
 
 /** 路由依赖。 */
 export interface UsageStatsDeps {
@@ -136,6 +136,7 @@ export function registerUsageStatsRoute(ctx: Context, deps: UsageStatsDeps): voi
     () => ctx.webServer.register({
       kind: 'exact',
       path: '/api/billing/usage-stats',
+      ...ANONYMOUS_ROUTE_AUTH,
       handler: async (req: IncomingMessage, res: ServerResponse) => {
         if (!guardLoopback(req, res, deps.trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })

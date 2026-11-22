@@ -17,7 +17,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { guardLoopback, isLoopbackOrigin } from '../guard.ts'
+import { ANONYMOUS_ROUTE_AUTH, guardLoopback, isLoopbackOrigin } from '../guard.ts'
 
 /** 路由依赖。 */
 export interface UsageToolDeps {
@@ -35,6 +35,7 @@ export function registerUsageToolRoute(ctx: Context, deps: UsageToolDeps): void 
     () => ctx.webServer.register({
       kind: 'exact',
       path: '/api/billing/usage-tool',
+      ...ANONYMOUS_ROUTE_AUTH,
       handler: async (req: IncomingMessage, res: ServerResponse) => {
         if (!guardLoopback(req, res, deps.trustedHosts)) return
         // 方法分派必须先于状态行：此前 200 无条件先写，405 分支成为死代码

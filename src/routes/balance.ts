@@ -16,7 +16,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ProviderBalance } from '../pricing-shared.ts'
 import type { ReconcileEvent } from '../reconcile.ts'
-import { guardLoopback } from '../guard.ts'
+import { ANONYMOUS_ROUTE_AUTH, guardLoopback } from '../guard.ts'
 
 /** 余额响应体形状（来自装配器 `balanceCache.doc`）。 */
 export interface BalanceDoc {
@@ -60,6 +60,7 @@ export function registerBalanceRoute(ctx: Context, deps: BalanceDeps): void {
     () => ctx.webServer.register({
       kind: 'exact',
       path: '/api/billing/balance',
+      ...ANONYMOUS_ROUTE_AUTH,
       handler: async (req: IncomingMessage, res: ServerResponse) => {
         if (!guardLoopback(req, res, deps.trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })

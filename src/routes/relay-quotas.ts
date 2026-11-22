@@ -12,7 +12,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { RelayQuota } from '../pricing-shared.ts'
-import { guardLoopback } from '../guard.ts'
+import { ANONYMOUS_ROUTE_AUTH, guardLoopback } from '../guard.ts'
 
 interface CachedRelay {
   quotas: readonly RelayQuota[]
@@ -41,6 +41,7 @@ export function registerRelayQuotasRoute(ctx: Context, deps: RelayQuotasDeps): v
     () => ctx.webServer.register({
       kind: 'exact',
       path: '/api/billing/relay-quotas',
+      ...ANONYMOUS_ROUTE_AUTH,
       handler: async (req: IncomingMessage, res: ServerResponse) => {
         if (!guardLoopback(req, res, deps.trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })

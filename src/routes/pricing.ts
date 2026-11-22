@@ -15,7 +15,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { guardLoopback, isLoopbackOrigin } from '../guard.ts'
+import { ANONYMOUS_ROUTE_AUTH, guardLoopback, isLoopbackOrigin } from '../guard.ts'
 
 /** 路由依赖：装配器注入。 */
 export interface PricingDeps {
@@ -32,6 +32,7 @@ function registerGetRoute(ctx: Context, deps: PricingDeps): void {
     () => ctx.webServer.register({
       kind: 'exact',
       path: '/api/billing/pricing',
+      ...ANONYMOUS_ROUTE_AUTH,
       handler: async (req: IncomingMessage, res: ServerResponse) => {
         if (!guardLoopback(req, res, deps.trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
@@ -48,6 +49,7 @@ function registerRefreshRoute(ctx: Context, deps: PricingDeps): void {
     () => ctx.webServer.register({
       kind: 'exact',
       path: '/api/billing/pricing/refresh',
+      ...ANONYMOUS_ROUTE_AUTH,
       handler: async (req: IncomingMessage, res: ServerResponse) => {
         if (!guardLoopback(req, res, deps.trustedHosts)) return
         if (req.method !== 'POST') {

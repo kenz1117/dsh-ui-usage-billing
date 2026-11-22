@@ -63,7 +63,7 @@ Most billing plugins stop at "token count × unit price". dsh-ui-usage-billing t
 
 - **Trigger card**: today / week / month headline, 7-day trend and daily gauge; choose a full card, compact icon or hidden entry, with a quick look on hover.
 - **Cost bar and alerts**: live turn / Session cost, model-aware peak and quota warnings, plus optional system notifications for tier switches and Session completion.
-- **Shortcut**: bind "Open usage billing dashboard" in the host's Settings → Shortcuts — `⌘⇧U` by default (`Ctrl+Shift+U` on Windows / Linux), rebindable or clearable — so the dashboard stays one keystroke away even with the sidebar entry hidden.
+- **Shortcut**: bind "Open usage billing dashboard" in the host's Settings → Shortcuts — `⌘⇧D` by default (`Ctrl+Shift+D` on Windows / Linux), rebindable or clearable — so the dashboard stays one keystroke away even with the sidebar entry hidden.
 
 ![Sidebar trigger card: today's spend, delta badge and mini-trend](screenshots/sidebar.png)
 
@@ -119,7 +119,7 @@ Overview / Queue / Billing / Usage / Trends / Agents / Rates / Settings. The her
 
 ## 🚀 Quick start
 
-One codebase currently supports DSH `0.1.2-alpha.1` through `0.2.2-rc.5`. Stable and preview releases share the same compatibility matrix: stable releases use npm `latest`, while previews use `alpha`. npm `latest` currently points to the stable `1.8.9` release (ledger rows whose session logs were deleted are merged by catalog key and repriced from the catalog, issue #127; channel visibility; cache-write priced by each vendor's own rate; the `⌘⇧U` dashboard shortcut; the `/usage` command registration-timing fix; an extra keyless FX source; host `0.2.2-rc.4` / `0.2.2-rc.5` compatibility); `alpha` points to `1.8.3-alpha.13` (its content is now a subset of the stable release), and the next preview starts at `1.8.3-alpha.14`.
+One codebase currently supports DSH `0.1.2-alpha.1` through `0.2.3-alpha.2`. Stable and preview releases share the same compatibility matrix: stable releases use npm `latest`, while previews use `alpha`. npm `latest` currently points to the stable `1.8.9` release (ledger rows whose session logs were deleted are merged by catalog key and repriced from the catalog, issue #127; channel visibility; cache-write priced by each vendor's own rate; the dashboard shortcut; the `/usage` command registration-timing fix; an extra keyless FX source; host `0.2.2-rc.4` / `0.2.2-rc.5` compatibility); `alpha` points to `1.8.3-alpha.14` (host `0.2.3-alpha.1` / `0.2.3-alpha.2` compatibility plus two host-generation fixes: web routes declare `auth: 'anonymous'`, and the dashboard shortcut moved from `⌘⇧U` to `⌘⇧D`), and the next preview starts at `1.8.3-alpha.15`.
 
 `dsh plugin add` requires an explicit `--profile`. Pinning an exact version is recommended so a package manager's release cooldown cannot resolve a different version. Install the current stable release with:
 

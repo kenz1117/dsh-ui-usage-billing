@@ -39,6 +39,23 @@ export declare function isLoopbackHost(req: IncomingMessage, trustedHosts?: Read
  *  但主机非回环则拒绝——跨站脚本发起的写请求必带攻击者域名的 Origin。 */
 export declare function isLoopbackOrigin(origin: string | undefined): boolean;
 /**
+ * 路由准入声明（宿主 0.2.3-alpha.1 起必需）。
+ *
+ * 宿主把 Web 路由的 `auth` 默认值从「无鉴权」改成了 `'required'`：未通过宿主
+ * 连接层鉴权的请求在进入 handler **之前**就被拒（401/503），插件自带的守卫
+ * 根本没机会执行——面板会静默变成一片 0。本插件的端点只服务本机浏览器，安全
+ * 边界是 {@link guardLoopback}（peer 回环 socket + Host 头精确字面量 +
+ * trustedHosts 白名单 + Origin 校验），因此显式声明匿名准入。
+ *
+ * 宿主的可信主机栅栏仍然生效（Host 必须是回环/可信主机、Origin 必须同源），
+ * 这里只放宽「需要 peer 凭据」这一层，不放宽来源校验。
+ *
+ * 老宿主（≤0.2.2-rc.5）没有 `auth` 字段，多余字段被忽略，行为与从前一致。
+ */
+export declare const ANONYMOUS_ROUTE_AUTH: {
+    readonly auth: "anonymous";
+};
+/**
  * 回环防护守卫：仅接受回环 GET 请求（peer socket 地址 + Host 头同时校验）。
  * 不满足时返回 403 并结束响应；调用方在 handler 顶部调用，返回 false 即已拒绝。
  * @param req - 当前请求。

@@ -118,9 +118,16 @@ export function apply(ctx: Context): void {
 
   // 快捷键：侧栏入口设为「完全隐藏」后仍能一键拉起仪表盘，不必先回宿主设置
   // 切换入口。命令注册进宿主的快捷键目录，用户可在「设置 → 快捷键」里改绑定
-  // 或清空；宿主现有默认绑定占用 KeyB/KeyN/KeyK/KeyT/KeyP/Slash/Comma/
-  // Backquote，这里取未占用的 KeyU，桌面与 Web 统一 primary+shift（按宿主
-  // ui-open-in-app 的先例，primary+shift+字母在浏览器里同样可用）。
+  // 或清空；桌面与 Web 统一 primary+shift（按宿主 ui-open-in-app 的先例，
+  // primary+shift+字母在浏览器里同样可用）。
+  //
+  // 默认键取 KeyD（D for Dashboard）：宿主 0.2.3-alpha.1 起新增「会话已读/未读」
+  // 切换（session.toggleRead），默认占用 primary+shift+KeyU（桌面 mac/win 与
+  // Web mac/win）。宿主快捷键注册表遇到默认绑定重叠会**直接抛错且不写入目录**
+  // ——继续占 KeyU 会让我们这条命令整个从目录里消失（用户连改绑都做不到），
+  // 谁先注册还可能反过来把宿主的已读切换顶掉。宿主在用的字母还有
+  // KeyA/KeyB/KeyF/KeyG/KeyK/KeyN/KeyO/KeyP/KeyR/KeyT/KeyW 与 Slash/Comma/
+  // Backquote，KeyD 两代宿主都没被占（rc.5 与 0.2.3-alpha.1 全查）。
   // 用 ctx.inject 而非把 shortcuts 放进 apply 的 inject 列表：0.1.x 宿主没有
   // 这个服务，声明成必需依赖会挂起整颗插件树（同上面 remote.llm 的教训）。
   ctx.inject(['shortcuts'], (scoped) => {
@@ -131,11 +138,11 @@ export function apply(ctx: Context): void {
           label: () => (loadLanguage() === 'en' ? en.shortcutOpenDashboard : zh.shortcutOpenDashboard),
           aliases: ['usage', 'billing', 'dashboard'],
           defaults: {
-            'desktop:macos': { code: 'KeyU', modifiers: ['primary', 'shift'] },
-            'desktop:windows': { code: 'KeyU', modifiers: ['primary', 'shift'] },
-            'desktop:linux': { code: 'KeyU', modifiers: ['primary', 'shift'] },
-            'web:macos': { code: 'KeyU', modifiers: ['primary', 'shift'] },
-            'web:windows': { code: 'KeyU', modifiers: ['primary', 'shift'] },
+            'desktop:macos': { code: 'KeyD', modifiers: ['primary', 'shift'] },
+            'desktop:windows': { code: 'KeyD', modifiers: ['primary', 'shift'] },
+            'desktop:linux': { code: 'KeyD', modifiers: ['primary', 'shift'] },
+            'web:macos': { code: 'KeyD', modifiers: ['primary', 'shift'] },
+            'web:windows': { code: 'KeyD', modifiers: ['primary', 'shift'] },
           },
           regions: ['page', 'editable'],
           modals: [],

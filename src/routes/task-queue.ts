@@ -2,7 +2,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { guardLoopback, isLoopbackOrigin } from '../guard.ts'
+import { ANONYMOUS_ROUTE_AUTH, guardLoopback, isLoopbackOrigin } from '../guard.ts'
 import { TaskQueueError, type TaskQueueEngine } from '../task-queue.ts'
 
 // Fifty 32k UTF-16 Prompts can expand to about 9.6 MiB when JSON escapes
@@ -24,6 +24,7 @@ export function registerTaskQueueRoute(ctx: Context, deps: TaskQueueRouteDeps): 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: '/api/billing/task-queue',
+    ...ANONYMOUS_ROUTE_AUTH,
     handler: async (req: IncomingMessage, res: ServerResponse) => {
       if (!guardLoopback(req, res, deps.trustedHosts)) return
       if (req.method !== 'GET' && req.method !== 'POST') {
@@ -97,6 +98,7 @@ export function registerTaskQueueRoute(ctx: Context, deps: TaskQueueRouteDeps): 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: '/api/billing/task-queue-summary',
+    ...ANONYMOUS_ROUTE_AUTH,
     handler: async (req: IncomingMessage, res: ServerResponse) => {
       if (!guardLoopback(req, res, deps.trustedHosts)) return
       if (req.method !== 'GET') {

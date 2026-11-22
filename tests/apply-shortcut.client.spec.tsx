@@ -95,15 +95,17 @@ describe('client apply(): dashboard shortcut', () => {
     expect(commands).toHaveLength(1)
     expect(command.id).toBe('usage-billing.open-dashboard')
     expect(command.aliases).toEqual(['usage', 'billing', 'dashboard'])
-    // 宿主现有默认占用 KeyB/KeyN/KeyK/KeyT/KeyP/Slash/Comma/Backquote；撞上就会
-    // 让 register() 抛错，由 apply 侧捕获后静默降级（见下一条用例）。
-    expect(command.defaults['desktop:macos']).toEqual({ code: 'KeyU', modifiers: ['primary', 'shift'] })
-    expect(command.defaults['desktop:windows']).toEqual({ code: 'KeyU', modifiers: ['primary', 'shift'] })
-    expect(command.defaults['desktop:linux']).toEqual({ code: 'KeyU', modifiers: ['primary', 'shift'] })
+    // 宿主现有默认占用 KeyB/KeyN/KeyK/KeyT/KeyP/Slash/Comma/Backquote，且宿主
+    // 0.2.3-alpha.1 起新增的「会话已读/未读」（session.toggleRead）占用
+    // primary+shift+KeyU；撞上就会让 register() 抛错且不写入目录（命令整个消失，
+    // 用户连改绑都做不到）。改取宿主两代都没占的 KeyD。
+    expect(command.defaults['desktop:macos']).toEqual({ code: 'KeyD', modifiers: ['primary', 'shift'] })
+    expect(command.defaults['desktop:windows']).toEqual({ code: 'KeyD', modifiers: ['primary', 'shift'] })
+    expect(command.defaults['desktop:linux']).toEqual({ code: 'KeyD', modifiers: ['primary', 'shift'] })
     // 桌面与 Web 统一 primary+shift（宿主 ui-open-in-app 的 web 档同样是
     // primary+shift+字母，说明浏览器不保留这个组合）。
-    expect(command.defaults['web:macos']).toEqual({ code: 'KeyU', modifiers: ['primary', 'shift'] })
-    expect(command.defaults['web:windows']).toEqual({ code: 'KeyU', modifiers: ['primary', 'shift'] })
+    expect(command.defaults['web:macos']).toEqual({ code: 'KeyD', modifiers: ['primary', 'shift'] })
+    expect(command.defaults['web:windows']).toEqual({ code: 'KeyD', modifiers: ['primary', 'shift'] })
     // 宿主 ui-workspace 也不声明 web:linux 默认值（Linux Web 的放行集合更窄）。
     expect(command.defaults['web:linux']).toBeUndefined()
   })

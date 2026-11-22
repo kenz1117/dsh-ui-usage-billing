@@ -2,11 +2,26 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.2-rc.5。当前 `latest` 指向 `1.8.9` 正式版（= 1.8.3-alpha.13 内容 + 宿主 0.2.2-rc.4 / rc.5 兼容声明）；`alpha` 指向 `1.8.3-alpha.13`（= 1.8.8 + 仪表盘快捷键与 `/usage` 注册修正 + 汇率兜底源），下一轮预览从 `1.8.3-alpha.14` 起。后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.3-alpha.2。当前 `latest` 指向 `1.8.9` 正式版（= 1.8.3-alpha.13 内容 + 宿主 0.2.2-rc.4 / rc.5 兼容声明）；`alpha` 指向 `1.8.3-alpha.14`（= 1.8.9 内容 + 宿主 0.2.3-alpha.1 / alpha.2 兼容声明 + 两处宿主代际修复），下一轮预览从 `1.8.3-alpha.15` 起。后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
-## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.2-rc.5）
+## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.3-alpha.2）
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
+
+### v1.8.3-alpha.14（2026-11-22）
+
+**预览版**：宿主 `0.2.3-alpha.1` / `0.2.3-alpha.2` 代际适配（issue #129 自动漂移报告）。内容 = `1.8.9` 全部条目 + 下列三条。
+
+- **新增：声明宿主 `0.2.3-alpha.1` / `0.2.3-alpha.2` 兼容（issue #129）**。宿主 npm `alpha` 标签已到 `0.2.3-alpha.2`（当日连发两版），本仓矩阵此前止于 `0.2.2-rc.5`，每日漂移巡检报红（发版闸门）。
+  - **依赖面甄别**（宿主 tag `dsh-v0.2.2-rc.5` → `dsh-v0.2.3-alpha.2` 逐包 diff，覆盖本仓实际消费的 60 余个包）：会话事件形状、`TokenUsage`、`compaction/summary` 载荷、`session-controller` 服务契约、定价 / 凭据 / 工具 API **全部未变**；`alpha.1` → `alpha.2` 之间只有版本号变动。宿主客户端产物结构改为「样式由框架在挂载时安装」（注册表的 `meta` 可选），本插件自注入 `<style data-plugin-css>` 仍生效；平台种子 11 个模块未变；`cordis` 4.2.0-alpha.1 的变更（intercept 配置改名、`ctx.root` → `ctx[Context.root]`、校验错误助手）本仓均未使用。
+  - **兼容矩阵 38 → 40 项**；`devDependencies` 的宿主子包 pin 跟到 `0.2.3-alpha.2`（`cordis` → `4.2.0-alpha.1`，`cordis-plugin-*` → `1.2.0-alpha.1`，`schemastery` → `3.20.0-alpha.1`；`dsh-invariants` 仍无 0.2.3 线，保持 `0.2.0-rc.2`）。
+- **修复：Web 路由显式声明 `auth: 'anonymous'`（宿主代际 breaking）**。宿主 `0.2.3-alpha.1` 起 Web 路由的 `auth` 默认值改为 `'required'`：未经宿主连接层鉴权的请求在进入 handler **之前**即被拒（401/503），插件自带的 loopback 守卫根本没机会执行——面板会静默变成一片 0。10 条 `/api/billing/*` 端点现统一声明 `auth: 'anonymous'`（`ANONYMOUS_ROUTE_AUTH`）：端点只服务本机浏览器，安全边界仍是自带的 loopback 守卫（peer 回环 socket + Host 头精确字面量 + trustedHosts 白名单 + Origin 校验），宿主自己的可信主机栅栏（Host 回环/白名单 + 同源 Origin）照常生效；老宿主没有该字段，多余字段被忽略，行为不变。
+  - **回归锁**：`tests/route-auth.spec.ts` 逐条断言 10 条路由的准入声明；`tests/route-guard.spec.ts` 在新宿主下打真实 HTTP——把声明改回 `required` 后该 spec 5 条用例全部以 503 失败。
+- **修复：仪表盘快捷键由 `⌘⇧U` 改为 `⌘⇧D`（宿主代际 breaking）**。宿主新增「会话已读/未读」切换（`session.toggleRead`），默认占用 `primary+shift+KeyU`（桌面 mac/win + Web mac/win）；而宿主快捷键注册表遇到默认绑定重叠会**直接抛错且不写入目录**——继续占 KeyU 会让我们这条命令整个从宿主目录消失（用户连改绑都做不到），谁先注册还可能反过来把宿主那条顶掉。改用宿主两代（`0.2.2-rc.5` / `0.2.3-alpha.2`）都没占用的 KeyD。
+  - 命令仍可在宿主「设置 → 快捷键」里改绑或清空。**注意**：`1.8.3-alpha.13` ~ `1.8.9` 的默认键是 `⌘⇧U`，升级到本预览版后默认键变为 `⌘⇧D`（旧键在新宿主上已被宿主占用）。
+- **验证**：全量 96 个测试文件 / **946 条用例**通过；lint 十一条纪律守卫全绿；兼容 / 目录 / 平台种子校验通过（平台种子参照 tag `dsh-v0.2.3-alpha.2`）。
+- **隔离环境真机验收**（宿主 `0.2.3-alpha.2`，独立 `DSH_HOME`，端口 3092）：`/api/billing/usage-stats` 返回 200 与 72,170 字节完整聚合；侧栏胶囊、仪表盘 8 分区、用量热力图与「用量未完整计入」提示条正常；`⌘⇧D` 一键打开仪表盘；`/usage` 命令出现在输入框 `/` 菜单中；与宿主 `0.2.2-rc.5`（端口 3093）同一份 48 会话历史的 usage-stats 响应**逐字段相同**（3,263 调用 / ¥25.07964564 / 缓存命中 98.5%，无计费漂移）。
+- **体积**：客户端 bundle **374,143 字节（365.4 KiB）**（与 `1.8.9` 持平）；服务端半 `lib/index.js` 399,073 字节（不设门禁）。
 
 ### v1.8.9（2026-11-19）
 

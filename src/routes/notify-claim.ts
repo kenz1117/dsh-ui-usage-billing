@@ -16,7 +16,7 @@ import { readFile } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
-import { guardLoopback, isLoopbackOrigin } from '../guard.ts'
+import { ANONYMOUS_ROUTE_AUTH, guardLoopback, isLoopbackOrigin } from '../guard.ts'
 import { swallowed } from '../silent.ts'
 
 /** 路由依赖：装配器注入，无需直接读 ctx。 */
@@ -36,6 +36,7 @@ export function registerNotifyClaimRoute(ctx: Context, deps: NotifyClaimDeps): v
     () => ctx.webServer.register({
       kind: 'exact',
       path: '/api/billing/notify-claim',
+      ...ANONYMOUS_ROUTE_AUTH,
       handler: async (req: IncomingMessage, res: ServerResponse) => {
         if (!guardLoopback(req, res, deps.trustedHosts)) return
         if (req.method !== 'POST') {
