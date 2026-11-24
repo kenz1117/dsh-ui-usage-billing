@@ -8,6 +8,13 @@
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
 
+### 未发布：自定义单价候选改进
+
+- **改进：单价编辑器同时建议三类模型**：内置/探活目录模型、统计中实际出现但未定价的原始模型 ID，以及探测到但尚未产生用量的配置模型。
+- 候选只用于输入提示，不会写入价格目录、修改来源匹配规则或改变账本统计；原始未定价 ID 保持原样，避免中转路由前缀被错误归一化。
+- **Improvement: custom-price suggestions now include three sources**: built-in/discovered catalog models, raw model IDs observed without a price, and configured models that have not produced usage yet.
+- Suggestions are input hints only; they do not alter the pricing catalog, source matching, or ledger accounting, and raw unpriced IDs remain unchanged.
+
 ### v1.8.3-alpha.14（2026-11-22）
 
 **预览版**：宿主 `0.2.3-alpha.1` / `0.2.3-alpha.2` 代际适配（issue #129 自动漂移报告）。内容 = `1.8.9` 全部条目 + 下列三条。
