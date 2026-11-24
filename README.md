@@ -94,7 +94,7 @@
 ## 🔌 订阅与余额
 
 - **订阅额度**：自动识别 Kimi、Z.ai、OpenCode Go、MiniMax、Claude、CommandCode 等通道，展示剩余额度与重置时间；订阅模型费用记 0。
-- **官方余额**：覆盖 DeepSeek、Kimi、阶跃星辰、硅基流动、xAI、智谱 GLM、腾讯云 TokenHub，并按近 7 天消耗估算可用天数。
+- **官方余额**：覆盖 DeepSeek、Kimi、阶跃星辰、硅基流动、xAI、智谱 GLM、腾讯云 TokenHub，并按近 7 天消耗估算可用天数。DeepSeek 登录 DSH 账号时优先显示账号钱包（充值与赠金），未登录或服务不可用时回退 API Key 余额。
 - **中转与对账**：同站多 key 合并，识别 New API / Sub2API 滚动额度；自定义端点与官方余额差可和本地账本交叉验证。
 
 ![账单：提供商计费与订阅（余额、套餐额度、模型用量）与会话明细](screenshots/billing.png)
