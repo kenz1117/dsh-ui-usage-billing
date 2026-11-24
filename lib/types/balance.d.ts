@@ -14,6 +14,8 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { CustomBalanceConfig, CustomBalanceExtract, ProviderBalance } from './pricing-shared.ts';
+/** Attribute a site bucket only when a uniquely configured route uses its expected API origin. */
+export declare function withBalanceOrigin(row: ProviderBalance, uniqueOrigins: ReadonlyMap<string, string>): ProviderBalance;
 /**
  * 从 TokenDance 余额响应提取剩余余额并换算为元。导出供测试：纯函数。
  * 优先用服务端现成的 `balance.balance`（= credits - credits_used）；缺失时
@@ -34,6 +36,7 @@ export declare function pickTokenDanceBalanceCny(data: unknown): number | undefi
  */
 export declare function queryBalances(ctx: Context, providers: Readonly<Record<string, {
     apiKeyEnv?: string;
+    baseURL?: string;
 }>>): Promise<readonly ProviderBalance[]>;
 /**
  * 按 extract 规则从响应 JSON 求值。导出供测试：纯函数。

@@ -54,6 +54,12 @@ export interface ExtraModelPrice {
 export type BalanceError = 'unconfigured' | 'unauthorized' | 'unreachable' | 'invalid';
 /** 一个提供方的账户余额（`/api/billing/balance` 的一行）。 */
 export interface ProviderBalance {
+    /** Actual direct route ID (without `direct:`), including on failures. */
+    sourceRoute?: string;
+    /** Explicitly verified same-wallet route IDs, separate from the actual queried route. */
+    sourceRouteAliases?: readonly string[];
+    /** Exact site origin where this is the uniquely identified wallet. */
+    sourceOrigin?: string;
     /** 提供方 id（小写，如 `deepseek`），与模型表 provider 匹配用。 */
     provider: string;
     /** 显示名（如 `DeepSeek`）。 */
@@ -119,8 +125,10 @@ export interface SubscriptionWindow {
 }
 /** One provider's subscription plan quota row. */
 export interface SubscriptionQuota {
-    /** Adapter id: `kimi` / `zai` / `opencode-go`. */
+    /** Exact provider route ID. */
     provider: string;
+    /** Exact normalized origin when this is the only configured route at the site. */
+    origin?: string;
     /** Human display name (e.g. Kimi For Coding). */
     displayName: string;
     /** Plan label; absent when the provider did not name one. */
@@ -151,6 +159,8 @@ export interface RelayQuota {
     route: string;
     /** 站点 origin（baseURL 归一化）。 */
     origin: string;
+    /** More than one configured route shares this origin, even if only one was queried. */
+    sourceAmbiguous?: true;
     /** 站点显示名。 */
     displayName: string;
     kind: RelayKind;

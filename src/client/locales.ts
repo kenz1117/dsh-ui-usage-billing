@@ -348,6 +348,10 @@ export type UsageBillingKey =
   | 'popTodayModel'
   | 'popNoConsumption'
   | 'popTitle'
+  | 'popBalanceUnavailable'
+  | 'popQuotaUnavailable'
+  | 'popMultipleSources'
+  | 'popUnknownUnit'
   | 'popDirectLead'
   | 'popSubLead'
   | 'unpricedHint'
@@ -801,7 +805,11 @@ export const zh: Record<UsageBillingKey, string> = {
   'popTodayModel': '主力消耗模型余额',
   'popTitle': '用量速览',
   'popNoConsumption': '暂无消耗',
-  'popDirectLead': '直联',
+  'popBalanceUnavailable': '余额不可确认',
+  'popQuotaUnavailable': '额度不可确认',
+  'popMultipleSources': '多个来源',
+  'popUnknownUnit': '单位未提供',
+  'popDirectLead': '按量',
   'popSubLead': '订阅',
   'unpricedHint': '{count} 个模型未收录计价，费用已按 0 计：{models}',
   'channelVisibility': '通道可见性',
@@ -1253,7 +1261,11 @@ export const en: Record<UsageBillingKey, string> = {
   'popTodayModel': 'Main model balance',
   'popTitle': 'Usage overview',
   'popNoConsumption': 'No usage yet',
-  'popDirectLead': 'Direct',
+  'popBalanceUnavailable': 'Balance unavailable',
+  'popQuotaUnavailable': 'Quota unavailable',
+  'popMultipleSources': 'Multiple sources',
+  'popUnknownUnit': 'unit unspecified',
+  'popDirectLead': 'Metered',
   'popSubLead': 'Subscription',
   'unpricedHint': '{count} models not priced; their cost counts as 0: {models}',
   'channelVisibility': 'Channel visibility',

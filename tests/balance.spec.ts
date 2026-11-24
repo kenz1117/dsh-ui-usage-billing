@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { pickTokenDanceBalanceCny, queryBalances, resolveHeaders } from '../src/balance.ts'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { pickTokenDanceBalanceCny, queryBalances, resolveHeaders, withBalanceOrigin } from '../src/balance.ts'
 
 /** 凭据 seam 桩：KEY/TOKEN 可解析，EMPTY 为空串，其余未配置。credentialRef 是 branded 字符串。 */
 function ctxWith(entries: Record<string, string>) {
@@ -12,6 +12,25 @@ function ctxWith(entries: Record<string, string>) {
     },
   } as never
 }
+
+describe('official wallet provenance', () => {
+  it.each([
+    ['deepseek', 'https://api.deepseek.com'], ['moonshot', 'https://api.moonshot.cn'],
+    ['stepfun', 'https://api.stepfun.com'], ['siliconflow', 'https://api.siliconflow.cn'],
+    ['xai', 'https://api.x.ai'], ['zhipu', 'https://open.bigmodel.cn'],
+    ['zai-coding-cn', 'https://open.bigmodel.cn'],
+  ])('binds the exact supported origin for %s', (sourceRoute, origin) => {
+    const row = { provider: sourceRoute, displayName: sourceRoute, sourceRoute, error: 'unauthorized' } as const
+    expect(withBalanceOrigin(row, new Map([[sourceRoute, origin]]))).toEqual({ ...row, sourceOrigin: origin })
+    expect(withBalanceOrigin(row, new Map([[sourceRoute, 'https://relay.example']]))).toEqual(row)
+    expect(withBalanceOrigin(row, new Map())).toEqual(row)
+  })
+
+  it('does not associate the account wallet with the Platform API origin', () => {
+    const row = { provider: 'deepseek', displayName: 'DeepSeek', sourceRoute: 'deepseek-account', totalBalance: 4 }
+    expect(withBalanceOrigin(row, new Map([['deepseek-account', 'https://api.deepseek.com']]))).toEqual(row)
+  })
+})
 
 describe('resolveHeaders (issue #26)', () => {
   it('resolves a full-value placeholder unchanged from the historical behavior', async () => {
@@ -68,6 +87,38 @@ describe('pickTokenDanceBalanceCny (issue #27)', () => {
 })
 
 describe('queryBalances（新版宿主形态）', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('stamps DeepSeek Platform API success and failures with its direct route', async () => {
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce(Response.json({ balance_infos: [{ currency: 'CNY', total_balance: '7.50' }] }))
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const providers = { deepseek: { apiKeyEnv: 'KEY' } }
+    const api = async (key: Record<string, string>) => (await queryBalances(ctxWith(key), providers)).find(row => row.provider === 'deepseek')
+    expect(await api({ KEY: 'api-test-key' })).toMatchObject({ sourceRoute: 'deepseek', totalBalance: 7.5 })
+    expect(await api({ KEY: 'api-test-key' })).toMatchObject({ sourceRoute: 'deepseek', error: 'unauthorized' })
+    expect(await api({})).toMatchObject({ sourceRoute: 'deepseek', error: 'unconfigured' })
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('aliases only the two domestic Zhipu routes with the same resolved credential', async () => {
+    const providers = { zhipu: { apiKeyEnv: 'PAYG' }, 'zai-coding-cn': { apiKeyEnv: 'PLAN' } }
+    const fetchSpy = vi.fn(async () => Response.json({ balance: { available: 8 } }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const zhipu = async (keys: Record<string, string>) => (await queryBalances(ctxWith(keys), providers)).filter(row => row.provider === '智谱 AI')
+    expect(await zhipu({ PAYG: 'same', PLAN: 'same' })).toEqual([
+      expect.objectContaining({ sourceRoute: 'zhipu', sourceRouteAliases: ['zai-coding-cn'], totalBalance: 8 }),
+    ])
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const separate = await zhipu({ PAYG: 'wallet-a', PLAN: 'wallet-b' })
+    expect(separate.map(row => row.sourceRoute)).toEqual(['zhipu', 'zai-coding-cn'])
+    expect(separate.every(row => row.sourceRouteAliases === undefined)).toBe(true)
+    expect(fetchSpy).toHaveBeenCalledTimes(3)
+    const partial = await zhipu({ PAYG: 'wallet-a' })
+    expect(partial[1]).toMatchObject({ sourceRoute: 'zai-coding-cn', error: 'unconfigured' })
+    expect(partial.every(row => row.sourceRouteAliases === undefined)).toBe(true)
+  })
   it('queries the wallet via the route conventional ref when apiKeyEnv is absent', async () => {
     // 新版宿主把路由 key 存成凭据 refs（<ROUTE>_API_KEY）：zai-coding-cn 路由没配
     // apiKeyEnv，余额面板应按约定 ref 找回 key 并读出智谱钱包。
@@ -86,7 +137,7 @@ describe('queryBalances（新版宿主形态）', () => {
     vi.stubGlobal('fetch', fetchSpy)
     const rows = await queryBalances(ctx, { 'zai-coding-cn': {} })
     const zhipu = rows.find(row => row.displayName === '智谱 AI')
-    expect(zhipu).toMatchObject({ displayName: '智谱 AI', totalBalance: 42.5, currency: 'CNY' })
+    expect(zhipu).toMatchObject({ displayName: '智谱 AI', sourceRoute: 'zai-coding-cn', totalBalance: 42.5, currency: 'CNY' })
     expect(fetchSpy).toHaveBeenCalledWith(
       'https://open.bigmodel.cn/api/paas/v4/balance',
       expect.objectContaining({ headers: expect.objectContaining({ authorization: 'Bearer zai-cn-key' }) }),

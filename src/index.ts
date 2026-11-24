@@ -35,10 +35,10 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import z from '@deepseek-ai/schemastery'
-import { createUsageAggregator, dayStamp, DEFAULT_SUBSCRIPTION_PROVIDERS, mergeUsageLedgerDocuments, sessionLogOffsetOf, sumSiteBuckets, type UsageLedgerDocument, type UsageLedgerStore, type UsagePersistence } from './aggregate.ts'
+import { createUsageAggregator, dayStamp, DEFAULT_SUBSCRIPTION_PROVIDERS, mergeUsageLedgerDocuments, sessionLogOffsetOf, siteOriginOf, sumSiteBuckets, type UsageLedgerDocument, type UsageLedgerStore, type UsagePersistence } from './aggregate.ts'
 import { applyBuiltinCatalog, applyLivePricing, applyUserModelAliases, formatMoney, formatTokens } from './client/pricing.ts'
 import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts'
-import { queryBalances, queryCustomBalances } from './balance.ts'
+import { queryBalances, queryCustomBalances, withBalanceOrigin } from './balance.ts'
 import { queryDeclaredEndpoints } from './declarative.ts'
 import { reconcileBalanceDelta, type BalanceRef, type ReconcileEvent } from './reconcile.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
@@ -337,6 +337,19 @@ async function readPiAiProviders(settings: SettingsReader): Promise<Readonly<Rec
     // 设置服务异常时按空 providers 处理（余额面板显示未配置）。
     return {}
   }
+}
+
+/** Site buckets drop the route ID, so a site match needs a unique configured route. */
+function uniqueSiteOrigins(providers: Readonly<Record<string, PiAiProviderRoute>>): Map<string, string> {
+  const owners = new Map<string, string | undefined>()
+  for (const [route, { baseURL }] of Object.entries(providers)) {
+    if (!baseURL) continue
+    const origin = siteOriginOf(baseURL)
+    owners.set(origin, owners.has(origin) ? undefined : route)
+  }
+  const origins = new Map<string, string>()
+  for (const [origin, route] of owners) if (route !== undefined) origins.set(route, origin)
+  return origins
 }
 
 /** 同步读取 provider 路由的 baseURL 视图（中转站零配置发现来源）。
@@ -1195,7 +1208,9 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
         swallowed('reconcile-basis-stale')
       }
     }
-    const doc = { balances: [...balances, ...custom, ...declared], ...(reconcile === undefined ? {} : { reconcile }) }
+    const balanceOrigins = uniqueSiteOrigins(piProviders)
+    const attributed = balances.map(row => withBalanceOrigin(row, balanceOrigins))
+    const doc = { balances: [...attributed, ...custom, ...declared], ...(reconcile === undefined ? {} : { reconcile }) }
     balanceCache = { at: Date.now(), doc }
   }
   const refreshBalanceOnce = (): Promise<void> => {
@@ -1248,19 +1263,27 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
         }
       })
     const queried = await collectSubscriptions(keys, plans)
+    const origins = uniqueSiteOrigins(piProviders)
     const rows: SubscriptionQuota[] = [...queried].map((row) => {
       // plan 双口径（引用 dsh-spend）：订阅通道标 code 并带月费，其余 token。
       // 月费按原生币 × 实时汇率折算为人民币（汇率缺失时按 0 处理，跨币种保护）。
       const planType = planTypeOf(row.provider)
       const subscriptionAmount = subscriptionFeeCnyOf(row.provider, live.rate)
+      const origin = origins.get(row.provider)
       return {
         ...row,
+        ...(origin === undefined ? {} : { origin }),
         planType,
         ...(planType === 'code' && subscriptionAmount > 0 ? { subscriptionAmount } : {}),
       }
     })
     for (const item of identified) {
-      if (!item.adapter) rows.push({ provider: item.provider, displayName: item.displayName, status: 'ok', windows: [], planType: planTypeOf(item.provider) })
+      if (item.adapter) continue
+      const origin = origins.get(item.provider)
+      rows.push({
+        provider: item.provider, displayName: item.displayName, status: 'ok', windows: [], planType: planTypeOf(item.provider),
+        ...(origin === undefined ? {} : { origin }),
+      })
     }
     // P1-5 鉴权分类告警：订阅额度查询鉴权失败时提示检查 apiKeyEnv。
     for (const row of rows) {
@@ -1313,7 +1336,10 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
         ...(entry.displayName === undefined ? {} : { displayName: entry.displayName }),
       })
     }
-    relayCache = { at: Date.now(), quotas: await queryRelayQuotas(ctx, routes) }
+    const origins = uniqueSiteOrigins(providers)
+    const rows = await queryRelayQuotas(ctx, routes)
+    const quotas = rows.map(row => origins.has(row.route) ? row : { ...row, sourceAmbiguous: true as const })
+    relayCache = { at: Date.now(), quotas }
   }
   // in-flight 去重：与 balance 路由同因——并发请求共享同一次进行中的中转站探测。
   let relayInflight: Promise<void> | undefined

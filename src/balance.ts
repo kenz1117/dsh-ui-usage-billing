@@ -51,6 +51,24 @@ const XAI_CREDITS_URL = 'https://api.x.ai/v1/billing/credits'
 /** 智谱 GLM（大模型国内域）官方余额接口（open.bigmodel.cn/api/paas/v4/balance）。 */
 const ZHIPU_BALANCE_URL = 'https://open.bigmodel.cn/api/paas/v4/balance'
 
+// Exact Platform API endpoints. Account and relay wallets cannot claim these origins.
+const officialWalletOrigins = new Map([
+  ['deepseek', new URL(DEEPSEEK_BALANCE_URL).origin],
+  ['moonshot', new URL(MOONSHOT_BALANCE_URL).origin],
+  ['stepfun', new URL(STEPFUN_BALANCE_URL).origin],
+  ['siliconflow', new URL(SILICONFLOW_BALANCE_URL).origin],
+  ['xai', new URL(XAI_CREDITS_URL).origin],
+  ['zhipu', new URL(ZHIPU_BALANCE_URL).origin],
+  ['zai-coding-cn', new URL(ZHIPU_BALANCE_URL).origin],
+])
+
+/** Attribute a site bucket only when a uniquely configured route uses its expected API origin. */
+export function withBalanceOrigin(row: ProviderBalance, uniqueOrigins: ReadonlyMap<string, string>): ProviderBalance {
+  if (row.sourceRoute === undefined) return row
+  const origin = uniqueOrigins.get(row.sourceRoute)
+  return origin !== undefined && origin === officialWalletOrigins.get(row.sourceRoute) ? { ...row, sourceOrigin: origin } : row
+}
+
 /** 数字归一化：接口返回的余额是字符串（如 `"110.00"`），统一转 number。 */
 /**
  * Fetch a Bearer-protected balance endpoint and normalize the HTTP outcome into
@@ -149,6 +167,7 @@ function queryDeepSeek(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance
     return {
       provider: 'deepseek',
       displayName: 'DeepSeek',
+      sourceRoute: 'deepseek',
       // exactOptionalPropertyTypes: 只携带有值的可选字段。
       ...(currency !== undefined ? { currency } : {}),
       ...(totalBalance !== undefined ? { totalBalance } : {}),
@@ -332,8 +351,7 @@ const QUERIERS: readonly BalanceQuerier[] = [
   { route: 'stepfun', displayName: '阶跃星辰', querier: queryStepFun },
   { route: 'siliconflow', displayName: '硅基流动', querier: querySiliconFlow },
   { route: 'xai', displayName: 'xAI', querier: queryXai },
-  // 智谱 GLM / Z.ai 国内域钱包余额：智谱订阅通道（zai-coding-cn）与直连路由（zhipu）
-  // 共用同一把 key，故两条 route 都注册，任一条配了 key 即可读出钱包。
+  // 智谱 GLM / Z.ai 国内域余额：两条路由使用同一个查询端点，凭据相同时才共享钱包。
   { route: 'zhipu', displayName: '智谱 AI', querier: queryZhipu },
   { route: 'zai-coding-cn', displayName: '智谱 AI', querier: queryZhipu },
   // TokenDance Space 钱包余额（issue #27）：与模型调用同一把 key，端点返回微元，
@@ -360,7 +378,7 @@ const QUERIERS: readonly BalanceQuerier[] = [
  */
 export async function queryBalances(
   ctx: Context,
-  providers: Readonly<Record<string, { apiKeyEnv?: string }>>,
+  providers: Readonly<Record<string, { apiKeyEnv?: string; baseURL?: string }>>,
 ): Promise<readonly ProviderBalance[]> {
   // 宽容解析口：单条 ref 解析失败不影响其他 route。
   const resolveRef = async (name: string): Promise<string | undefined> => {
@@ -380,24 +398,37 @@ export async function queryBalances(
       [...(explicit !== undefined ? [explicit] : []), ...routeKeyRefCandidates(route)],
       resolveRef,
     )
-    return { displayName, querier, ref: hit?.ref ?? explicit, configured: explicit !== undefined || hit !== undefined }
+    return { route, displayName, querier, ref: hit?.ref ?? explicit, key: hit?.value }
   }))
-  // 同一 displayName 的多条 route（如智谱的 zhipu / zai-coding-cn）共用同一钱包，
-  // 按名字去重：只查询第一个配了 key 的 route，避免对同一钱包重复请求；同名的
-  // 后续 route 无论配没配 key 都跳过，未配置时也只保留一条「未配置」行。
-  const byName = new Map<string, { displayName: string; querier: BalanceQuerier['querier']; ref: string | undefined }>()
+  type Resolved = (typeof resolved)[number]
+  const byName = new Map<string, Resolved>()
+  const zhipu: Resolved[] = []
   for (const item of resolved) {
-    const existing = byName.get(item.displayName)
-    // 该厂商已确定用某个配了 key 的 route 查询，跳过后续同名 route。
-    if (existing !== undefined && existing.ref !== undefined) continue
-    byName.set(item.displayName, { displayName: item.displayName, querier: item.querier, ref: item.configured ? item.ref : undefined })
-  }
-  return await Promise.all([...byName.values()].map(({ displayName, querier, ref }) => {
-    // 未配置 key 的厂商直接标未配置，不走 credentialRef（空 ref 会被其拒绝）。
-    if (ref === undefined) {
-      return Promise.resolve({ provider: displayName, displayName, error: 'unconfigured' as const })
+    if (item.querier === queryZhipu) {
+      zhipu.push(item)
+      continue
     }
-    return querier(ctx, ref)
+    const existing = byName.get(item.displayName)
+    // Preserve the dashboard's single row for the other alias groups. The row
+    // only belongs to the selected route, regardless of the shared label.
+    if (!existing || (existing.ref === undefined && (item.ref !== undefined || Object.hasOwn(providers, item.route)))) {
+      byName.set(item.displayName, item)
+    }
+  }
+  const targets: (Resolved & { aliases?: string[] })[] = [...byName.values()]
+  const [primary, alternate] = zhipu
+  if (primary && alternate && primary.key !== undefined && primary.key === alternate.key
+    && providers[primary.route]?.baseURL === undefined && providers[alternate.route]?.baseURL === undefined) {
+    targets.push({ ...primary, aliases: [alternate.route] })
+  } else {
+    const present = zhipu.filter(item => item.ref !== undefined || Object.hasOwn(providers, item.route))
+    targets.push(...(present.length > 0 ? present : zhipu.slice(0, 1)))
+  }
+  return await Promise.all(targets.map(async ({ route, displayName, querier, ref, aliases }) => {
+    const row = ref === undefined
+      ? { provider: displayName, displayName, error: 'unconfigured' as const }
+      : await querier(ctx, ref)
+    return { sourceRoute: route, ...row, ...(aliases === undefined ? {} : { sourceRouteAliases: aliases }) }
   }))
 }
 
