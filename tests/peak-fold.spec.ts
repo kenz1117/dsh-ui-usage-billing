@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { foldSession, createUsageAggregator, type UsagePersistence } from '../src/aggregate.ts'
 import { applyBuiltinCatalog } from '../src/client/pricing.ts'
 import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from '../src/builtin-catalog.ts'
@@ -51,6 +51,27 @@ it('discovers configured canonical pairs, omits account aliases and non-DeepSeek
   const rows = await scheduleModels(undefined, {key:profile,'old-account':{models:['pro']},'deepseek-account':{models:['pro']}},aliases)
   expect(rows.models.map(m => scheduleKey(m.source,m.model))).toEqual([scoped])
   expect(rows.warning).toBeTruthy()
+})
+it('bounds a stalled provider without losing static or healthy peers, cleans timers and retries on refresh', async () => {
+  vi.useFakeTimers()
+  try {
+    let stalled = true
+    const llm = { listProviders: () => [{ id: 'slow' }, { id: 'fast' }],
+      listModels: vi.fn((route: string) => route === 'slow' && stalled ? new Promise<unknown[]>(() => {}) : Promise.resolve(['flash'])) }
+    const profiles = { local: { models: ['flash'] } }
+    const first = scheduleModels(llm, profiles, {})
+    await vi.advanceTimersByTimeAsync(5_000)
+    const partial = await first
+    expect(partial.warning).toContain('slow')
+    expect(partial.models.map(row => row.source).sort()).toEqual(['direct:fast', 'direct:local'])
+    expect(vi.getTimerCount()).toBe(0)
+    stalled = false
+    const retry = await scheduleModels(llm, profiles, {})
+    expect(retry.warning).toBeUndefined()
+    expect(retry.models.map(row => row.source).sort()).toEqual(['direct:fast', 'direct:local', 'direct:slow'])
+    expect(llm.listModels).toHaveBeenCalledTimes(4)
+    expect(vi.getTimerCount()).toBe(0)
+  } finally { vi.useRealTimers() }
 })
 it.each([{'["direct:deepseek-account","flash"]': {}},{[scoped]:{windows:[20,60,40,50]}},{[scoped]:{holidays:['20260231']}},{[scoped]:{utcOffsetMinutes:1000}},{'["site:https://a.example/path","flash"]':{}},{'["direct:key","bogus"]':{}}])('rejects malformed source or rule', models => {
   expect(() => parseSchedule({ version:2, models },eligibleScheduleModel)).toThrow()

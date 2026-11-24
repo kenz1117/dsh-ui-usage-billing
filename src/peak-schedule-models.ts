@@ -4,6 +4,15 @@ import { accountRoute, scheduleKey, validSource, type ScheduleModel } from './pe
 
 interface Profile { baseURL?: string; displayName?: string; models?: unknown[] }
 interface Llm { listProviders?(): readonly { id: string; name?: string }[]; listModels?(route: string): Promise<unknown[]> }
+async function discover(llm: Llm | undefined, route: string): Promise<unknown[]> {
+  if (!llm?.listModels) throw Error('Model registry unavailable')
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([llm.listModels(route), new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(Error('Model discovery timed out')), 5_000)
+    })])
+  } finally { clearTimeout(timer) }
+}
 export function eligibleScheduleModel(key: string): boolean {
   const entry = modelOf(key)
   return key === entry.key && entry.provider === 'DeepSeek' && entry.price.offPeak !== undefined && entry.tierSemantics !== 'latency'
@@ -24,7 +33,7 @@ export async function scheduleModels(llm: Llm | undefined, profiles: Record<stri
     const source = siteBucketKey(siteRefOf(mapped, views))
     if (!validSource(source)) return
     let models: unknown[]
-    try { models = profiles[id]?.models ?? await llm!.listModels!(id) } catch { failures.push(id); return }
+    try { models = profiles[id]?.models ?? await discover(llm, id) } catch { failures.push(id); return }
     for (const item of models ?? []) {
       const raw = typeof item === 'string' ? item : (item as { id?: unknown } | null)?.id
       if (typeof raw !== 'string') continue
