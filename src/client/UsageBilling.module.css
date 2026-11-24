@@ -939,11 +939,6 @@ body {
   overflow: visible;
 }
 
-/* 宿主已有设置导航，嵌入页不再保留插件二级锚点栏。 */
-.settingsLayout.nativeSettingsLayout {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 /* 底部公共细条（ub-footer）：轮询说明 + 版本/许可证，所有 Tab 共享。 */
 .modalFooter {
   display: flex;
@@ -4585,26 +4580,15 @@ span.bandDot { cursor: default; }
 
 /* ── 设置 Tab：set-card（头部 标题+说明+开关 → 控制列） ───────────── */
 
-/* v1.5 设置页布局：左 120px 紧凑锚点 + 右侧 pane。容器查询 ≤540px 退化顶栏 nav。 */
-.settingsLayout {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 14px;
-  container-type: inline-size;
-  container-name: billing-settings;
-}
+.settingsLayout { display: block; }
 
 .settingsNav {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 2px;
-  padding-right: 14px;
-  border-right: 1px solid var(--ds-border);
-  align-self: start;
-  position: sticky;
-  top: 0;
-  max-height: min(720px, calc(88vh - 80px));
-  overflow-y: auto;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--ds-border);
 }
 
 .settingsNavItem {
@@ -4640,16 +4624,6 @@ span.bandDot { cursor: default; }
 
 .settingsPane {
   display: flex; flex-direction: column; gap: 12px; min-width: 0;
-}
-
-@container billing-settings (max-width: 540px) {
-  .settingsLayout { grid-template-columns: 1fr; }
-  .settingsNav {
-    flex-direction: row; flex-wrap: wrap;
-    border-right: none; border-bottom: 1px solid var(--ds-border);
-    padding-right: 0; padding-bottom: 10px;
-    position: static; max-height: none;
-  }
 }
 
 /* v1.5 密度/动效开关行：复用 setCardHead 视觉语言 */

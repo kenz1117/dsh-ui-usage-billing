@@ -91,6 +91,18 @@ describe('issue #125 未收录模型的可发现性', () => {
     // 落到设置分区：自定义单价卡可见（高级分区未被搜索过滤隐藏）。
     const card = await screen.findByTestId('billing-user-prices')
     expect(card.closest('[hidden]')).toBeNull()
+    expect(document.activeElement).toBe(card.querySelector('h3'))
+    const budget = screen.getByTestId('billing-budget')
+    expect(budget.hidden).toBe(false)
+    const search = screen.getByTestId('billing-settings-search')
+    fireEvent.change(search, { target: { value: '单价' } })
+    expect(budget.hidden).toBe(true)
+    const anchor = screen.getByTestId('billing-settings-nav-budget')
+    fireEvent.click(anchor)
+    expect(budget.hidden).toBe(false)
+    expect((search as HTMLInputElement).value).toBe('')
+    expect(document.activeElement).toBe(budget.querySelector('h3'))
+    expect(anchor.getAttribute('aria-current')).toBe('location')
     // 未收录 id 进候选（用户直接选，不必手抄）。
     const options = Array.from(card.querySelectorAll('datalist option')).map(option => option.getAttribute('value'))
     for (const id of UNPRICED) expect(options).toContain(id)

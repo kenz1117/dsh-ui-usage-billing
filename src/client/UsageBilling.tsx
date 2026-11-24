@@ -1272,20 +1272,35 @@ function BillingDashboard({
     for (const section of sections) observer.observe(section)
     return () => { observer.disconnect() }
   }, [tab])
-  const scrollToSettingsGroup = useCallback((id: string) => {
+  const [pendingGroup, setPendingGroup] = useState<string>()
+  const scrollToSettingsGroup = (id: string): void => {
+    setTab('settings')
+    setSettingsQuery('')
     setActiveSettingsGroup(id)
-    const target = dashboardRoot.current?.querySelector<HTMLElement>(`[id="settings-${id}"]`)
+    setPendingGroup(id)
+  }
+  // Wait for React to mount the settings tab and reveal any filtered sections.
+  useEffect(() => {
+    if (!pendingGroup || tab !== 'settings') return
+    setPendingGroup(undefined)
+    const target = dashboardRoot.current?.querySelector<HTMLElement>(`[id="settings-${pendingGroup}"]`)
     if (target == null) return
+    const heading = target.querySelector<HTMLElement>('h3')
+    if (heading) {
+      heading.tabIndex = -1
+      heading.focus({ preventScroll: true })
+    }
+    const behavior = motion === 'off' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
     // 原生设置由宿主页面滚动；弹窗仍只滚自己的 dashboardBody，避免标题错位（issue #94）。
     if (embeddedSettings) {
-      target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      target.scrollIntoView?.({ block: 'start', behavior })
       return
     }
     const scroller = target.closest(`.${css.dashboardBody}`)
     if (scroller === null) return
     const delta = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
-    scroller.scrollTo({ top: scroller.scrollTop + delta, behavior: 'smooth' })
-  }, [embeddedSettings])
+    scroller.scrollTo?.({ top: scroller.scrollTop + delta, behavior })
+  }, [embeddedSettings, motion, pendingGroup, tab])
   const setDensity = useCallback((d: DensityPref) => {
     setDensityState(d)
     saveDensity(d)
@@ -2326,13 +2341,7 @@ function BillingDashboard({
                     type="button"
                     className={css.noticeAction}
                     data-testid="billing-unpriced-fix"
-                    onClick={() => {
-                      setTab('settings')
-                      // 设置页按关键词过滤分区：查询串须是分区关键词的子串（见
-                      // settings-search.ts）——用「单价 / price」命中高级分区
-                      // （自定义单价卡），其余分区收起。
-                      setSettingsQuery(language === 'zh' ? '单价' : 'price')
-                    }}
+                    onClick={() => { scrollToSettingsGroup('advanced') }}
                   >
                     {t('unpricedFix')}
                   </button>
@@ -2684,12 +2693,9 @@ function BillingDashboard({
             )}
           {tab === 'settings' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-settings">
-              {/* v1.5 设置页布局：左侧 180px 锚点 + 右侧分组 pane。5 组分类——预算 / 提醒 /
-                  显示 / 高级 / 关于。每组对应原 section（id 兼容）。锚点导航点击
-                  滚动；alpha.1 无 scroll-spy——v1.5.1 加 IntersectionObserver。 */}
-              <div className={clsx(css.settingsLayout, embeddedSettings && css.nativeSettingsLayout)}>
+              <div className={css.settingsLayout}>
                 {!embeddedSettings && (
-                <aside className={css.settingsNav} data-testid="billing-settings-nav" role="navigation" aria-label="settings">
+                <nav className={css.settingsNav} data-testid="billing-settings-nav" aria-label={t('tabSettings')}>
                   {/* v1.5 alpha.1.5：锚点图标从 emoji/字符（🔔◐✱ⓘ 渲染不一致）换成
                       与 TAB_ICONS 同风格的内联 stroke SVG。 */}
                   {[
@@ -2733,6 +2739,7 @@ function BillingDashboard({
                         activeSettingsGroup === item.id && css.settingsNavItemActive,
                         item.advanced && css.settingsNavItemAdvanced,
                       )}
+                      aria-current={activeSettingsGroup === item.id ? 'location' : undefined}
                       data-testid={`billing-settings-nav-${item.id}`}
                       onClick={() => { scrollToSettingsGroup(item.id) }}
                     >
@@ -2740,7 +2747,7 @@ function BillingDashboard({
                       {item.label}
                     </button>
                   ))}
-                </aside>
+                </nav>
                 )}
                 <div className={css.settingsPane}>
                   {/* U-4 设置页全文搜索：按关键词过滤分区（hidden 属性，锚点 id 保留）。 */}
