@@ -102,4 +102,79 @@ describe('queryBalances（新版宿主形态）', () => {
     expect(zhipu).toMatchObject({ displayName: '智谱 AI', error: 'unconfigured' })
     expect(fetchSpy).not.toHaveBeenCalled()
   })
+
+  it('keeps the unconfigured state when neither wallet nor API key is available', async () => {
+    const ctx = {
+      get: () => undefined,
+      credentials: { resolve: async () => undefined },
+    } as never
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const rows = await queryBalances(ctx, { deepseek: {} })
+    expect(rows.find(row => row.provider === 'deepseek')).toMatchObject({ error: 'unconfigured' })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('shows the logged-in DeepSeek account wallet without an API key', async () => {
+    const ctx = {
+      get: (name: string) => name === 'deepseekAccount' ? {
+        getBalance: vi.fn(async () => ({
+          status: 'ready',
+          value: [{ currency: 'CNY', balance: 18 }],
+          bonusWallets: [],
+        })),
+      } : undefined,
+      credentials: { resolve: async () => undefined },
+    } as never
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const rows = await queryBalances(ctx, { deepseek: {} })
+    expect(rows.find(row => row.provider === 'deepseek')).toMatchObject({ totalBalance: 18, currency: 'CNY' })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('prefers the logged-in DeepSeek account wallet and combines matching bonuses', async () => {
+    const ctx = {
+      get: (name: string) => name === 'deepseekAccount' ? {
+        getBalance: vi.fn(async () => ({
+          status: 'ready',
+          value: [
+            { currency: 'USD', balance: 99 },
+            { currency: 'CNY', balance: '12.5' },
+            { currency: 'CNY', balance: 2.5 },
+          ],
+          bonusWallets: [{ currency: 'CNY', balance: 3 }],
+        })),
+      } : undefined,
+      credentials: { resolve: async (ref: unknown) => ref === 'DEEPSEEK_API_KEY' ? { value: 'api-key' } : undefined },
+    } as never
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const rows = await queryBalances(ctx, { deepseek: { apiKeyEnv: 'DEEPSEEK_API_KEY' } })
+    expect(rows.find(row => row.provider === 'deepseek')).toMatchObject({
+      provider: 'deepseek',
+      currency: 'CNY',
+      totalBalance: 18,
+      toppedUpBalance: 15,
+      grantedBalance: 3,
+      isAvailable: true,
+    })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the API-key balance when the account wallet is unavailable', async () => {
+    const ctx = {
+      get: () => ({ getBalance: async () => ({ status: 'loading' }) }),
+      credentials: { resolve: async (ref: unknown) => ref === 'DEEPSEEK_API_KEY' ? { value: 'api-key' } : undefined },
+    } as never
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ is_available: true, balance_infos: [{ currency: 'CNY', total_balance: 7 }] }),
+    }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const rows = await queryBalances(ctx, { deepseek: { apiKeyEnv: 'DEEPSEEK_API_KEY' } })
+    expect(rows.find(row => row.provider === 'deepseek')).toMatchObject({ totalBalance: 7, currency: 'CNY' })
+    expect(fetchSpy).toHaveBeenCalled()
+  })
 })

@@ -94,7 +94,7 @@ Overview / Queue / Billing / Usage / Trends / Agents / Rates / Settings. The her
 ## 🔌 Subscriptions & balance
 
 - **Subscription quotas**: detect Kimi, Z.ai, OpenCode Go, MiniMax, Claude, CommandCode and more, with remaining quota and reset times; subscription-channel model cost is 0.
-- **Official balances**: DeepSeek, Kimi, StepFun, SiliconFlow, xAI, Zhipu GLM and Tencent Cloud TokenHub, with days remaining estimated from the last 7 days.
+- **Official balances**: DeepSeek, Kimi, StepFun, SiliconFlow, xAI, Zhipu GLM and Tencent Cloud TokenHub, with days remaining estimated from the last 7 days. When a DSH DeepSeek account is signed in, its wallet (topped-up plus granted balance) is preferred; the API-key balance remains the fallback when the account service is unavailable.
 - **Relays and reconciliation**: merge keys by site, read New API / Sub2API rolling quotas, and cross-check custom endpoints or official balance deltas against the ledger.
 
 ![Billing: provider billing & subscriptions (balance, plan quota, model usage) and session detail](screenshots/billing.png)

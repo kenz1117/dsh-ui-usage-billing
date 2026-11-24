@@ -125,38 +125,91 @@ async function queryBearerBalance(
   }
 }
 
-/**
- * Query the DeepSeek account balance.
- * @param ctx - host context carrying the credentials seam.
- * @param apiKeyEnv - credential reference resolving the DeepSeek API key.
- * @returns the balance row, or an error row when the key/endpoint misbehaves.
- */
-function queryDeepSeek(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
-  return queryBearerBalance(ctx, DEEPSEEK_BALANCE_URL, apiKeyEnv, 'deepseek', 'DeepSeek', (data) => {
-    const doc = data as { is_available?: unknown; balance_infos?: unknown }
-    const infos = Array.isArray(doc.balance_infos) ? doc.balance_infos : []
-    const info = infos[0] as {
-      currency?: unknown
-      total_balance?: unknown
-      granted_balance?: unknown
-      topped_up_balance?: unknown
-    } | undefined
-    const currency = typeof info?.currency === 'string' ? info.currency : undefined
-    const totalBalance = toNumber(info?.total_balance)
-    const grantedBalance = toNumber(info?.granted_balance)
-    const toppedUpBalance = toNumber(info?.topped_up_balance)
-    const isAvailable = typeof doc.is_available === 'boolean' ? doc.is_available : undefined
-    return {
-      provider: 'deepseek',
-      displayName: 'DeepSeek',
-      // exactOptionalPropertyTypes: 只携带有值的可选字段。
-      ...(currency !== undefined ? { currency } : {}),
-      ...(totalBalance !== undefined ? { totalBalance } : {}),
-      ...(grantedBalance !== undefined ? { grantedBalance } : {}),
-      ...(toppedUpBalance !== undefined ? { toppedUpBalance } : {}),
-      ...(isAvailable !== undefined ? { isAvailable } : {}),
+/** Narrow runtime seam for the optional DSH login-account wallet service. */
+interface DeepSeekAccountBalanceService {
+  getBalance(options: { version: string; locale: string; timezoneOffsetSeconds: number }): Promise<unknown>
+}
+
+function parseDeepSeekBalance(data: unknown): ProviderBalance {
+  const doc = data as { is_available?: unknown; balance_infos?: unknown }
+  const infos = Array.isArray(doc.balance_infos) ? doc.balance_infos : []
+  const info = infos[0] as {
+    currency?: unknown
+    total_balance?: unknown
+    granted_balance?: unknown
+    topped_up_balance?: unknown
+  } | undefined
+  const currency = typeof info?.currency === 'string' ? info.currency : undefined
+  const totalBalance = toNumber(info?.total_balance)
+  const grantedBalance = toNumber(info?.granted_balance)
+  const toppedUpBalance = toNumber(info?.topped_up_balance)
+  const isAvailable = typeof doc.is_available === 'boolean' ? doc.is_available : undefined
+  return {
+    provider: 'deepseek',
+    displayName: 'DeepSeek',
+    ...(currency !== undefined ? { currency } : {}),
+    ...(totalBalance !== undefined ? { totalBalance } : {}),
+    ...(grantedBalance !== undefined ? { grantedBalance } : {}),
+    ...(toppedUpBalance !== undefined ? { toppedUpBalance } : {}),
+    ...(isAvailable !== undefined ? { isAvailable } : {}),
+  }
+}
+
+function accountBalanceRow(details: unknown): ProviderBalance | undefined {
+  const doc = details as { status?: unknown; value?: unknown; bonusWallets?: unknown } | null
+  if (doc?.status !== 'ready') return undefined
+  const wallets = Array.isArray(doc.value) ? doc.value : []
+  const bonuses = Array.isArray(doc.bonusWallets) ? doc.bonusWallets : []
+  const picked = wallets.find(wallet => (wallet as { currency?: unknown })?.currency === 'CNY') ?? wallets[0]
+  if (picked === undefined) return undefined
+  const currency = typeof (picked as { currency?: unknown }).currency === 'string' ? (picked as { currency: string }).currency : 'CNY'
+  const sum = (items: readonly unknown[]): number | undefined => {
+    let total: number | undefined
+    for (const item of items) {
+      const value = toNumber((item as { balance?: unknown })?.balance)
+      if (value !== undefined) total = (total ?? 0) + value
     }
-  })
+    return total
+  }
+  const toppedUpBalance = sum(wallets.filter(wallet => (wallet as { currency?: unknown })?.currency === currency))
+  const grantedBalance = sum(bonuses.filter(wallet => (wallet as { currency?: unknown })?.currency === currency))
+  if (toppedUpBalance === undefined && grantedBalance === undefined) return undefined
+  return {
+    provider: 'deepseek',
+    displayName: 'DeepSeek',
+    currency,
+    totalBalance: (toppedUpBalance ?? 0) + (grantedBalance ?? 0),
+    ...(toppedUpBalance !== undefined ? { toppedUpBalance } : {}),
+    ...(grantedBalance !== undefined ? { grantedBalance } : {}),
+    isAvailable: true,
+  }
+}
+
+async function queryDeepSeekAccount(account: DeepSeekAccountBalanceService): Promise<ProviderBalance | undefined> {
+  try {
+    const details = await account.getBalance({ version: '', locale: 'zh', timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60 })
+    return accountBalanceRow(details)
+  } catch {
+    return undefined
+  }
+}
+
+async function queryDeepSeekAccountFromContext(ctx: Context): Promise<ProviderBalance | undefined> {
+  try {
+    const account = ctx.get('deepseekAccount') as DeepSeekAccountBalanceService | undefined
+    if (typeof account?.getBalance !== 'function') return undefined
+    return await queryDeepSeekAccount(account)
+  } catch {
+    return undefined
+  }
+}
+
+/** Query the DeepSeek account balance, preferring the logged-in DSH wallet. */
+async function queryDeepSeek(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
+  const account = await queryDeepSeekAccountFromContext(ctx)
+  if (account !== undefined) return account
+  if (apiKeyEnv === '') return { provider: 'deepseek', displayName: 'DeepSeek', error: 'unconfigured' }
+  return queryBearerBalance(ctx, DEEPSEEK_BALANCE_URL, apiKeyEnv, 'deepseek', 'DeepSeek', parseDeepSeekBalance)
 }
 
 /**
@@ -322,12 +375,14 @@ interface BalanceQuerier {
   route: string
   /** 厂商显示名（模型表 vendor 名），未配置时报未配置时同时用作 provider id。 */
   displayName: string
-  /** 余额查询器；`apiKeyEnv` 为该 route 解析到的凭据引用（缺失时查未配置）。 */
+  /** 余额查询器；DeepSeek 可在没有 API Key 时先读取可选的登录钱包服务。 */
   querier: (ctx: Context, apiKeyEnv: string) => Promise<ProviderBalance>
+  /** Whether the querier can return a balance without an API-key credential. */
+  canQueryWithoutKey?: boolean
 }
 
 const QUERIERS: readonly BalanceQuerier[] = [
-  { route: 'deepseek', displayName: 'deepseek', querier: queryDeepSeek },
+  { route: 'deepseek', displayName: 'deepseek', querier: queryDeepSeek, canQueryWithoutKey: true },
   { route: 'moonshot', displayName: '月之暗面', querier: queryMoonshot },
   { route: 'stepfun', displayName: '阶跃星辰', querier: queryStepFun },
   { route: 'siliconflow', displayName: '硅基流动', querier: querySiliconFlow },
@@ -392,12 +447,13 @@ export async function queryBalances(
     if (existing !== undefined && existing.ref !== undefined) continue
     byName.set(item.displayName, { displayName: item.displayName, querier: item.querier, ref: item.configured ? item.ref : undefined })
   }
-  return await Promise.all([...byName.values()].map(({ displayName, querier, ref }) => {
-    // 未配置 key 的厂商直接标未配置，不走 credentialRef（空 ref 会被其拒绝）。
-    if (ref === undefined) {
-      return Promise.resolve({ provider: displayName, displayName, error: 'unconfigured' as const })
+  return await Promise.all([...byName.values()].map(async ({ displayName, querier, ref }) => {
+    // DeepSeek 可先读取登录钱包；其他厂商未配置 key 时直接标未配置。
+    const canQueryWithoutKey = QUERIERS.some(item => item.displayName === displayName && item.canQueryWithoutKey === true)
+    if (ref === undefined && !canQueryWithoutKey) {
+      return { provider: displayName, displayName, error: 'unconfigured' as const }
     }
-    return querier(ctx, ref)
+    return querier(ctx, ref ?? '')
   }))
 }
 
