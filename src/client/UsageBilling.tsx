@@ -1267,7 +1267,7 @@ function BillingDashboard({
           best = entry.target.id
         }
       }
-      if (best !== undefined) setActiveSettingsGroup(best.slice('settings-'.length))
+      if (best !== undefined) setActiveSettingsGroup(best === 'settings-display-extra' ? 'display' : best.slice('settings-'.length))
     }, { rootMargin: '-80px 0px -55% 0px' })
     for (const section of sections) observer.observe(section)
     return () => { observer.disconnect() }
