@@ -9,6 +9,7 @@
  * 状态 / 异常信息）返回，由界面显示成错误态。
  */
 
+import { scheduleFields } from '../scheduled-band.ts'
 import { EMPTY_STATS } from '../constants.ts'
 import type { ClientPerf } from '../PerfPanel.tsx'
 import type { UsageStats } from '../domain/types.ts'
@@ -62,6 +63,7 @@ export async function loadUsageStats(): Promise<UsageStatsLoad> {
     const candidate = parsed as Partial<UsageStats>
     const isObj = (v: unknown): boolean => v !== null && typeof v === 'object'
     return { ok: true, stats: {
+      ...scheduleFields(candidate.peakSchedule),
       total: candidate.total ?? EMPTY_STATS.total,
       byModel: candidate.byModel ?? {},
       byDay: candidate.byDay ?? {},

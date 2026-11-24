@@ -1,6 +1,9 @@
 /** Locale dictionaries for the usage billing surface. */
 
+import { peakZh, peakEn } from './peak-schedule-locales.ts'
+
 export type UsageBillingKey =
+  | keyof typeof peakZh
   | 'title'
   | 'cost'
   | 'todayCost'
@@ -453,6 +456,7 @@ export type UsageBillingKey =
 export const NS = 'usageBilling'
 
 export const zh: Record<UsageBillingKey, string> = {
+  ...peakZh,
   'title': '使用统计',
   'cost': '费用',
   'todayCost': '今日费用',
@@ -905,6 +909,7 @@ export const zh: Record<UsageBillingKey, string> = {
 }
 
 export const en: Record<UsageBillingKey, string> = {
+  ...peakEn,
   'title': 'Usage',
   'cost': 'Cost',
   'todayCost': 'Today',

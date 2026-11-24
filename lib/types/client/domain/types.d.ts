@@ -166,6 +166,7 @@ export interface UsageBillingInjected {
 }
 /** Usage stats structure from `.dsh-usage-stats.json`. */
 export interface UsageStats {
+    peakSchedule?: import('../../peak-schedule.ts').PeakSchedule;
     /** 服务端聚合时间戳（毫秒）；旧快照可能缺失。 */
     updatedAt?: number;
     /**
@@ -284,6 +285,7 @@ export interface UsageStats {
         sessionId: string;
         turn: number;
         model: string;
+        scheduleSource?: string;
         input: number;
         output: number;
         cacheHit: number;

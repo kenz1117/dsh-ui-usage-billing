@@ -23,7 +23,9 @@ import { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { convertFromCny, formatMoney, formatSwitchCountdown, channelCountdown, rateChannelOf, tierCountdown, type CostCurrency, type RateChannel } from './pricing.ts'
+import { convertFromCny, formatMoney, formatSwitchCountdown, rateChannelOf, type tierCountdown, type CostCurrency } from './pricing.ts'
+import type { PeakSchedule } from '../peak-schedule.ts'
+import { modelBand, ruleForTurn, scheduleFields, scheduledCountdown, type ScheduledTurn } from './scheduled-band.ts'
 import { fetchBilling } from './api/http.ts'
 import { bandStateOf } from './band-dot.ts'
 import { loadPeakAlertConfig } from './peak-alert.ts'
@@ -36,7 +38,8 @@ import css from './UsageBilling.module.css'
 /** The usage-stats shape the composer bar needs (a thin slice, not the whole doc). */
 export interface LiveStats {
   bySession?: readonly { id: string; cost: number; subCost?: number }[]
-  byTurn?: readonly { sessionId: string; turn: number; model?: string; cost: number }[]
+  byTurn?: readonly (ScheduledTurn & { sessionId: string; turn: number; cost: number })[]
+  peakSchedule?: PeakSchedule
 }
 
 /** 订阅额度的薄切片（/api/billing/subscriptions 响应的行）。 */
@@ -124,17 +127,15 @@ export function lowQuotaChips(
  * @returns 该会话最近一轮的归因模型键；无轮次或轮行未带模型时 undefined。
  */
 export function sessionModelOf(stats: LiveStats | null, sessionId: string | undefined): string | undefined {
-  if (sessionId === undefined || stats?.byTurn === undefined) return undefined
-  let latestTurn = -1
-  let model: string | undefined
-  for (const item of stats.byTurn) {
-    if (item.sessionId !== sessionId) continue
-    if (latestTurn === -1 || item.turn > latestTurn) {
-      latestTurn = item.turn
-      model = item.model
-    }
+  return sessionTurnOf(stats, sessionId)?.model
+}
+
+export function sessionTurnOf(stats: LiveStats | null, sessionId: string | undefined) {
+  let latest: NonNullable<LiveStats['byTurn']>[number] | undefined
+  for (const row of stats?.byTurn ?? []) {
+    if (row.sessionId === sessionId && (!latest || row.turn > latest.turn)) latest = row
   }
-  return model
+  return latest
 }
 
 /** Endpoint the node half serves (same constant the dashboard uses). */
@@ -156,6 +157,7 @@ async function loadLiveStats(): Promise<LiveStats | null> {
     if (parsed === null || typeof parsed !== 'object') return null
     const doc = parsed as LiveStats
     return {
+      ...scheduleFields(doc.peakSchedule),
       ...(Array.isArray(doc.bySession) ? { bySession: doc.bySession } : {}),
       ...(Array.isArray(doc.byTurn) ? { byTurn: doc.byTurn } : {}),
     }
@@ -233,7 +235,7 @@ export interface LiveCostBarProps {
  * 被固定模型的峰谷指示点：在输入框旁常驻，不用打开仪表盘就能看到当前档位。
  * 没有固定项（默认）时渲染 null，对未使用该功能的用户零开销。
  */
-function PinnedBandDots({ hasBandPlan }: { hasBandPlan: boolean }): React.ReactNode {
+function PinnedBandDots({ hasBandPlan, current, schedule }: { hasBandPlan: boolean; current?: ScheduledTurn | undefined; schedule?: PeakSchedule | undefined }): React.ReactNode {
   const [keys, setKeys] = useState<readonly string[]>(() => loadPinnedModels())
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -250,7 +252,7 @@ function PinnedBandDots({ hasBandPlan }: { hasBandPlan: boolean }): React.ReactN
   if (keys.length === 0) return null
   const leadMs = loadPeakAlertConfig().leadMin * 60_000
   const dots = keys
-    .map(key => ({ key, state: bandStateOf(channelCountdown(now, rateChannelOf(key, hasBandPlan)), leadMs) }))
+    .map(key => ({ key, state: bandStateOf(modelBand(now, key, hasBandPlan, current, schedule), leadMs) }))
     .filter((d): d is { key: string; state: NonNullable<ReturnType<typeof bandStateOf>> } => d.state !== null)
   if (dots.length === 0) return null
   return (
@@ -309,6 +311,8 @@ function useLiveCostData(sessionId: SessionId, active: boolean): {
   chips: ReturnType<typeof lowQuotaChips>
   /** 是否持有 Z.ai Coding Plan（决定智谱模型是否适用积分分时）。 */
   hasBandPlan: boolean
+  current: ScheduledTurn | undefined
+  schedule: PeakSchedule | undefined
 } {
   const [stats, setStats] = useState<LiveStats | null>(null)
   const [quotas, setQuotas] = useState<readonly QuotaSlice[]>([])
@@ -355,13 +359,12 @@ function useLiveCostData(sessionId: SessionId, active: boolean): {
   // 峰谷窗口跟随当前会话最近一轮的模型：DeepSeek 按量分时；智谱模型在持有
   // Z.ai Coding Plan（status ok）时走积分分时；其余模型 null——档位 UI 整段隐藏。
   const chips = useMemo(() => lowQuotaChips(quotas), [quotas])
-  const channel: RateChannel = useMemo(
-    () => rateChannelOf(sessionModelOf(stats, sessionId), quotas.some(q => q.displayName === 'Z.ai Coding Plan' && q.status === 'ok')),
-    [stats, sessionId, quotas],
-  )
-  const tier = useMemo(() => channelCountdown(nowMs, channel), [nowMs, channel])
+  const current = useMemo(() => sessionTurnOf(stats, sessionId), [stats, sessionId])
+  const schedule = stats?.peakSchedule
   const hasBandPlan = quotas.some(q => q.displayName === 'Z.ai Coding Plan' && q.status === 'ok')
-  return { sessionCost, subCost, turnCost, tier, chips, hasBandPlan }
+  const channel = rateChannelOf(current?.model, hasBandPlan)
+  const tier = useMemo(() => scheduledCountdown(nowMs, channel, ruleForTurn(current, schedule)), [nowMs, channel, current, schedule])
+  return { sessionCost, subCost, turnCost, tier, chips, hasBandPlan, current, schedule }
 }
 
 /**
@@ -374,7 +377,7 @@ export function LiveCostBar({ sessionId, t, seat, session }: LiveCostBarProps): 
   // 座位与位置偏好互斥：另一座位（以及工具行 chip）此时渲染 null，不各跑轮询。
   // 「上方」座位额外复刻宿主 hero 门控——空白新会话页宿主不出下方 dock，上方同样不出。
   const active = visible && position === seat && !(seat === 'above' && session !== undefined && isBlankPhase(session))
-  const { sessionCost, subCost, turnCost, tier, chips, hasBandPlan } = useLiveCostData(sessionId, active)
+  const { sessionCost, subCost, turnCost, tier, chips, hasBandPlan, current, schedule } = useLiveCostData(sessionId, active)
 
   const currency = useCurrencyPref()
   const money = (cny: number): string => formatMoney(convertFromCny(cny, currency), currency)
@@ -394,14 +397,16 @@ export function LiveCostBar({ sessionId, t, seat, session }: LiveCostBarProps): 
       data-testid="billing-live-cost-bar"
       data-seat={seat}
     >
-      <PinnedBandDots hasBandPlan={hasBandPlan} />
+      <PinnedBandDots hasBandPlan={hasBandPlan} current={current} schedule={schedule} />
       {tier !== null && (
         <>
           <span className={isPeak ? css.feeChipPrimary : css.feeChipOff} data-testid="billing-live-tier">
             {isPeak ? t('tierPeak') : t('tierOff')}
           </span>
-          <span className={css.feeCount}>{formatSwitchCountdown(tier.nextSwitchInMs)}</span>
-          <span className={css.feeSuffix}>{isPeak ? t('tierToOff') : t('tierToPeak')}</span>
+          {Number.isFinite(tier.nextSwitchInMs) && <>
+            <span className={css.feeCount}>{formatSwitchCountdown(tier.nextSwitchInMs)}</span>
+            <span className={css.feeSuffix}>{isPeak ? t('tierToOff') : t('tierToPeak')}</span>
+          </>}
         </>
       )}
       {hasCost && (
@@ -451,7 +456,7 @@ export function LiveCostChip({ sessionId, t }: LiveCostChipProps): React.ReactNo
   const currency = useCurrencyPref()
   const money = (cny: number): string => formatMoney(convertFromCny(cny, currency), currency)
   const { visible, position } = useLiveCostPrefs()
-  const { sessionCost, subCost, turnCost, tier, chips, hasBandPlan } = useLiveCostData(sessionId, visible && position === 'toolbar')
+  const { sessionCost, subCost, turnCost, tier, chips, hasBandPlan, current, schedule } = useLiveCostData(sessionId, visible && position === 'toolbar')
   // 非工具行位置时 chip 让位给 bar（同 id 双槽互斥由位置偏好门控）。
   if (!visible || position !== 'toolbar') return null
   // 档位小徽章仅在当前会话模型涉及峰谷时渲染；额度预警压到 chip 上：
@@ -464,7 +469,7 @@ export function LiveCostChip({ sessionId, t }: LiveCostChipProps): React.ReactNo
   const tint = worst <= 10 ? css.feeInlineError : worst <= 20 ? css.feeInlineAlert : undefined
   const cls = clsx(css.feeInline, tint)
   const title = [
-    ...(tier !== null
+    ...(tier !== null && Number.isFinite(tier.nextSwitchInMs)
       ? [`${formatSwitchCountdown(tier.nextSwitchInMs)} ${isPeak ? t('tierToOff') : t('tierToPeak')}`]
       : []),
     `${t('liveTurn')} ${money(turnCost)}`,
@@ -479,7 +484,7 @@ export function LiveCostChip({ sessionId, t }: LiveCostChipProps): React.ReactNo
     // 消息列表随之塌陷成 0 高（输入框跳到顶部、画面闪一下即回，issue #117）。
     <Tooltip label={title} side="top" delayMs={500} portal>
       <span className={clsx(cls, BILLING_ROOT_CLASS)} data-testid="billing-live-cost-chip" role="note" aria-label={title}>
-        <PinnedBandDots hasBandPlan={hasBandPlan} />
+        <PinnedBandDots hasBandPlan={hasBandPlan} current={current} schedule={schedule} />
         {tier !== null && (
           <span className={isPeak ? css.feeChipPrimary : css.feeChipOff} data-testid="billing-live-tier">
             {isPeak ? t('tierPeak') : t('tierOff')}

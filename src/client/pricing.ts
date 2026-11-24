@@ -372,8 +372,7 @@ function isBeijingWeekend(timeMs: number): boolean {
  * 省掉一段解析代码——client / index 两个 face 都要过本仓自设的体积成本线
  * （sync.sh 的 256/500 KiB；DSH Store 对插件 JS bundle 本身无审查上限）。
  */
-const CHINA_HOLIDAYS =
-  '20260925 20260926 20260927 20261001 20261002 20261003 20261004 20261005 20261006 20261007'
+import { officialHolidays as CHINA_HOLIDAYS } from '../peak-schedule.ts'
 
 /** 北京日期键 YYYYMMDD（与宿主时区无关）。 */
 function beijingDateKey(timeMs: number): string {
@@ -1162,6 +1161,7 @@ export function computeCostAt(
   buckets: TokenUsageBuckets,
   timeMs: number | null | undefined,
   peakShare = DEFAULT_PEAK_SHARE,
+  tierOverride?: PriceTierId,
 ): number {
   if (timeMs === null || timeMs === undefined || !Number.isFinite(timeMs)) return computeCost(entry, buckets, peakShare)
   // 促销与峰谷档同口径：按事件时刻判定该笔流量当时享受的单价。
@@ -1177,7 +1177,7 @@ export function computeCostAt(
     ? FLASH_REPRICED_OFFPEAK[entry.key]
     : undefined
   if (repriced !== undefined) {
-    const tier = timeMs < WEEKEND_OFFPEAK_START_MS ? tariffV1At(timeMs) : tierAt(timeMs)
+    const tier = tierOverride ?? (timeMs < WEEKEND_OFFPEAK_START_MS ? tariffV1At(timeMs) : tierAt(timeMs))
     const band = tier === 'peak'
       ? { input: repriced.input * 2, cacheHit: repriced.cacheHit * 2, output: repriced.output * 2 }
       : repriced
@@ -1193,7 +1193,7 @@ export function computeCostAt(
     return peak * peakShare + off * (1 - peakShare)
   }
   // 档位判定按事件时刻分段适用规则：v1 窗口不豁免周末，分界起周末全谷。
-  const tier = timeMs < WEEKEND_OFFPEAK_START_MS ? tariffV1At(timeMs) : tierAt(timeMs)
+  const tier = tierOverride ?? (timeMs < WEEKEND_OFFPEAK_START_MS ? tariffV1At(timeMs) : tierAt(timeMs))
   const band = tier === 'peak' ? priced.price : priced.price.offPeak
   return priceBandCost(band, buckets, priced.price.currency)
 }

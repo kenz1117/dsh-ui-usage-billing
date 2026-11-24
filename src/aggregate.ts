@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import { accountRoute, customTier, effectiveRule, scheduleKey, type PeakSchedule } from './peak-schedule.ts'
 /**
  * Real-usage aggregation: folds every persisted session log into the
  * usage-stats document the dashboard renders.
@@ -221,6 +223,7 @@ export function sumSiteBuckets(
 
 /** Aggregation tuning options. */
 export interface AggregateOptions {
+  resolvePeakSchedule?: () => PeakSchedule
   /** 订阅制 provider id 列表；缺省按订阅卡同款 id 判定（`isSubscriptionProviderId`）。 */
   subscriptionProviders?: readonly string[]
   /**
@@ -389,6 +392,8 @@ interface CallFoldContext {
   /** 通道归组键（`site:` / `direct:` / `unknown`）。 */
   siteBucket: string
   /** 未知通道（配置外 provider）：支出主体不可核实，费用记 0（issue #82）。 */
+  schedule?: PeakSchedule | undefined
+  protectedAccount?: boolean
   unverifiedChannel: boolean
   /** 调用时刻（epoch ms）：驱动时段档与促销判定。 */
   timeMs: number
@@ -417,6 +422,8 @@ function foldModelCall(ctx: CallFoldContext): { entry: ModelEntry | undefined; c
   // 与计价共用同一次查找，不额外增加热路径成本。
   const entry = modelOf(modelKey)
   // 本条调用的费用：一次计价全程复用（逐桶重算会让最热路径付出 N 倍常数）。
+  const rule = !ctx.protectedAccount && entry.provider === 'DeepSeek' && entry.price.offPeak !== undefined ? ctx.schedule?.models[scheduleKey(siteBucket, modelKey)] : undefined
+  const override = rule === undefined ? undefined : customTier(timeMs, effectiveRule(siteBucket, rule))
   const thisCost = priced ? computeCostAt(entry, {
     input: (usage.cacheReadTokens ?? 0) + usage.inputTokens + (usage.cacheWriteTokens ?? 0),
     cacheHit: usage.cacheReadTokens ?? 0,
@@ -424,7 +431,7 @@ function foldModelCall(ctx: CallFoldContext): { entry: ModelEntry | undefined; c
     // 缓存写入单列计价（issue #123）：厂商对写入缓存单独收费时按其单价计。
     cacheWrite: usage.cacheWriteTokens ?? 0,
     output: usage.outputTokens,
-  }, timeMs) : undefined
+  }, timeMs, undefined, override) : undefined
   foldUsage(fold.total, usage, modelKey, subscription, timeMs, official, thisCost, unverifiedChannel)
   foldUsage(usageCell(fold.byModel, modelKey), usage, modelKey, subscription, timeMs, official, thisCost, unverifiedChannel)
   foldUsage(usageCell(fold.byDay, day), usage, modelKey, subscription, timeMs, official, thisCost, unverifiedChannel)
@@ -437,7 +444,7 @@ function foldModelCall(ctx: CallFoldContext): { entry: ModelEntry | undefined; c
   // 无关（peakShare 混合），不套北京峰谷窗分桶——否则峰谷占比条把无时间窗
   // 语义的流量虚计入峰/谷（FOLD_VERSION 23）。
   if (entry.tierSemantics !== 'latency') {
-    foldUsage(usageCell(fold.byTier, tierAt(timeMs)), usage, modelKey, subscription, timeMs, official, thisCost, unverifiedChannel)
+    foldUsage(usageCell(fold.byTier, override ?? tierAt(timeMs)), usage, modelKey, subscription, timeMs, official, thisCost, unverifiedChannel)
   }
   if (subscription) fold.planCalls.set(modelKey, (fold.planCalls.get(modelKey) ?? 0) + 1)
   // 三维格同款计数：provider 视图的行 plan 按本格判定，键与 byDayModelsSite 对齐。
@@ -449,7 +456,7 @@ function foldModelCall(ctx: CallFoldContext): { entry: ModelEntry | undefined; c
   // 再按 user/tool 消息字符占比摊分。压缩调用同样计入（否则 byRole 合计
   // 恒小于总费用，界面两处数字对不上）。
   if (thisCost !== undefined && entry !== undefined) {
-    const outputCost = computeCostAt(entry, { input: 0, cacheHit: 0, cacheMiss: 0, output: usage.outputTokens }, timeMs)
+    const outputCost = computeCostAt(entry, { input: 0, cacheHit: 0, cacheMiss: 0, output: usage.outputTokens }, timeMs, undefined, override)
     fold.roles.outputCost += outputCost
     fold.roles.inputCost += thisCost - outputCost
   }
@@ -544,6 +551,7 @@ export interface UsagePersistence {
 
 /** The usage-stats document served to the billing dashboard. */
 export interface UsageStatsDocument {
+  peakSchedule?: PeakSchedule
   version: number
   updatedAt: number
   source: 'session-logs'
@@ -751,6 +759,7 @@ export function foldSubagentFamilies(rows: SessionUsageRow[]): void {
 
 /** 每轮费用明细行：仪表盘「每轮费用」图的数据源。 */
 export interface TurnUsageRow {
+  scheduleSource?: string
   /** 会话 id（字符串形式）：不同会话的轮次号相互独立，展示时需区分。 */
   sessionId: string
   /** 会话内轮次号。 */
@@ -1826,6 +1835,7 @@ function modelDaySiteCell(
 
 /** 每轮折叠的中间状态：turn/start 设起点，turn/end 设终点，调用累加桶与成本。 */
 interface TurnState {
+  scheduleSource?: string
   turn: number
   model: string
   input: number
@@ -1852,6 +1862,7 @@ function turnState(turns: Map<number, TurnState>, turn: number): TurnState {
  * （跨进程不序列化——重启后的会话退回全量重折，语义保守正确）。
  */
 interface FoldMachine {
+  protectedAccount?: boolean
   key: string
   subscription: boolean
   official: boolean
@@ -1924,8 +1935,10 @@ function foldInto(
   searchCallEstimateCny: number,
   seedLength: number,
   routeAliases: Readonly<Record<string, string>> = {},
+  schedule?: PeakSchedule,
 ): void {
   // 归因状态在进出时与 machine 同步：循环体保持与全量折叠完全相同的写法。
+  let protectedAccount = machine.protectedAccount ?? true
   let key = machine.key
   let subscription = machine.subscription
   let official = machine.official
@@ -1984,6 +1997,7 @@ function foldInto(
       const { model, provider: rawProvider } = (event.data as { header: { config: { model: string; provider: string } } }).header.config
       // 历史路由别名归位：改名/删除的旧路由按别名映射到当前路由后再做一切判定。
       const provider = routeAliases[rawProvider] ?? rawProvider
+      protectedAccount = accountRoute(rawProvider) || accountRoute(provider)
       key = resolveCatalogKey(model)
       // 订阅套餐 provider 的调用即使撞名计费表也一律免费。
       subscription = isSubscriptionCall(subscriptionProviders, provider)
@@ -2068,6 +2082,8 @@ function foldInto(
       // 压缩事件不带 turn/step：不进每轮明细与性能样本（宿主未记录 step 语义）。
       foldModelCall({
         fold,
+        protectedAccount: accountRoute(data.provider) || accountRoute(provider),
+        schedule,
         usage: compactionUsage,
         modelKey,
         subscription: compactionSubscription,
@@ -2090,6 +2106,7 @@ function foldInto(
     if (source?.kind === 'model' && typeof source.provider === 'string' && typeof source.model === 'string') {
       // 权威归属同样先做路由别名归位，与 request/header 口径一致。
       const provider = routeAliases[source.provider] ?? source.provider
+      protectedAccount = accountRoute(source.provider) || accountRoute(provider)
       key = resolveCatalogKey(source.model)
       subscription = isSubscriptionCall(subscriptionProviders, provider)
       // 订阅豁免命中的配置外通道归位 direct，与 header 口径一致（issue #37）。
@@ -2110,6 +2127,8 @@ function foldInto(
       subscription,
       official,
       siteBucket,
+      schedule,
+      protectedAccount,
       unverifiedChannel: siteBucket === 'unknown',
       timeMs: event.time,
       day,
@@ -2118,6 +2137,8 @@ function foldInto(
     const turn = (event.data as { turn?: number }).turn ?? -1
     const state = turnState(turns, turn)
     state.model = modelKey
+    if (protectedAccount || siteBucket === 'unknown') delete state.scheduleSource
+    else state.scheduleSource = siteBucket
     state.input += usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
     state.output += usage.outputTokens
     state.cacheHit += usage.cacheReadTokens ?? 0
@@ -2139,6 +2160,7 @@ function foldInto(
     }
   }
   // 归因状态写回 machine：后续批次（分片/增量）从这里继续。
+  machine.protectedAccount = protectedAccount
   machine.key = key
   machine.subscription = subscription
   machine.official = official
@@ -2154,6 +2176,7 @@ function refreshTurns(fold: SessionFold, machine: FoldMachine): void {
     .map(state => ({
       turn: state.turn,
       model: state.model,
+      ...(state.scheduleSource === undefined ? {} : { scheduleSource: state.scheduleSource }),
       input: state.input,
       output: state.output,
       cacheHit: state.cacheHit,
@@ -2190,10 +2213,11 @@ export function foldSession(
   searchCallEstimateCny: number = DEFAULT_SEARCH_CALL_ESTIMATE_CNY,
   seedLength = 0,
   routeAliases: Readonly<Record<string, string>> = {},
+  schedule?: PeakSchedule,
 ): SessionFold {
   const fold = freshFold()
   const machine = freshMachine()
-  foldInto(fold, machine, events, subscriptionProviders, officialProviderIds, routes, searchCallEstimateCny, seedLength, routeAliases)
+  foldInto(fold, machine, events, subscriptionProviders, officialProviderIds, routes, searchCallEstimateCny, seedLength, routeAliases, schedule)
   refreshTurns(fold, machine)
   return fold
 }
@@ -2680,7 +2704,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       // stale 标记（foldVersion/指纹比对）依赖当前指纹。
       const registeredProviders = options.resolveRegisteredProviders?.() ?? new Set<string>()
       const roundRoutes = routesOf(registeredProviders)
-      foldFingerprint = foldFingerprintOf(registeredProviders, roundRoutes)
+      const schedule = options.resolvePeakSchedule?.()
+      foldFingerprint = foldFingerprintOf(registeredProviders, roundRoutes) + (schedule && Object.keys(schedule.models).length ? '|schedules:' + createHash('sha256').update(JSON.stringify(schedule.models)).digest('hex') : '')
 
       const seen = new Set<string>()
       const included = new Set<string>()
@@ -2808,7 +2833,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
               cache.delete(id)
               continue
             }
-            foldInto(previous.fold, previous.machine, events, subscriptionMatcher, officialProviderIds, roundRoutes, searchEstimate, inheritedEventCount, routeAliases)
+            foldInto(previous.fold, previous.machine, events, subscriptionMatcher, officialProviderIds, roundRoutes, searchEstimate, inheritedEventCount, routeAliases, schedule)
             refreshTurns(previous.fold, previous.machine)
             const last = events[events.length - 1]
             previous.lastSeq = last?.seq ?? previous.lastSeq
@@ -2834,7 +2859,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           const fold = freshFold()
           const machine = freshMachine()
           for (let start = 0; start < events.length; start += FOLD_CHUNK_EVENTS) {
-            foldInto(fold, machine, events.slice(start, start + FOLD_CHUNK_EVENTS), subscriptionMatcher, officialProviderIds, roundRoutes, searchEstimate, inheritedEventCount, routeAliases)
+            foldInto(fold, machine, events.slice(start, start + FOLD_CHUNK_EVENTS), subscriptionMatcher, officialProviderIds, roundRoutes, searchEstimate, inheritedEventCount, routeAliases, schedule)
             // 墙钟让出（FOLD_SLICE_MS）：FOLD_CHUNK_EVENTS 只负责把超长事件数组
             // 切成有限内存片，让出节拍由片间累计耗时决定——单片再小、连折多片
             // 累计超预算同样要让，宿主 RPC 不被连续饿死（issue #104/#105）。
@@ -3131,6 +3156,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         // 真实会话总数（未封顶）：面板的「共 N 个会话」按它说，不再把封顶行数
         // 当成总数（旧快照缺该字段，客户端回退按行数）。
         bySessionTotal: sessionRows.length,
+        ...(schedule && Object.keys(schedule.models).length ? { peakSchedule: schedule } : {}),
         byTurn: turnRows.slice(0, TURN_ROW_LIMIT),
         byWorkspace: workspaces.slice(0, SESSION_ROW_LIMIT),
         ...(byTier.size === 0 ? {} : { byTier: { peak: byTier.get('peak') ?? emptyUsage(), offPeak: byTier.get('offPeak') ?? emptyUsage() } }),
@@ -3180,7 +3206,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
   return {
     aggregate(): Promise<UsageStatsDocument> {
       const now = Date.now()
-      if (lastDoc !== undefined && now - lastAt < AGGREGATE_TTL_MS) return Promise.resolve(lastDoc)
+      const currentSchedule = options.resolvePeakSchedule?.()
+      const activeSchedule = currentSchedule && Object.keys(currentSchedule.models).length ? currentSchedule : undefined
+      if (lastDoc !== undefined && lastDoc.peakSchedule === activeSchedule && now - lastAt < AGGREGATE_TTL_MS) return Promise.resolve(lastDoc)
       // 冷phase（issue #105）：闸门内的请求只吃账本轻文档，不触发任何日志读取
       // ——UI 一加载的轮询不再把全量折叠拉进启动关键路径。完整折叠已在飞（闸门
       // 刚开）时等它，而不是再折一遍。

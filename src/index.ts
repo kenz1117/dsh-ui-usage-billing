@@ -51,6 +51,10 @@ import { planTypeOf, subscriptionFeeCnyOf } from './client/plan-knowledge.ts'
 import { swallowed } from './silent.ts'
 // v1.5.2 抽出：共享 loopback 守卫 + 9 条 HTTP 路由的注册块各自独立成文件，apply() 收缩为装配器。
 import { normalizeTrustedHosts } from './guard.ts'
+import { registerPeakScheduleRoute, PeakScheduleInputError } from './routes/peak-schedule.ts'
+import { eligibleScheduleModel, scheduleModels } from './peak-schedule-models.ts'
+import { openScheduleStore } from './peak-schedule-store.ts'
+import { parseSchedule, scheduleKey } from './peak-schedule.ts'
 import { registerNotifyClaimRoute } from './routes/notify-claim.ts'
 import { registerPricingRoutes } from './routes/pricing.ts'
 import { registerBalanceRoute } from './routes/balance.ts'
@@ -763,8 +767,33 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       swallowed('minimax-plan-classify-failed', error)
     }
   }
+  const schedules = openScheduleStore(config.peakSchedulePath ?? join(dshHome, '.dsh-usage-peak-schedule.json'), eligibleScheduleModel)
+  const configuredScheduleModels = async () => {
+    const descriptors = ctx.settings.describe({ redactSecrets: true })
+    const pi = descriptors.find(d => d.ns === 'llm-pi-ai')?.value as { providers?: Parameters<typeof scheduleModels>[1] } | undefined
+    const llm = (ctx as { get?: (key: string) => unknown }).get?.('llm') as Parameters<typeof scheduleModels>[0]
+    return scheduleModels(llm, pi?.providers ?? {}, config.routeAliases ?? {})
+  }
+  registerPeakScheduleRoute(ctx, { trustedHosts, read: async () => {
+    const result = await configuredScheduleModels()
+    const warning = [result.warning, schedules.warning()].filter(Boolean).join(' ')
+    return { config: schedules.current(), models: result.models, ...(warning ? { warning } : {}) }
+  }, save: async raw => {
+    const snapshot = await configuredScheduleModels()
+    const allowed = new Set(snapshot.models.map(row => scheduleKey(row.source, row.model)))
+    let next
+    try {
+      next = parseSchedule(raw, eligibleScheduleModel)
+      for (const [key, rule] of Object.entries(next.models)) {
+        if (!allowed.has(key) && JSON.stringify(rule) !== JSON.stringify(schedules.current().models[key])) throw Error('Source/model is not configured')
+      }
+    } catch (error) { throw new PeakScheduleInputError(error instanceof Error ? error.message : 'Invalid schedule') }
+    await schedules.save(next)
+    return { config: next, ...snapshot }
+  } })
   const replayDelayMs = readReplayDelayMs(config.replayDelayMs)
   const aggregator = createUsageAggregator(adaptSessionPersistence(ctx.sessionPersistence), {
+    resolvePeakSchedule: schedules.current,
     subscriptionMatcher: subscriptionRoutes,
     // 历史路由别名：改名/删除路由的历史用量按别名归位（站点/订阅/官方判定同步生效）。
     ...(config.routeAliases === undefined ? {} : { routeAliases: config.routeAliases }),

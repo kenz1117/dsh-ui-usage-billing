@@ -46,6 +46,8 @@ export interface UsageBillingConfig {
     ledgerPath?: string;
     /** 余额差对账基准的持久化路径；默认 `<harness home>/.dsh-usage-reconcile.json`。 */
     reconcilePath?: string;
+    /** Independent per-source peak schedules (defaults to the host profile directory). */
+    peakSchedulePath?: string;
     /** 低谷任务队列的持久化路径；默认 `<harness home>/.dsh-usage-task-queue.json`。
      *  文件包含待执行 Prompt，以 0600 写入；测试可注入临时路径隔离真实队列。 */
     taskQueuePath?: string;

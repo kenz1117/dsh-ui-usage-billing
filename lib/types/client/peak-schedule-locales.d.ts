@@ -1,0 +1,32 @@
+export declare const peakZh: {
+    psAddHoliday: string;
+    psRemoveHoliday: string;
+    psTitle: string;
+    psModel: string;
+    psEmpty: string;
+    psConfigured: string;
+    psWindows: string;
+    psInherit: string;
+    psCustom: string;
+    psOff: string;
+    psDates: string;
+    psDaily: string;
+    psWeekdays: string;
+    psHolidays: string;
+    psNoHolidays: string;
+    psZone: string;
+    psOffset: string;
+    psClear: string;
+    psSave: string;
+    psSaved: string;
+    psDirty: string;
+    psRetry: string;
+    psLoading: string;
+    psLoadError: string;
+    psSaveError: string;
+    psBadWindows: string;
+    psBadHolidays: string;
+    psBadOffset: string;
+};
+export declare const peakEn: Record<keyof typeof peakZh, string>;
+//# sourceMappingURL=peak-schedule-locales.d.ts.map

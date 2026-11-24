@@ -89,8 +89,8 @@ import type { createBillingBudgetStore } from './budget-store.ts'
 import { EMPTY_MODEL_BUDGETS, EMPTY_MODEL_TIER_ALERT_DAYS } from './budget-store.ts'
 import { convertFromCny,
   applyLiveCatalogModels, applyUserPrices, catalogEntries, computeCost, convertUnitPrice,
-  formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, isPromoActive,
-  channelCountdown, localDayStamp, modelOf, normalizeOriginInput, rateChannelOf, tierAt, type CostCurrency, type TokenUsageBuckets,
+  formatMoney, formatPercent, formatSwitchCountdown, formatTokens, formatUnitPrice, getRateInfo, isPromoActive,
+  localDayStamp, modelOf, normalizeOriginInput, rateChannelOf, tierAt, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { ProviderBalance, ReconcileNotice, RelayQuota } from '../pricing-shared.ts'
 import type { SubscriptionQuota } from '../pricing-shared.ts'
@@ -153,6 +153,8 @@ import { fetchBalanceDoc } from './api/balance.ts'
 import { fetchSubscriptions } from './api/subscriptions.ts'
 import { fetchRelayQuotas } from './api/relay.ts'
 import { loadUsageTool, saveUsageTool } from './api/usage-tool.ts'
+import { modelBand, ruleForTurn, scheduledCountdown } from './scheduled-band.ts'
+import { PeakScheduleEditor } from './PeakScheduleEditor.tsx'
 import { lastPricingSyncedAt, loadLivePricing, syncPricingNow } from './api/pricing.ts'
 import { TaskQueuePanel } from './TaskQueuePanel.tsx'
 import { loadTaskQueueSummary } from './api/task-queue.ts'
@@ -674,6 +676,7 @@ type DashboardRenderSlots = PropsRenderSlots<'billing.dashboard.decor'>
 /** Props of the billing dashboard modal. */
 interface BillingDashboardProps {
   stats: UsageStats
+  onScheduleSaved: () => void
   /**
    * 取数失败原因（issue #119）：非空时面板顶部显示「读取失败」提示——此前失败
    * 被吞成空统计，用户只看到一片 0，分不清「没花钱」和「没读到」。
@@ -1168,7 +1171,7 @@ function ChannelVisibilityCell({ prefs, onPrefs, groups, t, money }: {
 }
 
 function BillingDashboard({
-  stats, statsError, t, onClose, embeddedSettings = false, userPrices, onUserPrices, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, language, onLanguage, turns,
+  stats, statsError, onScheduleSaved, t, onClose, embeddedSettings = false, userPrices, onUserPrices, health, balances, reconcile, quotas, relayQuotas, currency, onCurrency, language, onLanguage, turns,
   renderSlot, budgetEnabled, budgetAmount, onToggleBudget, onBudgetAmount,
   modelBudgets, monthModelCost, onModelBudget,
   peakConfig, onPeakConfig, onPreviewPeak, floatPrefs, onFloatPrefs, cardPrefs, onCardPrefs, recoveryEntryAvailable, sitePrefs, onSitePrefs, channelPrefs, onChannelPrefs, channelGroups,
@@ -1493,6 +1496,9 @@ function BillingDashboard({
   }, [])
   const hasBandPlan = quotas.some(q => q.displayName === 'Z.ai Coding Plan' && q.status === 'ok')
   const bandLeadMs = peakConfig.leadMin * 60_000
+  const rateTurn = stats.byTurn?.[0]
+  const rateRule = ruleForTurn(rateTurn, stats.peakSchedule)
+  const rateBand = rateRule ? scheduledCountdown(bandNow, rateChannelOf(rateTurn?.model, hasBandPlan), rateRule) : null
 
   // 费率表单价：按用户所选币种换算后再格式化（原生币种 × 汇率）；0 价显示"免费"。
   // 切 USD 时把 ¥ 计价模型换算成 $，费率表不再固定显示人民币。
@@ -3295,7 +3301,7 @@ function BillingDashboard({
               </section>
 
               {/* 5. 自定义单价：set-card——已存价列表 + 新增行；显示层重估，口径差异见说明。 */}
-              <div hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.advanced)} id="settings-advanced"><UserPriceCard userPrices={userPrices} onUserPrices={onUserPrices} t={t} unpricedIds={stats.unpricedModels ?? []} /></div>
+              <div hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.advanced)} id="settings-advanced"><PeakScheduleEditor t={t} onSaved={onScheduleSaved} /><UserPriceCard userPrices={userPrices} onUserPrices={onUserPrices} t={t} unpricedIds={stats.unpricedModels ?? []} /></div>
 
               {/* 6. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
               <div hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.about)} id="settings-about"><PluginInfoCard t={t} version={stats.pluginVersion} /></div>
@@ -3402,6 +3408,7 @@ function BillingDashboard({
                   </p>
                   <RoundCostChart
                     rounds={turns}
+                    peakSchedule={stats.peakSchedule}
                     flags={roundFlags}
                     currency={currency}
                     t={t}
@@ -4107,7 +4114,10 @@ function BillingDashboard({
                     {pricingSyncing ? t('pricingSyncing') : t('pricingSyncNow')}
                   </button>
                 </div>
-                <p className={css.ubAlertNote}>{t('pricingTip')}</p>
+                <p className={css.ubAlertNote}>{rateBand && rateTurn ? <>
+                   {rateTurn.scheduleSource} / {modelOf(rateTurn.model).name} · {t('psConfigured')} · {t(rateBand.tier === 'peak' ? 'tierPeak' : 'tierOff')}
+                   {Number.isFinite(rateBand.nextSwitchInMs) && ` · ${formatSwitchCountdown(rateBand.nextSwitchInMs)} ${t(rateBand.tier === 'peak' ? 'tierToOff' : 'tierToPeak')}`}
+                 </> : t('pricingTip')}</p>
               </div>
 
               {/* 2. 模型单价表：ub-card —— 头部(标题+单位) + 表格（模型点+名 / 峰谷 chips / 未收录行）。 */}
@@ -4148,7 +4158,7 @@ function BillingDashboard({
                             <td>
                               <span className={css.ubModel}>
                                 {(() => {
-                                  const state = bandStateOf(channelCountdown(bandNow, rateChannelOf(entry.key, hasBandPlan)), bandLeadMs)
+                                  const state = bandStateOf(modelBand(bandNow, entry.key, hasBandPlan, stats.byTurn?.[0], stats.peakSchedule), bandLeadMs)
                                   if (state === null) return null
                                   const isPinned = pinnedModels.includes(entry.key)
                                   const label = `${entry.name} · ${t(state === 'peak' ? 'peak' : 'offPeak')} · ${t('bandPinHint')}`
@@ -4734,16 +4744,18 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   // 当前对话的峰谷窗口：跟随最近一轮调用的模型（byTurn 服务端按起始时间倒序）
   // 与订阅状态推导——DeepSeek 按量分时 / 智谱 Coding Plan 积分分时 / 其余不涉及。
   const hasZhipuPlan = quotas.some(q => q.displayName === 'Z.ai Coding Plan' && q.status === 'ok')
-  const currentChannel = rateChannelOf(stats.byTurn?.[0]?.model, hasZhipuPlan)
+  const currentTurn = stats.byTurn?.[0]
+  const currentChannel = rateChannelOf(currentTurn?.model, hasZhipuPlan)
+  const currentRule = useMemo(() => ruleForTurn(currentTurn, stats.peakSchedule), [currentTurn, stats.peakSchedule])
   const previewPeak = useCallback(() => {
     // 预览：3 分钟后进入与当前相反的档位（不触真实去重，关闭即消失）；
     // 文案按当前通道口径渲染。
     setPeakPreview({
-      entering: tierAt(Date.now()) === 'peak' ? 'offPeak' : 'peak',
+      entering: (scheduledCountdown(Date.now(), currentChannel, currentRule)?.tier ?? tierAt(Date.now())) === 'peak' ? 'offPeak' : 'peak',
       atMs: Date.now() + 3 * 60_000,
       channel: currentChannel,
     })
-  }, [currentChannel])
+  }, [currentChannel, currentRule])
   const effectiveBudget = budgetAmount > 0 ? budgetAmount : (stats.budget ?? 0)
   // 预算临界态：与设置页进度条同阈值分档（≥80% 警示 / ≥100% 超支），驱动触发卡
   // 指针变红与卡片边缘红色脉冲。未启用预算或无金额时恒为 none。
@@ -4785,7 +4797,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
   // 队列文案只说明等待/启动语义，绝不取消或重放已开始的 Agent 轮次。
   useEffect(() => {
     if (peakConfig.enabled && !queueSummaryReady) return
-    const currentUpcoming = computePeakAlert(nowMs, peakConfig, lastTierSwitchAt, currentChannel)
+    const currentUpcoming = computePeakAlert(nowMs, peakConfig, lastTierSwitchAt, currentChannel, currentRule)
     const queueUpcoming = queuedForAlert > 0
       ? computePeakAlert(nowMs, peakConfig, lastTierSwitchAt, 'deepseek-metered')
       : null
@@ -4807,7 +4819,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     // 认领失败 = 另一实例刚发过同一切换点提醒，本实例跳过（issue #44）。
     notifyAcrossInstances(`peak:${upcoming.atMs}`, () => { new Notification(title, { body: `${baseBody}${queueBody}` }) })
     // quotas/stats.byTurn 已经由 currentChannel 捕获，不重复列入依赖。
-  }, [nowMs, lastTierSwitchAt, peakConfig, currentChannel, queuedForAlert, queueSummaryReady, actions, t])
+  }, [nowMs, lastTierSwitchAt, peakConfig, currentChannel, currentRule, queuedForAlert, queueSummaryReady, actions, t])
 
   // 余额不足告警：任一提供方余额低于阈值（折算人民币）时每天提醒一次；
   // 与预算开关无关——余额是硬性约束，无论是否开启预算都要提醒。
@@ -5019,6 +5031,7 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
           sessionTitleOf={sessionTitleOf}
           userPrices={userPrices}
           onUserPrices={updateUserPrices}
+          onScheduleSaved={() => reloadStats(true)}
           health={health}
           balances={balances}
           {...(reconcile === undefined ? {} : { reconcile })}

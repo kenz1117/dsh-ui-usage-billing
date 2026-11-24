@@ -1,15 +1,4 @@
-/**
- * Real-usage aggregation: folds every persisted session log into the
- * usage-stats document the dashboard renders.
- *
- * Each LLM call is attributed to the `message.source` carried by its own
- * `assistant/message` event (copied from the request at write time); the
- * sparse `request/header` is only a fallback. Costs are estimated with the
- * shared billing catalog (`pricing.ts`, in CNY), so only models the catalog
- * prices incur a cost — subscription-plan routes and unknown models price
- * zero while their tokens still count. Pure functions only: the persistence
- * handle is injected, so the fold is unit-testable without a host.
- */
+import { type PeakSchedule } from './peak-schedule.ts';
 import type { SessionEvent, SessionHeader, SessionId, SessionLogOffset as SessionLogOffsetT } from '@deepseek-ai/dsh-session/types';
 import type { TokenUsage } from '@deepseek-ai/dsh-llm';
 import { resolveCatalogKey } from './client/pricing.ts';
@@ -130,6 +119,7 @@ export declare function sumSiteBuckets(bySite: Readonly<Record<string, {
 };
 /** Aggregation tuning options. */
 export interface AggregateOptions {
+    resolvePeakSchedule?: () => PeakSchedule;
     /** 订阅制 provider id 列表；缺省按订阅卡同款 id 判定（`isSubscriptionProviderId`）。 */
     subscriptionProviders?: readonly string[];
     /**
@@ -293,6 +283,7 @@ export interface UsagePersistence {
 }
 /** The usage-stats document served to the billing dashboard. */
 export interface UsageStatsDocument {
+    peakSchedule?: PeakSchedule;
     version: number;
     updatedAt: number;
     source: 'session-logs';
@@ -464,6 +455,7 @@ export declare function subParentOf(meta: SessionHeader): string | undefined;
 export declare function foldSubagentFamilies(rows: SessionUsageRow[]): void;
 /** 每轮费用明细行：仪表盘「每轮费用」图的数据源。 */
 export interface TurnUsageRow {
+    scheduleSource?: string;
     /** 会话 id（字符串形式）：不同会话的轮次号相互独立，展示时需区分。 */
     sessionId: string;
     /** 会话内轮次号。 */
@@ -765,7 +757,7 @@ export declare function foldSession(events: readonly {
     time: number;
     data: unknown;
     seq?: number;
-}[], subscriptionProviders: SubscriptionMatcher, officialProviderIds?: ReadonlySet<string>, routes?: Readonly<Record<string, ProviderRouteView>>, searchCallEstimateCny?: number, seedLength?: number, routeAliases?: Readonly<Record<string, string>>): SessionFold;
+}[], subscriptionProviders: SubscriptionMatcher, officialProviderIds?: ReadonlySet<string>, routes?: Readonly<Record<string, ProviderRouteView>>, searchCallEstimateCny?: number, seedLength?: number, routeAliases?: Readonly<Record<string, string>>, schedule?: PeakSchedule): SessionFold;
 /**
  * 增量聚合器：按会话缓存折叠结果，用日志文件的 mtime+size 作失效键——
  * 日志没动的会话直接复用，只有写过的会话重新折叠；整份文档另有短 TTL
