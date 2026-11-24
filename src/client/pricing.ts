@@ -178,19 +178,13 @@ export function userPriceEntryOf(key: string, origin?: string): UserPriceEntry |
   return undefined
 }
 
-/**
- * 查一个模型的「带来源」用户价条目（无视来源值，取第一条命中模型名的
- * 带 origin 条目）。供 recost 在三维站点数据缺失时兜底：用户填了来源价
- * 就按它重估，而不是静默回退宿主原价（issue #18）。
- * @param key - 计费目录键。
- */
-export function userOriginPriceEntryOf(key: string): UserPriceEntry | undefined {
-  if (userPrices === undefined) return undefined
+/** 查一个模型的所有来源价。旧快照只有恰好一条可选时才允许兜底（issue #18）。 */
+export function userOriginPriceEntriesOf(key: string): UserPriceEntry[] {
   const resolved = resolvePriceKey(key)
   const canon = canonModelId(resolved)
-  return userPrices.find(entry =>
+  return userPrices?.filter(entry =>
     entry.origin !== undefined && entry.origin !== ''
-    && (resolvePriceKey(entry.key) === resolved || canonModelId(entry.key) === canon))
+    && (resolvePriceKey(entry.key) === resolved || canonModelId(entry.key) === canon)) ?? []
 }
 
 /**
@@ -866,6 +860,17 @@ function livePriceOf(key: string): LivePrice | undefined {
   const fallback = FALLBACK_RATES.find(rate => rate.key.toLowerCase() === resolved.toLowerCase())
   if (fallback === undefined) return undefined
   return { input: fallback.input, cacheHit: fallback.cacheHit, output: fallback.output }
+}
+
+/** Price to seed a new override; never promote the generic fallback to a real zero price. */
+export function pickerPrice(key: string): ModelEntry['price'] | undefined {
+  const resolved = resolveCatalogKey(key)
+  const builtin = modelCatalog().find(entry => entry.key === resolved && entry.key !== 'other')
+  const live = livePriceOf(resolved)
+  if (live && !builtin?.price.offPeak) return { ...live, currency: 'USD' }
+  if (builtin) return applyPromo(builtin, Date.now()).price
+  const extra = extraModelByKey().get(resolved)
+  return extra && extraEntryOf(extra).price
 }
 
 /** Lookup a model by its stats key; falls back to the generic `other` entry. */

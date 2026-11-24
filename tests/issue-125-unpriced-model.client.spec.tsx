@@ -36,10 +36,12 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function stubUsageStats(): void {
+function stubUsageStats(configured: () => unknown[] = () => []): void {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
-    const body = url.includes('/api/billing/pricing')
+    const body = url.endsWith('/pricing-models')
+      ? { models: configured().map(key => ({ key, name: key, channel: 'Relay', route: 'relay', origin: 'https://relay.test' })), partial: false }
+      : url.includes('/api/billing/pricing')
       ? { source: 'builtin' }
       : {
           total: { calls: 2, input: 10000, output: 5000, cacheHit: 0, cacheMiss: 10000, cost: 0, reasoning: 0 },
@@ -71,6 +73,69 @@ function makeProps(): ComponentProps<typeof UsageBilling> {
 }
 
 describe('issue #125 未收录模型的可发现性', () => {
+  it('locks and deduplicates selections, preserves edits across discovery and requires explicit prices', async () => {
+    let keys = ['relay：unknown', 'flash']
+    stubUsageStats(() => keys)
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    fireEvent.click(await screen.findByTestId('billing-unpriced-fix'))
+    const picker = await screen.findByTestId('billing-price-picker')
+    const select = (key: string) => fireEvent.change(picker, { target: { value: JSON.stringify([key, 'https://relay.test']) } })
+    await waitFor(() => expect(picker.textContent).toContain('relay：unknown'))
+    select('relay：unknown'); select('relay：unknown')
+    expect(screen.getAllByTestId('billing-user-price-row')).toHaveLength(1)
+    expect((screen.getByTestId('billing-user-price-model') as HTMLInputElement).readOnly).toBe(true)
+    const save = screen.getByTestId('billing-user-price-save') as HTMLButtonElement
+    expect(save.disabled).toBe(true)
+    const inputs = screen.getByTestId('billing-user-price-normal').querySelectorAll('input')
+    for (const input of inputs) fireEvent.change(input, { target: { value: '0' } })
+    expect(save.disabled).toBe(false)
+    const off = screen.getByTestId('billing-user-price-offpeak').querySelectorAll('input')
+    fireEvent.change(off[0]!, { target: { value: '0' } }); expect(save.disabled).toBe(true)
+    for (const input of [...off].slice(1)) fireEvent.change(input, { target: { value: '0' } })
+    expect(save.disabled).toBe(false)
+    keys = ['flash', 'added']
+    fireEvent.focus(window)
+    await waitFor(() => expect(picker.textContent).toContain('added'))
+    expect(inputs[0]!.value).toBe('0')
+    select('flash')
+    expect(screen.getAllByTestId('billing-user-price-row')).toHaveLength(2)
+    expect(Number(screen.getAllByTestId('billing-user-price-normal')[1]!.querySelector('input')!.value)).toBeGreaterThan(0)
+    fireEvent.click(save)
+    const rows = JSON.parse(localStorage.getItem('dsh.ui-usage-billing.prices')!)
+    expect(rows[0]).toEqual({ key: 'relay：unknown', origin: 'https://relay.test', input: 0, output: 0, cacheHit: 0, offPeak: { input: 0, output: 0, cacheHit: 0 } })
+  })
+
+  it('shows partial discovery, ignores malformed rows, and unlocks identity only on Edit', async () => {
+    stubUsageStats(() => [42, 'valid:relay'])
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    fireEvent.click(await screen.findByTestId('billing-unpriced-fix'))
+    const picker = await screen.findByTestId('billing-price-picker')
+    await screen.findByText(t('priceModelsPartial'))
+    expect(picker.textContent).toContain('valid:relay')
+    expect(picker.textContent).not.toContain('42')
+    fireEvent.change(picker, { target: { value: JSON.stringify(['valid:relay', 'https://relay.test']) } })
+    const model = screen.getByTestId('billing-user-price-model') as HTMLInputElement
+    const origin = screen.getByTestId('billing-user-price-origin') as HTMLInputElement
+    expect(model.readOnly).toBe(true)
+    expect(origin.readOnly).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: t('userPriceEditIdentity') }))
+    expect(model.readOnly).toBe(false)
+    expect(origin.readOnly).toBe(false)
+    expect(document.activeElement).toBe(model)
+    expect(model.value).toBe('valid:relay')
+    expect(origin.value).toBe('https://relay.test')
+    fireEvent.change(origin, { target: { value: 'alt.test/v1' } })
+    for (const input of screen.getByTestId('billing-user-price-normal').querySelectorAll('input')) {
+      fireEvent.change(input, { target: { value: '1' } })
+    }
+    fireEvent.click(screen.getByTestId('billing-user-price-save'))
+    expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.prices')!)[0]).toMatchObject({
+      key: 'valid:relay', origin: 'https://alt.test', input: 1,
+    })
+  })
+
   it('概览横幅列出未收录模型 id', async () => {
     stubUsageStats()
     render(<UsageBilling {...makeProps()} />)

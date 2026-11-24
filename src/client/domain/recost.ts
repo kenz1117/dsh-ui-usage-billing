@@ -7,31 +7,27 @@
  */
 
 import {
-  canonModelId,
   DEFAULT_PEAK_SHARE,
   getRateInfo,
   getUserPrices,
-  userOriginPriceEntryOf,
-  userPriceOf,
+  userOriginPriceEntriesOf,
+  userPriceEntryOf,
 } from '../pricing.ts'
 import type { UsageStats } from './types.ts'
 
 export function recostWithUserPrices(stats: UsageStats): UsageStats {
   const entries = getUserPrices()
-  if (entries === undefined || stats.byDayModels === undefined) return stats
+  if (entries === undefined || stats.byDayModels === undefined || Object.keys(stats.byDayModels).length === 0) return stats
   // 逐 day×model 重算：用户价 = 用户填的实付单价（促销不叠加）；带低谷档时按
   // DEFAULT_PEAK_SHARE 比例混合（格内无调用时刻，无法逐笔分档）。
   const rate = getRateInfo().rate
-  // 是否启用「按来源（origin）」精确重估：需存在带 origin 的用户价 + 服务端三维数据。
-  const hasOriginData = stats.byDayModelsSite !== undefined
   const byDay: UsageStats['byDay'] = {}
   const byDayModels: UsageStats['byDayModels'] = {}
   const modelCost = new Map<string, number>()
+  const repriced = new Set<string>()
+  const stillUnpriced = new Set<string>()
+  const modelPrices = new Map<string, { defaultPrice: ReturnType<typeof userPriceEntryOf>; sourcePrices: ReturnType<typeof userOriginPriceEntriesOf> }>()
   let totalCost = 0
-  // 判断某模型是否命中「带来源」的用户价条目（用于决定是否走 origin 拆分重算）。
-  const hasOriginEntry = (key: string): boolean =>
-    entries.some(e => e.origin !== undefined && e.origin !== ''
-      && (e.key === key || canonModelId(e.key) === canonModelId(key)))
   const costFromPrice = (price: { currency?: 'CNY' | 'USD'; input: number; cacheHit: number; output: number; offPeak?: { input: number; cacheHit: number; output: number } } | undefined,
     cell: { cacheHit: number; cacheMiss: number; output: number }, fallback: number): number => {
     if (price === undefined) return fallback
@@ -48,23 +44,43 @@ export function recostWithUserPrices(stats: UsageStats): UsageStats {
     let dayCost = 0
     const dayModels: Record<string, { calls: number; input: number; output: number; cacheHit: number; cacheMiss: number; cost: number }> = {}
     for (const [key, cell] of Object.entries(models)) {
-      const priceDefault = userPriceOf(key)
-      // 带来源价的兜底：三维站点数据缺失或无匹配站点桶时，用该条来源价重估整格，
-      // 而不是静默回退宿主原价（issue #18：用户填了来源价却「没有效果」）。
-      const originFallback = priceDefault ?? userOriginPriceEntryOf(key)
-      const originEntry = hasOriginData && hasOriginEntry(key)
-      let cost: number
-      if (originEntry && stats.byDayModelsSite?.[date]?.[key] !== undefined) {
-        // 按「模型×站点」分布逐来源重算：带 origin 价宽松命中，其余回落默认价或内置。
-        let siteCost = 0
-        for (const [siteKey, siteCell] of Object.entries(stats.byDayModelsSite[date][key])) {
-          const origin = siteKey.startsWith('site:') ? siteKey.slice('site:'.length) : undefined
-          const sitePrice = origin !== undefined ? userPriceOf(key, origin) : undefined
-          siteCost += costFromPrice(sitePrice ?? originFallback, siteCell, siteCell.cost)
+      let prices = modelPrices.get(key)
+      if (prices === undefined) {
+        prices = { defaultPrice: userPriceEntryOf(key), sourcePrices: userOriginPriceEntriesOf(key) }
+        modelPrices.set(key, prices)
+      }
+      const { defaultPrice, sourcePrices } = prices
+      const sites = stats.byDayModelsSite?.[date]?.[key]
+      const applyPrice = (price: typeof defaultPrice, usage: typeof cell): number => {
+        if (usage.calls > 0) {
+          if (price === undefined) stillUnpriced.add(key)
+          else repriced.add(key)
         }
-        cost = siteCost
-      } else {
-        cost = costFromPrice(originFallback, cell, cell.cost)
+        return costFromPrice(price, usage, usage.cost)
+      }
+      let cost = cell.cost
+      if (stats.byModel[key]?.plan !== true) {
+        if (sites !== undefined && (defaultPrice !== undefined || sourcePrices.length > 0)) {
+          // 只对确知来源的用量应用来源价；新旧会话混合时，三维格可能只覆盖部分调用。
+          const remaining = { ...cell }
+          let siteCost = 0
+          for (const [siteKey, siteCell] of Object.entries(sites)) {
+            remaining.calls -= siteCell.calls
+            remaining.cacheHit -= siteCell.cacheHit
+            remaining.cacheMiss -= siteCell.cacheMiss
+            remaining.output -= siteCell.output
+            remaining.cost -= siteCell.cost
+            const origin = siteKey.startsWith('site:') ? siteKey.slice('site:'.length) : undefined
+            siteCost += siteCell.plan || siteKey === 'direct:deepseek-account'
+              ? siteCell.cost
+              : applyPrice(origin === undefined ? defaultPrice : userPriceEntryOf(key, origin), siteCell)
+          }
+          cost = siteCost + (remaining.calls > 0 ? applyPrice(defaultPrice, remaining) : 0)
+        } else {
+          // 仅旧快照缺整个三维格时允许用唯一来源价兜底；已知来源不匹配则保留宿主价。
+          const legacyPrice = stats.byDayModelsSite === undefined && sourcePrices.length === 1 ? sourcePrices[0] : undefined
+          cost = applyPrice(defaultPrice ?? legacyPrice, cell)
+        }
       }
       dayCost += cost
       dayModels[key] = { ...cell, cost }
@@ -85,8 +101,7 @@ export function recostWithUserPrices(stats: UsageStats): UsageStats {
       const cost = modelCost.get(key)
       return [key, cost === undefined ? cell : { ...cell, cost }]
     })),
-    // 已配用户价（默认价或来源价）的模型已被显示重估（issue #43），不再计入「未计价」提示。
-    unpricedModels: (stats.unpricedModels ?? []).filter(key =>
-      !userPriceOf(key) && !userOriginPriceEntryOf(key)),
+    // 仅当本期实际用量均已覆盖时才撤掉提示（issue #43）；不能只看配置里有没有价。
+    unpricedModels: (stats.unpricedModels ?? []).filter(key => !repriced.has(key) || stillUnpriced.has(key)),
   }
 }

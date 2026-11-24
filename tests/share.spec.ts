@@ -110,15 +110,68 @@ describe('recostWithUserPrices with origin-bound prices (issue #18)', () => {
     }
   })
 
-  it('falls back to the origin-bound price when the site grid is absent instead of keeping host cost', () => {
-    // 老账本回退文档没有 byDayModelsSite：带来源价仍要生效（此前静默失效）。
-    // statsFixture 本身无 byDayModelsSite，即该形状。
-    applyUserPrices([{ key: 'flash', origin: 'https://api.relay.com', input: 1, cacheHit: 0.1, output: 3 }])
+  const date = '2026-08-21'
+  const bound = { key: 'mystery', origin: 'https://api.relay.com', input: 1, cacheHit: 0.1, output: 3 }
+  const mystery = statsFixture().byDayModels![date]!.mystery!
+  const withSites = (sites: Record<string, typeof mystery>): UsageStats => ({
+    ...statsFixture(), byDayModelsSite: { [date]: { mystery: sites } },
+  })
+
+  it('prices legacy usage identically to an exact modern match when there is one source price', () => {
+    applyUserPrices([bound, { ...bound, key: 'unrelated' }])
     try {
-      const recosted = recostWithUserPrices(statsFixture())
-      expect(recosted.byDayModels?.['2026-08-21']?.flash?.cost).toBeCloseTo(205 / 1_000_000, 12)
+      const modern = recostWithUserPrices(withSites({ 'site:https://api.relay.com': mystery }))
+      const legacy = recostWithUserPrices(statsFixture())
+      expect(modern.byModel.mystery?.cost).toBeCloseTo(205 / 1_000_000, 12)
+      expect(legacy.byModel.mystery?.cost).toBe(modern.byModel.mystery?.cost)
+      expect(legacy.unpricedModels).toEqual(['other-unknown'])
+      expect(modern.unpricedModels).toEqual(legacy.unpricedModels)
     } finally {
       applyUserPrices([])
+    }
+  })
+
+  it('keeps the host cost and notice for ambiguous legacy prices and lets a model default win', () => {
+    const multiple = [bound, { ...bound, origin: 'https://other.test' }]
+    applyUserPrices(multiple)
+    try {
+      const legacy = recostWithUserPrices(statsFixture())
+      expect(legacy.byModel.mystery?.cost).toBe(mystery.cost)
+      expect(legacy.unpricedModels).toContain('mystery')
+      applyUserPrices([...multiple, { key: 'mystery', input: 2, cacheHit: 0.2, output: 6 }])
+      expect(recostWithUserPrices(statsFixture()).byModel.mystery?.cost).toBeCloseTo(410 / 1_000_000, 12)
+    } finally {
+      applyUserPrices([])
+    }
+  })
+
+  it('never falls back to a source-bound price with an empty or mismatched site grid', () => {
+    applyUserPrices([bound])
+    try {
+      for (const stats of [statsFixtureWithSite(), withSites({}), withSites({ 'site:https://other.test': mystery })]) {
+        const recosted = recostWithUserPrices(stats)
+        expect(recosted.byModel.mystery?.cost).toBe(mystery.cost)
+        expect(recosted.unpricedModels).toContain('mystery')
+      }
+    } finally {
+      applyUserPrices([])
+    }
+  })
+
+  it('retains unmatched host cost and the notice for incomplete or mixed-origin coverage', () => {
+    const covered = { ...mystery }
+    const uncovered = { ...mystery, cost: 0.0001 }
+    for (const otherSite of [undefined, 'site:https://other.test']) {
+      const stats = withSites({ 'site:https://api.relay.com': covered, ...(otherSite ? { [otherSite]: uncovered } : {}) })
+      stats.byDayModels![date]!.mystery = { ...mystery, calls: 2, input: 200, cacheHit: 100, cacheMiss: 100, output: 100, cost: uncovered.cost }
+      applyUserPrices([bound])
+      try {
+        const recosted = recostWithUserPrices(stats)
+        expect(recosted.byModel.mystery?.cost).toBeCloseTo(205 / 1_000_000 + uncovered.cost, 12)
+        expect(recosted.unpricedModels).toContain('mystery')
+      } finally {
+        applyUserPrices([])
+      }
     }
   })
 

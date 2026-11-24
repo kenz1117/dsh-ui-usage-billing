@@ -4,6 +4,13 @@
  * the built-in catalog). An absent field means the built-in value still
  * applies — the dashboard degrades to the catalog, never to fabricated data.
  */
+export interface PricingModel {
+    key: string;
+    name: string;
+    route: string;
+    channel: string;
+    origin: string;
+}
 /** One model's unit prices as reported by the router, in USD per 1M tokens. */
 export interface LivePrice {
     /** Uncached input price per 1M tokens. */

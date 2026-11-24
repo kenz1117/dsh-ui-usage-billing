@@ -30,6 +30,7 @@
     "src/relay.ts",
     "src/routes/notify-claim.ts",
     "src/routes/pricing.ts",
+    "src/routes/pricing-models.ts",
     "src/routes/balance.ts",
     "src/routes/usage-tool.ts",
     "src/routes/subscriptions.ts",

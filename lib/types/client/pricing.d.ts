@@ -103,13 +103,8 @@ export declare function userPriceOf(key: string, origin?: string): UserPrice | u
  * @param origin - 调用来源（中转站 origin）；缺省仅查默认价。
  */
 export declare function userPriceEntryOf(key: string, origin?: string): UserPriceEntry | undefined;
-/**
- * 查一个模型的「带来源」用户价条目（无视来源值，取第一条命中模型名的
- * 带 origin 条目）。供 recost 在三维站点数据缺失时兜底：用户填了来源价
- * 就按它重估，而不是静默回退宿主原价（issue #18）。
- * @param key - 计费目录键。
- */
-export declare function userOriginPriceEntryOf(key: string): UserPriceEntry | undefined;
+/** 查一个模型的所有来源价。旧快照只有恰好一条可选时才允许兜底（issue #18）。 */
+export declare function userOriginPriceEntriesOf(key: string): UserPriceEntry[];
 /**
  * Apply the node half's live pricing snapshot. Absent fields keep the
  * built-in catalog and rate; callers never fabricate values.
@@ -395,6 +390,8 @@ export declare function modelKeyAliases(): Readonly<Record<string, string>>;
  */
 export declare function canonModelId(id: string): string;
 export declare function resolveCatalogKey(id: string): string;
+/** Price to seed a new override; never promote the generic fallback to a real zero price. */
+export declare function pickerPrice(key: string): ModelEntry['price'] | undefined;
 /** Lookup a model by its stats key; falls back to the generic `other` entry. */
 export declare function modelOf(key: string): ModelEntry;
 /**

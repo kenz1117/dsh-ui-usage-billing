@@ -52,6 +52,7 @@ import { swallowed } from './silent.ts'
 // v1.5.2 抽出：共享 loopback 守卫 + 9 条 HTTP 路由的注册块各自独立成文件，apply() 收缩为装配器。
 import { normalizeTrustedHosts } from './guard.ts'
 import { registerNotifyClaimRoute } from './routes/notify-claim.ts'
+import { registerPricingModelsRoute } from './routes/pricing-models.ts'
 import { registerPricingRoutes } from './routes/pricing.ts'
 import { registerBalanceRoute } from './routes/balance.ts'
 import { registerUsageToolRoute } from './routes/usage-tool.ts'
@@ -1125,6 +1126,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     'usage-billing: pricing refresh timer',
   )
 
+  registerPricingModelsRoute(ctx, trustedHosts)
   registerPricingRoutes(ctx, { trustedHosts, body: pricingBody, refresh: refreshPricing })
 
   // 手动同步价格目录与 GET 价目表同 concern，由 src/routes/pricing.ts 内的

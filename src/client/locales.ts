@@ -166,6 +166,8 @@ export type UsageBillingKey =
   | 'userPrices'
   | 'userPricesHint'
   | 'userPriceSave'
+  | 'userPriceEditIdentity'
+  | 'pricePicker' | 'priceModelsPartial' | 'priceModelsPending' | 'priceModelDefault' | 'priceIncomplete' | 'priceUnpriced'
   | 'userPriceModel'
   | 'userPriceSource'
   | 'userPriceSourceHint'
@@ -616,6 +618,9 @@ export const zh: Record<UsageBillingKey, string> = {
   'userPrices': '自定义单价',
   'userPricesHint': '为未收录或变价模型填入实付单价，总览与日趋势按此重估；模型可用下拉候选（目录键或模型 id）；来源留空=该模型默认价，填入中转站域名=仅该来源的同名模型用此价（协议可省）；低谷价三栏填后按峰/谷混合估算，留空=平档',
   'userPriceSave': '保存',
+  'userPriceEditIdentity': '编辑模型和来源',
+  'pricePicker': '选择已配置或已用模型', 'priceModelsPartial': '部分模型配置读取失败，将自动重试。', 'priceModelsPending': '正在读取模型配置…',
+  'priceModelDefault': '模型默认价', 'priceIncomplete': '请填完整单价（低谷价可整组留空），并检查是否有重复的模型与来源。', 'priceUnpriced': '未定价',
   'userPriceModel': '模型',
   'userPriceSource': '来源（中转站域名）',
   'userPriceSourceHint': '留空=默认价，或 https://api.中转站.com',
@@ -1068,6 +1073,9 @@ export const en: Record<UsageBillingKey, string> = {
   'userPrices': 'Custom prices',
   'userPricesHint': 'Enter actual per-1M-token prices; main views are re-costed. Pick a model key from the dropdown candidates. Leave source empty for the model default, or enter a relay origin (protocol optional) to price only that source. Fill all three off-peak fields for peak/off-peak estimation; leave them empty for flat pricing.',
   'userPriceSave': 'Save',
+  'userPriceEditIdentity': 'Edit model and source',
+  'pricePicker': 'Choose a configured or used model', 'priceModelsPartial': 'Some configured models could not be loaded. Retrying automatically.', 'priceModelsPending': 'Loading configured models…',
+  'priceModelDefault': 'Model default', 'priceIncomplete': 'Complete all prices (or leave the entire off-peak band blank) and check for duplicate model and source pairs.', 'priceUnpriced': 'Unpriced',
   'userPriceModel': 'Model',
   'userPriceSource': 'Source (relay origin)',
   'userPriceSourceHint': 'Empty = default; e.g. https://api.relay.com',
