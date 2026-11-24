@@ -932,7 +932,7 @@ function UserPriceCard({ userPrices, onUserPrices, t, unpricedIds }: {
     // 非法串（如负数）只留草稿：行内保留上一有效值，失焦回落显示。
   }
   return (
-    <section className={css.setCard} data-testid="billing-user-prices">
+    <section className={css.setCard} data-settings-target="user-prices" data-testid="billing-user-prices">
       <div className={css.setCardHead}>
         <div className={css.setCardMeta}>
           <h3 className={css.setCardTitle}>{t('userPrices')}<HelpTip label={t('userPricesHint')} t={t} /></h3>
@@ -1272,18 +1272,19 @@ function BillingDashboard({
     for (const section of sections) observer.observe(section)
     return () => { observer.disconnect() }
   }, [tab])
-  const [pendingGroup, setPendingGroup] = useState<string>()
-  const scrollToSettingsGroup = (id: string): void => {
+  const [pendingGroup, setPendingGroup] = useState<{ id: string; target: 'user-prices' | undefined }>()
+  const scrollToSettingsGroup = (id: string, target?: 'user-prices'): void => {
     setTab('settings')
     setSettingsQuery('')
     setActiveSettingsGroup(id)
-    setPendingGroup(id)
+    setPendingGroup({ id, target })
   }
   // Wait for React to mount the settings tab and reveal any filtered sections.
   useEffect(() => {
     if (!pendingGroup || tab !== 'settings') return
     setPendingGroup(undefined)
-    const target = dashboardRoot.current?.querySelector<HTMLElement>(`[id="settings-${pendingGroup}"]`)
+    const group = dashboardRoot.current?.querySelector<HTMLElement>(`[id="settings-${pendingGroup.id}"]`)
+    const target = pendingGroup.target ? group?.querySelector<HTMLElement>(`[data-settings-target="${pendingGroup.target}"]`) : group
     if (target == null) return
     const heading = target.querySelector<HTMLElement>('h3')
     if (heading) {
@@ -2341,7 +2342,7 @@ function BillingDashboard({
                     type="button"
                     className={css.noticeAction}
                     data-testid="billing-unpriced-fix"
-                    onClick={() => { scrollToSettingsGroup('advanced') }}
+                    onClick={() => { scrollToSettingsGroup('advanced', 'user-prices') }}
                   >
                     {t('unpricedFix')}
                   </button>

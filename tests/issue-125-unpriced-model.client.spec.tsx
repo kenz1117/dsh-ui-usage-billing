@@ -88,7 +88,15 @@ describe('issue #125 未收录模型的可发现性', () => {
       constructor(callback: IntersectionObserverCallback) {
         showSection = id => callback([{ isIntersecting: true, boundingClientRect: { top: 0 }, target: document.getElementById(id) }] as IntersectionObserverEntry[], this as unknown as IntersectionObserver)
       }
-      observe() {}
+      observe(section: HTMLElement) {
+        // Another independent settings card can precede user prices in the advanced group.
+        if (section.id === 'settings-advanced' && !section.querySelector('h3[data-sibling]')) {
+          const heading = document.createElement('h3')
+          heading.dataset.sibling = 'true'
+          heading.textContent = '峰谷'
+          section.prepend(heading)
+        }
+      }
       disconnect() {}
     })
     stubUsageStats()
