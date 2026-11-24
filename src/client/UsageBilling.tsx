@@ -775,15 +775,14 @@ function BalanceDetailRow({ label, value }: { label: string; value: string }): R
  * （三价非负有限数；currency 仅认 USD），写回 localStorage 并触发显示重估；
  * 覆盖优先级高于内置目录 / models.dev / dsh-spend。
  */
-function UserPriceCard({ userPrices, onUserPrices, t, unpricedIds }: {
+function UserPriceCard({ userPrices, onUserPrices, t, unpricedIds, configuredIds }: {
   userPrices: UserPriceMap
   onUserPrices: (next: UserPriceMap) => void
   t: (key: UsageBillingKey, params?: Record<string, unknown>) => string
-  /**
-   * 本期实际出现但未收录的模型 id（issue #125）：一并进候选列表，用户直接选，
-   * 不必回会话日志手抄——中转站的 id 常带路由前缀与全角冒号，抄错就是「无效果」。
-   */
+  /** 本期实际出现但目录未收录的原始模型 id。 */
   unpricedIds?: readonly string[]
+  /** 探测到的配置模型 id；可让尚未产生用量的模型也能预先设价。 */
+  configuredIds?: readonly string[]
 }): React.ReactNode {
   // 本地编辑副本：增删改都在列表内完成，点「保存」才提交；行内价格输入框不会改坏结构。
   const [drafts, setDrafts] = useState<UserPriceMap>(() => [...userPrices])
@@ -847,9 +846,10 @@ function UserPriceCard({ userPrices, onUserPrices, t, unpricedIds }: {
   const modelKeys = useMemo(() => {
     const out: string[] = []
     for (const entry of catalogEntries()) out.push(entry.key)
-    for (const id of unpricedIds ?? []) if (!out.includes(id)) out.push(id)
+    for (const id of unpricedIds ?? []) if (id && !out.includes(id)) out.push(id)
+    for (const id of configuredIds ?? []) if (id && !out.includes(id)) out.push(id)
     return out
-  }, [unpricedIds])
+  }, [configuredIds, unpricedIds])
   // 币种切换：CNY = 移除 currency 字段（缺省即 CNY），USD = 显式标记（exactOptionalPropertyTypes）。
   const setCurrency = (i: number, cur: 'CNY' | 'USD'): void =>
     setDrafts(list => list.map((row, idx) => {
@@ -3247,7 +3247,7 @@ function BillingDashboard({
               </section>
 
               {/* 5. 自定义单价：set-card——已存价列表 + 新增行；显示层重估，口径差异见说明。 */}
-              <div hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.advanced)} id="settings-advanced"><UserPriceCard userPrices={userPrices} onUserPrices={onUserPrices} t={t} unpricedIds={stats.unpricedModels ?? []} /></div>
+              <div hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.advanced)} id="settings-advanced"><UserPriceCard userPrices={userPrices} onUserPrices={onUserPrices} t={t} unpricedIds={stats.unpricedModels ?? []} configuredIds={(health.catalog ?? []).map(model => model.id)} /></div>
 
               {/* 6. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
               <div hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.about)} id="settings-about"><PluginInfoCard t={t} version={stats.pluginVersion} /></div>

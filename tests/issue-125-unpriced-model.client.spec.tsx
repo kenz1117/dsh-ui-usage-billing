@@ -61,7 +61,15 @@ function makeProps(): ComponentProps<typeof UsageBilling> {
   return {
     wide: true,
     t,
-    checkModels: async () => ({ checked: true, available: true, models: 1, failures: 0, okProviders: [], badProviders: [] }),
+    checkModels: async () => ({
+      checked: true,
+      available: true,
+      models: 2,
+      failures: 0,
+      okProviders: ['relay'],
+      badProviders: [],
+      catalog: [{ id: 'configured-unused-model', name: 'Configured unused model', provider: 'relay' }],
+    }),
     publishCosts: () => {},
     registerOpen: () => () => {},
     renderSlot: () => null,
@@ -91,8 +99,12 @@ describe('issue #125 未收录模型的可发现性', () => {
     // 落到设置分区：自定义单价卡可见（高级分区未被搜索过滤隐藏）。
     const card = await screen.findByTestId('billing-user-prices')
     expect(card.closest('[hidden]')).toBeNull()
-    // 未收录 id 进候选（用户直接选，不必手抄）。
+    // 原始未定价 id、配置但未使用模型与内置目录键都可选；重叠项只出现一次。
     const options = Array.from(card.querySelectorAll('datalist option')).map(option => option.getAttribute('value'))
     for (const id of UNPRICED) expect(options).toContain(id)
+    expect(options).toContain('configured-unused-model')
+    expect(options).toContain('flash')
+    expect(options.filter(id => id === UNPRICED[0])).toHaveLength(1)
+    expect(options).not.toContain('cn-deepseek-v4.1')
   })
 })
