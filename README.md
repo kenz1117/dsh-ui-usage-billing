@@ -62,6 +62,7 @@
 ### 侧栏与即时反馈
 
 - **触发卡**：今日 / 本周 / 本月主数字、近 7 天趋势与当日水位；支持完整卡片、紧凑图标、完全隐藏，悬停可看速览。
+- **与其它插件共存**：侧栏底部入口被多个插件同时占用时，触发卡自动收成 36×36 图标钮（不占满整行、不挤走邻居），悬停仍出速览、点击照常打开仪表盘；邻居卸载后自动还原成完整卡片。
 - **费用条与提醒**：常驻本轮 / 会话费用，按当前模型显示峰谷和订阅额度预警；切档与会话完成可发系统通知。
 - **快捷键**：宿主「设置 → 快捷键」可绑定「打开用量计费仪表盘」，默认 `⌘⇧D`（Windows / Linux `Ctrl+Shift+D`），可改绑或清空；侧栏隐藏后也能一键打开面板。
 
@@ -205,29 +206,29 @@ cost（CNY）= (missInput × p_input + cacheWrite × p_cacheWrite + cacheHit × 
 
 **用量行的提供方标注（issue #126）**：用量分区的模型排行在模型名下标出该模型走过的通道与 token 占比（如「直连 · zai-coding-cn · 100%」）——同名模型经不同通道（官方 / 直连 / 中转）时据此区分，不再只看到一行合并数字。
 
-### 支持模型（2026-11 主流阵容，OpenAI 兼容系列，共 247 款）
+### 支持模型（2026-11 主流阵容，OpenAI 兼容系列，共 262 款）
 
-完整目录见费率 Tab 及源码 `src/builtin-catalog.ts` 的 `BUILTIN_MODEL_CATALOG`（246 款在售 + 1 款退役型号保留历史回算），此处每厂商仅列代表型号。
+完整目录见费率 Tab 及源码 `src/builtin-catalog.ts` 的 `BUILTIN_MODEL_CATALOG`（261 款在售 + 1 款退役型号保留历史回算），此处每厂商仅列代表型号。
 
 | 厂商       | 代表模型                                        |
 | -------- | -------------------------------------------- |
 | DeepSeek | V4.1 Flash、V4 Pro（等 3 款；按官方变更节点分段计价：基础价 → 峰谷 v1 → 周末全谷） |
-| 智谱 AI    | GLM-5.3、GLM-5.2（等 17 款）                     |
-| 阿里通义     | Qwen3.8 Max、Qwen3-Coder 480B（等 27 款）        |
+| 智谱 AI    | GLM-5.3、GLM-5.2（等 18 款）                     |
+| 阿里通义     | Qwen4 Max、Qwen3.8 Max（等 28 款）              |
 | 字节豆包     | Doubao Seed-2.1 Pro、Doubao Seed-2.0 Pro（等 13 款） |
 | 月之暗面     | Kimi K3.1 Pro、Kimi K3.1 Pro Highspeed、Kimi K3、Kimi K2.7 Code（等 18 款） |
 | 小米       | MiMo V2.6 Pro（等 6 款）                         |
 | MiniMax  | MiniMax-M3、MiniMax-M2.7（等 8 款）              |
 | 云知声      | U2 Flash、Unisound U2（等 3 款）                 |
 | 百度文心     | ERNIE-5.1、ERNIE-4.5 300B（等 2 款）             |
-| 腾讯混元     | 混元 Hy4（限时 5 折）、混元 Hy4 Preview、混元 Hy3（等 9 款） |
-| Anthropic | Claude Opus 5、Claude Sonnet 5（等 14 款）    |
+| 腾讯混元     | 混元 Hy4（限时 5 折）、混元 Hy4 Preview、混元 Hy3（等 10 款） |
+| Anthropic | Claude Fable 5.2、Claude Opus 5（等 15 款）   |
 | Mistral AI | Mistral Large 3、Mistral Small 4（等 30 款）     |
 | Cohere    | Command A、Command R（等 7 款）                 |
-| OpenAI   | GPT-6 Astra、GPT-5.6 Sol / Terra / Luna（等 39 款） |
-| Google   | Gemini 3.1 Pro、Gemini 3.6 Flash（等 25 款）      |
+| OpenAI   | GPT-6.2 Sol / Astra、GPT-6 Astra（等 45 款）   |
+| Google   | Gemini 4 Neon、Gemini 3.1 Pro（等 28 款）      |
 | xAI      | Grok 4.7、Grok 4.20（等 8 款）                     |
-| Meta     | Llama 4 Maverick、Muse Spark 1.3（等 8 款）                     |
+| Meta     | Llama 4 Maverick、Muse Ember 1.0（等 9 款）   |
 | 美团       | LongCat 2.0（估算价）                             |
 | 面壁智能     | MiniCPM-V 4.5（估算价）                           |
 | 小红书      | Dots3-Note Preview（估算价）                      |

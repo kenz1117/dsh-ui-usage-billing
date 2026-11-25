@@ -182,6 +182,16 @@ const RAW_MODEL_CATALOG: readonly ModelEntry[] = [
     price: { currency: 'CNY', input: 2, cacheHit: 0.57, output: 7 },
   },
   {
+    key: 'glm-5.3-flashx-legal',
+    name: 'GLM-5.3-FlashX-Legal',
+    provider: '智谱 AI',
+    colorVar: 'dsw-static-blue-300',
+    // 2026-11-02 上线的法律垂类版（官方 id glm-5.3-flashx-legal）。官方价目页
+    // （bigmodel「API 定价」）列的刊例与 GLM-5.3-FlashX 同档：输入 ¥2 /
+    // 缓存命中 ¥0.57 / 输出 ¥7，缓存存储限时免费。
+    price: { currency: 'CNY', input: 2, cacheHit: 0.57, output: 7 },
+  },
+  {
     key: 'glm-4.6',
     name: 'GLM-4.6',
     provider: '智谱 AI',
@@ -228,6 +238,17 @@ const RAW_MODEL_CATALOG: readonly ModelEntry[] = [
     price: { currency: 'CNY', input: 5, cacheHit: 1.2, output: 22 },
   },
   // 阿里通义千问 (OpenAI-compatible, 百炼 2026-08).
+  {
+    key: 'qwen4-max',
+    name: 'Qwen4 Max',
+    provider: '阿里通义',
+    colorVar: 'dsw-static-blue-600',
+    // 2026-11-16 上线（官方 id qwen4-max）。官方 CN 价（百炼「qwen4-max」模型页
+    // 2026-11-16 更新，0<Token≤1M 档）：输入 ¥10 / 缓存命中 ¥0.5 / 输出 ¥30
+    // （思考与非思考模式同价）；缓存写入按百炼规则取输入价 125%（¥12.5，
+    // 由目录侧的厂商系数派生）。
+    price: { currency: 'CNY', input: 10, cacheHit: 0.5, output: 30 },
+  },
   {
     key: 'qwen-3.8-max',
     name: 'Qwen3.8 Max',
@@ -753,6 +774,58 @@ const RAW_MODEL_CATALOG: readonly ModelEntry[] = [
     price: { currency: 'USD', input: 0.1, cacheHit: 0.01, output: 0.5 },
   },
   {
+    key: 'gpt-6.2-sol',
+    name: 'GPT-6.2 Sol',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    // 2026-11-17 发布（官方 id gpt-6.2-sol）：标准档（输入 ≤272K）$2 / $0.1 / $10。
+    // 官方另有超长上下文加价（单请求输入 >272K 时整笔输入 ×2、输出 ×1.5），
+    // 目录只记标准档，费率表按刊例展示（与 GPT-6 Astra 同口径）。
+    price: { currency: 'USD', input: 2, cacheHit: 0.1, output: 10 },
+  },
+  {
+    key: 'gpt-6.2-astra',
+    name: 'GPT-6.2 Astra',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    // 2026-11-17 发布（官方 id gpt-6.2-astra）：标准档 $8 / $0.4 / $40。
+    price: { currency: 'USD', input: 8, cacheHit: 0.4, output: 40 },
+  },
+  {
+    key: 'gpt-6.2-astra-healthcare',
+    name: 'GPT-6.2 Astra Healthcare',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    // 2026-11-24 发布（官方 id gpt-6.2-astra-healthcare）：医疗垂类档，
+    // 标准档与 GPT-6.2 Astra 同价（$8 / $0.4 / $40）。
+    price: { currency: 'USD', input: 8, cacheHit: 0.4, output: 40 },
+  },
+  {
+    key: 'gpt-6-astra-healthcare',
+    name: 'GPT-6 Astra Healthcare',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    // 2026-11-24 发布（官方 id gpt-6-astra-healthcare）：$10 / $1 / $50，
+    // 与 GPT-6 Astra 同档。
+    price: { currency: 'USD', input: 10, cacheHit: 1, output: 50 },
+  },
+  {
+    key: 'gpt-6.2-sol-healthcare',
+    name: 'GPT-6.2 Sol Healthcare',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    // 2026-11-24 发布（官方 id gpt-6.2-sol-healthcare）：$2 / $0.1 / $10。
+    price: { currency: 'USD', input: 2, cacheHit: 0.1, output: 10 },
+  },
+  {
+    key: 'gpt-6.1-sol-healthcare',
+    name: 'GPT-6.1 Sol Healthcare',
+    provider: 'OpenAI',
+    colorVar: 'ds-green',
+    // 2026-11-24 发布（官方 id gpt-6.1-sol-healthcare）：$2 / $0.1 / $10。
+    price: { currency: 'USD', input: 2, cacheHit: 0.1, output: 10 },
+  },
+  {
     key: 'gpt-5.6-sol',
     name: 'GPT-5.6 Sol',
     provider: 'OpenAI',
@@ -1183,6 +1256,30 @@ const RAW_MODEL_CATALOG: readonly ModelEntry[] = [
     price: { currency: 'USD', input: 2, cacheHit: 0.1, output: 10 },
   },
   {
+    key: 'gemini-4-neon',
+    name: 'Gemini 4 Neon',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    // 2026-11-18 发布（官方 id gemini-4-neon）：$3 / $0.15 / $15。
+    price: { currency: 'USD', input: 3, cacheHit: 0.15, output: 15 },
+  },
+  {
+    key: 'gemini-4-hydrogen',
+    name: 'Gemini 4 Hydrogen',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    // 2026-11-12 发布（官方 id gemini-4-hydrogen）：$1.5 / $0.075 / $7.5。
+    price: { currency: 'USD', input: 1.5, cacheHit: 0.075, output: 7.5 },
+  },
+  {
+    key: 'gemini-4-carbon',
+    name: 'Gemini 4 Carbon',
+    provider: 'Google',
+    colorVar: 'dsw-static-blue-600',
+    // 2026-11-10 发布（官方 id gemini-4-carbon）：$2 / $0.1 / $10。
+    price: { currency: 'USD', input: 2, cacheHit: 0.1, output: 10 },
+  },
+  {
     key: 'gemini-flash-latest',
     name: 'Gemini Flash Latest',
     provider: 'Google',
@@ -1343,6 +1440,14 @@ const RAW_MODEL_CATALOG: readonly ModelEntry[] = [
     price: { currency: 'USD', input: 1.25, cacheHit: 0.15, output: 4.25 },
   },
   {
+    key: 'muse-ember-1.0',
+    name: 'Muse Ember 1.0',
+    provider: 'Meta',
+    colorVar: 'ds-red',
+    // 2026-11-09 发布（官方 id muse-ember-1.0）：$0.1 / $0.004 / $0.5。
+    price: { currency: 'USD', input: 0.1, cacheHit: 0.004, output: 0.5 },
+  },
+  {
     key: 'muse-spark-1.2',
     name: 'Muse Spark 1.2',
     provider: 'Meta',
@@ -1438,6 +1543,15 @@ const RAW_MODEL_CATALOG: readonly ModelEntry[] = [
     colorVar: 'ds-red',
     // 2026-09 新旗舰；同期同价发布的 Mythos 5.1（$10 / $0.25 / $50）不单列。
     price: { currency: 'USD', input: 10, cacheHit: 0.25, output: 50 },
+  },
+  {
+    key: 'claude-fable-5-2',
+    name: 'Claude Fable 5.2',
+    provider: 'Anthropic',
+    colorVar: 'ds-red',
+    // 2026-11-09 发布（官方 id claude-fable-5-2）：$8 / $0.2 / $40
+    // （缓存写入按 Anthropic 规则取输入价 125% = $10）。
+    price: { currency: 'USD', input: 8, cacheHit: 0.2, output: 40 },
   },
   {
     key: 'claude-fable-5',
@@ -2439,4 +2553,21 @@ export const BUILTIN_MODEL_KEY_ALIASES: Readonly<Record<string, string>> = {
   'gpt-image-2': 'gpt-image-2',
   'gpt-image-2.5-sunburst': 'gpt-image-2.5-sunburst',
   'gpt-image-2-5-sunburst': 'gpt-image-2.5-sunburst',
+  // ── 目录扩容批 2026-11-25（近两周一手厂商新模型）─────────────────────────
+  // 官方 id 与目录键一致，逐条显式列出：别名表是人读的映射，改键时不会漏。
+  // 中转站/聚合站的带厂商前缀写法（openai/…、google/…、z-ai/…）由派生候选
+  // 剥前缀后命中，无需另列。
+  'qwen4-max': 'qwen4-max',
+  'gpt-6.2-sol': 'gpt-6.2-sol',
+  'gpt-6.2-astra': 'gpt-6.2-astra',
+  'gpt-6.2-astra-healthcare': 'gpt-6.2-astra-healthcare',
+  'gpt-6-astra-healthcare': 'gpt-6-astra-healthcare',
+  'gpt-6.2-sol-healthcare': 'gpt-6.2-sol-healthcare',
+  'gpt-6.1-sol-healthcare': 'gpt-6.1-sol-healthcare',
+  'gemini-4-neon': 'gemini-4-neon',
+  'gemini-4-hydrogen': 'gemini-4-hydrogen',
+  'gemini-4-carbon': 'gemini-4-carbon',
+  'claude-fable-5-2': 'claude-fable-5-2',
+  'glm-5.3-flashx-legal': 'glm-5.3-flashx-legal',
+  'muse-ember-1.0': 'muse-ember-1.0',
 }

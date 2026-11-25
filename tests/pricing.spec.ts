@@ -1160,3 +1160,60 @@ describe('catalog expansion 2026-10-23 (first-party vendors)', () => {
     expect(modelOf('minimax-m2.1').price).toMatchObject({ currency: 'CNY', input: 2.13, cacheHit: 0.21, output: 8.52 })
   })
 })
+
+describe('catalog expansion 2026-11-25 (近两周一手厂商新模型)', () => {
+  it('resolves the newly covered official ids', () => {
+    // 一批此前落「未收录」的官方 id：补录后应各自命中对应目录键。
+    expect(resolveCatalogKey('qwen4-max')).toBe('qwen4-max')
+    expect(resolveCatalogKey('gpt-6.2-sol')).toBe('gpt-6.2-sol')
+    expect(resolveCatalogKey('gpt-6.2-astra')).toBe('gpt-6.2-astra')
+    expect(resolveCatalogKey('gpt-6.2-astra-healthcare')).toBe('gpt-6.2-astra-healthcare')
+    expect(resolveCatalogKey('gpt-6-astra-healthcare')).toBe('gpt-6-astra-healthcare')
+    expect(resolveCatalogKey('gpt-6.2-sol-healthcare')).toBe('gpt-6.2-sol-healthcare')
+    expect(resolveCatalogKey('gpt-6.1-sol-healthcare')).toBe('gpt-6.1-sol-healthcare')
+    expect(resolveCatalogKey('gemini-4-neon')).toBe('gemini-4-neon')
+    expect(resolveCatalogKey('gemini-4-hydrogen')).toBe('gemini-4-hydrogen')
+    expect(resolveCatalogKey('gemini-4-carbon')).toBe('gemini-4-carbon')
+    expect(resolveCatalogKey('claude-fable-5-2')).toBe('claude-fable-5-2')
+    expect(resolveCatalogKey('glm-5.3-flashx-legal')).toBe('glm-5.3-flashx-legal')
+    expect(resolveCatalogKey('muse-ember-1.0')).toBe('muse-ember-1.0')
+    // 中转站/聚合站的带厂商前缀写法：剥前缀后命中同一键。
+    expect(resolveCatalogKey('openai/gpt-6.2-astra-healthcare')).toBe('gpt-6.2-astra-healthcare')
+    expect(resolveCatalogKey('google/gemini-4-neon')).toBe('gemini-4-neon')
+    expect(resolveCatalogKey('z-ai/glm-5.3-flashx-legal')).toBe('glm-5.3-flashx-legal')
+  })
+
+  it('carries the new entries at the official prices', () => {
+    // 海外厂商取 models.dev 实时目录原生 USD；国内厂商取官方 CN 价
+    // （Qwen4 Max 取百炼官方价目页，GLM-5.3-FlashX-Legal 取 bigmodel 定价页）。
+    expect(modelOf('gpt-6.2-sol').price).toMatchObject({ currency: 'USD', input: 2, cacheHit: 0.1, output: 10 })
+    expect(modelOf('gpt-6.2-astra').price).toMatchObject({ currency: 'USD', input: 8, cacheHit: 0.4, output: 40 })
+    expect(modelOf('gpt-6-astra-healthcare').price).toMatchObject({ currency: 'USD', input: 10, cacheHit: 1, output: 50 })
+    expect(modelOf('gemini-4-neon').price).toMatchObject({ currency: 'USD', input: 3, cacheHit: 0.15, output: 15 })
+    expect(modelOf('gemini-4-hydrogen').price).toMatchObject({ currency: 'USD', input: 1.5, cacheHit: 0.075, output: 7.5 })
+    expect(modelOf('gemini-4-carbon').price).toMatchObject({ currency: 'USD', input: 2, cacheHit: 0.1, output: 10 })
+    expect(modelOf('claude-fable-5-2').price).toMatchObject({ currency: 'USD', input: 8, cacheHit: 0.2, output: 40 })
+    expect(modelOf('muse-ember-1.0').price).toMatchObject({ currency: 'USD', input: 0.1, cacheHit: 0.004, output: 0.5 })
+    expect(modelOf('qwen4-max').price).toMatchObject({ currency: 'CNY', input: 10, cacheHit: 0.5, output: 30 })
+    expect(modelOf('glm-5.3-flashx-legal').price).toMatchObject({ currency: 'CNY', input: 2, cacheHit: 0.57, output: 7 })
+  })
+
+  it('derives the cache-write price by the vendor rule', () => {
+    // 缓存写入是独立计价维度（issue #123）：OpenAI / Anthropic / 百炼按输入价
+    // 125% 派生，其余厂商按输入价计（不落该字段）。
+    expect(modelOf('gpt-6.2-sol').price.cacheWrite).toBe(2.5)
+    expect(modelOf('gpt-6.2-astra').price.cacheWrite).toBe(10)
+    expect(modelOf('claude-fable-5-2').price.cacheWrite).toBe(10)
+    expect(modelOf('qwen4-max').price.cacheWrite).toBe(12.5)
+    expect(modelOf('gemini-4-neon').price.cacheWrite).toBeUndefined()
+  })
+
+  it('surfaces the newly covered models in the rate table rows', () => {
+    const rows = catalogEntries()
+    const byKey = new Map(rows.map(row => [row.key, row]))
+    expect(byKey.get('gpt-6.2-astra')?.price).toMatchObject({ currency: 'USD', input: 8, output: 40 })
+    expect(byKey.get('gemini-4-neon')?.provider).toBe('Google')
+    expect(byKey.get('qwen4-max')?.provider).toBe('阿里通义')
+    expect(byKey.get('glm-5.3-flashx-legal')?.price).toMatchObject({ currency: 'CNY', input: 2, output: 7 })
+  })
+})
