@@ -95,9 +95,16 @@ composer 即时费用条（常驻，输入框下）
 - 数据：`monthCost / todayCost / weekCost / days[].cost`，金额用 `formatMoney`。
 
 **形态 2：窄栏（rail）**
-- 36×36 图标钮，圆角 8，`border-l1` 边框，hover/focus 变 `blue-500`；`flex:none`。
+- 36×36 图标钮，圆角 12（与宿主侧栏行一致），`border-l1` 边框，hover/focus 变 `blue-500`；`flex:none`。
 
-**响应式**：容器查询 `@container billing-trigger` 断点 280px（隐藏 sparkline）、230px（隐藏副行）、120px（仅图标）。
+**形态 3：共享态（同槽有邻居 / 宿主为纵向栈）**
+- 36×36 图标钮（圆角 12、仪表图标 24px、`flex:0 0 auto`、margin 4px 2px），**不占满整行**——
+  footer 是无 wrap 的 flex 行，宽卡的 `width:100%` 会把邻居推出面板右边界（社区 issue #130 / #237）。
+- 卡片信息改由 hover 速览浮层与点击后的仪表盘承载；邻居卸载后自动还原成宽卡。
+- 判定从 DOM 反推（`src/client/footer-lane.ts`）：最近的 flex 祖先 = 行；`display:contents` 的槽位外壳要展开计数；
+  **只认 flex 容器当行**（普通多子项包裹层会把自家元素数成邻居）。
+
+**响应式**：容器查询 `@container billing-trigger` 断点 210px（换装宿主原生行：收趋势与标题）、140px（再收金额，只留仪表图标）。
 
 **交互**：整卡 `<button>` 点击开弹窗；`title` 提示；hover/focus 显速览浮层。
 

@@ -263,7 +263,10 @@ export function apply(ctx: Context): void {
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
     id: 'usage-billing',
-    order: -10,
+    // 排序档位（社区约定 §20.5）：0–19 账号/身份/连接、20–39 会话/数据/内容、
+    // 40+ 设备/端。计费用量属「数据」类，落在 20–39 档（此前用 -10 会排到
+    // 账号入口前面）。取 25：20 已被 chat-import 占，21–29 其余留空。
+    order: 25,
     locale: NS,
     ...usageBillingSlotRuntime,
     // 装饰子槽位只能声明一次；原生设置不渲染装饰，不能重复声明导致侧栏注册失败。

@@ -15,7 +15,7 @@
  * PositionMenu / SubscriptionWindowRow / BalanceDetailPopover+Row）。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, Fragment, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, Fragment, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
@@ -100,6 +100,7 @@ import type { BillingLanguage } from './usage-billing-settings.ts'
 import { localizeRowLabel } from './label-display.ts'
 import { filterRateRows } from './rate-search.ts'
 import { localizeProviderName, channelDisplayName, directChannelRoute } from './provider-display.ts'
+import { watchFooterLane, type TriggerForm } from './footer-lane.ts'
 import { tierInfoOf } from './plan-knowledge.ts'
 import { computePeakAlert, loadPeakAlertConfig, mergeQueuePeakAlert, refreshQueuePeakAlert, savePeakAlertConfig, type PeakAlertConfig, type PeakAlertHit } from './peak-alert.ts'
 import { PeakAlertBanner } from './PeakAlertBanner.tsx'
@@ -297,9 +298,26 @@ function UsageBillingTrigger(
   // 速览卡 fixed 定位（issue #37）：桌面壳/宿主的侧栏容器可能 overflow:hidden，
   // absolute 弹层向上弹出会被几何裁剪（z-index 救不了裁剪）。改为 hover 时用
   // 触发卡的 viewport rect 把弹层 fixed 到其上方，彻底脱离侧栏的裁剪上下文。
-  const wrapRef = useRef<HTMLSpanElement>(null)
+  const wrapRef = useRef<HTMLSpanElement | null>(null)
+  // 触发卡是异步渲染的（先取数后出卡）：同槽观察器必须跟着节点挂载走——
+  // 只在挂载时装一次的话，那一刻还没有节点，共享态永远量不到。
+  const [wrapNode, setWrapNode] = useState<HTMLSpanElement | null>(null)
+  const attachWrap = useCallback((node: HTMLSpanElement | null): void => {
+    wrapRef.current = node
+    setWrapNode(node)
+  }, [])
   const [popOpen, setPopOpen] = useState(false)
   const [popPos, setPopPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 })
+  // 同槽占位形态（社区约定 §25 方案 A）：宿主不向占位者暴露同槽邻居信息，
+  // 按 §20.4 的测量算法从 DOM 反推——同槽有别的插件、或宿主是纵向栈时，
+  // 宽卡不能占满（会把邻居推出面板外），收成 36×36 图标钮。
+  const [laneForm, setLaneForm] = useState<TriggerForm>('card')
+  useLayoutEffect(() => {
+    // 用 layout effect：首帧就把形态定下来，避免宽卡先把邻居挤出面板再回缩。
+    if (wrapNode === null) return
+    const watch = watchFooterLane(wrapNode, setLaneForm)
+    return () => watch.dispose()
+  }, [wrapNode])
   // 浮窗 pointer-events:none 无法点击切换；多张订阅卡时每 1.5s 自动轮播。
   // 只在浮窗打开时轮播：此前常开后台标签页也每 1.5s 重渲染一次触发卡。
   useEffect(() => {
@@ -408,15 +426,44 @@ function UsageBillingTrigger(
   const sparkMax = Math.max(...sparkValues, 0)
   const sparkHeights = sparkValues.map(v => sparkMax > 0 ? 4 + (v / sparkMax) * 12 : 4)
 
+  // 共享态（同槽有邻居 / 纵向栈）：宽卡让位给 36×36 图标钮——卡片信息改由
+  // hover 速览（弹层）与点击后的仪表盘承载（社区约定 §25 硬规则 3）。
+  const shared = laneForm === 'icon'
+
   return (
     <span
-      ref={wrapRef}
-      className={clsx(css.triggerWrap, BILLING_ROOT_CLASS)}
+      ref={attachWrap}
+      className={clsx(css.triggerWrap, shared && css.triggerWrapShared, BILLING_ROOT_CLASS)}
       onMouseEnter={() => { updatePopPos(); openPop() }}
       onMouseLeave={schedulePopClose}
       onFocusCapture={() => { updatePopPos(); openPop() }}
       onBlurCapture={() => setPopOpen(false)}
     >
+      {shared ? (
+      <button
+        type="button"
+        className={clsx(
+          css.triggerShared,
+          budgetPressure !== 'none' && css.triggerBudgetPulse,
+          budgetPressure === 'over' && css.triggerBudgetOver,
+        )}
+        data-testid="billing-trigger-shared"
+        aria-label={triggerTitle}
+        onClick={onOpen}
+        title={triggerTitle}
+      >
+        <span
+          className={clsx(
+            css.triggerIcon,
+            budgetPressure !== 'none' && css.triggerBudgetHot,
+            statsError !== undefined && css.triggerStatsError,
+          )}
+          data-testid="billing-trigger-icon"
+        >
+          {cardIcon}
+        </span>
+      </button>
+      ) : (
       <button
         type="button"
         className={clsx(
@@ -492,6 +539,7 @@ function UsageBillingTrigger(
           ))}
         </span>
       </button>
+      )}
       {/* hover 速览：参考图风格「数据卡」——标题 + 更新时间 + 两列指标网格 + 底部主力消耗/额度提醒。
           portal 到 body（issue #37）：触发卡的 container-type 使其成为 fixed 后代的
           包含块，弹层坐标会被容器二次偏移（位置/宽度错乱的根源）；挂 body 后真正

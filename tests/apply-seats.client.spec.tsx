@@ -128,6 +128,11 @@ describe('client apply(): live cost capsule seats (issue #101)', () => {
     // 只有侧栏声明装饰子槽位；重复声明会让宿主拒绝侧栏注册，导致完整卡片消失。
     expect(section.children).toBeUndefined()
     expect(sidebar.children).toEqual({ 'billing.dashboard.decor': { kind: 'list', scope: 'root' } })
+    // 侧栏排序档位（社区约定 §20.5）：0–19 账号/身份/连接、20–39 会话/数据/
+    // 内容、40+ 设备/端。计费用量属数据类，必须落在 20–39（用 -10 会排到
+    // 账号入口前面）；20 已被 chat-import 占，取 21–29 里的 25。
+    expect(sidebar.id).toBe('usage-billing')
+    expect(sidebar.order).toBe(25)
     // recordingContext 的 ctx.get 返回 undefined，因此 /usage 不可用；原生设置页仍提供恢复入口。
     expect(sidebar.inject?.('')?.recoveryEntryAvailable).toBe(true)
     expect(section.inject?.('')?.recoveryEntryAvailable).toBe(true)

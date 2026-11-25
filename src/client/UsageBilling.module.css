@@ -164,7 +164,9 @@ body {
   width: 36px;
   height: 36px;
   border: 1px solid var(--ds-border);
-  border-radius: var(--ds-r-1);
+  /* 圆角与宿主侧栏行一致（12px）：窄栏图标钮用 8px 会比邻近行小一号（社区
+     约定 §20.2 / §25 的偏差项）。 */
+  border-radius: 12px;
   background: var(--dsb-2);
   color: var(--ds-t-2);
   cursor: pointer;
@@ -573,6 +575,57 @@ body {
   .triggerMain {
     display: none;
   }
+}
+
+/* ── 共享态（社区约定 §25「卡片型占用者」方案 A）────────────────────────
+   同槽有别的插件、或宿主是纵向栈（手机端侧栏浮层）时，宽卡不能占满：
+   footer.action 是无 wrap 的 flex 行，宽卡的 width:100% 会把邻居挤到面板
+   右边界之外（用户看到的现象是「别的插件像没加载」）。此时收成 36×36
+   图标钮：行高恒定、位置不跳，卡片信息改由 hover 速览与仪表盘承载。
+   不改宿主容器（不注入 flex-wrap / flex-direction / order）。 */
+.triggerWrapShared {
+  /* 图标钮不参与 footer 行的伸缩：宽度定死，邻居各得其所。 */
+  flex: 0 0 auto;
+  width: 36px;
+  min-width: 36px;
+  max-width: 36px;
+  /* 间距由自己出（宿主 .footerActions 无 gap）：竖向 4px 对齐设置行，
+     横向 2px 与相邻入口各出 2px。 */
+  margin: 4px 2px;
+}
+
+.triggerShared {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--ds-border);
+  /* 圆角随宿主侧栏行（12px），不做正圆（社区约定 §20.2）。 */
+  border-radius: 12px;
+  background: var(--dsb-2);
+  color: var(--ds-t-2);
+  cursor: pointer;
+  transition: border-color var(--ds-t-fast), color var(--ds-t-fast);
+}
+
+.triggerShared:hover,
+.triggerShared:focus-visible {
+  border-color: var(--ds-blue);
+  color: var(--ds-blue);
+  outline: none;
+}
+
+.triggerShared .triggerIcon {
+  width: 26px;
+  height: 26px;
+}
+
+.triggerShared .triggerIcon svg {
+  width: 24px;
+  height: 24px;
 }
 
 /* hover 速览卡：实底浮层，悬停触发卡时向上浮现；不抢点击。
