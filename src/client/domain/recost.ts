@@ -26,6 +26,7 @@ export function recostWithUserPrices(stats: UsageStats): UsageStats {
   const modelCost = new Map<string, number>()
   const repriced = new Set<string>()
   const stillUnpriced = new Set<string>()
+  const sourceEstimates = new Set<string>()
   const modelPrices = new Map<string, { defaultPrice: ReturnType<typeof userPriceEntryOf>; sourcePrices: ReturnType<typeof userOriginPriceEntriesOf> }>()
   let totalCost = 0
   const costFromPrice = (price: { currency?: 'CNY' | 'USD'; input: number; cacheHit: number; output: number; offPeak?: { input: number; cacheHit: number; output: number } } | undefined,
@@ -60,14 +61,15 @@ export function recostWithUserPrices(stats: UsageStats): UsageStats {
       }
       let cost = cell.cost
       if (stats.byModel[key]?.plan !== true) {
-        if (stats.byDayModelsSite === undefined) {
-          // 旧快照缺整个三维格：唯一来源价可用于估算，无法验证实际来源。
-          const legacyPrice = sourcePrices.length === 1 ? sourcePrices[0] : undefined
-          cost = applyPrice(defaultPrice ?? legacyPrice, cell)
+        if (sites === undefined) {
+          // This day/model has no site data, even if other cells in the snapshot do.
+          const soleSource = defaultPrice === undefined && sourcePrices.length === 1 ? sourcePrices[0] : undefined
+          if (soleSource && cell.calls > 0) sourceEstimates.add(key)
+          cost = applyPrice(defaultPrice ?? soleSource, cell)
         } else if (defaultPrice !== undefined || sourcePrices.length > 0) {
           // 仅替换已归属格的费用；剩余用量（包括老账本行）保留宿主计价。
           let remainingCalls = cell.calls
-          for (const [siteKey, siteCell] of Object.entries(sites ?? {})) {
+          for (const [siteKey, siteCell] of Object.entries(sites)) {
             remainingCalls -= siteCell.calls
             if (siteCell.plan || siteKey === 'direct:deepseek-account') continue
             // 混合格没有独立的订阅 token 数，不能对整格重估。
@@ -103,5 +105,6 @@ export function recostWithUserPrices(stats: UsageStats): UsageStats {
     })),
     // 仅当本期实际用量均已覆盖时才撤掉提示（issue #43）；不能只看配置里有没有价。
     unpricedModels: (stats.unpricedModels ?? []).filter(key => !repriced.has(key) || stillUnpriced.has(key)),
+    sourceEstimatedModels: [...sourceEstimates],
   }
 }

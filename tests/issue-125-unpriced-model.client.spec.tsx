@@ -36,7 +36,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function stubUsageStats(configured: () => unknown[] = () => []): void {
+function stubUsageStats(configured: () => unknown[] = () => [], overrides: object = {}): void {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
     const body = url.endsWith('/pricing-models')
@@ -52,7 +52,7 @@ function stubUsageStats(configured: () => unknown[] = () => []): void {
           byDayModels: {},
           byDayModelsSite: {},
           unpricedModels: UNPRICED,
-          updatedAt: 0,
+          updatedAt: 0, ...overrides,
         }
     return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
   }))
@@ -106,6 +106,36 @@ describe('issue #125 未收录模型的可发现性', () => {
     expect(rows[0]).toEqual({ key: 'relay：unknown', origin: 'https://relay.test', input: 0, output: 0, cacheHit: 0, offPeak: { input: 0, output: 0, cacheHit: 0 } })
   })
 
+  it('saves a catalog selection and explicit zero while retaining the prior price and raw draft of an invalid row', async () => {
+    const store = 'dsh.ui-usage-billing.prices'
+    const saved = { key: 'saved', origin: 'https://saved.test', input: 1, cacheHit: 2, output: 3 }
+    localStorage.setItem(store, JSON.stringify([{ ...saved, key: 'remove' }, saved]))
+    stubUsageStats()
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    fireEvent.click(await screen.findByTestId('billing-unpriced-fix'))
+    const picker = await screen.findByTestId('billing-price-picker') as HTMLSelectElement
+    const catalog = JSON.stringify(['flash', ''])
+    expect([...picker.options].some(option => option.value === catalog)).toBe(true)
+    fireEvent.change(picker, { target: { value: catalog } })
+    const model = screen.getAllByTestId('billing-user-price-model')[1] as HTMLInputElement
+    fireEvent.change(model, { target: { value: 'renamed' } })
+    const invalid = screen.getAllByTestId('billing-user-price-normal')[1]!.querySelector('input')!
+    fireEvent.change(invalid, { target: { value: '-1.50' } }); fireEvent.blur(invalid)
+    fireEvent.click(screen.getAllByTestId('billing-user-price-select')[0]!)
+    fireEvent.click(screen.getByTestId('billing-user-price-remove-selected'))
+    expect(screen.getAllByTestId('billing-user-price-normal')[0]!.querySelector('input')).toBe(invalid)
+    const catalogInputs = screen.getAllByTestId('billing-user-price-normal')[1]!.querySelectorAll('input')
+    for (const input of catalogInputs) fireEvent.change(input, { target: { value: '0' } })
+    fireEvent.click(screen.getByTestId('billing-user-price-save'))
+    expect(invalid.value).toBe('-1.50')
+    expect(model.value).toBe('renamed')
+    expect(JSON.parse(localStorage.getItem(store)!)).toEqual([saved, expect.objectContaining({ key: 'flash', input: 0, cacheHit: 0, output: 0 })])
+    expect(screen.getAllByTestId('billing-user-price-row')[0]!.textContent).toContain(t('priceIncomplete'))
+    expect(screen.getAllByTestId('billing-user-price-row')[1]!.textContent).toContain(t('priceSaved'))
+    expect((screen.getByTestId('billing-user-price-save') as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('shows partial discovery, ignores malformed rows, and unlocks identity only on Edit', async () => {
     stubUsageStats(() => [42, 'valid:relay'])
     render(<UsageBilling {...makeProps()} />)
@@ -134,6 +164,25 @@ describe('issue #125 未收录模型的可发现性', () => {
     expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.prices')!)[0]).toMatchObject({
       key: 'valid:relay', origin: 'https://alt.test', input: 1,
     })
+  })
+
+  it('labels only the model actually estimated from a sole source, and identifies unresolved usage separately', async () => {
+    const cell = { calls: 1, input: 100, output: 10, cacheHit: 0, cacheMiss: 100, cost: 0, reasoning: 0 }
+    const models = { legacy: cell, exact: cell, empty: cell, defaulted: cell }
+    const source = { origin: 'https://relay.test', input: 1, cacheHit: 0, output: 1 }
+    localStorage.setItem('dsh.ui-usage-billing.prices', JSON.stringify([
+      ...Object.keys(models).map(key => ({ key, ...source })), { key: 'defaulted', input: 2, cacheHit: 0, output: 2 },
+    ]))
+    const day = '2026-11-01'
+    stubUsageStats(undefined, { byModel: models, byDayModels: { [day]: models }, byDay: { [day]: cell }, unpricedModels: Object.keys(models),
+      byDayModelsSite: { [day]: { exact: { 'site:https://relay.test': cell }, empty: {} } } })
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    const estimate = await screen.findByTestId('billing-source-estimate')
+    expect(estimate.textContent).toBe(`${t('sourceEstimate')} · legacy`)
+    const unresolved = screen.getByTestId('billing-unpriced-hint')
+    expect(unresolved.textContent).toContain('empty')
+    for (const key of ['legacy', 'exact', 'defaulted']) expect(unresolved.textContent).not.toContain(key)
   })
 
   it('概览横幅列出未收录模型 id', async () => {

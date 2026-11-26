@@ -32,6 +32,21 @@ describe('pricing picker discovery', () => {
     expect(doc.models.map(row => row.key)).toEqual(['valid', 'found'])
   })
 
+  it('skips missing adapters without warnings and discovers providers with no usable declarations', async () => {
+    const providers = { missing: {}, damaged: { models: [{ id: 42 }, null] }, mixed: { models: [{ id: 'static' }, {}] } }
+    const listModels = vi.fn(async (route: string) => {
+      if (route === 'missing') throw Object.assign(new Error('Missing adapter'), { code: 'NO_ADAPTER' })
+      return [{ id: 'discovered' }]
+    })
+    const ctx = (configured: object) => ({ settings: { describe: () => [{ ns: 'llm-pi-ai', value: { providers: configured } }] }, get: () => ({ listProviders: () => [], listModels }) })
+    expect(await configuredPricingModels(ctx({ missing: {} }) as never)).toEqual({ models: [], partial: false })
+    listModels.mockClear()
+    const recovered = await configuredPricingModels(ctx(providers) as never)
+    expect(recovered.partial).toBe(true)
+    expect(recovered.models.map(m => m.key)).toEqual(['discovered', 'static'])
+    expect(listModels.mock.calls.flat()).toEqual(['missing', 'damaged'])
+  })
+
   it('coalesces concurrent requests and caches success and partial results for their TTLs', async () => {
     vi.useFakeTimers()
     try {
@@ -44,6 +59,12 @@ describe('pricing picker discovery', () => {
         webServer: { register: (route: { handler: typeof handler }) => { handler = route.handler } },
       }
       registerPricingModelsRoute(ctx as never, new Set())
+      const loopback = { headers: { host: 'localhost' }, socket: { remoteAddress: '127.0.0.1' } }
+      const rejected = { writeHead: vi.fn(), end: vi.fn() }
+      await handler({ method: 'POST', ...loopback } as IncomingMessage, rejected as unknown as ServerResponse)
+      expect(rejected.writeHead).toHaveBeenCalledWith(405, { allow: 'GET', 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+      expect(JSON.parse(rejected.end.mock.calls[0]![0])).toHaveProperty('error')
+      expect(listModels).not.toHaveBeenCalled()
       async function get() {
         const req = { method: 'GET', headers: { host: 'localhost' }, socket: { remoteAddress: '127.0.0.1' } }
         const res = { writeHead: vi.fn(), end: vi.fn() }
@@ -59,8 +80,10 @@ describe('pricing picker discovery', () => {
       expect(await get()).toEqual(a)
       expect(listModels).toHaveBeenCalledTimes(1)
       vi.advanceTimersByTime(1)
-      listModels.mockRejectedValueOnce(new Error('offline'))
-      expect(await get()).toEqual({ models: [], partial: true })
+      listModels.mockImplementationOnce(() => new Promise(() => {}))
+      const stalled = get()
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(await stalled).toEqual({ models: [], partial: true })
       vi.advanceTimersByTime(14_999)
       expect(await get()).toEqual({ models: [], partial: true })
       expect(listModels).toHaveBeenCalledTimes(2)

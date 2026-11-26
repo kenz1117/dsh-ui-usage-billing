@@ -10,6 +10,7 @@ interface Registry {
 interface Profile { models?: unknown; displayName?: string; baseURL?: string }
 
 type PricingModelsResult = { models: PricingModel[]; partial: boolean }
+const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }
 const MODEL_CACHE_MS = 60_000
 const PARTIAL_MODEL_CACHE_MS = 15_000
 
@@ -57,10 +58,8 @@ export async function configuredPricingModels(ctx: Context): Promise<PricingMode
         if (['https:', 'http:'].includes(url.protocol) && !isOfficialBaseUrl(url.origin)) origin = url.origin
       } catch { /* Invalid base URLs are not identifiable price sources. */ }
     }
-    try {
-      const declared = profile?.models
-      if (declared !== undefined && !Array.isArray(declared)) partial = true
-      const list = Array.isArray(declared) && declared.length > 0 ? declared : registry ? await discover(registry, route) : []
+    function parse(list: unknown): PricingModel[] {
+      if (!Array.isArray(list)) { partial = true; return [] }
       const models: PricingModel[] = []
       for (const m of list) {
         if (typeof m?.id !== 'string' || !m.id.trim() || (m.name !== undefined && typeof m.name !== 'string')) {
@@ -70,7 +69,18 @@ export async function configuredPricingModels(ctx: Context): Promise<PricingMode
         models.push({ key: m.id, name: m.name ?? m.id, route, channel, origin })
       }
       return models
-    } catch { partial = true; return [] }
+    }
+    const declared = parse(profile?.models === undefined ? [] : profile.models)
+    if (declared.length || !registry) return declared
+    try {
+      return parse(await discover(registry, route))
+    } catch (error) {
+      // NO_ADAPTER is a normal configured-but-unregistered route. Older hosts
+      // may expose just the registration error message instead of its machine code.
+      if (!(error && typeof error === 'object' && 'code' in error && error.code === 'NO_ADAPTER') &&
+          !(error instanceof Error && error.message === `no adapter registered for provider "${route}"`)) partial = true
+      return []
+    }
   }))
   return { models: groups.flat(), partial }
 }
@@ -92,9 +102,13 @@ export function registerPricingModelsRoute(ctx: Context, trustedHosts: ReadonlyS
       kind: 'exact', path: '/api/billing/pricing-models', ...ANONYMOUS_ROUTE_AUTH,
       async handler(req, res) {
         if (!guardLoopback(req, res, trustedHosts)) return
-        if (req.method !== 'GET') { res.writeHead(405, { allow: 'GET' }); res.end(); return }
+        if (req.method !== 'GET') {
+          res.writeHead(405, { ...JSON_HEADERS, allow: 'GET' })
+          res.end(JSON.stringify({ error: 'method not allowed' }))
+          return
+        }
         const body = await load()
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+        res.writeHead(200, JSON_HEADERS)
         res.end(JSON.stringify(body))
       },
     })

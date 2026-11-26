@@ -127,6 +127,12 @@ describe('recostWithUserPrices with origin-bound prices (issue #18)', () => {
       expect(legacy.byModel.mystery?.cost).toBe(modern.byModel.mystery?.cost)
       expect(legacy.unpricedModels).toEqual(['other-unknown'])
       expect(modern.unpricedModels).toEqual(legacy.unpricedModels)
+      const mixed = recostWithUserPrices(statsFixtureWithSite())
+      expect(mixed.byModel.mystery?.cost).toBe(modern.byModel.mystery?.cost)
+      expect(mixed.unpricedModels).toEqual(modern.unpricedModels)
+      expect(mixed.sourceEstimatedModels).toEqual(['mystery'])
+      expect(legacy.sourceEstimatedModels).toEqual(['mystery'])
+      expect(modern.sourceEstimatedModels).toEqual([])
     } finally {
       applyUserPrices([])
     }
@@ -149,7 +155,7 @@ describe('recostWithUserPrices with origin-bound prices (issue #18)', () => {
   it('never falls back to a source-bound price with an empty or mismatched site grid', () => {
     applyUserPrices([bound])
     try {
-      for (const stats of [statsFixtureWithSite(), withSites({}), withSites({ 'site:https://other.test': mystery })]) {
+      for (const stats of [withSites({}), withSites({ 'site:https://other.test': mystery })]) {
         const recosted = recostWithUserPrices(stats)
         expect(recosted.byModel.mystery?.cost).toBe(mystery.cost)
         expect(recosted.unpricedModels).toContain('mystery')

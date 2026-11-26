@@ -87,11 +87,12 @@ import { flagAnomalies, type AnomalyFlag } from './anomaly.ts'
 import { dayRowsCsv, downloadText, exportFileName, sessionRowsCsv, siteRowsCsv } from './export.ts'
 import type { createBillingBudgetStore } from './budget-store.ts'
 import { EMPTY_MODEL_BUDGETS, EMPTY_MODEL_TIER_ALERT_DAYS } from './budget-store.ts'
+import { newPriceDraft, planPriceSave, samePrice, validPriceText, type PriceDraft } from './price-drafts.ts'
 import { priceIdentity, priceOptions, useConfiguredPrices } from './price-picker.ts'
 import { pickerPrice, convertFromCny,
   applyLiveCatalogModels, applyUserPrices, catalogEntries, computeCost, convertUnitPrice,
   formatMoney, formatPercent, formatTokens, formatUnitPrice, getRateInfo, isPromoActive,
-  channelCountdown, localDayStamp, modelOf, normalizeOriginInput, rateChannelOf, tierAt, type CostCurrency, type TokenUsageBuckets,
+  channelCountdown, localDayStamp, modelOf, rateChannelOf, tierAt, type CostCurrency, type TokenUsageBuckets,
 } from './pricing.ts'
 import type { ProviderBalance, ReconcileNotice, RelayQuota } from '../pricing-shared.ts'
 import type { SubscriptionQuota } from '../pricing-shared.ts'
@@ -834,118 +835,57 @@ function UserPriceCard({ userPrices, onUserPrices, t, stats }: {
    */
   stats: UsageStats
 }): React.ReactNode {
-  // 本地编辑副本：增删改都在列表内完成，点「保存」才提交；行内价格输入框不会改坏结构。
-  const [drafts, setDrafts] = useState<(UserPriceMap[number] & { locked?: boolean })[]>(() => [...userPrices])
-  // 勾选集合（行下标）：删除收敛到底部操作条「删除所选」，与新增/保存并列（issue #32）。
+  const nextId = useRef(userPrices.length)
+  const [drafts, setDrafts] = useState<PriceDraft[]>(() => userPrices.map((saved, id) => ({
+    ...newPriceDraft(id, saved.key, saved.origin, saved), saved,
+  })))
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set())
-  const toggleSelect = (i: number): void =>
-    setSelected(s => {
-      const next = new Set(s)
-      if (next.has(i)) next.delete(i); else next.add(i)
-      return next
-    })
+  const toggleSelect = (id: number): void => setSelected(s => {
+    const next = new Set(s)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
   const removeSelected = (): void => {
-    setDrafts(list => list.filter((_, idx) => !selected.has(idx)))
+    setDrafts(list => list.filter(row => !selected.has(row.id)))
     setSelected(new Set())
   }
-  const update = (i: number, patch: Partial<(typeof drafts)[number]>): void =>
-    setDrafts(list => list.map((row, idx) => (idx === i ? { ...row, ...patch } : row)))
-  const add = (): void => setDrafts(list => [...list, { key: '', input: NaN, cacheHit: NaN, output: NaN }])
-  // 低谷档草稿态（字符串，留空 = 平档）：与主档独立编辑，三值有效才成档。
-  const offPeakOf = (i: number): { input: string; cacheHit: string; output: string } => {
-    const off = drafts[i]?.offPeak
-    return {
-      input: off === undefined || !Number.isFinite(off.input) ? '' : String(off.input),
-      cacheHit: off === undefined || !Number.isFinite(off.cacheHit) ? '' : String(off.cacheHit),
-      output: off === undefined || !Number.isFinite(off.output) ? '' : String(off.output),
-    }
+  const update = (i: number, patch: Partial<PriceDraft>): void =>
+    setDrafts(list => list.map((row, idx) => idx === i ? { ...row, ...patch } : row))
+  const add = (): void => {
+    const row = newPriceDraft(nextId.current++)
+    setDrafts(list => [...list, row])
   }
-  const setOffPeak = (i: number, field: 'input' | 'cacheHit' | 'output', raw: string): void =>
-    setDrafts(list => list.map((row, idx) => {
-      if (idx !== i) return row
-      // 从 updater 的当前行派生（而非渲染作用域的 drafts）：批量/连续输入时
-      // 读到的是最新草稿，不丢同拍编辑的兄弟字段。
-      const off = row.offPeak
-      const next = {
-        input: off === undefined || !Number.isFinite(off.input) ? '' : String(off.input),
-        cacheHit: off === undefined || !Number.isFinite(off.cacheHit) ? '' : String(off.cacheHit),
-        output: off === undefined || !Number.isFinite(off.output) ? '' : String(off.output),
-        [field]: raw,
-      }
-      const touched = [next.input, next.cacheHit, next.output].some(v => v.trim() !== '')
-      const values = [next.input, next.cacheHit, next.output].map(v => v.trim() === '' ? NaN : Number(v))
-
-      const { offPeak, ...rest } = row
-      void offPeak
-      return touched
-        ? { ...rest, offPeak: { input: values[0] ?? 0, cacheHit: values[1] ?? 0, output: values[2] ?? 0 } }
-        : rest
-    }))
-  // 保存：丢弃空模型行；来源规范化（补协议/取 origin——手填差异是自定义价失效主因之一）。
-  const save = (): void => onUserPrices(drafts
-    .filter(row => row.key.trim() !== '')
-    .map(({ locked: _locked, ...row }) => ({
-      ...row,
-      key: row.key.trim(),
-      ...(row.origin === undefined || row.origin.trim() === ''
-        ? {}
-        : { origin: normalizeOriginInput(row.origin.trim()) }),
-    })))
+  const entries = planPriceSave(drafts)
+  const removedSavedRow = drafts.filter(row => row.saved).length < userPrices.length
+  const canSave = entries.some((entry, i) => entry && !samePrice(entry, drafts[i]?.saved)) || removedSavedRow
+  const save = (): void => {
+    onUserPrices(drafts.flatMap((row, i) => entries[i] ?? row.saved ?? []))
+    setDrafts(list => list.map((row, i) => entries[i] ? { ...row, saved: entries[i] } : row))
+  }
   const configured = useConfiguredPrices(true)
-  const options = useMemo(() => priceOptions(configured.models, stats), [configured.models, stats])
-  const modelKeys = [...new Set([...catalogEntries().map(row => row.key), ...options.map(row => row.key)])]
+  const options = useMemo(() => {
+    const used = priceOptions(configured.models, stats)
+    const seen = new Set(used.map(row => row.id))
+    for (const entry of catalogEntries()) {
+      const id = JSON.stringify([entry.key, ''])
+      if (!seen.has(id)) used.push({ id, key: entry.key, channel: entry.provider, origin: '', name: entry.name })
+    }
+    return used.sort((a, b) => a.channel.localeCompare(b.channel) || a.key.localeCompare(b.key))
+  }, [configured.models, stats])
+  const modelKeys = [...new Set(options.map(row => row.key))]
   const priceList = useRef<HTMLDivElement>(null)
   const identity = (row: { key: string; origin?: string }) => priceIdentity(row.key, row.origin)
-  const ids = drafts.filter(row => row.key.trim()).map(identity)
-  const incomplete = new Set(ids).size !== ids.length || drafts.some(row => row.key.trim() &&
-    ![row.input, row.cacheHit, row.output, ...(row.offPeak ? Object.values(row.offPeak) : [])].every(value => Number.isFinite(value) && value >= 0))
   function choose(id: string): void {
     const option = options.find(item => item.id === id)
     if (!option) return
     let index = drafts.findIndex(row => identity(row) === identity(option))
     if (index < 0) {
       index = drafts.length
-      const price = pickerPrice(option.key)
-      setDrafts(list => [...list, { key: option.key, locked: true,
-        ...(option.origin ? { origin: option.origin } : {}),
-        input: price?.input ?? NaN, cacheHit: price?.cacheHit ?? NaN, output: price?.output ?? NaN,
-        ...(price?.currency === 'USD' ? { currency: 'USD' } : {}),
-        ...(price?.offPeak ? { offPeak: { input: price.offPeak.input, cacheHit: price.offPeak.cacheHit, output: price.offPeak.output } } : {}),
-      }])
+      const row = newPriceDraft(nextId.current++, option.key, option.origin, pickerPrice(option.key))
+      setDrafts(list => [...list, { ...row, locked: true }])
     } else setDrafts(list => list.map((row, i) => i === index ? { ...row, locked: true } : row))
     requestAnimationFrame(() => priceList.current?.querySelectorAll('[data-testid="billing-user-price-row"]')[index]
-      ?.querySelector<HTMLInputElement>('input[type="number"]')?.focus())
-  }
-  // 币种切换：CNY = 移除 currency 字段（缺省即 CNY），USD = 显式标记（exactOptionalPropertyTypes）。
-  const setCurrency = (i: number, cur: 'CNY' | 'USD'): void =>
-    setDrafts(list => list.map((row, idx) => {
-      if (idx !== i) return row
-      const { currency, ...rest } = row
-      return cur === 'USD' ? { ...rest, currency: 'USD' } : rest
-    }))
-  // 数字输入草稿（键 `${行}:main|off:${字段}`）：parse→String 每键回填会吞掉
-  // 输入中的尾零/未完成小数（"1.50" 的 0 键入即被归一回 "1.5"，与用户输入打架）。
-  // 草稿保留原始串，有效值照常即时提交（预览与保存不受影响），失焦丢弃草稿、
-  // 显示回落到已提交值的规范形。
-  const [numDrafts, setNumDrafts] = useState<Record<string, string>>({})
-  const draftKey = (i: number, scope: 'main' | 'off', field: string): string => `${i}:${scope}:${field}`
-  const clearNumDraft = (i: number, scope: 'main' | 'off', field: string): void =>
-    setNumDrafts(d => {
-      const key = draftKey(i, scope, field)
-      if (d[key] === undefined) return d
-      const next = { ...d }
-      delete next[key]
-      return next
-    })
-  const num = (v: number): string => (Number.isFinite(v) ? String(v) : '')
-  const setNum = (i: number, field: 'input' | 'cacheHit' | 'output', raw: string): void => {
-    setNumDrafts(d => ({ ...d, [draftKey(i, 'main', field)]: raw }))
-    if (raw === '') {
-      update(i, { [field]: NaN })
-      return
-    }
-    const value = Number(raw)
-    update(i, { [field]: Number.isFinite(value) && value >= 0 ? value : NaN })
+      ?.querySelector<HTMLInputElement>('input[inputmode="decimal"]')?.focus())
   }
   return (
     <section className={css.setCard} data-testid="billing-user-prices">
@@ -962,19 +902,19 @@ function UserPriceCard({ userPrices, onUserPrices, t, stats }: {
             !pickerPrice(o.key) && t('priceUnpriced')].filter((v, i, list) => v && list.indexOf(v) === i).join(' · ')}</option>)}
         </select>
         {configured.partial && <span role="status">{t('priceModelsPartial')}</span>}
-        {incomplete && <span role="status">{t('priceIncomplete')}</span>}
+
         <datalist id="billing-price-model-keys">
           {modelKeys.map(key => <option key={key} value={key} />)}
         </datalist>
         {drafts.map((row, i) => (
-          <div key={i} className={css.userPriceRow} data-testid="billing-user-price-row">
+          <div key={row.id} className={css.userPriceRow} data-testid="billing-user-price-row">
             <input
               type="checkbox"
               className={css.userPriceCheck}
               data-testid="billing-user-price-select"
-              checked={selected.has(i)}
+              checked={selected.has(row.id)}
               aria-label={t('userPriceSelect')}
-              onChange={() => toggleSelect(i)}
+              onChange={() => toggleSelect(row.id)}
             />
             <div className={css.userPriceBody}>
             <div className={css.userPriceLineMeta}>
@@ -1011,14 +951,14 @@ function UserPriceCard({ userPrices, onUserPrices, t, stats }: {
                 <button
                   type="button"
                   className={clsx(css.floatModeBtn, row.currency !== 'USD' && css.floatModeBtnOn)}
-                  onClick={() => setCurrency(i, 'CNY')}
+                  onClick={() => update(i, { currency: 'CNY' })}
                 >
                   CNY
                 </button>
                 <button
                   type="button"
                   className={clsx(css.floatModeBtn, row.currency === 'USD' && css.floatModeBtnOn)}
-                  onClick={() => setCurrency(i, 'USD')}
+                  onClick={() => update(i, { currency: 'USD' })}
                 >
                   USD
                 </button>
@@ -1037,19 +977,12 @@ function UserPriceCard({ userPrices, onUserPrices, t, stats }: {
                 scope: 'main' as const,
                 label: t('userPriceNormal'),
                 testid: 'billing-user-price-normal',
-                valueOf: (kind: 'input' | 'cacheHit' | 'output') => numDrafts[draftKey(i, 'main', kind)] ?? num(row[kind]),
-                onChange: (kind: 'input' | 'cacheHit' | 'output', raw: string) => setNum(i, kind, raw),
               },
               // 低谷价子行：三桶留空 = 平档；三值有效即按峰/谷混合估算（issue #18）。
               {
                 scope: 'off' as const,
                 label: t('userPriceOffPeak'),
                 testid: 'billing-user-price-offpeak',
-                valueOf: (kind: 'input' | 'cacheHit' | 'output') => numDrafts[draftKey(i, 'off', kind)] ?? offPeakOf(i)[kind],
-                onChange: (kind: 'input' | 'cacheHit' | 'output', raw: string) => {
-                  setNumDrafts(d => ({ ...d, [draftKey(i, 'off', kind)]: raw }))
-                  setOffPeak(i, kind, raw)
-                },
               },
             ]).map(line => (
               <div key={line.testid} className={css.userPricePriceLine} data-testid={line.testid}>
@@ -1060,19 +993,23 @@ function UserPriceCard({ userPrices, onUserPrices, t, stats }: {
                     <input
                       key={kind}
                       className={css.userPriceInputNum}
-                      type="number"
-                      min={0}
-                      step={0.01}
+                      type="text"
+                      inputMode="decimal"
                       placeholder={kindLabel}
                       aria-label={`${line.label} ${kindLabel}`}
-                      value={line.valueOf(kind)}
-                      onChange={e => line.onChange(kind, e.target.value)}
-                      onBlur={() => clearNumDraft(i, line.scope, kind)}
+                      value={row[line.scope][kind]}
+                      onChange={e => update(i, { [line.scope]: { ...row[line.scope], [kind]: e.target.value } })}
+                      onBlur={e => {
+                         const raw = e.target.value
+                         if (validPriceText(raw)) update(i, { [line.scope]: { ...row[line.scope], [kind]: String(Number(raw)) } })
+                       }}
                     />
                   )
                 })}
               </div>
             ))}
+            {!entries[i] ? <span role="status">{t('priceIncomplete')}</span>
+              : samePrice(entries[i], row.saved) && <span role="status">{t('priceSaved')}</span>}
             </div>
           </div>
         ))}
@@ -1089,7 +1026,7 @@ function UserPriceCard({ userPrices, onUserPrices, t, stats }: {
           >
             {t('userPriceRemoveSelected')}{selected.size > 0 ? ` (${selected.size})` : ''}
           </button>
-          <button type="button" className={css.exportButton} data-testid="billing-user-price-save" disabled={incomplete} onClick={save}>
+          <button type="button" className={css.exportButton} data-testid="billing-user-price-save" disabled={!canSave} onClick={save}>
             {t('userPriceSave')}
           </button>
         </div>
@@ -2343,6 +2280,11 @@ function BillingDashboard({
                 </div>
               </section>
 
+              {!!stats.sourceEstimatedModels?.length && (
+                <div className={css.unpricedHint} data-testid="billing-source-estimate">
+                  <span className={css.unpricedHintBody}>{t('sourceEstimate')} · {stats.sourceEstimatedModels.join(language === 'zh' ? '、' : ', ')}</span>
+                </div>
+              )}
               {/* 未计价模型提示：目录外/无价模型费用按 0 计，提醒用户自查并反馈。
                   v1.5：加 × 关闭（按天持久化，次日恢复）。
                   issue #125：直接列出未收录的模型 id + 「去补价」入口——用户此前
