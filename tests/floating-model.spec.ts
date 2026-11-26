@@ -26,9 +26,21 @@ describe('floating card scope and wallet provenance', () => {
     expect(status(selected({ 'direct:deepseek': row(9) }), [legacy])?.text).toBe(t('popBalanceUnavailable'))
     expect(status(selected({ 'direct:deepseek-account': row(9) }), [{ ...wallet, sourceRoute: 'deepseek-account' }])?.low).toBe(true)
   })
+  it('requires a single attributed DeepSeek wallet, preserving configured API errors', () => {
+    const leads = selected({ 'direct:deepseek': row(9) })
+    const api = { ...wallet, walletKind: 'api-key', attributedRoutes: ['deepseek'], error: 'unauthorized' } as const
+    const account = { ...wallet, walletKind: 'account', attributedRoutes: ['deepseek'] } as const
+    expect(status(leads, [account])?.text).toBe(`DeepSeek · ${t('walletLogin')} · ¥3.00`)
+    const mixed = { ...account, totalBalance: 0, otherBalances: [{ currency: 'USD', totalBalance: 100 }] }
+    expect(status(leads, [mixed])).toEqual({ name: 'model', text: `DeepSeek · ${t('walletLogin')} · ¥0 + USD 100.00`, low: false })
+    expect(status(leads, [api, account])?.text).toBe(t('popBalanceUnavailable'))
+    expect(status(leads, [api, { ...account, attributedRoutes: [] }])?.text).toBe(`DeepSeek · ${t('walletPlatform')} · ${t('balanceUnauthorized')}`)
+    const origin = 'https://api.deepseek.com'
+    expect(status(selected({ [`site:${origin}`]: row(9) }), [{ ...account, sourceOrigin: origin }])?.text).toBe(t('popBalanceUnavailable'))
+  })
   it('refuses multiple sources even when one dominates, and rejects incomplete coverage', () => {
     expect(status(selected({ 'direct:deepseek': row(9, 99), 'site:https://a.example': row(0) }, 100))).toEqual({ name: 'model', text: t('popMultipleSources'), low: false })
-    expect(status(selected({ 'direct:deepseek': row(9) }, 2))?.text).toBe(t('popMultipleSources'))
+    expect(status(selected({ 'direct:deepseek': row(9) }, 2))?.text).toBe(t('popSourceUnknown'))
   })
   it('requires unique relay origin and never assumes an upstream balance is CNY', () => {
     const leads = selected({ 'site:https://a.example': row(9) })
@@ -39,29 +51,33 @@ describe('floating card scope and wallet provenance', () => {
   it('has no leads without usage and reports unknown provenance for an uncovered paid row', () => {
     const empty = floatingLeads({ byModel: {}, byDayModels: { [today]: { model: row(0, 0) } } }, 'day', today)
     expect(floatingStatus(empty, [wallet], [relay], [], 10, t)).toEqual({ direct: undefined, sub: undefined })
-    expect(status(selected({}))).toEqual({ name: 'model', text: t('popBalanceUnavailable'), low: false })
+    expect(status(selected({}))).toEqual({ name: 'model', text: t('popSourceUnknown'), low: false })
   })
-  it('keeps known paid costs and allocates only uncovered calls to the legacy plan', () => {
+  it('ranks on displayed costs and keeps the identified quota with a legacy plan residual', () => {
     const direct = 'direct:deepseek', plan = 'direct:plan'
     const stats = {
       byModel: { model: { ...row(99, 10), plan: true } },
-      byDayModels: { [today]: { model: row(99, 10) } },
+      byDayModels: { [today]: { model: row(20, 10), rival: row(12) } },
       byDayModelsSite: { [today]: { model: { [direct]: { ...row(8, 3), plan: false }, [plan]: row(0, 2) } } },
     }
     const leads = floatingLeads(stats, 'day', today)
-    expect(leads.paid).toEqual({ name: 'model', cost: 8, calls: 3, sources: new Set([direct]) })
-    expect(leads.plan).toEqual({ name: 'model', cost: 0, calls: 7, sources: new Set([plan, 'unknown']) })
+    expect(leads.paid).toEqual({ name: 'model', cost: 20, calls: 3, sources: new Set([direct]), unattributedCalls: 0 })
+    expect(leads.plan).toEqual({ name: 'model', cost: 0, calls: 7, sources: new Set([plan]), unattributedCalls: 5 })
+    const windows = [{ kind: 'weekly', usedPercent: 95, remainingPercent: 5 }] as const
+    const quota = { provider: 'plan', displayName: 'Plan', windows, status: 'ok' } as const
+    const remaining = t('subscriptionRemaining').replace('{pct}', '5')
+    expect(floatingStatus(leads, [wallet], [], [quota], 10, t).sub).toEqual({ name: 'model', text: `Plan · ${remaining} · ${t('popPartialSource')}`, low: true })
     expect(status(leads)?.text).toBe('DeepSeek · ¥3.00')
   })
-  it('uses recorded residuals for uncovered paid calls on a mixed day', () => {
+  it('keeps the dashboard amount but withholds the wallet for an uncovered paid residual', () => {
     const stats = {
       byModel: {}, byDayModels: { [today]: { model: row(99, 10) } },
       byDayModelsSite: { [today]: { model: { 'direct:deepseek': row(8, 3), 'direct:plan': { ...row(0, 2), plan: true } } } },
     }
-    const leads = floatingLeads(stats, 'day', today, { [today]: { model: row(15, 10) } })
-    expect(leads.paid).toEqual({ name: 'model', cost: 15, calls: 8, sources: new Set(['direct:deepseek', 'unknown']) })
+    const leads = floatingLeads(stats, 'day', today)
+    expect(leads.paid).toEqual({ name: 'model', cost: 99, calls: 8, sources: new Set(['direct:deepseek']), unattributedCalls: 5 })
     expect(leads.plan?.calls).toBe(2)
-    expect(status(leads)?.text).toBe(t('popMultipleSources'))
+    expect(status(leads)?.text).toBe(t('popSourceUnknown'))
   })
   it('breaks ties on paid calls and then model key independent of insertion order', () => {
     for (const keys of [['b', 'a', 'c'], ['c', 'a', 'b']]) {
@@ -128,8 +144,8 @@ describe('floating card scope and wallet provenance', () => {
       byDayModelsSite: { [today]: { model: { [source]: { ...row(7, 10), planCalls: 6 } } } },
     }
     const leads = floatingLeads(stats, 'day', today)
-    expect(leads.paid).toEqual({ name: 'model', cost: 7, calls: 4, sources: new Set([source]) })
-    expect(leads.plan).toEqual({ name: 'model', cost: 0, calls: 6, sources: new Set([source]) })
+    expect(leads.paid).toEqual({ name: 'model', cost: 99, calls: 4, sources: new Set([source]), unattributedCalls: 0 })
+    expect(leads.plan).toEqual({ name: 'model', cost: 0, calls: 6, sources: new Set([source]), unattributedCalls: 0 })
   })
   it('selects subscription by scoped calls, preserves plan identity and query failure', () => {
     const a = { ...row(0, 2), plan: true }, b = { ...row(0, 9), plan: true }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { pickTokenDanceBalanceCny, queryBalances, resolveHeaders, withBalanceOrigin } from '../src/balance.ts'
+import { pickTokenDanceBalanceCny, queryBalances, resolveHeaders } from '../src/balance.ts'
 
 /** 凭据 seam 桩：KEY/TOKEN 可解析，EMPTY 为空串，其余未配置。credentialRef 是 branded 字符串。 */
 function ctxWith(entries: Record<string, string>) {
@@ -19,16 +19,12 @@ describe('official wallet provenance', () => {
     ['stepfun', 'https://api.stepfun.com'], ['siliconflow', 'https://api.siliconflow.cn'],
     ['xai', 'https://api.x.ai'], ['zhipu', 'https://open.bigmodel.cn'],
     ['zai-coding-cn', 'https://open.bigmodel.cn'],
-  ])('binds the exact supported origin for %s', (sourceRoute, origin) => {
-    const row = { provider: sourceRoute, displayName: sourceRoute, sourceRoute, error: 'unauthorized' } as const
-    expect(withBalanceOrigin(row, new Map([[sourceRoute, origin]]))).toEqual({ ...row, sourceOrigin: origin })
-    expect(withBalanceOrigin(row, new Map([[sourceRoute, 'https://relay.example']]))).toEqual(row)
-    expect(withBalanceOrigin(row, new Map())).toEqual(row)
-  })
-
-  it('does not associate the account wallet with the Platform API origin', () => {
-    const row = { provider: 'deepseek', displayName: 'DeepSeek', sourceRoute: 'deepseek-account', totalBalance: 4 }
-    expect(withBalanceOrigin(row, new Map([['deepseek-account', 'https://api.deepseek.com']]))).toEqual(row)
+  ])('binds the supported origin for %s, including on errors', async (route, origin) => {
+    const result = async (baseURL: string) => (await queryBalances(ctxWith({}), { [route]: { baseURL } })).find(row => row.sourceRoute === route)
+    expect(await result(`${origin}/v1`)).toMatchObject({ sourceOrigin: origin, error: 'unconfigured', attributedRoutes: [route] })
+    const relay = await result('https://relay.example')
+    expect(relay?.sourceOrigin).toBeUndefined()
+    expect(relay?.attributedRoutes).toEqual([])
   })
 })
 
@@ -118,6 +114,27 @@ describe('queryBalances（新版宿主形态）', () => {
     const partial = await zhipu({ PAYG: 'wallet-a' })
     expect(partial[1]).toMatchObject({ sourceRoute: 'zai-coding-cn', error: 'unconfigured' })
     expect(partial.every(row => row.sourceRouteAliases === undefined)).toBe(true)
+  })
+  it('coalesces verified aliases with explicit base URLs', async () => {
+    const origin = 'https://open.bigmodel.cn'
+    const providers = { zhipu: { apiKeyEnv: 'KEY_A', baseURL: `${origin}/api/paas/v4` }, 'zai-coding-cn': { apiKeyEnv: 'KEY_B', baseURL: `${origin}:443/v4` } }
+    const fetchSpy = vi.fn(async () => new Response(null, { status: 401 }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const run = async (keys: Record<string, string>, extra = {}) => (await queryBalances(ctxWith(keys), { ...providers, ...extra })).filter(row => row.provider === '智谱 AI')
+    const shared = await run({ KEY_A: 'same', KEY_B: 'same' })
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(shared).toEqual([expect.objectContaining({ walletKind: 'api-key', sourceRoute: 'zhipu', sourceRouteAliases: ['zai-coding-cn'], attributedRoutes: ['zhipu', 'zai-coding-cn'], sourceOrigin: origin, error: 'unauthorized' })])
+    const distinct = await run({ KEY_A: 'same', KEY_B: 'different' })
+    expect(fetchSpy).toHaveBeenCalledTimes(3)
+    expect(distinct.map(row => row.attributedRoutes)).toEqual([['zhipu'], ['zai-coding-cn']])
+    expect(distinct.every(row => row.sourceOrigin === undefined && row.sourceRouteAliases === undefined)).toBe(true)
+    const unverified = await run({ KEY_A: 'same', KEY_B: 'same' }, { custom: { baseURL: origin } })
+    expect(unverified).toHaveLength(1)
+    expect(unverified[0]?.sourceOrigin).toBeUndefined()
+    const foreign = await run({ KEY_A: 'same', KEY_B: 'same' }, { 'zai-coding-cn': { apiKeyEnv: 'KEY_B', baseURL: 'https://relay.example' } })
+    expect(foreign).toHaveLength(2)
+    expect(foreign[1]?.attributedRoutes).toEqual([])
+    expect(foreign.every(row => row.sourceRouteAliases === undefined)).toBe(true)
   })
   it('queries the wallet via the route conventional ref when apiKeyEnv is absent', async () => {
     // 新版宿主把路由 key 存成凭据 refs（<ROUTE>_API_KEY）：zai-coding-cn 路由没配

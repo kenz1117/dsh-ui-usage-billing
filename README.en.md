@@ -61,7 +61,7 @@ Most billing plugins stop at "token count × unit price". dsh-ui-usage-billing t
 
 ### Sidebar and live feedback
 
-- **Trigger card**: today / week / month headline, 7-day trend and daily gauge; choose a full card, compact icon or hidden entry, with a quick look on hover. The hover card ranks pay-as-you-go and subscription models over the selected period, which defaults to today (previously fixed to the current month).
+- **Trigger card**: today / week / month headline, 7-day trend and daily gauge; choose a full card, compact icon or hidden entry, with a quick look on hover. The hover card ranks pay-as-you-go and subscription models over the selected period, which defaults to today (previously fixed to the current month). Metered models rank by dashboard cost, including custom prices. Subscription models rank by call count. Multiple channels or usage of unknown origin leave the wallet balance unconfirmed. If only one subscription channel can be identified, the card shows its quota and flags any remaining usage of unknown origin.
 - **Cost bar and alerts**: live turn / Session cost, model-aware peak and quota warnings, plus optional system notifications for tier switches and Session completion.
 - **Shortcut**: bind "Open usage billing dashboard" in the host's Settings → Shortcuts — `⌘⇧D` by default (`Ctrl+Shift+D` on Windows / Linux), rebindable or clearable — so the dashboard stays one keystroke away even with the sidebar entry hidden.
 

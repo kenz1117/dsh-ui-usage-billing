@@ -19,6 +19,8 @@ import { isPriced, resolveCatalogKey, computeCostAt, modelOf, tierAt, DEFAULT_PE
 import type { ModelEntry } from './client/pricing.ts'
 import { BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts'
 import { isSubscriptionProviderId } from './subscriptions.ts'
+import { siteBucketKey, siteKeyParts, type SiteRef } from './pricing-shared.ts'
+export { siteBucketKey, type SiteRef, type SiteKind } from './pricing-shared.ts'
 
 /** 会话日志偏移：宿主 0.1.2-alpha.4 前的 dsh-session/types 不导出 SessionLogOffset
  * 值，具名导入让这些宿主装载即崩（v1.4.19~v1.4.22 实测，alpha.3 真机复现）；
@@ -136,18 +138,6 @@ export interface ProviderRouteView {
   baseURL?: string
 }
 
-/** 站点归属分类：site=中转站（有 baseURL origin）；direct=直连；unknown=未知路由（配置已删）。 */
-export type SiteKind = 'site' | 'direct' | 'unknown'
-
-/** 一个 provider 路由归类后的站点引用。 */
-export interface SiteRef {
-  kind: SiteKind
-  /** 站点归一化 origin（仅 site）。 */
-  origin?: string
-  /** 原 provider 路由名。 */
-  provider: string
-}
-
 /** 由 baseURL 归一化出站点 origin（协议 + 主机 + 端口）；解析失败回退原值。 */
 export function siteOriginOf(baseURL: string): string {
   try {
@@ -189,13 +179,6 @@ export function siteRefOf(
   return { kind: 'unknown', provider }
 }
 
-/** 站点桶的稳定 key：`site:<origin>` 与 `direct:<provider>` 分开，`unknown` 单一桶。 */
-export function siteBucketKey(ref: SiteRef): string {
-  if (ref.kind === 'site') return `site:${ref.origin ?? ''}`
-  if (ref.kind === 'direct') return `direct:${ref.provider}`
-  return 'unknown'
-}
-
 /**
  * 站点桶按范围求和（usage_stats 工具的 bySite/relay 口径）：bySite 全量累计；
  * relay 只计中转站桶（`site:<origin>` 键）——`direct:*` 与 `unknown` 不计入，
@@ -210,7 +193,7 @@ export function sumSiteBuckets(
   let input = 0
   let output = 0
   for (const [bucket, usage] of Object.entries(bySite)) {
-    if (range === 'relay' && !bucket.startsWith('site:')) continue
+    if (range === 'relay' && siteKeyParts(bucket).kind !== 'site') continue
     cost += usage.cost
     calls += usage.calls
     input += usage.input

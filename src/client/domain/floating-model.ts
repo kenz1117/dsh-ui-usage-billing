@@ -1,4 +1,4 @@
-import type { ProviderBalance, RelayQuota, SubscriptionQuota } from '../../pricing-shared.ts'
+import { balanceCoversSite, siteKeyParts, type ProviderBalance, type RelayQuota, type SubscriptionQuota } from '../../pricing-shared.ts'
 import { formatMoney, getRateInfo, localDayStamp, modelOf } from '../pricing.ts'
 import type { BillingCardSpan } from '../usage-billing-settings.ts'
 import type { UsageBillingKey } from '../locales.ts'
@@ -6,21 +6,22 @@ import { subscriptionStatusText } from './kpi.ts'
 import type { UsageStats } from './types.ts'
 
 type ModelStats = Pick<UsageStats, 'byDayModels' | 'byDayModelsSite' | 'byModel'>
-interface Lead { name: string; cost: number; calls: number; sources: Set<string> }
+interface Lead { name: string; cost: number; calls: number; sources: Set<string>; unattributedCalls: number }
 
-/** Retain displayed costs for paid-only days. For mixed days use recorded costs to avoid pricing plan calls. */
-export function floatingLeads(stats: ModelStats, span: BillingCardSpan, today: string, recordedDays = stats.byDayModels) {
+/** Rank metered models on the same day/model costs as the dashboard, including custom prices. */
+export function floatingLeads(stats: ModelStats, span: BillingCardSpan, today: string) {
   const monday = new Date(`${today}T00:00:00`)
   monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7)
   const start = span === 'day' ? today : span === 'week' ? localDayStamp(monday.getTime()) : `${today.slice(0, 7)}-01`
   const paid = new Map<string, Lead>()
   const plans = new Map<string, Lead>()
-  function add(bucket: Map<string, Lead>, name: string, cost: number, calls: number, sources: string[]) {
-    const row = bucket.get(name) ?? { name, cost: 0, calls: 0, sources: new Set<string>() }
-    row.cost += cost
+  function add(bucket: Map<string, Lead>, name: string, calls: number, source?: string) {
+    const row = bucket.get(name) ?? { name, cost: 0, calls: 0, sources: new Set<string>(), unattributedCalls: 0 }
     row.calls += calls
-    for (const source of sources) row.sources.add(source)
+    if (source === undefined || siteKeyParts(source).kind === 'unknown') row.unattributedCalls += calls
+    else row.sources.add(source)
     bucket.set(name, row)
+    return row
   }
   for (const [day, models] of Object.entries(stats.byDayModels ?? {})) {
     if (day < start || day > today) continue
@@ -29,36 +30,21 @@ export function floatingLeads(stats: ModelStats, span: BillingCardSpan, today: s
       const legacyPlan = stats.byModel[name]?.plan === true
       const sites = Object.entries(stats.byDayModelsSite?.[day]?.[name] ?? {}).filter(([, cell]) => cell.calls > 0)
       let coveredCalls = 0
-      let coveredCost = 0
-      let paidCalls = 0
-      let paidCost = 0
-      let hasPlan = false
-      const paidSources: string[] = []
+      let metered: Lead | undefined
       for (const [source, cell] of sites) {
         coveredCalls += cell.calls
-        coveredCost += cell.cost
         const planCalls = cell.planCalls ?? ((cell.plan ?? legacyPlan) ? cell.calls : 0)
-        if (planCalls > 0) {
-          hasPlan = true
-          add(plans, name, 0, planCalls, [source])
-        }
-        if (cell.calls > planCalls) {
-          paidCalls += cell.calls - planCalls
-          paidCost += cell.cost
-          paidSources.push(source)
-        }
+        if (planCalls > 0) add(plans, name, planCalls, source)
+        if (cell.calls > planCalls) metered = add(paid, name, cell.calls - planCalls, source)
       }
-      const uncoveredCalls = Math.max(0, usage.calls - coveredCalls)
-      if (uncoveredCalls > 0 && legacyPlan) {
-        hasPlan = true
-        add(plans, name, 0, uncoveredCalls, ['unknown'])
-      } else if (uncoveredCalls > 0) {
-        const recordedCost = recordedDays?.[day]?.[name]?.cost ?? usage.cost
-        paidCalls += uncoveredCalls
-        paidCost += Math.max(0, recordedCost - coveredCost)
-        paidSources.push('unknown')
+      const residual = usage.calls - coveredCalls
+      if (residual > 0) {
+        if (legacyPlan) add(plans, name, residual)
+        else metered = add(paid, name, residual)
       }
-      if (paidCalls > 0) add(paid, name, hasPlan ? paidCost : usage.cost, paidCalls, paidSources)
+      // Site cells supply provenance and call counts. Add the dashboard's amount
+      // once, even when the same day also has subscription calls.
+      if (metered) metered.cost += usage.cost
     }
   }
   const top = (bucket: Map<string, Lead>, field: 'cost' | 'calls') => {
@@ -80,13 +66,9 @@ export function floatingStatus(leads: ReturnType<typeof floatingLeads>, balances
   const unavailable = { text: t('popBalanceUnavailable'), low: false }
   const failure = (name: string, reason: string) => ({ text: `${name} · ${reason}`, low: false })
   function wallet(source: string) {
-    const site = source.startsWith('site:') ? source.slice(5) : undefined
-    const route = source.startsWith('direct:') ? source.slice(7) : undefined
-    if (site === undefined && route === undefined) return unavailable
-    const rows = site !== undefined
-      ? balances.filter(row => row.sourceOrigin === site)
-      : balances.filter(row => route !== undefined && (row.sourceRoute === route || row.sourceRouteAliases?.includes(route)))
-    const relayRows = site === undefined ? [] : relays.filter(row => row.origin === site)
+    const parts = siteKeyParts(source)
+    const rows = balances.filter(row => balanceCoversSite(row, source))
+    const relayRows = parts.kind === 'site' ? relays.filter(row => row.origin === parts.origin) : []
     if (rows.length + relayRows.length !== 1 || relayRows.some(row => row.sourceAmbiguous)) return unavailable
     const relay = relayRows[0]
     if (relay) {
@@ -95,17 +77,24 @@ export function floatingStatus(leads: ReturnType<typeof floatingLeads>, balances
       return relay.balance !== undefined ? { text: `${relay.displayName} · ${relay.balance.toFixed(2)} (${t('popUnknownUnit')})`, low: false } : unavailable
     }
     const bal = rows[0]!
-    if (bal.error) return failure(bal.displayName, t(balanceErrors[bal.error]))
+    const walletLabel = bal.sourceRoute === 'deepseek' && (bal.walletKind === 'account' || bal.walletKind === 'api-key')
+      ? `${bal.displayName} · ${t(bal.walletKind === 'account' ? 'walletLogin' : 'walletPlatform')}`
+      : bal.displayName
+    if (bal.error) return failure(walletLabel, t(balanceErrors[bal.error]))
     const currency = bal.currency?.toUpperCase() ?? 'CNY'
     if (bal.totalBalance === undefined || (currency !== 'CNY' && currency !== 'USD')) return unavailable
     const usd = currency === 'USD'
     const amount = formatMoney(bal.totalBalance, usd ? 'usd' : 'cny')
-    return { text: `${bal.displayName} · ${amount}`, low: bal.totalBalance * (usd ? getRateInfo().rate : 1) < threshold }
+    if (bal.otherBalances?.length) {
+      const pockets = bal.otherBalances.map(other => `${other.currency} ${other.totalBalance.toFixed(2)}`)
+      return { text: `${walletLabel} · ${[amount, ...pockets].join(' + ')}`, low: false }
+    }
+    return { text: `${walletLabel} · ${amount}`, low: bal.totalBalance * (usd ? getRateInfo().rate : 1) < threshold }
   }
   function subscription(source: string) {
-    const site = source.startsWith('site:') ? source.slice(5) : undefined
-    const matches = quotas.filter(item => site === undefined ? `direct:${item.provider}` === source : item.origin === site)
-    const relayMatches = site === undefined ? [] : relays.filter(item => item.origin === site)
+    const parts = siteKeyParts(source)
+    const matches = quotas.filter(item => parts.kind === 'direct' ? item.provider === parts.route : parts.kind === 'site' && item.origin === parts.origin)
+    const relayMatches = parts.kind === 'site' ? relays.filter(item => item.origin === parts.origin) : []
     const routes = new Set([...matches.map(item => item.provider), ...relayMatches.map(item => item.route)])
     const quotaUnavailable = { text: t('popQuotaUnavailable'), low: false }
     if (routes.size !== 1 || matches.length > 1 || relayMatches.length > 1 || relayMatches.some(row => row.sourceAmbiguous)) return quotaUnavailable
@@ -118,14 +107,21 @@ export function floatingStatus(leads: ReturnType<typeof floatingLeads>, balances
     const remaining = pct <= 0 ? t('subscriptionExhausted') : t('subscriptionRemaining').replace('{pct}', String(pct))
     return { text: `${q.displayName} · ${remaining}`, low: pct < 20 }
   }
-  function status(row: Lead, read: (source: string) => { text: string; low: boolean }) {
+  function status(row: Lead, kind: 'paid' | 'plan') {
     const model = modelOf(row.name)
     const name = model.key === 'other' && row.name !== 'other' ? row.name : model.name
-    const [source = 'unknown'] = row.sources
-    return { name, ...(row.sources.size > 1 ? { text: t('popMultipleSources'), low: false } : read(source)) }
+    if (row.sources.size > 1) return { name, text: t('popMultipleSources'), low: false }
+    const [source] = row.sources
+    if (!source || (kind === 'paid' && row.unattributedCalls > 0)) return { name, text: t('popSourceUnknown'), low: false }
+    if (kind === 'paid') return { name, ...wallet(source) }
+    const quota = subscription(source)
+    // This quota describes the identified channel only. Legacy calls without
+    // a site count toward ranking but cannot claim its quota.
+    const text = row.unattributedCalls > 0 ? `${quota.text} · ${t('popPartialSource')}` : quota.text
+    return { name, ...quota, text }
   }
   return {
-    direct: leads.paid && status(leads.paid, wallet),
-    sub: leads.plan && status(leads.plan, subscription),
+    direct: leads.paid && status(leads.paid, 'paid'),
+    sub: leads.plan && status(leads.plan, 'plan'),
   }
 }

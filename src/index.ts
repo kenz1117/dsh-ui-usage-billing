@@ -38,7 +38,7 @@ import z from '@deepseek-ai/schemastery'
 import { createUsageAggregator, dayStamp, DEFAULT_SUBSCRIPTION_PROVIDERS, mergeUsageLedgerDocuments, sessionLogOffsetOf, siteOriginOf, sumSiteBuckets, type UsageLedgerDocument, type UsageLedgerStore, type UsagePersistence } from './aggregate.ts'
 import { applyBuiltinCatalog, applyLivePricing, applyUserModelAliases, formatMoney, formatTokens } from './client/pricing.ts'
 import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts'
-import { queryBalances, queryCustomBalances, withBalanceOrigin } from './balance.ts'
+import { queryBalances, queryCustomBalances } from './balance.ts'
 import { queryDeclaredEndpoints } from './declarative.ts'
 import { reconcileBalanceDelta, type BalanceRef, type ReconcileEvent } from './reconcile.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
@@ -1208,9 +1208,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
         swallowed('reconcile-basis-stale')
       }
     }
-    const balanceOrigins = uniqueSiteOrigins(piProviders)
-    const attributed = balances.map(row => withBalanceOrigin(row, balanceOrigins))
-    const doc = { balances: [...attributed, ...custom, ...declared], ...(reconcile === undefined ? {} : { reconcile }) }
+    const doc = { balances: [...balances, ...custom, ...declared], ...(reconcile === undefined ? {} : { reconcile }) }
     balanceCache = { at: Date.now(), doc }
   }
   const refreshBalanceOnce = (): Promise<void> => {

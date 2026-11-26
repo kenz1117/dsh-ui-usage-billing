@@ -57,10 +57,48 @@ export interface ExtraModelPrice {
  *  与"网络不可达"（unreachable）区分，便于定位是上游变更还是网络问题。 */
 export type BalanceError = 'unconfigured' | 'unauthorized' | 'unreachable' | 'invalid'
 
+/** Wire format shared by the aggregation buckets and their consumers. */
+export type SiteKind = 'site' | 'direct' | 'unknown'
+export interface SiteRef {
+  kind: SiteKind
+  origin?: string
+  provider: string
+}
+export function siteBucketKey(ref: SiteRef): string {
+  if (ref.kind === 'site' && ref.origin) return `site:${ref.origin}`
+  if (ref.kind === 'direct' && ref.provider) return `direct:${ref.provider}`
+  return 'unknown'
+}
+
+type SiteKeyParts = { kind: 'site'; origin: string } | { kind: 'direct'; route: string } | { kind: 'unknown' }
+export function siteKeyParts(siteKey: string): SiteKeyParts {
+  const colon = siteKey.indexOf(':')
+  const value = siteKey.slice(colon + 1)
+  if (colon > 0 && value) {
+    const kind = siteKey.slice(0, colon)
+    if (kind === 'site') return { kind, origin: value }
+    if (kind === 'direct') return { kind, route: value }
+  }
+  return { kind: 'unknown' }
+}
+
+/** New servers declare coverage explicitly, including for errors. Legacy rows need an exact route or alias. */
+export function balanceCoversSite(row: ProviderBalance, siteKey: string): boolean {
+  const parts = siteKeyParts(siteKey)
+  if (parts.kind === 'site') return row.walletKind !== 'account' && row.sourceOrigin === parts.origin
+  if (parts.kind !== 'direct') return false
+  return row.attributedRoutes?.includes(parts.route)
+    ?? (row.sourceRoute === parts.route || row.sourceRouteAliases?.includes(parts.route) === true)
+}
+
 /** 一个提供方的账户余额（`/api/billing/balance` 的一行）。 */
 export interface ProviderBalance {
   /** Actual direct route ID (without `direct:`), including on failures. */
   sourceRoute?: string
+  /** Wallet type, independent of the queried route. */
+  walletKind?: 'api-key' | 'account' | 'relay'
+  /** Routes whose usage this wallet can cover. An explicit empty list means none. */
+  attributedRoutes?: readonly string[]
   /** Explicitly verified same-wallet route IDs, separate from the actual queried route. */
   sourceRouteAliases?: readonly string[]
   /** Exact site origin where this is the uniquely identified wallet. */
@@ -73,6 +111,8 @@ export interface ProviderBalance {
   currency?: string
   /** 总可用余额（含赠金与充值）。 */
   totalBalance?: number
+  /** 独立币种的钱包余额，不与主余额相加。 */
+  otherBalances?: readonly { currency: string; totalBalance: number }[]
   /** 未过期赠金余额。 */
   grantedBalance?: number
   /** 充值余额。 */

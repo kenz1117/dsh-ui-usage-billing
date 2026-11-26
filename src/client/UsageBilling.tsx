@@ -4882,8 +4882,8 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     notifyAcrossInstances(`model-budget:${top.model}:${top.tier}:${today}`, () => { new Notification(t('modelBudgetTitle'), { body }) })
   }, [modelBudgets, monthModelCost, modelTierAlertDays, today, actions, t])
 
-  const leads = useMemo(() => floatingLeads(displayStats, cardPrefs.span, today, visibleStats.byDayModels),
-    [displayStats, cardPrefs.span, today, visibleStats.byDayModels])
+  const leads = useMemo(() => floatingLeads(displayStats, cardPrefs.span, today),
+    [displayStats, cardPrefs.span, today])
   const vendorStatus = useMemo(() => floatingStatus(leads, balances, relayQuotas, quotas, lowThreshold, t),
     [leads, balances, relayQuotas, quotas, lowThreshold, t])
   // hover 速览「数据卡」数值：全量累计用量（参考图风格）。
