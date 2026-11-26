@@ -69,8 +69,8 @@ describe('宿主原生设置页', () => {
     expect(native.queryByTestId('billing-dashboard-head')).toBeNull()
     expect(native.queryByTestId('billing-tab-nav')).toBeNull()
     expect(native.queryByTestId('billing-footer')).toBeNull()
-    // 完整分组保留，但宿主已有导航，插件二级锚点栏不再挤压内容宽度。
-    expect(native.queryByTestId('billing-settings-nav')).toBeNull()
+    // 宿主导航切换页面，计费页锚点跳转页内分区。
+    expect(native.getByTestId('billing-settings-nav')).toBeTruthy()
     for (const id of [
       'billing-density-motion-card',
       'billing-budget',

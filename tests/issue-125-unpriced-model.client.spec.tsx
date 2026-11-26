@@ -121,6 +121,15 @@ describe('issue #125 未收录模型的可发现性', () => {
     expect(anchor.getAttribute('aria-current')).toBe('location')
     act(() => showSection('settings-display-extra'))
     expect(screen.getByTestId('billing-settings-nav-display').getAttribute('aria-current')).toBe('location')
+    // At the end About cannot always reach the top, even while Display still intersects.
+    const body = screen.getByTestId('billing-tab-panel-settings').parentElement!
+    Object.defineProperties(body, { scrollHeight: { value: 1400 }, clientHeight: { value: 500 } })
+    body.scrollTop = 900
+    fireEvent.scroll(body)
+    expect(screen.getByTestId('billing-settings-nav-about').getAttribute('aria-current')).toBe('location')
+    body.scrollTop = 850
+    fireEvent.scroll(body)
+    expect(screen.getByTestId('billing-settings-nav-display').getAttribute('aria-current')).toBe('location')
     // 未收录 id 进候选（用户直接选，不必手抄）。
     const options = Array.from(card.querySelectorAll('datalist option')).map(option => option.getAttribute('value'))
     for (const id of UNPRICED) expect(options).toContain(id)

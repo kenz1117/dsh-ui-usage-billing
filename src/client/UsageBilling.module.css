@@ -4583,12 +4583,16 @@ span.bandDot { cursor: default; }
 .settingsLayout { display: block; }
 
 .settingsNav {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
-  padding-bottom: 10px;
+  padding: 4px 0 10px;
   margin-bottom: 12px;
   border-bottom: 1px solid var(--ds-border);
+  background: var(--dsb);
 }
 
 .settingsNavItem {
@@ -4770,6 +4774,13 @@ span.bandDot { cursor: default; }
   line-height: 18px;
   font-weight: 600;
   color: var(--ds-t-1);
+}
+
+.setCardTitle:focus-visible,
+.plgName:focus-visible {
+  outline: 2px solid var(--ds-blue);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 .setCardDesc {
