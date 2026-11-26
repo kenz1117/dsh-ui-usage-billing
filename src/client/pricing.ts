@@ -372,7 +372,7 @@ function isBeijingWeekend(timeMs: number): boolean {
  * 省掉一段解析代码——client / index 两个 face 都要过本仓自设的体积成本线
  * （sync.sh 的 256/500 KiB；DSH Store 对插件 JS bundle 本身无审查上限）。
  */
-import { officialHolidays as CHINA_HOLIDAYS } from '../peak-schedule.ts'
+import { officialHolidays as CHINA_HOLIDAYS, TIER_BOUNDARY_MINUTES } from '../peak-schedule.ts'
 
 /** 北京日期键 YYYYMMDD（与宿主时区无关）。 */
 function beijingDateKey(timeMs: number): string {
@@ -383,9 +383,6 @@ function beijingDateKey(timeMs: number): string {
 function isBeijingHoliday(timeMs: number): boolean {
   return CHINA_HOLIDAYS.includes(beijingDateKey(timeMs))
 }
-
-/** 峰谷切换边界（北京时间的当日分钟数）：09:00 / 12:00 / 14:00 / 18:00。 */
-const TIER_BOUNDARY_MINUTES: readonly number[] = [540, 720, 840, 1080]
 
 /**
  * 智谱 Coding Plan 的高峰边界（北京时间当日分钟）：工作日 14:00–18:00 为高峰，

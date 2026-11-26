@@ -77,9 +77,9 @@ describe('peak schedule route', () => {
     const { request, read, save } = setup()
     const body = [Buffer.from('{}')]
     save.mockRejectedValueOnce(new PeakScheduleInputError('Invalid schedule version'))
-    expect(await request('POST', body)).toEqual({ status: 400, body: { error: 'Invalid schedule version' } })
+    expect(await request('POST', body)).toEqual({ status: 400, body: { error: 'Invalid schedule version', message: expect.stringMatching(/峰谷/) } })
     save.mockRejectedValueOnce(new ScheduleClockConflict())
-    expect(await request('POST', body)).toEqual({ status: 409, body: { error: 'scheduleClockConflict' } })
+    expect(await request('POST', body)).toEqual({ status: 409, body: { error: 'scheduleClockConflict', message: expect.stringMatching(/生效时刻/) } })
     save.mockRejectedValueOnce(new Error('disk error'))
     expect((await request('POST', body)).status).toBe(503)
     read.mockRejectedValueOnce(new Error('disk error'))

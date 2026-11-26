@@ -87,7 +87,9 @@
 
 在「设置」中选一个已配置的来源与 DeepSeek 分时价模型，填写高峰窗口、固定 UTC 偏移、周末和指定低谷日期后保存。窗口开始分钟计入高峰，结束分钟不计入；空窗口表示全天低谷。规则只修改该来源与模型的判档，不修改模型单价或官方历史调价节点。没有规则时保留原有计价；DeepSeek 账号通道及其别名始终走原规则，即使与 API Key 共用站点也是如此。低谷任务队列仍按官方时段调度。
 
-每次保存、修改或清除都由宿主追加一个带生效时间的修订。即使重新读取历史日志，也按调用发生时生效的版本判档。官方来源继承内置节假日表，除非显式覆盖。仅剩账本的会话保留已计费用。对于落盘时未收录的模型，#127 仍用内置规则按自然日探针补价。天级汇总没有可靠的请求时间，无法判断自定义规则的日内判档或区分同日内的多次修订。
+中转与官方来源均继承 09:00–12:00、14:00–18:00 的工作日峰窗，周末全天低谷，默认时区 UTC+8。只有官方来源自动继承内置节假日。每个更改或清除自面板显示的生效时间起作用，历史日志按调用时刻查修订。批量保存会逐条返回结果，修正失败的草稿即可重试。新修订记录本机 API 来源，调用者身份未知。持久化只合并同一键连续重复的设置，保留改动、恢复和清除的历史区间。
+
+仅剩账本时，已计费用原样保留。新收录模型按各来源的实际 token 桶，在账本自然日内取北京时间 10:00 和 20:00 两个探针，分别使用探针时刻生效的规则，再按既定比例混合估价。新账本区分 API Key、账号和豁免用量；旧账本只有在历史路由信息能排除账号共用时才套用该来源规则。缺少来源明细的部分沿用内置估价；已知订阅或未知通道，以及无法拆分的订阅混合桶，不补收费用。日级估价仍有别于逐请求实算。
 
 配置默认保存在 `DSH_HOME/.dsh-usage-peak-schedule.json`，可用 `peakSchedulePath` 指定其他位置。没有生效时间的旧版规则不参与计价。损坏的修订或规则会单独跳过，其他有效历史保留。首次替换旧版或损坏文件时，原始字节保存在同目录 `.recovery-<SHA-256>` 文件中。`.bak` 文件保留上一次保存内容，可停用插件后从备份恢复。
 
@@ -254,6 +256,8 @@ cost（CNY）= (missInput × p_input + cacheWrite × p_cacheWrite + cacheHit × 
 **模型 id 归一口径**：日志里的真实 model id 先按别名表精确匹配，再做归一化匹配（忽略大小写 / 分隔符 / 括号附注），最后由「派生候选」兜底 —— 剥组织前缀（`deepseek/deepseek-v4.1-flash`）、剥冒号分段（中转站的线路前缀 `cn:` / `us:`、网关的变体后缀 `:free` / `:1017`，全角「：」等价）、剥尾部日期段（`-202605` / `-0731`）。派生只用于**找到同一模型的另一种写法**：剥完仍不命中目录就保持原样（回退「其他模型」，费用记 0），绝不按别的模型的价格记账。
 
 ## 🔌 HTTP API
+
+`GET /api/billing/peak-schedule` 返回可选来源/模型、当前规则、最近修订生效时间和读取提示。`POST /api/billing/peak-schedule` 接收 `{ "version": 3, "changes": { … } }`（键为来源/模型 JSON 数组字符串，值为规则或表示清除的 `null`）。响应的 `results` 逐键返回 `accepted`、`invalidRule` 或 `unavailableModel`。请求整体格式错误返回 400，宿主时钟冲突返回 409。端点限本机访问。
 
 对外 HTTP 接口与字段定义详见源码：`GET /api/billing/pricing`、`/api/billing/balance`、`/api/billing/usage-stats`、`/api/billing/subscriptions`、`/api/billing/relay-quotas`、`GET/POST /api/billing/task-queue`、`GET /api/billing/task-queue-summary` 等（见 `src/index.ts`、`src/aggregate.ts`、`src/relay.ts`、`src/routes/task-queue.ts`）。其中 `usage-stats` 返回的 `bySite` 字段为按中转站归组后的用量分布，`relay-quotas` 返回额度与路由诊断；`task-queue` 返回能力、工作区、官方模型和持久任务快照，写操作为 `enqueue` / `enqueueMany`、移除未启动任务与清理已结束历史；`task-queue-summary` 只返回峰谷状态与待执行数量，不返回 Prompt。全部端点仅接受回环请求；队列写操作另校验回环 Origin、JSON Content-Type 与 10 MiB body 上限。
 

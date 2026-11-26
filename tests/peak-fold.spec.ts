@@ -40,6 +40,17 @@ it('charges, groups tiers and attributes roles consistently without changing sha
   expect(fold([message('key','pro')]).total.cost).toBe(fold([message('key','pro')],false).total.cost)
   expect(fold([{type:'compaction/summary',time,data:{provider:'key',model:'flash',usage}}]).total.cost).toBe(custom.total.cost)
 })
+it('inherits weekday peak windows and weekend relief on relays with only unrelated overrides', () => {
+  const history = { version: 3 as const, revisions: [{ effectiveFromMs: 0, changes: {
+    [scoped]: { utcOffsetMinutes: 480, holidays: ['20261224'] },
+  } }] }
+  for (const [iso, expected] of [['2026-11-21T02:00Z', 5], ['2026-11-20T02:00Z', 10], ['2026-11-20T12:00Z', 5]] as const) {
+    const events = [message('key', 'flash', Date.parse(iso))]
+    expect(foldSession(events, new Set(), undefined, routes, 0, 0, {}, history).total.cost).toBe(expected)
+    expect(fold(events, false).total.cost).toBe(expected)
+  }
+})
+
 it('keeps first save, edit, and clear forward-only through live folds, restart, replay and archive', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'billing-peak-fold-'))
   try {
@@ -64,7 +75,7 @@ it('keeps first save, edit, and clear forward-only through live folds, restart, 
     expect(native).toBeGreaterThan(0)
     expect(readFrom).toHaveBeenCalledTimes(2)
     const samples = [native]
-    for (const [i, rule] of [{ windows: [0, 1440] }, { windows: [] }, null].entries()) {
+    for (const [i, rule] of [{ windows: [0, 1440], weekendOffPeak: false }, { windows: [] }, null].entries()) {
       const before = await agg.aggregate()
       const readCount = readFrom.mock.calls.length
       await agg.withPeakScheduleChange(latest => store.save({ version: 3, changes: { [scoped]: rule } }, latest))

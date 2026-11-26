@@ -54,7 +54,7 @@ import { normalizeTrustedHosts } from './guard.ts'
 import { registerPeakScheduleRoute, PeakScheduleInputError } from './routes/peak-schedule.ts'
 import { eligibleScheduleModel, createScheduleModelDiscovery, type ScheduleProfile } from './peak-schedule-models.ts'
 import { openScheduleStore } from './peak-schedule-store.ts'
-import { modelFromScheduleKey, parseScheduleEdit, scheduleKey } from './peak-schedule.ts'
+import { partitionScheduleEdit, scheduleKey } from './peak-schedule.ts'
 import { registerNotifyClaimRoute } from './routes/notify-claim.ts'
 import { registerPricingRoutes } from './routes/pricing.ts'
 import { registerBalanceRoute } from './routes/balance.ts'
@@ -791,18 +791,17 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       models.set(key, { source, model, label: `${source} / ${model}` })
     }
     const notices = [...schedules.notices(), ...discovery.notices]
-    return { config, models: [...models.values()], ...(notices.length ? { notices } : {}) }
+    const effectiveFromMs = schedules.history().revisions.at(-1)?.effectiveFromMs
+    return { config, ...(effectiveFromMs !== undefined && { effectiveFromMs }), models: [...models.values()], ...(notices.length ? { notices } : {}) }
   }
   registerPeakScheduleRoute(ctx, { trustedHosts, read: async () => scheduleSnapshot(await configuredScheduleModels()), save: async raw => {
-    let edit
-    try { edit = parseScheduleEdit(raw) } catch { throw new PeakScheduleInputError('invalidSchedule') }
     const discovery = await configuredScheduleModels()
     const allowed = new Set(discovery.models.map(row => scheduleKey(row.source, row.model)))
-    for (const [key, rule] of Object.entries(edit.changes)) {
-      if (rule !== null && (!allowed.has(key) || !eligibleScheduleModel(modelFromScheduleKey(key)))) throw new PeakScheduleInputError('unknownScheduleModel')
-    }
-    await aggregator.withPeakScheduleChange(latestEventTime => schedules.save(edit, latestEventTime))
-    return scheduleSnapshot(discovery)
+    let batch
+    try { batch = partitionScheduleEdit(raw, (key, model) => allowed.has(key) && eligibleScheduleModel(model)) }
+    catch { throw new PeakScheduleInputError('invalidSchedule') }
+    if (Object.keys(batch.edit.changes).length) await aggregator.withPeakScheduleChange(latestEventTime => schedules.save(batch.edit, latestEventTime))
+    return { ...scheduleSnapshot(discovery), results: batch.results }
   } })
   const replayDelayMs = readReplayDelayMs(config.replayDelayMs)
   const aggregator = createUsageAggregator(adaptSessionPersistence(ctx.sessionPersistence), {

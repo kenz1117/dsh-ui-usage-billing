@@ -47,7 +47,7 @@ describe('source-scoped peak schedule', () => {
   it('posts changed pairs only, retaining unlisted stored rules', async () => {
     const post = serve(); const onSaved = vi.fn()
     render(<PeakScheduleEditor t={k => en[k]} onSaved={onSaved} />)
-    await choose(rk); expect(screen.getByText('00:00-24:00')).toBeTruthy()
+    await choose(rk); expect(screen.getByText('09:00-12:00 / 14:00-18:00')).toBeTruthy()
     change('Peak hours', 'empty'); change('Applicable days', 'daily')
     await choose(ok); expect(screen.getByText('09:00-12:00 / 14:00-18:00')).toBeTruthy(); expect(screen.getByText(/2026-10-01 2026-10-02/)).toBeTruthy()
     change('Peak hours', 'custom'); change(/^Peak hours \(/, '08:00-09:30 / 19:00-24:00')
@@ -59,6 +59,28 @@ describe('source-scoped peak schedule', () => {
     await choose(rk); fireEvent.click(screen.getByRole('button', { name: 'Clear this model’s overrides' })); save()
     await screen.findByText('Saved'); expect(post.mock.calls[1]![0]).toEqual({ version: 3, changes: { [rk]: null } })
     expect(onSaved.mock.calls[1]![0].config.models).toEqual({ ...config.models, [ok]: { windows: [480,570,1140,1440], holidays: ['20280229'], utcOffsetMinutes: 330 } })
+  })
+  it('keeps rejected drafts reachable after partial acceptance and shows the effective time', async () => {
+    const post = serve()
+    post.mockImplementationOnce(() => response({ ...doc, models: [models[1]], effectiveFromMs: 1000,
+      results: { [rk]: 'unavailableModel', [ok]: 'accepted' }, config: { version: 2, models: { [ok]: { windows: [] } } } }))
+    render(<PeakScheduleEditor t={k => en[k]} />)
+    await choose(rk); change('Peak hours', 'empty'); await choose(ok); change('Peak hours', 'empty'); save()
+    expect((await screen.findByRole('alert')).textContent).toContain(`Relay / Flash: ${en.psUnavailableModel}`)
+    expect(screen.getByRole('alert').textContent).toContain(en.psPartial)
+    expect(screen.getByLabelText('Select source / model')).toHaveProperty('value', rk)
+    expect(screen.getByRole('option', { name: `Relay / Flash · ${en.psDirty}` })).toBeTruthy()
+    expect(screen.getByRole('option', { name: `DeepSeek / Flash · ${en.psConfigured}` })).toBeTruthy()
+    expect(screen.getByText(en.psEffectiveFrom).querySelector('time')?.dateTime).toBe(new Date(1000).toISOString())
+    save(); await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
+    expect(post.mock.calls[1]![0].changes).toEqual({ [rk]: { windows: [] } })
+  })
+  it('sends locally valid siblings even when another draft has an invalid window', async () => {
+    const post = serve(); render(<PeakScheduleEditor t={k => en[k]} />)
+    await choose(rk); change('Peak hours', 'custom'); change(/^Peak hours \(/, 'incorrect')
+    await choose(ok); change('Peak hours', 'empty'); save()
+    expect((await screen.findByRole('alert')).textContent).toContain(en.psBadWindows)
+    expect(post.mock.calls[0]![0].changes).toEqual({ [ok]: { windows: [] } })
   })
   it('keeps blank custom inputs editable; rejects overlap, impossible dates and out-of-range UTC offsets', async () => {
     const post = serve(); render(<PeakScheduleEditor t={k => en[k]} />); await choose(rk)

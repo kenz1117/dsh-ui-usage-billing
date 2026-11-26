@@ -18,7 +18,21 @@ function readSaved(path: string): { history: ScheduleHistory; notices: ScheduleN
   catch { return { history: emptyHistory(), notices: [{ code: 'malformedSchedule' }], bytes } }
 }
 
-/** Keep every timestamped revision, including tombstones and keys absent from the current catalog. */
+/** Drop only writes that repeat the immediately preceding state of that key.
+ * A→B→A and deletions after a real override remain distinct historical intervals. */
+function compact(history: ScheduleHistory): ScheduleHistory {
+  const state = new Map<string, string>()
+  return { version: 3, revisions: history.revisions.flatMap(row => {
+    const changes = Object.fromEntries(Object.entries(row.changes).filter(([key, rule]) => {
+      const value = JSON.stringify(rule)
+      if ((state.get(key) ?? 'null') === value) return false
+      state.set(key, value)
+      return true
+    }))
+    return Object.keys(changes).length ? [{ ...row, changes }] : []
+  }) }
+}
+
 export function openScheduleStore(path: string, eligible: (key: string) => boolean, now = Date.now) {
   let saved = readSaved(path)
 
@@ -77,7 +91,9 @@ export function openScheduleStore(path: string, eligible: (key: string) => boole
           if (savedAt < lastRevision || savedAt <= latestEventTime) throw new ScheduleClockConflict('scheduleClockConflict')
           const effectiveFromMs = Math.max(savedAt, lastRevision + 1)
           if (!Number.isSafeInteger(effectiveFromMs) || effectiveFromMs < 0 || effectiveFromMs > 8.64e15) throw Error('Invalid schedule clock')
-          const history: ScheduleHistory = { version: 3, revisions: [...revisions, { effectiveFromMs, changes: delta }] }
+          const history = compact({ version: 3, revisions: [...revisions, {
+            effectiveFromMs, changes: delta, audit: { source: 'local-api', actor: 'unidentified' },
+          }] })
           const json = JSON.stringify(history)
           await writeFileAtomic(path, json, { mode: 0o600, dirMode: 0o700 })
           saved = { history, notices: [], bytes: Buffer.from(json) }

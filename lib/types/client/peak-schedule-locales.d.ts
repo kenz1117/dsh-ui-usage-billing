@@ -1,4 +1,8 @@
 export declare const peakZh: {
+    psPartial: string;
+    psProspective: string;
+    psEffectiveFrom: string;
+    psUnavailableModel: string;
     psInvalidRequest: string;
     psInvalidResponse: string;
     psDenied: string;

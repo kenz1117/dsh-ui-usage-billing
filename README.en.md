@@ -82,6 +82,16 @@ Overview / Queue / Billing / Usage / Trends / Agents / Rates / Settings. The her
 
 </details>
 
+### Independent peak schedules
+
+In Settings, choose a configured source and DeepSeek time-priced model. Set peak windows, a fixed UTC offset, weekend treatment or off-peak dates. The start of a window is inclusive and its end is exclusive. Empty windows mean all-day off-peak. Both relays and official sources inherit the 09:00–12:00 and 14:00–18:00 weekday windows in UTC+8 with weekends off-peak. Only official sources inherit the built-in holiday calendar. DeepSeek Account and its aliases keep native pricing even on an origin shared with an API key. The task queue uses the official calendar.
+
+Changes and clears apply from the effective time shown in the editor. Replay looks up the revision active at each call. A batch save reports each rule separately and keeps rejected drafts for retry. New revisions identify the local API as their source. The caller's identity is unknown. Only consecutive identical settings for a key can be compacted. Reversions and clears keep their historical intervals.
+
+When a session log is gone, billed amounts are preserved. For newly catalogued models, the ledger weights each source's own tokens at two Beijing-time probes (10:00 and 20:00 within the ledger's local day), looking up each probe's schedule revision independently. New records distinguish API-key, protected-account and exempt usage. Older records use an override only where historical routing data rules out shared account traffic. A missing source breakdown uses the native estimate. Known subscriptions, unknown channels and inseparable subscription mixtures incur no backfill charge. The daily blend remains an estimate.
+
+Settings are stored in `DSH_HOME/.dsh-usage-peak-schedule.json`, configurable via `peakSchedulePath`. Untimed legacy rules do not affect billing. Invalid revisions or rules are skipped individually. On replacement, the original legacy or damaged file is preserved alongside the settings as `.recovery-<SHA-256>`. The `.bak` file holds the previous saved contents and can be restored while the plugin is stopped.
+
 ## 💰 Billing engine
 
 - **Channel attribution**: official, direct, relay and unknown routes stay separate; route and model aliases repair historical attribution.
@@ -225,6 +235,8 @@ The full catalog lives in the Rates tab and in `BUILTIN_MODEL_CATALOG` of `src/b
 To add a model: append an entry to `BUILTIN_MODEL_CATALOG` in `src/builtin-catalog.ts` (key aliases live in `BUILTIN_MODEL_KEY_ALIASES` in the same file; the catalog is built only into the node half and served to the client from the host via `/api/billing/pricing`).
 
 ## 🔌 HTTP API
+
+`GET /api/billing/peak-schedule` returns available source/model pairs, current rules, the latest revision's effective time and notices. `POST /api/billing/peak-schedule` accepts `{ "version": 3, "changes": { … } }`. Each key is a JSON-stringified source/model pair. Its value is a rule or `null` to clear it. The response includes `results` with `accepted`, `invalidRule` or `unavailableModel` per key. A malformed envelope returns 400 and a clock conflict returns 409. Both methods require a local request.
 
 The public HTTP endpoints and field definitions are documented in source, including usage, pricing, balances, subscriptions, relay quotas, `GET/POST /api/billing/task-queue` and `GET /api/billing/task-queue-summary` (see `src/index.ts`, `src/aggregate.ts`, `src/relay.ts`, `src/routes/task-queue.ts`). The queue returns host capability, workspaces, official models and durable tasks; mutations are `enqueue` / `enqueueMany`, remove-not-started and clear-finished. The summary returns only the price-band state and queued count, never Prompts. All endpoints accept loopback requests only; queue writes additionally require a loopback Origin, JSON Content-Type and a body no larger than 10 MiB.
 

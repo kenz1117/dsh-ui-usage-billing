@@ -8,6 +8,11 @@
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
 
+### 未发布 / Unreleased
+
+- 独立峰谷规则按来源、模型与生效时间计价。中转继承工作日峰窗和周末低谷，已删日志的未收录用量按历史来源和日内探针估价。设置显示生效时间，批量保存可逐条重试。修订保留本机 API 来源。
+- Independent peak schedules now price calls by source, model and effective time. Relays inherit weekday peaks and off-peak weekends. Ledger backfill uses historical source evidence at each daily probe. Settings show the effective time and retain rejected rules for retry. Revisions record local API provenance.
+
 ### v1.8.3-alpha.14（2026-11-22）
 
 **预览版**：宿主 `0.2.3-alpha.1` / `0.2.3-alpha.2` 代际适配（issue #129 自动漂移报告）。内容 = `1.8.9` 全部条目 + 下列三条。

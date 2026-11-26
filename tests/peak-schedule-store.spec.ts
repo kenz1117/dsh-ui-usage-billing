@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openScheduleStore } from '../src/peak-schedule-store.ts'
-import { parseScheduleEdit, type PeakSchedule } from '../src/peak-schedule.ts'
+import { parseScheduleEdit, partitionScheduleEdit, type PeakSchedule } from '../src/peak-schedule.ts'
 
+const audit = { source: 'local-api', actor: 'unidentified' }
 const empty: PeakSchedule = { version: 2, models: {} }
 const config: PeakSchedule = { version: 2, models: { '["direct:local","flash"]': { windows: [60, 90] } } }
 const key = Object.keys(config.models)[0]!
@@ -97,8 +98,8 @@ describe('peak schedule store', () => {
     await store.save(clear, 100)
     expect(store.current()).toEqual(empty)
     expect(openScheduleStore(path, eligible).history().revisions).toEqual([
-      { effectiveFromMs: 100, changes: edit.changes },
-      { effectiveFromMs: 101, changes: clear.changes },
+      { effectiveFromMs: 100, changes: edit.changes, audit },
+      { effectiveFromMs: 101, changes: clear.changes, audit },
     ])
   })
 
@@ -129,10 +130,30 @@ describe('peak schedule store', () => {
     ]))
     const previous = store.history().revisions
     await store.save(clear)
-    expect(store.history().revisions).toEqual([...previous, { effectiveFromMs: 20, changes: clear.changes }])
+    expect(store.history().revisions).toEqual([...previous, { effectiveFromMs: 20, changes: clear.changes, audit }])
     const reopened = openScheduleStore(path, model => eligible(model) || model === 'unknown-model')
     expect(reopened.current().models).toEqual({ [unknown]: { windows: [] } })
     expect(readFileSync(`${path}.recovery-${createHash('sha256').update(original).digest('hex')}`, 'utf8')).toBe(original)
+  })
+
+  it('retains A→B→A→clear, dropping only repeated assignments per key', async () => {
+    const other = '["direct:other","flash"]'
+    const changes = [{ ...edit.changes }, { ...edit.changes, [other]: { windows: [] } }, { [key]: { windows: [] } }, edit.changes, edit.changes]
+    writeFileSync(path, JSON.stringify({ version: 3, revisions: changes.map((changes, i) => ({ effectiveFromMs: i + 1, changes })) }))
+    const store = openScheduleStore(path, eligible, () => 6)
+    await store.save(clear)
+    expect(openScheduleStore(path, eligible).history().revisions).toEqual([
+      { effectiveFromMs: 1, changes: edit.changes }, { effectiveFromMs: 2, changes: { [other]: { windows: [] } } },
+      { effectiveFromMs: 3, changes: { [key]: { windows: [] } } }, { effectiveFromMs: 4, changes: edit.changes },
+      { effectiveFromMs: 6, changes: clear.changes, audit },
+    ])
+  })
+
+  it('partitions invalid keys and fields while accepting valid siblings and archived clears', () => {
+    const gone = '["direct:gone","flash"]', stale = '["direct:stale","flash"]'
+    const result = partitionScheduleEdit({ version: 3, changes: { ...edit.changes, bad: {}, [gone]: {}, [stale]: null } }, id => id === key)
+    expect(result.edit.changes).toEqual({ ...edit.changes, [stale]: null })
+    expect(result.results).toEqual({ [key]: 'accepted', bad: 'invalidRule', [gone]: 'unavailableModel', [stale]: 'accepted' })
   })
 
   it('rejects client timestamps and malformed changes', () => {

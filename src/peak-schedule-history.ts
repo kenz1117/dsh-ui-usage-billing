@@ -24,7 +24,7 @@ export function indexPeakHistory(history?: ScheduleHistory) {
       timeline.push({ effectiveFromMs: revision.effectiveFromMs, rule: rule === null ? undefined : effectiveRule(source, rule) })
       timelines.set(key, timeline)
     }
-    hash.update(JSON.stringify(revision))
+    hash.update(JSON.stringify({ effectiveFromMs: revision.effectiveFromMs, changes: revision.changes }))
     return { effectiveFromMs: revision.effectiveFromMs, digest: hash.copy().digest('hex') }
   })
   return {

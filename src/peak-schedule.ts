@@ -8,11 +8,13 @@ export interface PeakRule {
 export interface PeakSchedule { version: 2; models: Record<string, PeakRule> }
 export interface ScheduleModel { source: string; model: string; label: string }
 export interface ScheduleEdit { version: 3; changes: Record<string, PeakRule | null> }
-export interface ScheduleRevision { effectiveFromMs: number; changes: ScheduleEdit['changes'] }
+export type ScheduleResults = Record<string, 'accepted' | 'invalidRule' | 'unavailableModel'>
+export interface RevisionAudit { source: 'local-api'; actor: 'unidentified' }
+export interface ScheduleRevision { audit?: RevisionAudit; effectiveFromMs: number; changes: ScheduleEdit['changes'] }
 export interface ScheduleHistory { version: 3; revisions: ScheduleRevision[] }
 export type ScheduleNoticeCode = 'legacySchedule' | 'unreadableSchedule' | 'malformedSchedule' | 'malformedRevision' | 'malformedRule' | 'ineligibleModel' | 'discoveryFailed'
 export interface ScheduleNotice { code: ScheduleNoticeCode; detail?: string }
-export interface ScheduleSnapshot { config: PeakSchedule; models: ScheduleModel[]; notices?: ScheduleNotice[] }
+export interface ScheduleSnapshot { effectiveFromMs?: number; results?: ScheduleResults; config: PeakSchedule; models: ScheduleModel[]; notices?: ScheduleNotice[] }
 export const emptySchedule = (): PeakSchedule => ({ version: 2, models: {} })
 export const scheduleKey = (source: string, model: string): string => JSON.stringify([source, model])
 export const accountRoute = (id: string): boolean => id.trim().toLowerCase() === 'deepseek-account'
@@ -77,16 +79,27 @@ export function modelFromScheduleKey(key: string): string {
   if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== 'string' || !validSource(pair[0]) || typeof pair[1] !== 'string' || !pair[1] || key !== scheduleKey(pair[0], pair[1])) throw Error('Invalid source/model key')
   return pair[1]
 }
-function parseChanges(value: unknown): ScheduleEdit['changes'] {
-  if (!record(value)) throw Error('Invalid schedule changes')
-  return Object.fromEntries(Object.keys(value).sort().map(key => {
-    modelFromScheduleKey(key)
-    return [key, value[key] === null ? null : parseRule(value[key])]
-  }))
+export function partitionScheduleEdit(value: unknown, allowed: (key: string, model: string) => boolean) {
+  if (!record(value) || value.version !== 3 || !record(value.changes) || Object.keys(value).some(key => key !== 'version' && key !== 'changes')) throw Error('Expected source-scoped schedule edits')
+  const changes: ScheduleEdit['changes'] = {}
+  const results: ScheduleResults = Object.create(null)
+  for (const key of Object.keys(value.changes).sort()) {
+    try {
+      const model = modelFromScheduleKey(key)
+      const rule = value.changes[key] === null ? null : parseRule(value.changes[key])
+      if (rule !== null && !allowed(key, model)) results[key] = 'unavailableModel'
+      else {
+        changes[key] = rule
+        results[key] = 'accepted'
+      }
+    } catch { results[key] = 'invalidRule' }
+  }
+  return { edit: { version: 3, changes } as ScheduleEdit, results }
 }
 export function parseScheduleEdit(value: unknown): ScheduleEdit {
-  if (!record(value) || value.version !== 3 || Object.keys(value).some(key => key !== 'version' && key !== 'changes')) throw Error('Expected source-scoped schedule edits')
-  return { version: 3, changes: parseChanges(value.changes) }
+  const { edit, results } = partitionScheduleEdit(value, () => true)
+  if (Object.values(results).some(result => result !== 'accepted')) throw Error('Invalid schedule change')
+  return edit
 }
 export function readScheduleHistory(value: unknown): { history: ScheduleHistory; notices: ScheduleNotice[] } {
   const history: ScheduleHistory = { version: 3, revisions: [] }
@@ -110,15 +123,18 @@ export function readScheduleHistory(value: unknown): { history: ScheduleHistory;
     }
     if (Object.keys(changes).length) {
       previous = row.effectiveFromMs
-      history.revisions.push({ effectiveFromMs: previous, changes })
+      const audit = record(row.audit) && row.audit.source === 'local-api' && row.audit.actor === 'unidentified'
+        ? { source: 'local-api', actor: 'unidentified' } as const : undefined
+      history.revisions.push({ effectiveFromMs: previous, changes, ...(audit && { audit }) })
     }
   }
   return { history, notices }
 }
+export const TIER_BOUNDARY_MINUTES = [540, 720, 840, 1080] as const
 export const officialHolidays = '20260925 20260926 20260927 20261001 20261002 20261003 20261004 20261005 20261006 20261007'
 export function effectiveRule(source: string, rule: PeakRule): Required<PeakRule> {
   const official = source === 'site:https://api.deepseek.com' || /^direct:deepseek(?:-|$)/i.test(source)
-  return { windows: official ? [540,720,840,1080] : [0,1440], holidays: official ? officialHolidays.split(' ') : [], weekendOffPeak: official, utcOffsetMinutes: 480, ...rule }
+  return { windows: [...TIER_BOUNDARY_MINUTES], holidays: official ? officialHolidays.split(' ') : [], weekendOffPeak: true, utcOffsetMinutes: 480, ...rule }
 }
 export function customTier(time: number, rule: Required<PeakRule>): 'peak' | 'offPeak' {
   const local = new Date(time + rule.utcOffsetMinutes * 60_000)

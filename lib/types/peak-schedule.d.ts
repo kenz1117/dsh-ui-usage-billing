@@ -18,7 +18,13 @@ export interface ScheduleEdit {
     version: 3;
     changes: Record<string, PeakRule | null>;
 }
+export type ScheduleResults = Record<string, 'accepted' | 'invalidRule' | 'unavailableModel'>;
+export interface RevisionAudit {
+    source: 'local-api';
+    actor: 'unidentified';
+}
 export interface ScheduleRevision {
+    audit?: RevisionAudit;
     effectiveFromMs: number;
     changes: ScheduleEdit['changes'];
 }
@@ -32,6 +38,8 @@ export interface ScheduleNotice {
     detail?: string;
 }
 export interface ScheduleSnapshot {
+    effectiveFromMs?: number;
+    results?: ScheduleResults;
     config: PeakSchedule;
     models: ScheduleModel[];
     notices?: ScheduleNotice[];
@@ -43,11 +51,16 @@ export declare function validSource(source: string): boolean;
 export declare function parseRule(value: unknown): PeakRule;
 export declare function parseSchedule(value: unknown, eligible: (model: string) => boolean): PeakSchedule;
 export declare function modelFromScheduleKey(key: string): string;
+export declare function partitionScheduleEdit(value: unknown, allowed: (key: string, model: string) => boolean): {
+    edit: ScheduleEdit;
+    results: ScheduleResults;
+};
 export declare function parseScheduleEdit(value: unknown): ScheduleEdit;
 export declare function readScheduleHistory(value: unknown): {
     history: ScheduleHistory;
     notices: ScheduleNotice[];
 };
+export declare const TIER_BOUNDARY_MINUTES: readonly [540, 720, 840, 1080];
 export declare const officialHolidays = "20260925 20260926 20260927 20261001 20261002 20261003 20261004 20261005 20261006 20261007";
 export declare function effectiveRule(source: string, rule: PeakRule): Required<PeakRule>;
 export declare function customTier(time: number, rule: Required<PeakRule>): 'peak' | 'offPeak';

@@ -50,7 +50,12 @@ async function request(t: Translate, edit?: ScheduleEdit, signal?: AbortSignal):
   let config
   try { config = parseSchedule(payload.config, () => true) } catch { throw Error(t('psInvalidResponse')) }
   const notices = Array.isArray(payload.notices) ? payload.notices.filter((n: NonNullable<ScheduleSnapshot['notices']>[number]) => n && Object.hasOwn(noticeLabels, n.code) && (n.detail === undefined || typeof n.detail === 'string')) : []
-  return { config, models: payload.models.filter((m: ScheduleSnapshot['models'][number]) => validSource(m.source)), notices }
+  const { results, effectiveFromMs } = payload
+  if (effectiveFromMs !== undefined && (!Number.isSafeInteger(effectiveFromMs) || effectiveFromMs < 0 || effectiveFromMs > 8.64e15)) throw Error(t('psInvalidResponse'))
+  if (results !== undefined && (!results || typeof results !== 'object' || Array.isArray(results) ||
+      !Object.values(results).every(code => ['accepted', 'invalidRule', 'unavailableModel'].includes(String(code))) ||
+      (edit && Object.keys(edit.changes).some(key => !Object.hasOwn(results, key))))) throw Error(t('psInvalidResponse'))
+  return { config, effectiveFromMs, results, models: payload.models.filter((m: ScheduleSnapshot['models'][number]) => validSource(m.source)), notices }
 }
 const noticeLabels: Record<ScheduleNoticeCode, UsageBillingKey> = { legacySchedule: 'psLegacy', unreadableSchedule: 'psUnreadable', malformedSchedule: 'psMalformedSchedule', malformedRevision: 'psMalformedRevision', malformedRule: 'psMalformedRule', ineligibleModel: 'psIneligible', discoveryFailed: 'psDiscovery' }
 const detail = (err: unknown) => err instanceof Error ? err.message : String(err)
@@ -138,18 +143,34 @@ export function PeakScheduleEditor({ t, onSaved }: { t: Translate; onSaved?: (sn
     setBusy(true); setError(''); setInvalid(undefined); setSaved(false)
     try {
       const changes: ScheduleEdit['changes'] = {}
+      const failed = new Map<string, string>()
+      let firstField: { key: string; field: keyof Draft } | undefined
       for (const [id, draft] of Object.entries(drafts)) {
-        let parsed: PeakRule
-        try { parsed = serialize(draft, t) } catch (err) {
-          setKey(id)
-          if (err instanceof InvalidField) setInvalid({ key: id, field: err.field })
-          const owner = snapshot.models.find(m => scheduleKey(m.source, m.model) === id)
-          throw Error(`${owner?.label ?? id}: ${detail(err)}`)
+        try {
+          const parsed = serialize(draft, t)
+          changes[id] = Object.keys(parsed).length ? parsed : null
+        } catch (err) {
+          failed.set(id, detail(err))
+          if (!firstField && err instanceof InvalidField) firstField = { key: id, field: err.field }
         }
-        changes[id] = Object.keys(parsed).length ? parsed : null
       }
-      const data = await request(t, { version: 3, changes })
-      setSnapshot(data); setDrafts({}); setSaved(true); onSaved?.(data)
+      if (Object.keys(changes).length) {
+        const data = await request(t, { version: 3, changes })
+        for (const [id, result] of Object.entries(data.results ?? {})) {
+          if (result !== 'accepted') failed.set(id, t(result === 'unavailableModel' ? 'psUnavailableModel' : 'psInvalidRequest'))
+        }
+        const retained = snapshot.models.filter(m => failed.has(scheduleKey(m.source, m.model)) && !data.models.some(n => n.model === m.model && n.source === m.source))
+        setSnapshot({ ...data, models: [...data.models, ...retained] })
+        const accepted = Object.keys(changes).some(id => !failed.has(id))
+        setSaved(accepted)
+        if (accepted) onSaved?.(data)
+      }
+      setDrafts(Object.fromEntries(Object.entries(drafts).filter(([id]) => failed.has(id))))
+      if (failed.size) {
+        setKey(firstField?.key ?? failed.keys().next().value!)
+        setInvalid(firstField)
+        setError([...failed].map(([id, reason]) => `${snapshot.models.find(m => scheduleKey(m.source, m.model) === id)?.label ?? id}: ${reason}`).join(' · '))
+      }
     } catch (err) { setError(detail(err)) } finally { setBusy(false) }
   }
   function picker(label: UsageBillingKey, value: string, options: [string, UsageBillingKey][], change: (v: string) => void) {
@@ -169,7 +190,7 @@ export function PeakScheduleEditor({ t, onSaved }: { t: Translate; onSaved?: (sn
     <div className={css.setCardHead}><h3 className={css.setCardTitle}>{t('psTitle')}</h3></div>
     {refreshError && <p role="status">{t('psLoadError')}: {refreshError}</p>}
     {snapshot?.notices?.map(({ code, detail }) => <p role="status" key={JSON.stringify([code, detail])}>{t(noticeLabels[code])}{detail ? ` (${detail})` : ''}</p>)}
-    {error && <p id={errorId} role="alert">{t(snapshot ? 'psSaveError' : 'psLoadError')}: {error}</p>}
+    {error && <p id={errorId} role="alert">{t(saved && dirty ? 'psPartial' : snapshot ? 'psSaveError' : 'psLoadError')}: {error}</p>}
     {!snapshot ? (busy ? <small role="status">{t('psLoading')}</small> : <button type="button" onClick={() => setAttempt(attempt + 1)}>{t('psRetry')}</button>) :
       <fieldset className={css.ctlCol} disabled={busy} style={{ margin: 0, padding: 0, border: 0, minWidth: 0 }}>
         <select className={css.userPriceInput} style={inputStyle} data-testid="billing-peak-schedule-model" aria-label={t('psModel')} disabled={!snapshot.models.length} value={selected ? key : ''} onChange={e => setKey(e.target.value)}>
@@ -187,7 +208,9 @@ export function PeakScheduleEditor({ t, onSaved }: { t: Translate; onSaved?: (sn
           <div className={css.ctlGroup}><button type="button" disabled={!dirty} onClick={() => void save()}>{t('psSave')}</button>
             {Object.keys(rule).length > 0 && <button type="button" onClick={() => edit({})}>{t('psClear')}</button>}</div>
         </>}
-        {(saved || dirty) && <small role="status">{t(saved ? 'psSaved' : 'psDirty')}</small>}
+        <small>{t('psProspective')}</small>
+        {snapshot.effectiveFromMs !== undefined && <small>{t('psEffectiveFrom')} <time dateTime={new Date(snapshot.effectiveFromMs).toISOString()} title={new Date(snapshot.effectiveFromMs).toISOString()}>{new Date(snapshot.effectiveFromMs).toLocaleString()}</time></small>}
+        {(saved || dirty) && !(saved && dirty && error) && <small role="status">{t(saved ? 'psSaved' : 'psDirty')}</small>}
       </fieldset>}
   </section>
 }

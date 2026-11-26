@@ -14,6 +14,7 @@ import { type PeakSchedule, type ScheduleHistory } from './peak-schedule.ts';
 import type { SessionEvent, SessionHeader, SessionId, SessionLogOffset as SessionLogOffsetT } from '@deepseek-ai/dsh-session/types';
 import type { TokenUsage } from '@deepseek-ai/dsh-llm';
 import { resolveCatalogKey } from './client/pricing.ts';
+import type { TokenUsageBuckets } from './client/pricing.ts';
 import { BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts';
 /** 会话日志偏移：宿主 0.1.2-alpha.4 前的 dsh-session/types 不导出 SessionLogOffset
  * 值，具名导入让这些宿主装载即崩（v1.4.19~v1.4.22 实测，alpha.3 真机复现）；
@@ -194,6 +195,11 @@ export interface AggregateOptions {
 export declare const DEFAULT_MAX_CACHE_SESSIONS = 400;
 /** One model's aggregated usage plus estimated cost in CNY. */
 export interface ModelUsage {
+    /** Unpriced day/model/site cells only. Excludes free calls and separates account tokens. */
+    pendingPrice?: {
+        scheduled?: Required<TokenUsageBuckets>;
+        native?: Required<TokenUsageBuckets>;
+    };
     calls: number;
     input: number;
     output: number;
@@ -468,6 +474,7 @@ export declare function subParentOf(meta: SessionHeader): string | undefined;
 export declare function foldSubagentFamilies(rows: SessionUsageRow[]): void;
 /** 每轮费用明细行：仪表盘「每轮费用」图的数据源。 */
 export interface TurnUsageRow {
+    unpricedSource?: string | null;
     scheduleSource?: string;
     scheduleTier?: 'peak' | 'offPeak';
     /** 会话 id（字符串形式）：不同会话的轮次号相互独立，展示时需区分。 */
