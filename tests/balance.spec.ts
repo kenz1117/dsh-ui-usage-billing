@@ -14,14 +14,17 @@ function ctxWith(entries: Record<string, string>) {
 }
 
 describe('official wallet provenance', () => {
+  afterEach(() => vi.unstubAllGlobals())
   it.each([
     ['deepseek', 'https://api.deepseek.com'], ['moonshot', 'https://api.moonshot.cn'],
     ['stepfun', 'https://api.stepfun.com'], ['siliconflow', 'https://api.siliconflow.cn'],
     ['xai', 'https://api.x.ai'], ['zhipu', 'https://open.bigmodel.cn'],
     ['zai-coding-cn', 'https://open.bigmodel.cn'],
   ])('binds the supported origin for %s, including on errors', async (route, origin) => {
-    const result = async (baseURL: string) => (await queryBalances(ctxWith({}), { [route]: { baseURL } })).find(row => row.sourceRoute === route)
-    expect(await result(`${origin}/v1`)).toMatchObject({ sourceOrigin: origin, error: 'unconfigured', attributedRoutes: [route] })
+    // A configured wallet can identify its origin even when the key is rejected.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 401 })))
+    const result = async (baseURL: string) => (await queryBalances(ctxWith({ TEST_KEY: 'test-key' }), { [route]: { baseURL, apiKeyEnv: 'TEST_KEY' } })).find(row => row.sourceRoute === route && row.walletKind === 'api-key')
+    expect(await result(`${origin}/v1`)).toMatchObject({ sourceOrigin: origin, error: 'unauthorized', attributedRoutes: [route] })
     const relay = await result('https://relay.example')
     expect(relay?.sourceOrigin).toBeUndefined()
     expect(relay?.attributedRoutes).toEqual([])
