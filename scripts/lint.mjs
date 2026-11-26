@@ -213,7 +213,7 @@ for (const dir of SCAN_DIRS) {
  */
 function checkPanelShrinkGuard() {
   const css = readFileSync('src/client/UsageBilling.module.css', 'utf8')
-  const required = ['.dashboardBody > *', '.tabPanel > *']
+  const required = ['.dashboardBody > *', '.tabPanel > *', '.settingsPane > *']
   let checked = 0
   for (const selector of required) {
     const at = css.indexOf(selector)

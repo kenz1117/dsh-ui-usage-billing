@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto'
-import { accountRoute, customTier, effectiveRule, scheduleKey, type PeakSchedule } from './peak-schedule.ts'
 /**
  * Real-usage aggregation: folds every persisted session log into the
  * usage-stats document the dashboard renders.
@@ -14,6 +12,8 @@ import { accountRoute, customTier, effectiveRule, scheduleKey, type PeakSchedule
  */
 
 import { stat } from 'node:fs/promises'
+import { indexPeakHistory } from './peak-schedule-history.ts'
+import { accountRoute, customTier, type PeakSchedule, type ScheduleHistory } from './peak-schedule.ts'
 import * as sessionTypes from '@deepseek-ai/dsh-session/types'
 import type { SessionEvent, SessionHeader, SessionId, SessionLogOffset as SessionLogOffsetT } from '@deepseek-ai/dsh-session/types'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
@@ -224,6 +224,7 @@ export function sumSiteBuckets(
 /** Aggregation tuning options. */
 export interface AggregateOptions {
   resolvePeakSchedule?: () => PeakSchedule
+  resolvePeakHistory?: () => ScheduleHistory
   /** 订阅制 provider id 列表；缺省按订阅卡同款 id 判定（`isSubscriptionProviderId`）。 */
   subscriptionProviders?: readonly string[]
   /**
@@ -392,7 +393,7 @@ interface CallFoldContext {
   /** 通道归组键（`site:` / `direct:` / `unknown`）。 */
   siteBucket: string
   /** 未知通道（配置外 provider）：支出主体不可核实，费用记 0（issue #82）。 */
-  schedule?: PeakSchedule | undefined
+  schedule?: ReturnType<typeof indexPeakHistory> | undefined
   protectedAccount?: boolean
   unverifiedChannel: boolean
   /** 调用时刻（epoch ms）：驱动时段档与促销判定。 */
@@ -410,7 +411,7 @@ interface CallFoldContext {
  * 两者共用本函数，保证计费口径逐字一致。
  * @returns 本次调用的目录条目与费用（未计价时为 undefined）。
  */
-function foldModelCall(ctx: CallFoldContext): { entry: ModelEntry | undefined; cost: number | undefined } {
+function foldModelCall(ctx: CallFoldContext): { entry: ModelEntry | undefined; cost: number | undefined; override: 'peak' | 'offPeak' | undefined } {
   const { fold, usage, modelKey, subscription, official, siteBucket, unverifiedChannel, timeMs, day } = ctx
   // 不可计价模型（目录外/无价，且非订阅通道）收集到 unpriced 集合，供聚合层暴露给用户提示。
   // 未知通道（配置外 provider，issue #82）不计价：支出主体无法核实，与订阅豁免、
@@ -422,8 +423,9 @@ function foldModelCall(ctx: CallFoldContext): { entry: ModelEntry | undefined; c
   // 与计价共用同一次查找，不额外增加热路径成本。
   const entry = modelOf(modelKey)
   // 本条调用的费用：一次计价全程复用（逐桶重算会让最热路径付出 N 倍常数）。
-  const rule = !ctx.protectedAccount && entry.provider === 'DeepSeek' && entry.price.offPeak !== undefined ? ctx.schedule?.models[scheduleKey(siteBucket, modelKey)] : undefined
-  const override = rule === undefined ? undefined : customTier(timeMs, effectiveRule(siteBucket, rule))
+  const rule = ctx.schedule && priced && !ctx.protectedAccount && entry.key === modelKey && entry.provider === 'DeepSeek'
+    && entry.price.offPeak !== undefined && entry.tierSemantics !== 'latency' ? ctx.schedule.rule(siteBucket, modelKey, timeMs) : undefined
+  const override = rule === undefined ? undefined : customTier(timeMs, rule)
   const thisCost = priced ? computeCostAt(entry, {
     input: (usage.cacheReadTokens ?? 0) + usage.inputTokens + (usage.cacheWriteTokens ?? 0),
     cacheHit: usage.cacheReadTokens ?? 0,
@@ -460,7 +462,7 @@ function foldModelCall(ctx: CallFoldContext): { entry: ModelEntry | undefined; c
     fold.roles.outputCost += outputCost
     fold.roles.inputCost += thisCost - outputCost
   }
-  return { entry, cost: thisCost }
+  return { entry, cost: thisCost, override }
 }
 
 /**
@@ -760,6 +762,7 @@ export function foldSubagentFamilies(rows: SessionUsageRow[]): void {
 /** 每轮费用明细行：仪表盘「每轮费用」图的数据源。 */
 export interface TurnUsageRow {
   scheduleSource?: string
+  scheduleTier?: 'peak' | 'offPeak'
   /** 会话 id（字符串形式）：不同会话的轮次号相互独立，展示时需区分。 */
   sessionId: string
   /** 会话内轮次号。 */
@@ -1101,6 +1104,8 @@ export interface UsageLedgerSession {
    * 更早写入的行（配置不参与复用判定）；与当前指纹不一致的行不复用、全量重折。
    */
   fingerprint?: string
+  /** Schedule prefix through this fold's latest event. */
+  scheduleFingerprint?: string
   /**
    * 该行最近一次折叠落盘的时刻（epoch 毫秒）。多实例共享同一账本文件时，
    * save 侧按它做行级合并（后折覆盖先折），防止整份覆盖式落盘丢掉另一实例
@@ -1836,6 +1841,7 @@ function modelDaySiteCell(
 /** 每轮折叠的中间状态：turn/start 设起点，turn/end 设终点，调用累加桶与成本。 */
 interface TurnState {
   scheduleSource?: string
+  scheduleTier?: 'peak' | 'offPeak'
   turn: number
   model: string
   input: number
@@ -1935,10 +1941,10 @@ function foldInto(
   searchCallEstimateCny: number,
   seedLength: number,
   routeAliases: Readonly<Record<string, string>> = {},
-  schedule?: PeakSchedule,
+  schedule?: ReturnType<typeof indexPeakHistory>,
 ): void {
   // 归因状态在进出时与 machine 同步：循环体保持与全量折叠完全相同的写法。
-  let protectedAccount = machine.protectedAccount ?? true
+  let protectedAccount = machine.protectedAccount ?? false
   let key = machine.key
   let subscription = machine.subscription
   let official = machine.official
@@ -2120,7 +2126,7 @@ function foldInto(
     const day = dayStamp(event.time)
     // 本条消息折叠进 7 个桶 + 每轮明细，各桶费用完全相同：一次计价全程复用
     // （此前逐桶重算 computeCostAt/modelOf，折叠最热路径付出 9 倍计价常数）。
-    const { entry, cost: thisCost } = foldModelCall({
+    const { entry, cost: thisCost, override } = foldModelCall({
       fold,
       usage,
       modelKey,
@@ -2137,8 +2143,10 @@ function foldInto(
     const turn = (event.data as { turn?: number }).turn ?? -1
     const state = turnState(turns, turn)
     state.model = modelKey
-    if (protectedAccount || siteBucket === 'unknown') delete state.scheduleSource
+    if (protectedAccount || subscription || siteBucket === 'unknown') delete state.scheduleSource
     else state.scheduleSource = siteBucket
+    if (override === undefined) delete state.scheduleTier
+    else state.scheduleTier = override
     state.input += usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
     state.output += usage.outputTokens
     state.cacheHit += usage.cacheReadTokens ?? 0
@@ -2177,6 +2185,7 @@ function refreshTurns(fold: SessionFold, machine: FoldMachine): void {
       turn: state.turn,
       model: state.model,
       ...(state.scheduleSource === undefined ? {} : { scheduleSource: state.scheduleSource }),
+      ...(state.scheduleTier === undefined ? {} : { scheduleTier: state.scheduleTier }),
       input: state.input,
       output: state.output,
       cacheHit: state.cacheHit,
@@ -2213,11 +2222,11 @@ export function foldSession(
   searchCallEstimateCny: number = DEFAULT_SEARCH_CALL_ESTIMATE_CNY,
   seedLength = 0,
   routeAliases: Readonly<Record<string, string>> = {},
-  schedule?: PeakSchedule,
+  history?: ScheduleHistory,
 ): SessionFold {
   const fold = freshFold()
   const machine = freshMachine()
-  foldInto(fold, machine, events, subscriptionProviders, officialProviderIds, routes, searchCallEstimateCny, seedLength, routeAliases, schedule)
+  foldInto(fold, machine, events, subscriptionProviders, officialProviderIds, routes, searchCallEstimateCny, seedLength, routeAliases, indexPeakHistory(history))
   refreshTurns(fold, machine)
   return fold
 }
@@ -2353,6 +2362,8 @@ export interface UsageAggregator {
   /** Aggregate current usage, reusing cached per-session folds when their logs are untouched.
    *  并发调用共享同一次进行中的折叠（in-flight 去重），不会多倍全量重读。 */
   aggregate(): Promise<UsageStatsDocument>
+  /** Publish a schedule change between folds using the latest timestamp already folded. */
+  withPeakScheduleChange<T>(save: (latestEventTime: number) => Promise<T>): Promise<T>
   /**
    * 按会话 id 取该会话的完整累计用量。doc 的 `byTurn` 封顶（最近 200 轮），
    * 用户回到旧会话续聊时其轮次已被挤出，从 doc 反推会低估——这里直接读该
@@ -2479,11 +2490,12 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
   const maxCacheSessions = options.maxCacheSessions ?? DEFAULT_MAX_CACHE_SESSIONS
   // 内存 cache 条目：fold 是 Map/Set 重表示；machine + lastSeq 是增量折叠游标
   // （issue #30），仅本进程内有效——ledger 恢复的行不带 machine，退回全量重折。
-  const cache = new Map<string, { stamp: string | null; fold: SessionFold; machine?: FoldMachine; lastSeq?: number; fingerprint: string }>()
+  const cache = new Map<string, { stamp: string | null; fold: SessionFold; machine?: FoldMachine; lastSeq?: number; fingerprint: string; scheduleFingerprint: string | undefined }>()
   // Durable rows stay JSON-safe in memory. The LRU above still bounds the
   // heavier Map/Set representation used for active-session incremental folds.
   const ledger = new Map<string, UsageLedgerSession>()
-  let ledgerLoaded = false
+  let ledgerLoading: Promise<void> | undefined
+  let latestFoldedEvent = -1
   let ledgerNeedsSave = false
   let lastLedgerSaveAt = 0
   // 不可读会话负缓存（id → 失败 stamp + 是否格式拒读）：stamp 不变不再重读——
@@ -2498,9 +2510,11 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
   const titleHints = new Map<string, string>()
   // 并发聚合共享的进行中的折叠（usage-stats / balance / usage_stats 工具会同时触发）。
   let inflight: Promise<UsageStatsDocument> | undefined
+  let scheduleWrite: Promise<unknown> | undefined
   // 加载边界跑迁移后留下的已应用 id；save 透传，避免每次重启都把迁移重跑一遍。
   let ledgerAppliedMigrations: string[] | undefined
   let lastDoc: UsageStatsDocument | undefined
+  let lastHistory: ScheduleHistory | undefined
   let lastAt = 0
   // 账本行反序列化按行内容身份记忆（自审计 2026-10-14）：快路径/兜底段每轮都对
   // 全部历史行跑 deserializeFold，行内容不变时结果相同——历史行多（上千个存档）
@@ -2582,7 +2596,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
     fold.unpricedModels.some(key => isPriced(key))
 
   /** 把一份（全量或增量）折叠结果登记进 durable ledger；内容无变化时不落盘。 */
-  const recordLedger = (id: string, cwd: string | undefined, stamp: string | null, fold: SessionFold, subOf?: string): void => {
+  const recordLedger = (id: string, cwd: string | undefined, stamp: string | null, fold: SessionFold, subOf: string | undefined, scheduleFingerprint: string | undefined): void => {
     if (options.ledger === undefined) return
     const entry: UsageLedgerSession = {
       id,
@@ -2591,6 +2605,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       ...(stamp === null ? {} : { stamp }),
       foldVersion: FOLD_VERSION,
       fingerprint: foldFingerprint,
+      ...(scheduleFingerprint === undefined ? {} : { scheduleFingerprint }),
       foldedAt: Date.now(),
       fold: serializeFold(fold),
     }
@@ -2605,6 +2620,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       || row.subOf !== entry.subOf
       || row.foldVersion !== entry.foldVersion
       || row.fingerprint !== entry.fingerprint
+      || row.scheduleFingerprint !== entry.scheduleFingerprint
       || (stamp === null && JSON.stringify(row.fold) !== JSON.stringify(entry.fold))
       || (stamp !== null && foldNeedsReprice(row.fold))
     if (changed) {
@@ -2613,9 +2629,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
     }
   }
 
-  const ensureLedgerLoaded = async (): Promise<void> => {
-    if (ledgerLoaded || options.ledger === undefined) return
-    ledgerLoaded = true
+  const loadLedger = async (): Promise<void> => {
+    if (options.ledger === undefined) return
     try {
       const stored = await options.ledger.load()
       if (stored !== null && typeof stored === 'object' && (stored as UsageLedgerDocument).sessions !== undefined) {
@@ -2632,13 +2647,18 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           }
         }
       }
-      for (const entry of ledgerSessionsOf(stored)) ledger.set(entry.id, entry)
+      for (const entry of ledgerSessionsOf(stored)) {
+        ledger.set(entry.id, entry)
+        if (Number.isFinite(entry.fold.lastActive)) latestFoldedEvent = Math.max(latestFoldedEvent, entry.fold.lastActive)
+      }
     } catch (error) {
       // A damaged ledger must not take down the dashboard. The host store normally
       // tries its .bak first; if both fail, current logs rebuild a fresh ledger.
       console.warn('[usage-billing] failed to load durable usage ledger; rebuilding from current sessions:', error)
     }
   }
+
+  const ensureLedgerLoaded = () => ledgerLoading ??= loadLedger()
 
   /** 失效键：宿主 0.1.3+ 走 adapter 暴露的 revision 令牌；0.1.2 形状退回
    * 日志文件 mtime+size（经 locate，拿不到或抛错时返回 null 让调用方重折）。
@@ -2693,7 +2713,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
    * 开门后的下一轮即完整折叠）——轻文档的每行折叠反序列化有 WeakMap 记忆，
    * 重复构建只付 O(行数) 的汇总合并，冷phase里每个请求都可负担。
    */
-  const aggregateOnce = async (mode: 'full' | 'ledger-only'): Promise<UsageStatsDocument> => {
+  const aggregateOnce = async (mode: 'full' | 'ledger-only', history: ScheduleHistory | undefined, activeSchedule: PeakSchedule | undefined): Promise<UsageStatsDocument> => {
       const now = Date.now()
 
       await ensureLedgerLoaded()
@@ -2704,8 +2724,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       // stale 标记（foldVersion/指纹比对）依赖当前指纹。
       const registeredProviders = options.resolveRegisteredProviders?.() ?? new Set<string>()
       const roundRoutes = routesOf(registeredProviders)
-      const schedule = options.resolvePeakSchedule?.()
-      foldFingerprint = foldFingerprintOf(registeredProviders, roundRoutes) + (schedule && Object.keys(schedule.models).length ? '|schedules:' + createHash('sha256').update(JSON.stringify(schedule.models)).digest('hex') : '')
+      const schedule = indexPeakHistory(history)
+      foldFingerprint = foldFingerprintOf(registeredProviders, roundRoutes)
 
       const seen = new Set<string>()
       const included = new Set<string>()
@@ -2783,6 +2803,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           if (ledgerRow !== undefined && ledgerRow.stamp !== undefined && stamp !== null
             && ledgerRow.stamp === stamp && (ledgerRow.foldVersion ?? 1) === FOLD_VERSION
             && ledgerRow.fingerprint === foldFingerprint
+             && ledgerRow.scheduleFingerprint === schedule?.fingerprint(ledgerRow.fold.lastActive)
             && !foldNeedsReprice(ledgerRow.fold)) {
             const fold = reconciledFoldOf(ledgerRow.fold)
             folds.push({ id, ...(cwd === undefined ? {} : { cwd }), ...(subOf === undefined ? {} : { subOf }), fold })
@@ -2798,6 +2819,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           // 旧口径折叠不能继续复用——落穿到下方按指纹失效全量重折。
           if (hit !== undefined && stamp !== null && hit.stamp === stamp
             && hit.fingerprint === foldFingerprint
+             && hit.scheduleFingerprint === schedule?.fingerprint(hit.fold.lastActive)
             && ![...hit.fold.unpricedModels].some(key => isPriced(key))) {
             // LRU touch：复用命中的会话移到缓存末尾，供上方上限清理优先淘汰最久未用。
             cache.delete(id)
@@ -2813,6 +2835,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           // 两种失效都直接跳过增量退回全量重折，整条日志按当前口径计价。
           if (previous?.machine !== undefined && previous.lastSeq !== undefined
             && previous.fingerprint === foldFingerprint
+             && previous.scheduleFingerprint === schedule?.fingerprint(previous.fold.lastActive)
             && ![...previous.fold.unpricedModels].some(key => isPriced(key))) {
             // seq 增量折叠（issue #30）：活跃会话持续追加使 mtime+size 键每轮失效，
             // 全量重读会让宿主事件循环连续阻塞十几秒、session/list 全部挂起。
@@ -2834,6 +2857,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
               continue
             }
             foldInto(previous.fold, previous.machine, events, subscriptionMatcher, officialProviderIds, roundRoutes, searchEstimate, inheritedEventCount, routeAliases, schedule)
+            if (Number.isFinite(previous.fold.lastActive)) latestFoldedEvent = Math.max(latestFoldedEvent, previous.fold.lastActive)
             refreshTurns(previous.fold, previous.machine)
             const last = events[events.length - 1]
             previous.lastSeq = last?.seq ?? previous.lastSeq
@@ -2843,7 +2867,8 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
             cache.set(id, previous)
             folds.push({ id, ...(cwd === undefined ? {} : { cwd }), ...(subOf === undefined ? {} : { subOf }), fold: previous.fold })
             included.add(id)
-            recordLedger(id, cwd, stamp, previous.fold, subOf)
+            previous.scheduleFingerprint = schedule?.fingerprint(previous.fold.lastActive)
+            recordLedger(id, cwd, stamp, previous.fold, subOf, previous.scheduleFingerprint)
             continue
           }
           // 全量重折（首次 / 缓存淘汰 / 日志重写）：分片折叠并周期性让出事件循环，
@@ -2860,6 +2885,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           const machine = freshMachine()
           for (let start = 0; start < events.length; start += FOLD_CHUNK_EVENTS) {
             foldInto(fold, machine, events.slice(start, start + FOLD_CHUNK_EVENTS), subscriptionMatcher, officialProviderIds, roundRoutes, searchEstimate, inheritedEventCount, routeAliases, schedule)
+            if (Number.isFinite(fold.lastActive)) latestFoldedEvent = Math.max(latestFoldedEvent, fold.lastActive)
             // 墙钟让出（FOLD_SLICE_MS）：FOLD_CHUNK_EVENTS 只负责把超长事件数组
             // 切成有限内存片，让出节拍由片间累计耗时决定——单片再小、连折多片
             // 累计超预算同样要让，宿主 RPC 不被连续饿死（issue #104/#105）。
@@ -2870,10 +2896,10 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
           }
           refreshTurns(fold, machine)
           const last = events[events.length - 1] as { seq?: number } | undefined
-          cache.set(id, { stamp, fold, machine, ...(last !== undefined && typeof last.seq === 'number' ? { lastSeq: last.seq } : {}), fingerprint: foldFingerprint })
+          cache.set(id, { stamp, fold, machine, ...(last !== undefined && typeof last.seq === 'number' ? { lastSeq: last.seq } : {}), fingerprint: foldFingerprint, scheduleFingerprint: schedule?.fingerprint(fold.lastActive) })
           folds.push({ id, ...(cwd === undefined ? {} : { cwd }), ...(subOf === undefined ? {} : { subOf }), fold })
           included.add(id)
-          recordLedger(id, cwd, stamp, fold, subOf)
+          recordLedger(id, cwd, stamp, fold, subOf, schedule?.fingerprint(fold.lastActive))
         } catch (error) {
           skipped.push(id)
           const format = isFormatUnsupportedError(error)
@@ -3156,7 +3182,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
         // 真实会话总数（未封顶）：面板的「共 N 个会话」按它说，不再把封顶行数
         // 当成总数（旧快照缺该字段，客户端回退按行数）。
         bySessionTotal: sessionRows.length,
-        ...(schedule && Object.keys(schedule.models).length ? { peakSchedule: schedule } : {}),
+        ...(activeSchedule ? { peakSchedule: activeSchedule } : {}),
         byTurn: turnRows.slice(0, TURN_ROW_LIMIT),
         byWorkspace: workspaces.slice(0, SESSION_ROW_LIMIT),
         ...(byTier.size === 0 ? {} : { byTier: { peak: byTier.get('peak') ?? emptyUsage(), offPeak: byTier.get('offPeak') ?? emptyUsage() } }),
@@ -3198,6 +3224,7 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
       // 记忆兜底，每请求重build只付 O(行数) 汇总合并，可负担。
       if (mode === 'full') {
         lastDoc = document
+        lastHistory = history
         lastAt = now
       }
       return document
@@ -3205,18 +3232,32 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
 
   return {
     aggregate(): Promise<UsageStatsDocument> {
+      if (scheduleWrite !== undefined) return scheduleWrite.then(() => this.aggregate(), () => this.aggregate())
       const now = Date.now()
       const currentSchedule = options.resolvePeakSchedule?.()
       const activeSchedule = currentSchedule && Object.keys(currentSchedule.models).length ? currentSchedule : undefined
-      if (lastDoc !== undefined && lastDoc.peakSchedule === activeSchedule && now - lastAt < AGGREGATE_TTL_MS) return Promise.resolve(lastDoc)
+      const history = options.resolvePeakHistory?.()
+      if (lastDoc !== undefined && lastHistory === history && lastDoc.peakSchedule === activeSchedule && now - lastAt < AGGREGATE_TTL_MS) return Promise.resolve(lastDoc)
       // 冷phase（issue #105）：闸门内的请求只吃账本轻文档，不触发任何日志读取
       // ——UI 一加载的轮询不再把全量折叠拉进启动关键路径。完整折叠已在飞（闸门
       // 刚开）时等它，而不是再折一遍。
-      if (now < foldAllowedAt) return inflight ?? aggregateOnce('ledger-only')
+      if (now < foldAllowedAt) return inflight ?? aggregateOnce('ledger-only', history, activeSchedule)
       // 并发去重：多个调用方（usage-stats / balance / usage_stats 工具）同时
       // 触发聚合时共享同一次进行中的折叠，避免多倍全量重读压垮事件循环。
-      inflight ??= aggregateOnce('full').finally(() => { inflight = undefined })
+      inflight ??= aggregateOnce('full', history, activeSchedule).finally(() => { inflight = undefined })
       return inflight
+    },
+    withPeakScheduleChange<T>(save: (latestEventTime: number) => Promise<T>): Promise<T> {
+      // Load the ledger without starting replay. Let an existing fold finish before stamping the edit,
+      // and hold new folds until the edit has been atomically published.
+      const previous = scheduleWrite ?? inflight
+      const commit = (async () => {
+        if (previous !== undefined) await previous.catch(() => undefined)
+        await ensureLedgerLoaded()
+        return save(latestFoldedEvent)
+      })().finally(() => { if (scheduleWrite === commit) scheduleWrite = undefined })
+      scheduleWrite = commit
+      return commit
     },
     async sessionUsageOf(sessionId: string): Promise<SessionUsageSummary | undefined> {
       // 先等一次聚合（TTL/并发共享与 aggregate() 同口径）：确保 cache 与

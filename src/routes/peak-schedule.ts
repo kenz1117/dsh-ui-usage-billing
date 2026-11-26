@@ -2,6 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ANONYMOUS_ROUTE_AUTH, guardLoopback, isLoopbackOrigin } from '../guard.ts'
 import type { ScheduleSnapshot } from '../peak-schedule.ts'
+import { ScheduleClockConflict } from '../peak-schedule-store.ts'
 
 export interface PeakScheduleDeps {
   trustedHosts: ReadonlySet<string>
@@ -57,6 +58,7 @@ export function registerPeakScheduleRoute(ctx: Context, deps: PeakScheduleDeps):
           snapshot = req.method === 'POST' ? await deps.save(raw) : await deps.read()
         } catch (error) {
           if (req.method === 'POST' && error instanceof PeakScheduleInputError) return reply(res, 400, { error: error.message })
+          if (req.method === 'POST' && error instanceof ScheduleClockConflict) return reply(res, 409, { error: 'scheduleClockConflict' })
           return reply(res, 503, { error: 'peak schedule unavailable' })
         }
         reply(res, 200, snapshot)

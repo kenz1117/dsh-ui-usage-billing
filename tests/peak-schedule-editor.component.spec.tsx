@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { PeakScheduleEditor } from '../src/client/PeakScheduleEditor.tsx'
 import { en, zh } from '../src/client/locales.ts'
-import { scheduleKey, type PeakSchedule, type ScheduleSnapshot } from '../src/peak-schedule.ts'
+import { scheduleKey, type PeakSchedule, type ScheduleEdit, type ScheduleSnapshot } from '../src/peak-schedule.ts'
 
 const model = 'deepseek-v4.1-flash'
 const relay = 'site:https://relay.test', official = 'direct:deepseek'
@@ -13,7 +13,15 @@ const config: PeakSchedule = { version: 2, models: { [old]: { windows: [] } } }
 const doc: ScheduleSnapshot = { config, models }
 function response(data: unknown, status = 200) { return new Response(JSON.stringify(data), { status }) }
 function serve(data = doc) {
-  const post = vi.fn((config: PeakSchedule) => response({ ...data, config }))
+  let active = { ...data.config.models }
+  const post = vi.fn(({ changes }: ScheduleEdit) => {
+    active = { ...active }
+    for (const [key, rule] of Object.entries(changes)) {
+      if (rule === null) delete active[key]
+      else active[key] = rule
+    }
+    return response({ ...data, config: { version: 2, models: active } })
+  })
   const fetcher = vi.fn(async (path: string, init: RequestInit) => {
     expect(path).toBe('/api/billing/peak-schedule')
     return init.method === 'POST' ? post(JSON.parse(String(init.body))) : response(data)
@@ -28,29 +36,29 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('source-scoped peak schedule', () => {
   it('starts without a default row, filters protected accounts and displays server warnings', async () => {
-    serve({ ...doc, warning: 'Legacy schedule ignored', models: [...models, { source: 'direct:DeepSeek-Account', model, label: 'Account' }] })
+    serve({ ...doc, notices: [{ code: 'legacySchedule' }], models: [...models, { source: 'direct:DeepSeek-Account', model, label: 'Account' }] })
     render(<PeakScheduleEditor t={k => zh[k]} />)
-    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Legacy schedule ignored')
+    expect(await screen.findByText(zh.psLegacy)).toBeTruthy()
     expect(screen.getByRole('combobox', { name: '选择来源 / 模型' })).toHaveProperty('value', '')
     expect(screen.queryByRole('option', { name: 'Account' })).toBeNull()
     expect(screen.queryByRole('button', { name: '保存' })).toBeNull()
     expect(screen.getAllByRole('option')).toHaveLength(3)
   })
-  it('posts complete config, keeping independent drafts and unlisted stored rules', async () => {
+  it('posts changed pairs only, retaining unlisted stored rules', async () => {
     const post = serve(); const onSaved = vi.fn()
     render(<PeakScheduleEditor t={k => en[k]} onSaved={onSaved} />)
     await choose(rk); expect(screen.getByText('00:00-24:00')).toBeTruthy()
     change('Peak hours', 'empty'); change('Applicable days', 'daily')
-    await choose(ok); expect(screen.getByText('09:00-12:00 / 14:00-18:00')).toBeTruthy()
+    await choose(ok); expect(screen.getByText('09:00-12:00 / 14:00-18:00')).toBeTruthy(); expect(screen.getByText(/2026-10-01 2026-10-02/)).toBeTruthy()
     change('Peak hours', 'custom'); change(/^Peak hours \(/, '08:00-09:30 / 19:00-24:00')
     change('Holidays (off-peak all day)', 'custom'); change(/^Holidays .*2026/, '2028-02-29')
     change('Time zone', 'custom'); change('UTC offset (minutes)', '330'); save()
     await screen.findByText('Saved')
-    expect(post).toHaveBeenCalledWith({ version: 2, models: { ...config.models, [rk]: { windows: [], weekendOffPeak: false }, [ok]: { windows: [480,570,1140,1440], holidays: ['20280229'], utcOffsetMinutes: 330 } } })
+    expect(post).toHaveBeenCalledWith({ version: 3, changes: { [rk]: { windows: [], weekendOffPeak: false }, [ok]: { windows: [480,570,1140,1440], holidays: ['20280229'], utcOffsetMinutes: 330 } } })
     expect(onSaved).toHaveBeenCalledTimes(1)
     await choose(rk); fireEvent.click(screen.getByRole('button', { name: 'Clear this model’s overrides' })); save()
-    await screen.findByText('Saved'); expect(post.mock.calls[1]![0].models).not.toHaveProperty(rk)
-    expect(Object.keys(post.mock.calls[1]![0].models).sort()).toEqual([old, ok].sort())
+    await screen.findByText('Saved'); expect(post.mock.calls[1]![0]).toEqual({ version: 3, changes: { [rk]: null } })
+    expect(onSaved.mock.calls[1]![0].config.models).toEqual({ ...config.models, [ok]: { windows: [480,570,1140,1440], holidays: ['20280229'], utcOffsetMinutes: 330 } })
   })
   it('keeps blank custom inputs editable; rejects overlap, impossible dates and out-of-range UTC offsets', async () => {
     const post = serve(); render(<PeakScheduleEditor t={k => en[k]} />); await choose(rk)
@@ -85,9 +93,9 @@ describe('source-scoped peak schedule', () => {
     expect(screen.getByRole('button', { name: 'Add date' })).toHaveProperty('disabled', true)
     expect(screen.getByLabelText(/^Holidays .*2026/)).toHaveProperty('value', '2028-02-29')
     save(); await screen.findByText(en.psSaved)
-    expect(post.mock.calls[0]?.[0].models[rk]?.holidays).toEqual(['20280229'])
+    expect(post.mock.calls[0]?.[0].changes[rk]?.holidays).toEqual(['20280229'])
     fireEvent.click(screen.getByRole('button', { name: 'Remove date' })); save(); await screen.findByText(en.psSaved)
-    expect(post.mock.calls[1]?.[0].models).toEqual({ ...config.models, [rk]: { holidays: [] } })
+    expect(post.mock.calls[1]?.[0].changes).toEqual({ [rk]: { holidays: [] } })
   })
   it('refreshes on cadence and foreground events without losing drafts or last good options', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
@@ -124,7 +132,7 @@ describe('source-scoped peak schedule', () => {
   it('shows read failures with retry and distinguishes a successful empty list', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(response({ error: 'Access denied' }, 403)).mockResolvedValueOnce(response({ ...doc, models: [] })))
     render(<PeakScheduleEditor t={k => en[k]} />)
-    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Access denied'))
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining(en.psDenied))
     fireEvent.click(screen.getByRole('button', { name: 'Reload' }))
     expect(await screen.findByRole('combobox')).toHaveProperty('disabled', true)
     expect(screen.getByRole('option')).toHaveProperty('textContent', en.psEmpty)
@@ -132,7 +140,7 @@ describe('source-scoped peak schedule', () => {
   it('keeps unsaved edits and enables retry when POST fails', async () => {
     const post = serve(); post.mockReturnValueOnce(response({ error: 'Write failed' }, 500))
     render(<PeakScheduleEditor t={k => en[k]} />); await choose(ok); change('Peak hours', 'empty'); save()
-    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Write failed'))
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining(en.psUnavailable))
     expect(screen.getByLabelText('Peak hours')).toHaveProperty('value', 'empty'); save()
     await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy()); expect(post.mock.calls[0]).toEqual(post.mock.calls[1])
   })

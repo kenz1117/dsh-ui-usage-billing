@@ -7,7 +7,8 @@ export type EffectiveRule = Required<PeakRule>
 /** Old snapshots omit schedules. Validate new ones before they reach render paths. */
 export function scheduleFields(value: unknown): { peakSchedule?: PeakSchedule } {
   if (value === undefined) return {}
-  return { peakSchedule: parseSchedule(value, () => true) }
+  try { return { peakSchedule: parseSchedule(value, () => true) } }
+  catch { return {} }
 }
 
 export function ruleForTurn(turn?: ScheduledTurn, schedule?: PeakSchedule): EffectiveRule | undefined {

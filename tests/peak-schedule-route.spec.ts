@@ -3,11 +3,12 @@ import { Readable } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
 import { PeakScheduleInputError, registerPeakScheduleRoute } from '../src/routes/peak-schedule.ts'
 import type { ScheduleSnapshot } from '../src/peak-schedule.ts'
+import { ScheduleClockConflict } from '../src/peak-schedule-store.ts'
 
 const snapshot: ScheduleSnapshot = {
   config: { version: 2, models: { '["direct:local","flash"]': { windows: [60, 120] } } },
   models: [{ source: 'direct:local', model: 'flash', label: 'Flash' }],
-  warning: 'Legacy settings were not applied',
+  notices: [{ code: 'legacySchedule' }],
 }
 
 function setup() {
@@ -41,9 +42,9 @@ describe('peak schedule route', () => {
     expect(save).not.toHaveBeenCalled()
   })
 
-  it('passes the complete config to save, decoding UTF-8 across chunk boundaries', async () => {
+  it('passes the edit to save, decoding UTF-8 across chunk boundaries', async () => {
     const { request, read, save } = setup()
-    const config = { version: 2, models: { '["direct:local","模型"]': {} } }
+    const config = { version: 3, changes: { '["direct:local","模型"]': {} } }
     const bytes = Buffer.from(JSON.stringify(config))
     const split = bytes.indexOf('模') + 1
     const res = await request('POST', [bytes.subarray(0, split), bytes.subarray(split)], {
@@ -77,6 +78,8 @@ describe('peak schedule route', () => {
     const body = [Buffer.from('{}')]
     save.mockRejectedValueOnce(new PeakScheduleInputError('Invalid schedule version'))
     expect(await request('POST', body)).toEqual({ status: 400, body: { error: 'Invalid schedule version' } })
+    save.mockRejectedValueOnce(new ScheduleClockConflict())
+    expect(await request('POST', body)).toEqual({ status: 409, body: { error: 'scheduleClockConflict' } })
     save.mockRejectedValueOnce(new Error('disk error'))
     expect((await request('POST', body)).status).toBe(503)
     read.mockRejectedValueOnce(new Error('disk error'))

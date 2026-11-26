@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { effectiveRule, parseRule, parseSchedule, scheduleKey, validSource, type PeakRule, type PeakSchedule, type ScheduleSnapshot } from '../peak-schedule.ts'
+import { effectiveRule, parseRule, parseSchedule, scheduleKey, validSource, type PeakRule, type ScheduleEdit, type ScheduleNoticeCode, type ScheduleSnapshot } from '../peak-schedule.ts'
 import { fetchBilling } from './api/http.ts'
 import type { UsageBillingKey } from './locales.ts'
 import css from './UsageBilling.module.css'
@@ -40,15 +40,19 @@ function serialize(draft: Draft, t: Translate): PeakRule {
   }
   return result
 }
-async function request(config?: PeakSchedule, signal?: AbortSignal): Promise<ScheduleSnapshot> {
-  const response = await fetchBilling('/api/billing/peak-schedule', config ? {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(config),
+async function request(t: Translate, edit?: ScheduleEdit, signal?: AbortSignal): Promise<ScheduleSnapshot> {
+  const response = await fetchBilling('/api/billing/peak-schedule', edit ? {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(edit),
   } : { signal: signal ?? null })
   const payload = await response.json().catch(() => null)
-  if (!response.ok) throw Error(typeof payload?.error === 'string' ? payload.error : `HTTP ${response.status}`)
-  if (!Array.isArray(payload?.models) || !payload.models.every((m: ScheduleSnapshot['models'][number]) => m && typeof m.model === 'string' && typeof m.source === 'string' && typeof m.label === 'string')) throw Error('Invalid peak-schedule response')
-  return { config: parseSchedule(payload.config, () => true), models: payload.models.filter((m: ScheduleSnapshot['models'][number]) => validSource(m.source)), warning: typeof payload.warning === 'string' ? payload.warning : undefined }
+  if (!response.ok) throw Error(t(response.status === 400 ? 'psInvalidRequest' : response.status === 403 ? 'psDenied' : response.status === 409 ? 'psClockConflict' : 'psUnavailable'))
+  if (!Array.isArray(payload?.models) || !payload.models.every((m: ScheduleSnapshot['models'][number]) => m && typeof m.model === 'string' && typeof m.source === 'string' && typeof m.label === 'string')) throw Error(t('psInvalidResponse'))
+  let config
+  try { config = parseSchedule(payload.config, () => true) } catch { throw Error(t('psInvalidResponse')) }
+  const notices = Array.isArray(payload.notices) ? payload.notices.filter((n: NonNullable<ScheduleSnapshot['notices']>[number]) => n && Object.hasOwn(noticeLabels, n.code) && (n.detail === undefined || typeof n.detail === 'string')) : []
+  return { config, models: payload.models.filter((m: ScheduleSnapshot['models'][number]) => validSource(m.source)), notices }
 }
+const noticeLabels: Record<ScheduleNoticeCode, UsageBillingKey> = { legacySchedule: 'psLegacy', unreadableSchedule: 'psUnreadable', malformedSchedule: 'psMalformedSchedule', malformedRevision: 'psMalformedRevision', malformedRule: 'psMalformedRule', ineligibleModel: 'psIneligible', discoveryFailed: 'psDiscovery' }
 const detail = (err: unknown) => err instanceof Error ? err.message : String(err)
 const inputStyle = { maxWidth: '100%', minWidth: 0 }
 function HolidayDate({ text, setText, t }: { text: string; setText: (text: string | string[]) => void; t: Translate }) {
@@ -80,11 +84,11 @@ export function PeakScheduleEditor({ t, onSaved }: { t: Translate; onSaved?: (sn
   useEffect(() => {
     const ctl = new AbortController()
     setBusy(true); setError('')
-    void request(undefined, ctl.signal).then(data => { if (!ctl.signal.aborted) setSnapshot(data) })
+    void request(t, undefined, ctl.signal).then(data => { if (!ctl.signal.aborted) setSnapshot(data) })
       .catch(err => { if (!ctl.signal.aborted) setError(detail(err)) })
       .finally(() => { if (!ctl.signal.aborted) setBusy(false) })
     return () => ctl.abort()
-  }, [attempt])
+  }, [attempt, t])
   const draftRef = useRef(drafts)
   useEffect(() => { draftRef.current = drafts }, [drafts])
   const loaded = snapshot !== undefined
@@ -96,13 +100,13 @@ export function PeakScheduleEditor({ t, onSaved }: { t: Translate; onSaved?: (sn
       if (document.hidden || refreshing.current) return
       const ctl = new AbortController()
       refreshing.current = ctl
-      void request(undefined, ctl.signal).then(data => {
+      void request(t, undefined, ctl.signal).then(data => {
         if (ctl.signal.aborted) return
         setRefreshError('')
         setSnapshot(prev => {
           // Keep a dirty source reachable even when its route disappears mid-edit.
           const ids = new Set(data.models.map(m => scheduleKey(m.source, m.model)))
-          const retained = prev?.models.filter(m => { const id = scheduleKey(m.source, m.model); return !ids.has(id) && (draftRef.current[id] || data.warning) }) ?? []
+          const retained = prev?.models.filter(m => { const id = scheduleKey(m.source, m.model); return !ids.has(id) && (draftRef.current[id] || data.notices?.some(n => n.code === 'discoveryFailed')) }) ?? []
           return { ...data, models: [...data.models, ...retained] }
         })
       }).catch(err => { if (!ctl.signal.aborted) setRefreshError(detail(err)) })
@@ -115,7 +119,7 @@ export function PeakScheduleEditor({ t, onSaved }: { t: Translate; onSaved?: (sn
       window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh)
       refreshing.current?.abort(); refreshing.current = undefined
     }
-  }, [loaded, busy])
+  }, [loaded, busy, t])
   const selected = snapshot?.models.find(m => scheduleKey(m.source, m.model) === key)
   const rule: Draft = drafts[key] ?? snapshot?.config.models[key] ?? {}
   const base = effectiveRule(selected?.source ?? '', {})
@@ -133,8 +137,7 @@ export function PeakScheduleEditor({ t, onSaved }: { t: Translate; onSaved?: (sn
     refreshing.current?.abort(); refreshing.current = undefined
     setBusy(true); setError(''); setInvalid(undefined); setSaved(false)
     try {
-      // POST replaces the entire document. Keep untouched entries, even if absent from the picker.
-      const models = { ...snapshot.config.models }
+      const changes: ScheduleEdit['changes'] = {}
       for (const [id, draft] of Object.entries(drafts)) {
         let parsed: PeakRule
         try { parsed = serialize(draft, t) } catch (err) {
@@ -143,10 +146,9 @@ export function PeakScheduleEditor({ t, onSaved }: { t: Translate; onSaved?: (sn
           const owner = snapshot.models.find(m => scheduleKey(m.source, m.model) === id)
           throw Error(`${owner?.label ?? id}: ${detail(err)}`)
         }
-        if (Object.keys(parsed).length) models[id] = parsed
-        else delete models[id]
+        changes[id] = Object.keys(parsed).length ? parsed : null
       }
-      const data = await request({ version: 2, models })
+      const data = await request(t, { version: 3, changes })
       setSnapshot(data); setDrafts({}); setSaved(true); onSaved?.(data)
     } catch (err) { setError(detail(err)) } finally { setBusy(false) }
   }
@@ -166,7 +168,7 @@ export function PeakScheduleEditor({ t, onSaved }: { t: Translate; onSaved?: (sn
   return <section className={css.setCard} data-testid="billing-peak-schedule">
     <div className={css.setCardHead}><h3 className={css.setCardTitle}>{t('psTitle')}</h3></div>
     {refreshError && <p role="status">{t('psLoadError')}: {refreshError}</p>}
-    {snapshot?.warning && <p role="alert">{snapshot.warning}</p>}
+    {snapshot?.notices?.map(({ code, detail }) => <p role="status" key={JSON.stringify([code, detail])}>{t(noticeLabels[code])}{detail ? ` (${detail})` : ''}</p>)}
     {error && <p id={errorId} role="alert">{t(snapshot ? 'psSaveError' : 'psLoadError')}: {error}</p>}
     {!snapshot ? (busy ? <small role="status">{t('psLoading')}</small> : <button type="button" onClick={() => setAttempt(attempt + 1)}>{t('psRetry')}</button>) :
       <fieldset className={css.ctlCol} disabled={busy} style={{ margin: 0, padding: 0, border: 0, minWidth: 0 }}>

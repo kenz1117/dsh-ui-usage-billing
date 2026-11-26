@@ -286,6 +286,7 @@ export interface UsageStats {
         turn: number;
         model: string;
         scheduleSource?: string;
+        scheduleTier?: 'peak' | 'offPeak';
         input: number;
         output: number;
         cacheHit: number;

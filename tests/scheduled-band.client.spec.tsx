@@ -4,7 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { applyBuiltinCatalog } from '../src/client/pricing.ts'
 import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from '../src/builtin-catalog.ts'
 import { effectiveRule, scheduleKey, type PeakSchedule } from '../src/peak-schedule.ts'
-import { scheduledCountdown, modelBand, ruleForTurn } from '../src/client/scheduled-band.ts'
+import { scheduledCountdown, modelBand, ruleForTurn, scheduleFields } from '../src/client/scheduled-band.ts'
 import { computePeakAlert, DEFAULT_PEAK_ALERT_CONFIG } from '../src/client/peak-alert.ts'
 import { LiveCostBar } from '../src/client/live-cost.tsx'
 import { LIVE_COST_BAR_STORAGE_KEY } from '../src/client/usage-billing-settings.ts'
@@ -36,11 +36,15 @@ describe('source-scoped peak displays', () => {
     for (const windows of [[], [0, 1440]]) expect(band('2026-11-25T00:00Z', { windows })?.nextSwitchInMs).toBe(Infinity)
     expect(band('2026-01-01T00:00Z', { utcOffsetMinutes: 0, holidays: ['20270101'] })?.nextSwitchInMs).toBe(365 * 86400000)
   })
-  it('colors each historical row by its own source', () => {
-    const view = render(<RoundCostChart rounds={[turn, { ...turn, turn: 2, scheduleSource: undefined }]} flags={[]} currency="cny" t={key => key} peakSchedule={schedule} />)
+  it('colors each historical row by its recorded tier', () => {
+    const view = render(<RoundCostChart rounds={[{ ...turn, scheduleTier: 'offPeak' }, { ...turn, turn: 2 }]} flags={[]} currency="cny" t={key => key} />)
     const cols = view.container.querySelectorAll('[class*="roundsBarCol_"]')
     expect(cols[0]?.className).toContain('roundsBarColOff')
     expect(cols[1]?.className).toContain('roundsBarColPeak')
+  })
+  it('drops only a malformed optional schedule', () => {
+    expect(scheduleFields({ version: 2, models: { bad: {} } })).toEqual({})
+    expect(scheduleFields(schedule)).toEqual({ peakSchedule: schedule })
   })
   it('reads the active session pair from the wire and hides countdown text for constant bands', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(now)

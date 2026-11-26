@@ -4641,6 +4641,7 @@ span.bandDot { cursor: default; }
 .settingsPane {
   display: flex; flex-direction: column; gap: 12px; min-width: 0;
 }
+.settingsPane > * { flex-shrink: 0; }
 
 @container billing-settings (max-width: 540px) {
   .settingsLayout { grid-template-columns: 1fr; }

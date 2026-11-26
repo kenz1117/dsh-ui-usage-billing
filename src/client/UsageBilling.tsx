@@ -3408,7 +3408,6 @@ function BillingDashboard({
                   </p>
                   <RoundCostChart
                     rounds={turns}
-                    peakSchedule={stats.peakSchedule}
                     flags={roundFlags}
                     currency={currency}
                     t={t}

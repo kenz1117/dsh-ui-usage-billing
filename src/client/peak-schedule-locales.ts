@@ -1,4 +1,7 @@
 export const peakZh = {
+  psInvalidRequest: '设置无效或来源已不可用。', psInvalidResponse: '峰谷设置响应格式无效。', psDenied: '本次请求未获授权。', psUnavailable: '峰谷设置服务暂不可用。',
+  psLegacy: '未应用缺少生效时间的旧版设置。', psUnreadable: '无法读取峰谷设置文件。', psMalformedSchedule: '峰谷设置文件格式无效。', psMalformedRevision: '已跳过损坏的峰谷规则修订。', psMalformedRule: '已跳过损坏的来源 / 模型规则。', psIneligible: '已跳过不再适用的模型规则，历史记录仍保留。', psDiscovery: '部分来源的模型列表暂不可用。',
+  psClockConflict: '主机时钟早于已记录的调用或规则，请在校准时钟后重试。',
   psAddHoliday: '添加日期', psRemoveHoliday: '移除日期',
   psTitle: '峰谷时段', psModel: '选择来源 / 模型', psEmpty: '没有已配置且支持峰谷计价的模型', psConfigured: '已单独设置',
   psWindows: '高峰时段', psInherit: '沿用此来源的基础规则', psCustom: '自定义', psOff: '全天低谷', psDates: '适用日期', psDaily: '每天', psWeekdays: '工作日（周末低谷）',
@@ -7,6 +10,9 @@ export const peakZh = {
   psBadWindows: '请输入互不重叠的高峰时段，例如 09:00-12:00 / 14:00-18:00。', psBadHolidays: '请输入有效日期，用空格分隔，例如 2026-10-01 2026-10-02。', psBadOffset: '请输入 −720 至 840 之间的整数分钟。',
 }
 export const peakEn: Record<keyof typeof peakZh, string> = {
+  psInvalidRequest: 'The settings are invalid or the source is no longer available.', psInvalidResponse: 'The peak schedule response is invalid.', psDenied: 'This request was denied.', psUnavailable: 'The peak schedule service is unavailable.',
+  psLegacy: 'Legacy settings without effective dates were skipped.', psUnreadable: 'Could not read the peak schedule file.', psMalformedSchedule: 'The peak schedule file is invalid.', psMalformedRevision: 'Skipped an invalid schedule revision.', psMalformedRule: 'Skipped an invalid source / model rule.', psIneligible: 'Skipped an ineligible model rule. Its history is retained.', psDiscovery: 'Model discovery is unavailable for some sources.',
+  psClockConflict: 'The host clock is behind recorded calls or a saved rule. Check the clock and retry.',
   psAddHoliday: 'Add date', psRemoveHoliday: 'Remove date',
   psTitle: 'Peak schedule', psModel: 'Select source / model', psEmpty: 'No configured models support peak pricing', psConfigured: 'Custom schedule',
   psWindows: 'Peak hours', psInherit: 'Use source defaults', psCustom: 'Custom', psOff: 'Off-peak all day', psDates: 'Applicable days', psDaily: 'Every day', psWeekdays: 'Weekdays (weekends off-peak)',

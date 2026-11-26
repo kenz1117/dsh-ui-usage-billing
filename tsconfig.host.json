@@ -12,6 +12,7 @@
     "src/guard.ts",
     "src/peak-schedule.ts",
     "src/peak-schedule-store.ts",
+    "src/peak-schedule-history.ts",
     "src/peak-schedule-models.ts",
     "src/routes/peak-schedule.ts",
     "src/builtin-catalog.ts",

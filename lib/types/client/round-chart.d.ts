@@ -10,11 +10,10 @@
  * 组件内部排成升序再取末尾 N 轮——展示的是「最新 N 轮、最新在右」。
  */
 import type { AnomalyFlag } from './anomaly.ts';
-import { type PeakSchedule } from '../peak-schedule.ts';
 import { type CostCurrency } from './pricing.ts';
 /** 每轮费用图的一行（TurnUsageRow 的展示子集）。 */
 export interface RoundChartRow {
-    scheduleSource?: string;
+    scheduleTier?: 'peak' | 'offPeak';
     sessionId: string;
     turn: number;
     model: string;
@@ -33,8 +32,7 @@ export interface RoundChartRow {
  * @param props.currency - display currency for the amount labels.
  * @param props.t - locale function for the model label.
  */
-export declare function RoundCostChart({ rounds, flags, currency, t, peakSchedule }: {
-    peakSchedule?: PeakSchedule | undefined;
+export declare function RoundCostChart({ rounds, flags, currency, t }: {
     rounds: readonly RoundChartRow[];
     flags: readonly AnomalyFlag[];
     currency: CostCurrency;

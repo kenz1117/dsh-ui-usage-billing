@@ -1,4 +1,16 @@
 export declare const peakZh: {
+    psInvalidRequest: string;
+    psInvalidResponse: string;
+    psDenied: string;
+    psUnavailable: string;
+    psLegacy: string;
+    psUnreadable: string;
+    psMalformedSchedule: string;
+    psMalformedRevision: string;
+    psMalformedRule: string;
+    psIneligible: string;
+    psDiscovery: string;
+    psClockConflict: string;
     psAddHoliday: string;
     psRemoveHoliday: string;
     psTitle: string;
