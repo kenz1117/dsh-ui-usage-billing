@@ -932,7 +932,7 @@ function UserPriceCard({ userPrices, onUserPrices, t, unpricedIds }: {
     // 非法串（如负数）只留草稿：行内保留上一有效值，失焦回落显示。
   }
   return (
-    <section className={css.setCard} data-testid="billing-user-prices">
+    <section className={css.setCard} data-settings-target="user-prices" data-testid="billing-user-prices">
       <div className={css.setCardHead}>
         <div className={css.setCardMeta}>
           <h3 className={css.setCardTitle}>{t('userPrices')}<HelpTip label={t('userPricesHint')} t={t} /></h3>
@@ -1175,6 +1175,8 @@ function BillingDashboard({
   liveCostPrefs, onLiveCostPrefs, quickQueuePrefs, onQuickQueuePrefs, quotasStale, balanceStale, navigateToSession, sessionTitleOf,
 }: BillingDashboardProps): React.ReactNode {
   const dashboardRoot = useRef<HTMLDivElement>(null)
+  const dashboardBody = useRef<HTMLDivElement>(null)
+  const settingsNav = useRef<HTMLElement>(null)
   // 智能体网络：从会话行的 parentId 还原委派链，逐级算链合计（哪次委派最贵）。
   const agentRoots = useMemo(() => buildAgentTree(stats.bySession ?? []), [stats.bySession])
   const agentSummary = useMemo(() => agentTreeStats(agentRoots), [agentRoots])
@@ -1239,53 +1241,113 @@ function BillingDashboard({
      变量（属性名命名空间化，issue #124）。 */
   const [density, setDensityState] = useState<DensityPref>(loadDensity)
   const [motion, setMotionState] = useState<MotionPref>(loadMotion)
-  /* v1.5 设置页当前活动组（左侧锚点高亮跟随）。alpha.1 用 click-set
-     + 滚动；v1.5.1 加 IntersectionObserver 跟随滚动反向高亮。 */
-  const [activeSettingsGroup, setActiveSettingsGroup] = useState<string>('budget')
-  // 设置页全文搜索（U-4）：查询非空时，关键词未命中的分区隐藏（hidden 属性，
-  // 保留 DOM 与锚点 id——清空搜索即恢复，锚点导航不受影响）。
+  const [activeSettingsGroup, setActiveSettingsGroup] = useState<string>('display-pref')
   const [settingsQuery, setSettingsQuery] = useState('')
-  const settingsSectionHiddenBy = (keywords: readonly string[]): boolean => settingsSectionHidden(settingsQuery, keywords)
-  // v1.5.1 变更日志声称的 IntersectionObserver 此前并未落地（导航仅点击置
-  // 高亮，滚动不跟随——用户感知为「没有导航」）。这里真正接上：观察全部
-  // settings-* 分区，滚动到哪个分区高亮哪个锚点（取视口内最靠上的可见分区）。
+  const settingsSectionHiddenBy = (id: SettingsSectionId): boolean => settingsSectionHidden(settingsQuery, SETTINGS_KEYWORDS[id])
   useEffect(() => {
     const root = dashboardRoot.current
-    if (tab !== 'settings' || root === null || typeof IntersectionObserver === 'undefined') return
-    // 原生设置与弹窗可能同时挂载：只观察本面板，避免重复锚点互相抢高亮。
+    const nav = settingsNav.current
+    if (tab !== 'settings' || root === null || nav === null || typeof IntersectionObserver === 'undefined') return
+    // 原生设置与弹窗可能同时挂载：只观察本面板当前可见的分区。
     const sections = Array.from(root.querySelectorAll<HTMLElement>('[id^="settings-"]'))
       .filter(el => !el.closest('[hidden]'))
     if (sections.length === 0) return
-    const observer = new IntersectionObserver((entries) => {
-      let best: string | undefined
-      let bestTop = Number.POSITIVE_INFINITY
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue
-        const top = entry.boundingClientRect.top
-        if (top < bestTop) {
-          bestTop = top
-          best = entry.target.id
-        }
-      }
-      if (best !== undefined) setActiveSettingsGroup(best.slice('settings-'.length))
-    }, { rootMargin: '-80px 0px -55% 0px' })
-    for (const section of sections) observer.observe(section)
-    return () => { observer.disconnect() }
-  }, [tab])
-  const scrollToSettingsGroup = useCallback((id: string) => {
-    setActiveSettingsGroup(id)
-    const target = dashboardRoot.current?.querySelector<HTMLElement>(`[id="settings-${id}"]`)
-    if (target == null) return
-    // 原生设置由宿主页面滚动；弹窗仍只滚自己的 dashboardBody，避免标题错位（issue #94）。
+    let scrollRoot: HTMLElement | null = dashboardBody.current
     if (embeddedSettings) {
-      target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      // settings.section owns its content, and the host owns the surrounding scrollport.
+      scrollRoot = root.parentElement
+      while (scrollRoot && !/^(auto|scroll|overlay)$/.test(getComputedStyle(scrollRoot).overflowY)) {
+        scrollRoot = scrollRoot.parentElement
+      }
+    }
+    let observer: IntersectionObserver | undefined
+    let observedNavHeight = -1
+    let atEnd = false
+    const visible = new Set<Element>()
+    const updateCurrent = (): void => {
+      // Observer callbacks only report changes. At the end the final section may
+      // be too short to reach the top, so prefer it over earlier visible groups.
+      const current = atEnd ? sections.at(-1) : sections.find(section => visible.has(section))
+      if (current) setActiveSettingsGroup(current.id === 'settings-display-extra' ? 'display' : current.id.slice('settings-'.length))
+    }
+    const updateScrollEnd = (): void => {
+      const scroller = scrollRoot ?? document.scrollingElement
+      if (!scroller) return
+      const maxTop = scroller.scrollHeight - scroller.clientHeight
+      const next = maxTop > 1 && maxTop - scroller.scrollTop <= 1
+      if (next === atEnd) return
+      atEnd = next
+      updateCurrent()
+    }
+    const observeSections = (): void => {
+      const navHeight = nav.offsetHeight
+      if (navHeight === observedNavHeight) return
+      observedNavHeight = navHeight
+      observer?.disconnect()
+      visible.clear()
+      observer = new IntersectionObserver(entries => {
+        for (const { target, isIntersecting } of entries) {
+          if (isIntersecting) visible.add(target)
+          else visible.delete(target)
+        }
+        updateScrollEnd()
+        updateCurrent()
+      }, {
+        root: scrollRoot,
+        rootMargin: `-${navHeight}px 0px 0px`,
+      })
+      for (const section of sections) observer.observe(section)
+    }
+    observeSections()
+    const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(observeSections)
+    resize?.observe(nav)
+    const scrollTarget = scrollRoot ?? window
+    scrollTarget.addEventListener('scroll', updateScrollEnd, { passive: true })
+    return () => {
+      observer?.disconnect()
+      resize?.disconnect()
+      scrollTarget.removeEventListener('scroll', updateScrollEnd)
+    }
+  }, [embeddedSettings, settingsQuery, tab])
+  const [pendingGroup, setPendingGroup] = useState<{ id: SettingsSectionId; target: 'user-prices' | undefined }>()
+  const scrollToSettingsGroup = (id: SettingsSectionId, target?: 'user-prices'): void => {
+    const destination = id === 'display' && settingsSectionHiddenBy(id) && !settingsSectionHiddenBy('display-extra')
+      ? 'display-extra' : id
+    setTab('settings')
+    if (settingsSectionHiddenBy(destination)) setSettingsQuery('')
+    setActiveSettingsGroup(id)
+    setPendingGroup({ id: destination, target })
+  }
+  const scrollSettingsTarget = useCallback((target: HTMLElement, behavior: ScrollBehavior): void => {
+    const offset = (settingsNav.current?.getBoundingClientRect().height ?? 0) + 8
+    // 原生设置由宿主内容区滚动；弹窗只滚自己的 dashboardBody（issue #94）。
+    if (embeddedSettings) {
+      const previousMargin = target.style.scrollMarginTop
+      target.style.scrollMarginTop = `${offset}px`
+      target.scrollIntoView?.({ block: 'start', behavior })
+      target.style.scrollMarginTop = previousMargin
       return
     }
-    const scroller = target.closest(`.${css.dashboardBody}`)
+    const scroller = dashboardBody.current
     if (scroller === null) return
-    const delta = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
-    scroller.scrollTo({ top: scroller.scrollTop + delta, behavior: 'smooth' })
+    const delta = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - scroller.clientTop
+    scroller.scrollTo?.({ top: Math.max(0, scroller.scrollTop + delta - offset), behavior })
   }, [embeddedSettings])
+  // Wait for React to mount the settings tab and reveal the destination before measuring.
+  useEffect(() => {
+    if (!pendingGroup || tab !== 'settings') return
+    setPendingGroup(undefined)
+    const group = dashboardRoot.current?.querySelector<HTMLElement>(`[id="settings-${pendingGroup.id}"]`)
+    const target = pendingGroup.target ? group?.querySelector<HTMLElement>(`[data-settings-target="${pendingGroup.target}"]`) : group
+    if (target == null) return
+    const heading = target.querySelector<HTMLElement>('h3')
+    if (heading) {
+      heading.tabIndex = -1
+      heading.focus({ preventScroll: true })
+    }
+    const behavior = motion !== 'rich' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    scrollSettingsTarget(target, behavior)
+  }, [motion, pendingGroup, scrollSettingsTarget, tab])
   const setDensity = useCallback((d: DensityPref) => {
     setDensityState(d)
     saveDensity(d)
@@ -2161,7 +2223,7 @@ function BillingDashboard({
         )}
 
         {/* Scrollable body: 按 Tab 条件渲染分区；原生设置页复用同一容器。 */}
-        <div className={clsx(css.dashboardBody, embeddedSettings && css.nativeSettingsBody)}>
+        <div ref={dashboardBody} className={clsx(css.dashboardBody, embeddedSettings && css.nativeSettingsBody)}>
           {tab === 'queue' && (
             <TaskQueuePanel
               t={t}
@@ -2326,13 +2388,7 @@ function BillingDashboard({
                     type="button"
                     className={css.noticeAction}
                     data-testid="billing-unpriced-fix"
-                    onClick={() => {
-                      setTab('settings')
-                      // 设置页按关键词过滤分区：查询串须是分区关键词的子串（见
-                      // settings-search.ts）——用「单价 / price」命中高级分区
-                      // （自定义单价卡），其余分区收起。
-                      setSettingsQuery(language === 'zh' ? '单价' : 'price')
-                    }}
+                    onClick={() => { scrollToSettingsGroup('advanced', 'user-prices') }}
                   >
                     {t('unpricedFix')}
                   </button>
@@ -2684,15 +2740,11 @@ function BillingDashboard({
             )}
           {tab === 'settings' && (
             <div className={css.tabPanel} data-testid="billing-tab-panel-settings">
-              {/* v1.5 设置页布局：左侧 180px 锚点 + 右侧分组 pane。5 组分类——预算 / 提醒 /
-                  显示 / 高级 / 关于。每组对应原 section（id 兼容）。锚点导航点击
-                  滚动；alpha.1 无 scroll-spy——v1.5.1 加 IntersectionObserver。 */}
-              <div className={clsx(css.settingsLayout, embeddedSettings && css.nativeSettingsLayout)}>
-                {!embeddedSettings && (
-                <aside className={css.settingsNav} data-testid="billing-settings-nav" role="navigation" aria-label="settings">
+              <div className={css.settingsLayout}>
+                <nav ref={settingsNav} className={css.settingsNav} data-testid="billing-settings-nav" aria-label={t('tabSettings')}>
                   {/* v1.5 alpha.1.5：锚点图标从 emoji/字符（🔔◐✱ⓘ 渲染不一致）换成
                       与 TAB_ICONS 同风格的内联 stroke SVG。 */}
-                  {[
+                  {([
                     {
                       id: 'display-pref',
                       icon: <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M5 3v10M11 3v10" /><circle cx="5" cy="6.5" r="1.8" /><circle cx="11" cy="9.5" r="1.8" /></svg>,
@@ -2717,22 +2769,22 @@ function BillingDashboard({
                       id: 'advanced',
                       icon: <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M8 2v12M2.8 5l10.4 6M13.2 5L2.8 11" /></svg>,
                       label: t('settingsNavAdvanced'),
-                      advanced: true,
                     },
                     {
                       id: 'about',
                       icon: <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="8" cy="8" r="6" /><path d="M8 7.5V11" /><circle cx="8" cy="5.2" r="0.9" fill="currentColor" stroke="none" /></svg>,
                       label: t('settingsNavAbout'),
                     },
-                  ].map(item => (
+                  ] as const).map(item => (
                     <button
                       key={item.id}
                       type="button"
                       className={clsx(
                         css.settingsNavItem,
                         activeSettingsGroup === item.id && css.settingsNavItemActive,
-                        item.advanced && css.settingsNavItemAdvanced,
+                        item.id === 'advanced' && css.settingsNavItemAdvanced,
                       )}
+                      aria-current={activeSettingsGroup === item.id ? 'location' : undefined}
                       data-testid={`billing-settings-nav-${item.id}`}
                       onClick={() => { scrollToSettingsGroup(item.id) }}
                     >
@@ -2740,9 +2792,18 @@ function BillingDashboard({
                       {item.label}
                     </button>
                   ))}
-                </aside>
-                )}
-                <div className={css.settingsPane}>
+                </nav>
+                <div className={css.settingsPane} onFocus={event => {
+                  if (pendingGroup || !(event.target instanceof HTMLElement)) return
+                  const target = event.target
+                  // Wait for the browser's focus scroll, then reveal any control behind the bar.
+                  requestAnimationFrame(() => {
+                    const nav = settingsNav.current
+                    if (nav && document.activeElement === target && target.getBoundingClientRect().top < nav.getBoundingClientRect().bottom) {
+                      scrollSettingsTarget(target, 'auto')
+                    }
+                  })
+                }}>
                   {/* U-4 设置页全文搜索：按关键词过滤分区（hidden 属性，锚点 id 保留）。 */}
                   <input
                     className={clsx(css.ubSearch, css.settingsSearch)}
@@ -2759,7 +2820,7 @@ function BillingDashboard({
                     </p>
                   )}
                   {/* v1.5 新增：密度模式与动效强度开关（设置 - 显示分组最前） */}
-                  <div hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.display)} className={css.setCard} id="settings-display-pref" data-testid="billing-density-motion-card">
+                  <div hidden={settingsSectionHiddenBy('display-pref')} className={css.setCard} id="settings-display-pref" data-testid="billing-density-motion-card">
                     <div className={css.setCardHead}>
                       <div className={css.setCardMeta}>
                         <h3 className={css.setCardTitle}>{t('settingsSectionDisplay')}</h3>
@@ -2809,7 +2870,7 @@ function BillingDashboard({
                     </div>
                   </div>
               {/* 1. 月度预算：set-card——头部(标题+说明+开关) + 控制列(金额/进度/说明)。 */}
-              <section hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.budget)} className={css.setCard} data-testid="billing-budget" id="settings-budget">
+              <section hidden={settingsSectionHiddenBy('budget')} className={css.setCard} data-testid="billing-budget" id="settings-budget">
                 <div className={css.setCardHead}>
                   <div className={css.setCardMeta}>
                     <h3 className={css.setCardTitle}>{t('budget')}<HelpTip label={t('budgetHint')} t={t} /></h3>
@@ -2915,7 +2976,7 @@ function BillingDashboard({
               </section>
 
               {/* 2. 峰谷切换提醒：set-card——头部 + 控制列(提前量/位置/模式/系统通知/预览)。 */}
-              <section hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.alert)} className={css.setCard} data-testid="billing-peak-alert-settings" id="settings-alert">
+              <section hidden={settingsSectionHiddenBy('alert')} className={css.setCard} data-testid="billing-peak-alert-settings" id="settings-alert">
                 <div className={css.setCardHead}>
                   <div className={css.setCardMeta}>
                     <h3 className={css.setCardTitle}>{t('peakAlert')}<HelpTip label={t('peakAlertHint')} t={t} /></h3>
@@ -3009,7 +3070,7 @@ function BillingDashboard({
 
               {/* 3. 功能开关：三个纯显隐/工具开关聚合为一行三列（usage_stats 工具 /
                   平价消耗胶囊 / 中转站列表），缩短设置页纵向长度。 */}
-              <section hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.toggles)} className={css.setCard} data-testid="billing-toggle-setting" id="settings-display">
+              <section hidden={settingsSectionHiddenBy('display')} className={css.setCard} data-testid="billing-toggle-setting" id="settings-display">
                 <div className={css.setGrid3}>
                   <div className={css.setCell} data-testid="billing-usage-stats-tool-setting">
                     <div className={css.setCardHead}>
@@ -3125,7 +3186,7 @@ function BillingDashboard({
 
               {/* 4. 展示内容：模型用量悬浮窗（模式 / 订阅目标）与计费卡主指标聚合为
                   一行两列；订阅目标多选随模式展开在本 cell 内，不跨列。 */}
-              <section hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.displayExtra)} className={css.setCard} data-testid="billing-display-setting" id="settings-display-extra">
+              <section hidden={settingsSectionHiddenBy('display-extra')} className={css.setCard} data-testid="billing-display-setting" id="settings-display-extra">
                 <div className={css.setGrid2}>
                   <div className={css.setCell} data-testid="billing-float-setting">
                     <div className={css.setCardHead}>
@@ -3295,13 +3356,13 @@ function BillingDashboard({
               </section>
 
               {/* 5. 自定义单价：set-card——已存价列表 + 新增行；显示层重估，口径差异见说明。 */}
-              <div hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.advanced)} id="settings-advanced"><UserPriceCard userPrices={userPrices} onUserPrices={onUserPrices} t={t} unpricedIds={stats.unpricedModels ?? []} /></div>
+              <div hidden={settingsSectionHiddenBy('advanced')} id="settings-advanced"><UserPriceCard userPrices={userPrices} onUserPrices={onUserPrices} t={t} unpricedIds={stats.unpricedModels ?? []} /></div>
 
               {/* 6. 插件信息卡：作者 / 仓库 / 版本 / 许可证（设置 Tab 常驻）。 */}
-              <div hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.about)} id="settings-about"><PluginInfoCard t={t} version={stats.pluginVersion} /></div>
+              <div hidden={settingsSectionHiddenBy('about')} id="settings-about"><PluginInfoCard t={t} version={stats.pluginVersion} /></div>
 
               {/* 更多作品：同作者的两个配套插件（设置-关于分组）。 */}
-              <section hidden={settingsSectionHiddenBy(SETTINGS_KEYWORDS.about)} className={css.setCard} data-testid="billing-more-works">
+              <section hidden={settingsSectionHiddenBy('about')} className={css.setCard} data-testid="billing-more-works">
                 <div className={css.setCardHead}>
                   <div className={css.setCardMeta}>
                     <h3 className={css.setCardTitle}>{t('moreWorksTitle')}</h3>
@@ -4311,14 +4372,16 @@ function workspaceTailOf(cwd: string): string {
 /** U-4 设置页分区关键词：搜索查询对每组分词做大小写不敏感子串匹配，
  *  覆盖分区标题、说明与常见同义词（中英双份，避免依赖当前界面语言）。 */
 const SETTINGS_KEYWORDS = {
-  display: ['显示', '密度', '动效', '紧凑', '舒适', '克制', '丰富', 'display', 'density', 'motion', 'compact', 'comfortable'],
+  'display-pref': ['显示', '密度', '动效', '紧凑', '舒适', '克制', '丰富', 'display', 'density', 'motion', 'compact', 'comfortable'],
   budget: ['预算', '金额', '本月', '花费', '进度', 'budget', 'amount', 'spend', 'progress'],
   alert: ['峰谷', '峰', '谷', '提醒', '通知', '预览', '切换', 'peak', 'off-peak', 'alert', 'notify', 'preview'],
-  toggles: ['usage_stats', '工具', '即时代费', '胶囊', '中转站', '站点', '隐藏', '低谷', '队列', 'relay', 'site', 'live', 'cost', 'hide', 'queue', 'off-peak'],
-  displayExtra: ['悬浮', '订阅', '计费卡', '指标', '环比', '主数字', '侧栏', '入口', '隐藏', '通道', '可见', 'float', 'subscription', 'card', 'metric', 'delta', 'sidebar', 'trigger', 'hidden', 'channel', 'visibility'],
+  display: ['usage_stats', '工具', '即时代费', '胶囊', '中转站', '站点', '隐藏', '低谷', '队列', 'relay', 'site', 'live', 'cost', 'hide', 'queue', 'off-peak'],
+  'display-extra': ['悬浮', '订阅', '计费卡', '指标', '环比', '主数字', '侧栏', '入口', '隐藏', '通道', '可见', 'float', 'subscription', 'card', 'metric', 'delta', 'sidebar', 'trigger', 'hidden', 'channel', 'visibility'],
   advanced: ['自定义', '单价', '价格', '低谷', 'custom', 'price'],
   about: ['关于', '版本', '作者', '许可', '仓库', 'about', 'version', 'author', 'license', 'repo'],
 } as const
+
+type SettingsSectionId = keyof typeof SETTINGS_KEYWORDS
 
 /** 全部分区是否都被搜索过滤隐藏（用于显示「没有匹配」空态提示）。 */
 function allSettingsSectionsHidden(query: string): boolean {

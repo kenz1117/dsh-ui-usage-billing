@@ -17,7 +17,7 @@ applyBuiltinCatalog(BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES)
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ComponentProps } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { bindSnapshotSelector } from './bind-snapshot-selector'
 import { UsageBilling } from '../src/client/UsageBilling.tsx'
 import { createBillingBudgetStore } from '../src/client/budget-store.ts'
@@ -83,6 +83,22 @@ describe('issue #125 未收录模型的可发现性', () => {
   })
 
   it('「去补价」跳到设置页的自定义单价分区，未收录 id 进候选列表', async () => {
+    let showSection = (_id: string) => {}
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: IntersectionObserverCallback) {
+        showSection = id => callback([{ isIntersecting: true, boundingClientRect: { top: 0 }, target: document.getElementById(id) }] as IntersectionObserverEntry[], this as unknown as IntersectionObserver)
+      }
+      observe(section: HTMLElement) {
+        // Another independent settings card can precede user prices in the advanced group.
+        if (section.id === 'settings-advanced' && !section.querySelector('h3[data-sibling]')) {
+          const heading = document.createElement('h3')
+          heading.dataset.sibling = 'true'
+          heading.textContent = '峰谷'
+          section.prepend(heading)
+        }
+      }
+      disconnect() {}
+    })
     stubUsageStats()
     render(<UsageBilling {...makeProps()} />)
     fireEvent.click(screen.getByTestId('billing-trigger'))
@@ -91,6 +107,29 @@ describe('issue #125 未收录模型的可发现性', () => {
     // 落到设置分区：自定义单价卡可见（高级分区未被搜索过滤隐藏）。
     const card = await screen.findByTestId('billing-user-prices')
     expect(card.closest('[hidden]')).toBeNull()
+    expect(document.activeElement).toBe(card.querySelector('h3'))
+    const budget = screen.getByTestId('billing-budget')
+    expect(budget.hidden).toBe(false)
+    const search = screen.getByTestId('billing-settings-search')
+    fireEvent.change(search, { target: { value: '单价' } })
+    expect(budget.hidden).toBe(true)
+    const anchor = screen.getByTestId('billing-settings-nav-budget')
+    fireEvent.click(anchor)
+    expect(budget.hidden).toBe(false)
+    expect((search as HTMLInputElement).value).toBe('')
+    expect(document.activeElement).toBe(budget.querySelector('h3'))
+    expect(anchor.getAttribute('aria-current')).toBe('location')
+    act(() => showSection('settings-display-extra'))
+    expect(screen.getByTestId('billing-settings-nav-display').getAttribute('aria-current')).toBe('location')
+    // At the end About cannot always reach the top, even while Display still intersects.
+    const body = screen.getByTestId('billing-tab-panel-settings').parentElement!
+    Object.defineProperties(body, { scrollHeight: { value: 1400 }, clientHeight: { value: 500 } })
+    body.scrollTop = 900
+    fireEvent.scroll(body)
+    expect(screen.getByTestId('billing-settings-nav-about').getAttribute('aria-current')).toBe('location')
+    body.scrollTop = 850
+    fireEvent.scroll(body)
+    expect(screen.getByTestId('billing-settings-nav-display').getAttribute('aria-current')).toBe('location')
     // 未收录 id 进候选（用户直接选，不必手抄）。
     const options = Array.from(card.querySelectorAll('datalist option')).map(option => option.getAttribute('value'))
     for (const id of UNPRICED) expect(options).toContain(id)
