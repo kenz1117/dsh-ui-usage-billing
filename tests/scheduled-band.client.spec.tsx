@@ -30,7 +30,7 @@ describe('source-scoped peak displays', () => {
     expect(computePeakAlert(now, cfg, 0, 'deepseek-metered')).toBeNull() // queue retains native calendar
   })
   it('finds local-midnight switches, skips adjacent windows, and emits no imaginary switch for fixed bands', () => {
-    const band = (time: string, overrides: Parameters<typeof effectiveRule>[1]) => scheduledCountdown(Date.parse(time), 'deepseek-metered', effectiveRule(source, overrides))
+    const band = (time: string, overrides: Parameters<typeof effectiveRule>[1]) => scheduledCountdown(Date.parse(time), 'deepseek-metered', effectiveRule(source, { windows: [0, 1440], weekendOffPeak: false, ...overrides }))
     expect(band('2026-11-25T18:29Z', { utcOffsetMinutes: 330, holidays: ['20261126'] })).toEqual({ tier: 'peak', nextSwitchInMs: 60000 })
     expect(band('2026-11-25T00:59Z', { utcOffsetMinutes: 0, windows: [0, 60, 60, 120] })?.nextSwitchInMs).toBe(61 * 60000)
     for (const windows of [[], [0, 1440]]) expect(band('2026-11-25T00:00Z', { windows })?.nextSwitchInMs).toBe(Infinity)
