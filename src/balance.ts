@@ -13,6 +13,7 @@
  * provider's key once and every surface reuses it.
  */
 
+import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { BalanceClientMetadata, CustomBalanceConfig, CustomBalanceExtract, ProviderBalance } from './pricing-shared.ts'
@@ -51,31 +52,24 @@ const XAI_CREDITS_URL = 'https://api.x.ai/v1/billing/credits'
 /** 智谱 GLM（大模型国内域）官方余额接口（open.bigmodel.cn/api/paas/v4/balance）。 */
 const ZHIPU_BALANCE_URL = 'https://open.bigmodel.cn/api/paas/v4/balance'
 
-/** 数字归一化：接口返回的余额是字符串（如 `"110.00"`），统一转 number。 */
 /**
  * Fetch a Bearer-protected balance endpoint and normalize the HTTP outcome into
  * a shared {@link ProviderBalance} row. Each provider supplies its own
  * response parser for the success body.
- * @param ctx - host context carrying the credentials seam.
  * @param url - the balance endpoint.
- * @param apiKeyEnv - credential reference resolving the API key.
+ * @param key - the resolved credential for this request.
  * @param provider - the provider id (matches the model-table vendor display name).
  * @param displayName - human-readable provider name.
  * @param parse - maps a success JSON body to the balance row fields.
  * @returns the balance row, or an error row when the key/endpoint misbehaves.
  */
 async function queryBearerBalance(
-  ctx: Context,
   url: string,
-  apiKeyEnv: string,
+  key: string,
   provider: string,
   displayName: string,
   parse: (data: unknown) => ProviderBalance,
 ): Promise<ProviderBalance> {
-  const hit = await ctx.credentials.resolve(credentialRef(apiKeyEnv))
-  if (hit === undefined) {
-    return { provider, displayName, error: 'unconfigured' }
-  }
   // 熔断：该 platform 正处于冷却（连续失败）时，直接短路为 unconfigured 之外的
   // 稳定不可用态，不再打上游。success/fail 在下方按请求结果上报。
   if (!balanceGate.check(provider)) {
@@ -87,7 +81,7 @@ async function queryBearerBalance(
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
     try {
       const response = await fetch(url, {
-        headers: { accept: 'application/json', authorization: `Bearer ${hit.value}` },
+        headers: { accept: 'application/json', authorization: `Bearer ${key}` },
         signal: controller.signal,
       })
       if (response.status === 401 || response.status === 403) {
@@ -155,8 +149,11 @@ function parseDeepSeekBalance(data: unknown): ProviderBalance {
   }
 }
 
-const DEEPSEEK_ROW = { provider: 'deepseek', displayName: 'DeepSeek' } as const
-const ACCOUNT_WALLET = { ...DEEPSEEK_ROW, sourceRoute: 'deepseek-account' } as const
+const ACCOUNT_WALLET = { provider: 'deepseek', displayName: 'DeepSeek', sourceRoute: 'deepseek', attributedRoutes: ['deepseek'], walletKind: 'account' } as const
+const warnedAccountFailures = new Set<string>()
+// Private reconciliation identity, never serialized to the browser.
+const apiSources = new WeakMap<ProviderBalance, string>()
+export function apiBalanceSource(row: ProviderBalance): string | undefined { return apiSources.get(row) }
 
 function accountBalanceRow(details: unknown): ProviderBalance | undefined {
   const doc = details as { status?: unknown; value?: unknown; bonusWallets?: unknown } | null
@@ -182,6 +179,7 @@ function accountBalanceRow(details: unknown): ProviderBalance | undefined {
   const grantedBalance = granted.get(currency)
   return {
     ...ACCOUNT_WALLET,
+    ...(has('CNY') && has('USD') ? { otherBalances: [{ currency: 'USD', totalBalance: (toppedUp.get('USD') ?? 0) + (granted.get('USD') ?? 0) }] } : {}),
     currency,
     totalBalance: (toppedUpBalance ?? 0) + (grantedBalance ?? 0),
     ...(toppedUpBalance !== undefined ? { toppedUpBalance } : {}),
@@ -192,23 +190,27 @@ function accountBalanceRow(details: unknown): ProviderBalance | undefined {
 
 function accountWalletFailure(reason: string, error: 'invalid' | 'unreachable' = 'unreachable'): ProviderBalance {
   // Avoid logging upstream error objects, which may carry account request details.
-  console.warn(`[usage-billing] DeepSeek sign-in wallet: ${reason}; trying Platform API-key fallback`)
+  if (!warnedAccountFailures.has(reason)) {
+    warnedAccountFailures.add(reason)
+    console.warn(`[usage-billing] DeepSeek sign-in wallet: ${reason}`)
+  }
   return { ...ACCOUNT_WALLET, error }
 }
 
-async function queryDeepSeekAccount(ctx: Context, client?: BalanceClientMetadata): Promise<ProviderBalance | undefined> {
-  // Non-UI callers and hosts without client metadata keep the API-key path.
-  if (client === undefined) return undefined
+async function queryDeepSeekAccount(ctx: Context, client?: BalanceClientMetadata): Promise<ProviderBalance> {
+  const unavailable = (accountState: NonNullable<ProviderBalance['accountState']>): ProviderBalance =>
+    ({ ...ACCOUNT_WALLET, attributedRoutes: [], error: 'unconfigured', accountState })
   let account: DeepSeekAccountBalanceService | undefined
   try {
     account = ctx.get?.('deepseekAccount') as DeepSeekAccountBalanceService | undefined
   } catch {
     return accountWalletFailure('host service lookup threw')
   }
-  if (typeof account?.getBalance !== 'function') return undefined
+  if (typeof account?.getBalance !== 'function') return unavailable('no-service')
+  if (client === undefined) return unavailable('no-metadata')
   try {
     const details = await account.getBalance(client)
-    if (details === null) return undefined // Signed out, or the grant changed during the request.
+    if (details === null) return unavailable('signed-out') // Signed out, or the grant changed during the request.
     if ((details as { status?: unknown } | undefined)?.status === 'failed') {
       return accountWalletFailure('host returned failed')
     }
@@ -218,24 +220,18 @@ async function queryDeepSeekAccount(ctx: Context, client?: BalanceClientMetadata
   }
 }
 
-/** Query the DeepSeek account balance, preferring the logged-in DSH wallet. */
-async function queryDeepSeek(ctx: Context, apiKeyEnv: string, client?: BalanceClientMetadata): Promise<ProviderBalance> {
-  const account = await queryDeepSeekAccount(ctx, client)
-  if (account !== undefined && account.error === undefined) return account
-  if (apiKeyEnv === '') return account ?? { ...DEEPSEEK_ROW, error: 'unconfigured' }
-  const api = await queryBearerBalance(ctx, DEEPSEEK_BALANCE_URL, apiKeyEnv, 'deepseek', 'DeepSeek', parseDeepSeekBalance)
-  if (api.error === 'unconfigured') return account ?? api
-  return { ...api, sourceRoute: 'deepseek' }
+/** Query the Platform wallet independently of the sign-in service. */
+function queryDeepSeek(key: string): Promise<ProviderBalance> {
+  return queryBearerBalance(DEEPSEEK_BALANCE_URL, key, 'deepseek', 'DeepSeek', parseDeepSeekBalance)
 }
 
 /**
  * Query the Moonshot/Kimi account balance.
- * @param ctx - host context carrying the credentials seam.
- * @param apiKeyEnv - credential reference resolving the Moonshot API key.
+ * @param key - resolved credential for the Moonshot API key.
  * @returns the balance row, or an error row when the key/endpoint misbehaves.
  */
-function queryMoonshot(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
-  return queryBearerBalance(ctx, MOONSHOT_BALANCE_URL, apiKeyEnv, '月之暗面', '月之暗面', (data) => {
+function queryMoonshot(key: string): Promise<ProviderBalance> {
+  return queryBearerBalance(MOONSHOT_BALANCE_URL, key, '月之暗面', '月之暗面', (data) => {
     const doc = data as { data?: { available_balance?: unknown; voucher_balance?: unknown; cash_balance?: unknown } }
     const totalBalance = toNumber(doc.data?.available_balance)
     const grantedBalance = toNumber(doc.data?.voucher_balance)
@@ -253,12 +249,11 @@ function queryMoonshot(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance
 
 /**
  * Query the StepFun (阶跃星辰) account balance.
- * @param ctx - host context carrying the credentials seam.
- * @param apiKeyEnv - credential reference resolving the StepFun API key.
+ * @param key - resolved credential for the StepFun API key.
  * @returns the balance row, or an error row when the key/endpoint misbehaves.
  */
-function queryStepFun(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
-  return queryBearerBalance(ctx, STEPFUN_BALANCE_URL, apiKeyEnv, '阶跃星辰', '阶跃星辰', (data) => {
+function queryStepFun(key: string): Promise<ProviderBalance> {
+  return queryBearerBalance(STEPFUN_BALANCE_URL, key, '阶跃星辰', '阶跃星辰', (data) => {
     const doc = data as { balance?: unknown; total_cash_balance?: unknown; total_voucher_balance?: unknown }
     const totalBalance = toNumber(doc.balance)
     const toppedUpBalance = toNumber(doc.total_cash_balance)
@@ -276,12 +271,11 @@ function queryStepFun(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance>
 
 /**
  * Query the SiliconFlow (硅基流动) account balance.
- * @param ctx - host context carrying the credentials seam.
- * @param apiKeyEnv - credential reference resolving the SiliconFlow API key.
+ * @param key - resolved credential for the SiliconFlow API key.
  * @returns the balance row, or an error row when the key/endpoint misbehaves.
  */
-function querySiliconFlow(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
-  return queryBearerBalance(ctx, SILICONFLOW_BALANCE_URL, apiKeyEnv, '硅基流动', '硅基流动', (data) => {
+function querySiliconFlow(key: string): Promise<ProviderBalance> {
+  return queryBearerBalance(SILICONFLOW_BALANCE_URL, key, '硅基流动', '硅基流动', (data) => {
     const doc = data as { data?: { balance?: unknown; balance_cny?: unknown }; balance?: unknown; balance_cny?: unknown }
     const inner = doc.data ?? doc
     const totalBalance = toNumber((inner as { balance?: unknown }).balance ?? (inner as { balance_cny?: unknown }).balance_cny)
@@ -296,12 +290,11 @@ function querySiliconFlow(ctx: Context, apiKeyEnv: string): Promise<ProviderBala
 
 /**
  * Query the xAI (Grok) credit balance.
- * @param ctx - host context carrying the credentials seam.
- * @param apiKeyEnv - credential reference resolving the xAI API key.
+ * @param key - resolved credential for the xAI API key.
  * @returns the balance row, or an error row when the key/endpoint misbehaves.
  */
-function queryXai(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
-  return queryBearerBalance(ctx, XAI_CREDITS_URL, apiKeyEnv, 'xAI', 'xAI', (data) => {
+function queryXai(key: string): Promise<ProviderBalance> {
+  return queryBearerBalance(XAI_CREDITS_URL, key, 'xAI', 'xAI', (data) => {
     const doc = data as { total?: { val?: unknown } }
     // `total.val` 是美分：预付余额以负数返回，转正后除以 100 得美元。
     const cents = toNumber(doc.total?.val)
@@ -343,11 +336,10 @@ export function pickTokenDanceBalanceCny(data: unknown): number | undefined {
 /**
  * 查询 TokenDance Space 钱包余额（issue #26/#27）。`queryBearerBalance` 已覆盖
  * 认证失败（401 → unauthorized）与熔断/超时/重试，这里只负责微元 → 元换算。
- * @param ctx - host context carrying the credentials seam.
- * @param apiKeyEnv - credential reference resolving the TokenDance API key.
+ * @param key - resolved credential for the TokenDance API key.
  */
-function queryTokenDance(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
-  return queryBearerBalance(ctx, TOKENDANCE_BALANCE_URL, apiKeyEnv, 'TokenDance', 'TokenDance', (data) => {
+function queryTokenDance(key: string): Promise<ProviderBalance> {
+  return queryBearerBalance(TOKENDANCE_BALANCE_URL, key, 'TokenDance', 'TokenDance', (data) => {
     const cny = pickTokenDanceBalanceCny(data)
     return {
       provider: 'TokenDance',
@@ -363,12 +355,11 @@ function queryTokenDance(ctx: Context, apiKeyEnv: string): Promise<ProviderBalan
  * 与订阅（zai-coding-cn 的 Coding Plan）互补：一个平台可同时有钱包余额与订阅
  * 套餐，两者各读各的（TokenLedger 同款双读姿态）。Z.ai global 域币种为 USD，
  * 本函数固定走国内 CNY 域（open.bigmodel.cn），币种不猜，仅覆盖国内域。
- * @param ctx - host context carrying the credentials seam.
- * @param apiKeyEnv - credential reference resolving the Zhipu API key.
+ * @param key - resolved credential for the Zhipu API key.
  * @returns the balance row, or an error row when the key/endpoint misbehaves.
  */
-function queryZhipu(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
-  return queryBearerBalance(ctx, ZHIPU_BALANCE_URL, apiKeyEnv, '智谱 AI', '智谱 AI', (data) => {
+function queryZhipu(key: string): Promise<ProviderBalance> {
+  return queryBearerBalance(ZHIPU_BALANCE_URL, key, '智谱 AI', '智谱 AI', (data) => {
     const doc = data as { balance?: { total?: unknown; available?: unknown } }
     const totalBalance = toNumber(doc.balance?.available) ?? toNumber(doc.balance?.total)
     return {
@@ -384,21 +375,19 @@ function queryZhipu(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
  * One balance querier plus the llm-pi-ai provider route id it reads its key
  * from. The `provider` field is the model-table vendor display name, so
  * `balanceFor` matches by normalization; `route` is the llm-pi-ai providers
- * dict key carrying the `apiKeyEnv`.
+ * dict key carrying the `key`.
  */
 interface BalanceQuerier {
   /** llm-pi-ai providers dict key whose `apiKeyEnv` resolves this provider's key. */
   route: string
   /** 厂商显示名（模型表 vendor 名），未配置时报未配置时同时用作 provider id。 */
   displayName: string
-  /** 余额查询器；DeepSeek 可在没有 API Key 时先读取可选的登录钱包服务。 */
-  querier: (ctx: Context, apiKeyEnv: string, client?: BalanceClientMetadata) => Promise<ProviderBalance>
-  /** Whether the querier can return a balance without an API-key credential. */
-  canQueryWithoutKey?: boolean
+  /** 余额查询器，接收本次解析到的凭据值。 */
+  querier: (key: string) => Promise<ProviderBalance>
 }
 
 const QUERIERS: readonly BalanceQuerier[] = [
-  { route: 'deepseek', displayName: 'deepseek', querier: queryDeepSeek, canQueryWithoutKey: true },
+  { route: 'deepseek', displayName: 'deepseek', querier: queryDeepSeek },
   { route: 'moonshot', displayName: '月之暗面', querier: queryMoonshot },
   { route: 'stepfun', displayName: '阶跃星辰', querier: queryStepFun },
   { route: 'siliconflow', displayName: '硅基流动', querier: querySiliconFlow },
@@ -453,26 +442,23 @@ export async function queryBalances(
       [...(explicit !== undefined ? [explicit] : []), ...routeKeyRefCandidates(route)],
       resolveRef,
     )
-    return { displayName, querier, ref: hit?.ref ?? explicit, configured: explicit !== undefined || hit !== undefined }
+    return { route, displayName, querier, explicit, value: hit?.value }
   }))
-  // 同一 displayName 的多条 route（如智谱的 zhipu / zai-coding-cn）共用同一钱包，
-  // 按名字去重：只查询第一个配了 key 的 route，避免对同一钱包重复请求；同名的
-  // 后续 route 无论配没配 key 都跳过，未配置时也只保留一条「未配置」行。
-  const byName = new Map<string, { displayName: string; querier: BalanceQuerier['querier']; ref: string | undefined }>()
-  for (const item of resolved) {
-    const existing = byName.get(item.displayName)
-    // 该厂商已确定用某个配了 key 的 route 查询，跳过后续同名 route。
-    if (existing !== undefined && existing.ref !== undefined) continue
-    byName.set(item.displayName, { displayName: item.displayName, querier: item.querier, ref: item.configured ? item.ref : undefined })
-  }
-  return await Promise.all([...byName.values()].map(async ({ displayName, querier, ref }) => {
-    // DeepSeek 可先读取登录钱包；其他厂商未配置 key 时直接标未配置。
-    const canQueryWithoutKey = QUERIERS.some(item => item.displayName === displayName && item.canQueryWithoutKey === true)
-    if (ref === undefined && !canQueryWithoutKey) {
-      return { provider: displayName, displayName, error: 'unconfigured' as const }
-    }
-    return querier(ctx, ref ?? '', client)
-  }))
+  // Equal adapter and credential establish aliases. Different credentials get separate rows.
+  const chosen = resolved.filter((item, index) => {
+    const family = resolved.filter(other => other.displayName === item.displayName)
+    if (item.value === undefined) return !family.some(other => other.value !== undefined) && item === (family.find(other => other.explicit !== undefined) ?? family[0])
+    return !resolved.slice(0, index).some(other => other.displayName === item.displayName && other.value === item.value)
+  })
+  const [apiRows, account] = await Promise.all([Promise.all(chosen.map(async item => {
+    const { route, displayName, querier, value } = item
+    const row: ProviderBalance = value === undefined ? { provider: displayName, displayName, error: 'unconfigured' } : await querier(value)
+    const routes = resolved.filter(other => other === item || (value !== undefined && other.displayName === displayName && other.value === value)).map(other => other.route)
+    const result = { ...row, sourceRoute: route, walletKind: 'api-key' as const, attributedRoutes: route === 'deepseek' && value === undefined ? [] : routes }
+    if (route === 'deepseek' && value !== undefined) apiSources.set(result, createHash('sha256').update(value).digest('hex'))
+    return result
+  })), queryDeepSeekAccount(ctx, client)])
+  return [...apiRows, account]
 }
 
 // ── 腾讯云 TokenHub（Token Plan 余量）───────────────────────────────────────
@@ -482,19 +468,14 @@ export async function queryBalances(
  * 查询腾讯云 TokenHub Token Plan 套餐余量。凭据值格式 `<SecretId>:<SecretKey>`
  * （云 API 密钥，非 TokenHub 推理 key）。链路：套餐列表取 TeamId → 套餐详情读
  * 主额度包余量。管控面字段名未完全稳定，解析按语义键防御提取。
- * @param ctx - host context carrying the credentials seam.
- * @param apiKeyEnv - credential reference resolving the `<SecretId>:<SecretKey>` pair.
+ * @param key - resolved `<SecretId>:<SecretKey>` credential.
  */
-async function queryTencentTokenPlan(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
+async function queryTencentTokenPlan(key: string): Promise<ProviderBalance> {
   const provider = '腾讯云 TokenHub'
-  const hit = await ctx.credentials.resolve(credentialRef(apiKeyEnv))
-  if (hit === undefined) {
-    return { provider, displayName: provider, error: 'unconfigured' }
-  }
   if (!balanceGate.check(provider)) {
     return { provider, displayName: provider, error: 'unreachable' }
   }
-  const credential = parseTencentCredential(hit.value)
+  const credential = parseTencentCredential(key)
   if (credential === undefined) {
     // 凭据不是 `<SecretId>:<SecretKey>` 云 API 密钥对：常见情形是用户在 tencent /
     // tokenhub 命名的推理路由里配了混元推理 key——那对 TokenHub 管控面是「未配置」，
@@ -625,12 +606,13 @@ export async function queryCustomBalances(
   return await Promise.all(configs.map(async (config): Promise<ProviderBalance> => {
     const provider = `custom:${config.label}`
     const displayName = config.label
+    const identity = { provider, displayName, sourceRoute: provider, attributedRoutes: [], walletKind: 'relay' } as const
     if (typeof config.url !== 'string' || config.url === '') {
-      return { provider, displayName, error: 'unconfigured' }
+      return { ...identity, error: 'unconfigured' }
     }
     const headers = await resolveHeaders(ctx, config.headers ?? {})
-    if (headers === null) return { provider, displayName, error: 'unconfigured' }
-    if (!customGate.check(config.url)) return { provider, displayName, error: 'unreachable' }
+    if (headers === null) return { ...identity, error: 'unconfigured' }
+    if (!customGate.check(config.url)) return { ...identity, error: 'unreachable' }
     const doRequest = async (): Promise<ProviderBalance> => {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
@@ -641,7 +623,7 @@ export async function queryCustomBalances(
           signal: controller.signal,
         })
         if (response.status === 401 || response.status === 403) {
-          return { provider, displayName, error: 'unauthorized' }
+          return { ...identity, error: 'unauthorized' }
         }
         if (!response.ok) {
           const error = new Error(`HTTP ${String(response.status)}`)
@@ -650,10 +632,9 @@ export async function queryCustomBalances(
         }
         const remaining = evalExtract(config.extract.remaining, await response.json())
         // 提取规则未命中任何字段：配置的 path 写错或上游改版，标记 invalid 而非网络问题。
-        if (remaining === undefined) return { provider, displayName, error: 'invalid' }
+        if (remaining === undefined) return { ...identity, error: 'invalid' }
         return {
-          provider,
-          displayName,
+          ...identity,
           currency: config.unit ?? 'CNY',
           totalBalance: remaining,
         }
@@ -667,7 +648,7 @@ export async function queryCustomBalances(
       return row
     } catch {
       customGate.fail(config.url)
-      return { provider, displayName, error: 'unreachable' }
+      return { ...identity, error: 'unreachable' }
     }
   }))
 }

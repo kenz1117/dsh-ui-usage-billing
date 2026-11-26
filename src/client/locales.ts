@@ -96,6 +96,12 @@ export type UsageBillingKey =
   | 'rechargeHint'
   | 'balanceUnconfigured'
   | 'balanceUnauthorized'
+  | 'walletLogin'
+  | 'walletPlatform'
+  | 'walletInvalid'
+  | 'walletNoService'
+  | 'walletNoMetadata'
+  | 'walletSignedOut'
   | 'balanceUnreachable'
   | 'uncatalogued'
   | 'estimatedPricing'
@@ -548,6 +554,12 @@ export const zh: Record<UsageBillingKey, string> = {
   'rechargeHint': '打开该厂商官方平台的充值页',
   'balanceUnconfigured': '未配置',
   'balanceUnauthorized': '密钥无效',
+  'walletLogin': '登录钱包',
+  'walletPlatform': 'API Key 钱包',
+  'walletInvalid': '余额响应格式异常',
+  'walletNoService': '宿主未提供登录服务',
+  'walletNoMetadata': '缺少界面版本或区域信息',
+  'walletSignedOut': '未登录',
   'balanceUnreachable': '查询失败',
   'uncatalogued': '未收录',
   'estimatedPricing': '估算价',
@@ -1000,6 +1012,12 @@ export const en: Record<UsageBillingKey, string> = {
   'rechargeHint': 'Open the vendor\'s official top-up page',
   'balanceUnconfigured': 'Not set',
   'balanceUnauthorized': 'Bad key',
+  'walletLogin': 'Sign-in wallet',
+  'walletPlatform': 'API key wallet',
+  'walletInvalid': 'Invalid balance response',
+  'walletNoService': 'Account service unavailable',
+  'walletNoMetadata': 'Client metadata unavailable',
+  'walletSignedOut': 'Signed out',
   'balanceUnreachable': 'Unavailable',
   'uncatalogued': 'Not catalogued',
   'estimatedPricing': 'Estimated',

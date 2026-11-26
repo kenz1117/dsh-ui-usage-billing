@@ -38,9 +38,9 @@ import z from '@deepseek-ai/schemastery'
 import { createUsageAggregator, dayStamp, DEFAULT_SUBSCRIPTION_PROVIDERS, mergeUsageLedgerDocuments, sessionLogOffsetOf, sumSiteBuckets, type UsageLedgerDocument, type UsageLedgerStore, type UsagePersistence } from './aggregate.ts'
 import { applyBuiltinCatalog, applyLivePricing, applyUserModelAliases, formatMoney, formatTokens } from './client/pricing.ts'
 import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts'
-import { queryBalances, queryCustomBalances } from './balance.ts'
+import { apiBalanceSource, queryBalances, queryCustomBalances } from './balance.ts'
 import { queryDeclaredEndpoints } from './declarative.ts'
-import { reconcileBalanceDelta, type BalanceRef, type ReconcileEvent } from './reconcile.ts'
+import { platformSpend, reconcileBalanceDelta, type BalanceRef, type ReconcileEvent } from './reconcile.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
 import type { BalanceClientMetadata, LivePricing, RelayQuota, SubscriptionQuota } from './pricing-shared.ts'
 import type { UsageBillingConfig } from './config.ts'
@@ -53,7 +53,7 @@ import { swallowed } from './silent.ts'
 import { normalizeTrustedHosts } from './guard.ts'
 import { registerNotifyClaimRoute } from './routes/notify-claim.ts'
 import { registerPricingRoutes } from './routes/pricing.ts'
-import { registerBalanceRoute } from './routes/balance.ts'
+import { registerBalanceRoute, type BalanceDoc } from './routes/balance.ts'
 import { registerUsageToolRoute } from './routes/usage-tool.ts'
 import { registerSubscriptionsRoute } from './routes/subscriptions.ts'
 import { registerRelayQuotasRoute } from './routes/relay-quotas.ts'
@@ -686,7 +686,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 轮询刷新。仅官方 DeepSeek 方向对账，见 reconcile.ts。
   const reconcilePath = config.reconcilePath ?? join(dshHome, '.dsh-usage-reconcile.json')
   let reconcileRef: BalanceRef | null = null
-  void (async () => {
+  const reconcileLoaded = (async () => {
     try {
       const doc = JSON.parse(await readFile(reconcilePath, 'utf8')) as { ref?: unknown }
       const ref = doc.ref
@@ -703,11 +703,15 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       swallowed('reconcile-ref-missing')
     }
   })()
-  const persistReconcileRef = (): void => {
-    if (reconcileRef === null) return
-    const payload = JSON.stringify({ ref: reconcileRef })
-    void writeFileAtomic(reconcilePath, payload, { mode: 0o600, dirMode: 0o700 })
-      .catch(() => { /* 基准写失败不影响余额查询主流程 */ })
+  let persistence = Promise.resolve()
+  const setReconcileRef = (next: BalanceRef | null): Promise<void> => {
+    if (next !== reconcileRef) {
+      reconcileRef = next
+      const payload = JSON.stringify({ ref: next })
+      persistence = persistence.then(() => writeFileAtomic(reconcilePath, payload, { mode: 0o600, dirMode: 0o700 }))
+        .catch(() => { swallowed('reconcile-write-failed') })
+    }
+    return persistence
   }
 
   // 常驻增量聚合器：按会话缓存折叠结果（日志 mtime+size 失效），
@@ -1130,12 +1134,14 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 手动同步价格目录与 GET 价目表同 concern，由 src/routes/pricing.ts 内的
   // registerPricingRoutes 统一注册两条路由（GET /pricing + POST /pricing/refresh）。
 
-  let balanceCache: { at: number; hasClientMetadata?: boolean; doc: { balances: Awaited<ReturnType<typeof queryBalances>>; reconcile?: ReconcileEvent } } = { at: 0, doc: { balances: [] } }
-  // in-flight 去重（自审计延期项）：仪表盘、悬浮费用条、usage-stats 工具会并发
-  // 打本路由；缓存过期的瞬间多个请求各自全套上游查询（余额 + 自定义 + 声明端点
-  // + 对账），共享同一次进行中的刷新，上游只被打一遍。
-  let balanceInflight: Promise<void> | undefined
-  const refreshBalance = async (client?: BalanceClientMetadata): Promise<void> => {
+  // Separate snapshots and in-flight requests: a headerless refresh cannot answer a
+  // UI request, and the UI wallet snapshot is never served to a headerless caller.
+  type BalanceSlot = { at: number; doc: BalanceDoc; inflight?: Promise<void> }
+  const headless: BalanceSlot = { at: 0, doc: { balances: [] } }
+  const ui: BalanceSlot = { at: 0, doc: { balances: [] } }
+  const balanceSlot = (client?: BalanceClientMetadata): BalanceSlot => client === undefined ? headless : ui
+  let refreshSequence = 0
+  const refreshBalance = async (sequence: number, client?: BalanceClientMetadata): Promise<void> => {
     // 余额 key 复用 llm-pi-ai 的 providers（同订阅）：部署为某 provider 配一次即可。
     // DeepSeek 保留 `balanceApiKeyEnv` 特例：llm-pi-ai 未配 deepseek key 时仍可用该 env 查余额。
     // 注意不能只看路由是否存在——路由存在但 apiKeyEnv 缺失（只配了 baseURL 之类）时，
@@ -1156,55 +1162,49 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     for (const row of [...balances, ...custom, ...declared]) {
       if (row.error === 'unauthorized') warnAuthOnce('balance', row.provider, row.displayName)
     }
-    // 余额差对账：用官方余额当日变动反推消费，与本地账本今日官方费用比对。
-    // 基线只属于 DeepSeek API Key 钱包。登录钱包没有稳定账号标识，不能参与对账。
-    // 币种口径：余额差是原生币种，账本费用是人民币——USD 账户直接比对会永久
-    // 虚报漂移（约 6.8 倍差），只在人民币（或未标注币种的历史形状）下对账。
-    const official = balances.find(row => row.provider === 'deepseek' && row.sourceRoute === 'deepseek')
+    const official = balances.find(row => row.sourceRoute === 'deepseek' && row.walletKind === 'api-key')
+    const account = balances.find(row => row.walletKind === 'account')
+    const now = Date.now()
+    const today = dayStamp(now)
+    const recent = aggregator.lastDocOf()
     let reconcile: ReconcileEvent | undefined
-    const reconcilable = official !== undefined && official.totalBalance !== undefined
-      && (official.currency === undefined || official.currency.toUpperCase() === 'CNY')
-    if (official !== undefined && reconcilable) {
-      const now = Date.now()
-      const today = dayStamp(now)
-      // 对账基线取「最近一次**已完成**的聚合文档」，既不触发也不等待新的
-      // 全量折叠（issue #104）：重度用户（数百会话、GB 级日志）的一次折叠要
-      // 几十秒，挂在余额路由上会把响应拖到分钟级——浏览器同源连接只有 6 条，
-      // 多标签页各挂一条即占满连接池，宿主界面随之卡死。聚合由 usage-stats
-      // 驱动（自带 1.5s 预算的 stale-while-revalidate），内存里始终留有一份
-      // 最近文档可读。
-      const recent = aggregator.lastDocOf()
-      // 文档够新（≤5 分钟）才可信：过期文档的「今日费用」偏小，用它对账会
-      // 报假漂移。基线不可信时本轮不对账、不动基准（基准过期后重新打点会
-      // 产生假漂移），并在后台补一次聚合，下一轮刷新即可用上新基线。
-      const basisFresh = recent !== undefined && now - recent.updatedAt <= RECONCILE_BASIS_MAX_AGE_MS
-      if (basisFresh) {
-        const todayOfficialCost = recent?.byDay[today]?.officialCost ?? 0
-        const result = reconcileBalanceDelta(reconcileRef, official, todayOfficialCost, today, now)
-        const refChanged = result.ref !== null && result.ref !== reconcileRef
-        reconcileRef = result.ref
-        if (result.event !== null && result.event.kind !== 'flat') {
-          reconcile = { ...result.event, provider: official.displayName, ...(official.currency === undefined ? {} : { currency: official.currency }) }
-        }
-        // 基准未变（ok/flat 保早间基线）不重复落盘；只在基准真正前移时写。
-        if (refChanged) persistReconcileRef()
+    await reconcileLoaded
+    if (sequence === refreshSequence) {
+      const fresh = recent !== undefined && now - recent.updatedAt <= RECONCILE_BASIS_MAX_AGE_MS
+      if (!fresh) void aggregator.aggregate().catch(() => { swallowed('reconcile-basis-stale') })
+      // Both wallet types cover direct:deepseek. The event log has no login/key
+      // discriminator, so an active or indeterminate account makes direct-route attribution unsafe. A uniquely owned official
+      // API site remains independently attributable.
+      const apiOnly = account?.accountState === 'no-service' || account?.accountState === 'signed-out'
+      const cost = fresh ? platformSpend(recent, today, piProviders, apiOnly) : undefined
+      const source = official && apiBalanceSource(official)
+      if (source !== undefined && official?.error === undefined && official?.isAvailable !== false && official?.currency === 'CNY' && cost !== undefined) {
+        const result = reconcileBalanceDelta(reconcileRef, official, cost, today, now, `${source}:${apiOnly ? 'direct' : 'site'}`)
+        if (result.event && result.event.kind !== 'flat') reconcile = { ...result.event, provider: official.displayName, currency: official.currency }
+        await setReconcileRef(result.ref)
       } else {
-        // 后台补一次聚合（不等待）：下轮刷新才有可信基线。聚合自身有 TTL 与
-        // in-flight 去重，不会叠出多份折叠。
-        void aggregator.aggregate().catch(() => { /* 下一轮刷新再试 */ })
-        swallowed('reconcile-basis-stale')
+        await setReconcileRef(null)
       }
     }
-    const doc = { balances: [...balances, ...custom, ...declared], ...(reconcile === undefined ? {} : { reconcile }) }
-    balanceCache = { at: Date.now(), doc, hasClientMetadata: client !== undefined }
+    const slot = balanceSlot(client)
+    slot.doc = { balances: [...balances, ...custom, ...declared], ...(reconcile === undefined ? {} : { reconcile }) }
+    slot.at = Date.now()
   }
   const refreshBalanceOnce = (client?: BalanceClientMetadata): Promise<void> => {
-    balanceInflight ??= refreshBalance(client).finally(() => { balanceInflight = undefined })
-    return balanceInflight
+    const slot = balanceSlot(client)
+    if (!slot.inflight) {
+      const sequence = ++refreshSequence
+      slot.inflight = refreshBalance(sequence, client).catch(async error => {
+        await reconcileLoaded
+        if (sequence === refreshSequence) await setReconcileRef(null)
+        throw error
+      }).finally(() => { delete slot.inflight })
+    }
+    return slot.inflight
   }
   registerBalanceRoute(ctx, {
     trustedHosts,
-    cached: () => balanceCache,
+    cached: balanceSlot,
     refreshOnce: refreshBalanceOnce,
     cacheMs: BALANCE_CACHE_MS,
     responseBudgetMs: BALANCE_RESPONSE_BUDGET_MS,

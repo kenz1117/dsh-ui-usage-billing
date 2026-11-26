@@ -161,7 +161,7 @@ export interface ProviderBillingGroup {
   /** 归并到该厂商的订阅额度卡片。 */
   subscriptions: readonly SubscriptionQuota[]
   /** 该厂商余额（同厂商只显示一次）。 */
-  balance: ProviderBalance | undefined
+  balances: readonly ProviderBalance[]
   /** 健康点状态：按厂商名与 health 的在线/失效列表匹配。 */
   dot: string | undefined
   /** 入口种类；纯订阅/余额组无入口为 vendor。 */

@@ -794,7 +794,7 @@ function BalanceDetailPopover({
       onClick={event => { event.stopPropagation() }}
     >
       <span className={css.balanceDetailHead}>
-        <span className={css.balanceDetailTitle}>{balance.displayName}</span>
+        <span className={css.balanceDetailTitle}>{balance.displayName} {walletLabel(balance, t)}</span>
         <button type="button" className={css.balanceDetailClose} aria-label={t('close')} onClick={onClose}>×</button>
       </span>
       <span className={css.balanceDetailGrid}>
@@ -1516,50 +1516,44 @@ function BillingDashboard({
   const dailyBurn = dailyBurnRate(byDay, localDayStamp())
 
   // 按提供方归一化匹配余额（deepseek ↔ DeepSeek）。
-  const balanceFor = (provider: string): ProviderBalance | undefined =>
-    balances.find(balance => normalizeProvider(balance.provider) === normalizeProvider(provider))
-
-  // 订阅型厂商隐藏「余额」栏：该组模型全部走订阅且未配置按量余额时，只保留订阅额度，
-  // 避免「1 套餐 + 余额未配置」的困惑（按量余额与订阅是两套独立计费）。
-  const hideBalanceForGroup = (group: ProviderBillingGroup): boolean =>
-    group.balance?.error === 'unconfigured'
-    && group.models.length > 0
-    && group.models.every(model => model.plan)
+  const balancesFor = (provider: string): readonly ProviderBalance[] =>
+    balances.filter(balance => normalizeProvider(balance.provider) === normalizeProvider(provider))
 
   // 余额列单元格：按查询状态渲染金额或占位文案；余额有效且日均消耗可估时
   // 附「约可撑 N 天」圆形徽标（A1），点击弹出余额详情；剩余不足 3 天时红色强调。
   const renderBalance = (balance: ProviderBalance | undefined): React.ReactNode => {
     if (balance === undefined) return <span className={css.na}>—</span>
-    if (balance.error === 'unconfigured') return t('balanceUnconfigured')
-    if (balance.error === 'unauthorized') return t('balanceUnauthorized')
-    if (balance.error === 'unreachable') return t('balanceUnreachable')
+    const status = walletStatus(balance, t)
+    if (status) return status
+    const id = walletId(balance)
     if (balance.totalBalance === undefined) return <span className={css.na}>—</span>
     const amount = balance.currency === 'USD'
       ? `$${balance.totalBalance.toFixed(2)}`
       : money(balance.totalBalance)
     // USD 余额按当前汇率折成人民币，与日均消耗（元）同口径。
     const balanceCny = balance.currency === 'USD' ? balance.totalBalance * rateInfo.rate : balance.totalBalance
-    const days = dailyBurn > 0 ? Math.floor(balanceCny / dailyBurn) : undefined
+    // Separate currency pockets have no documented spending order or transfer rule.
+    const days = dailyBurn > 0 && !balance.otherBalances?.length ? Math.floor(balanceCny / dailyBurn) : undefined
     return (
       <span className={css.balanceCell}>
-        <span>{amount}</span>
+        <span>{amount}{balance.otherBalances?.map(other => ` + ${other.currency} ${other.totalBalance.toFixed(2)}`)}</span>
         {days !== undefined && days >= 0 && (
           <button
             type="button"
             className={clsx(css.balanceDaysBadge, days <= 3 && css.balanceDaysBadgeLow)}
             data-testid="billing-balance-days-badge"
             title={t('balanceDays').replace('{days}', String(days))}
-            aria-label={`${balance.displayName} ${t('balanceDays').replace('{days}', String(days))}`}
+            aria-label={`${balance.displayName} ${walletLabel(balance, t)} ${t('balanceDays').replace('{days}', String(days))}`}
             /* 圆圈点击切换余额详情，不冒泡到厂商组头的折叠切换（issue #77）。 */
             onClick={event => {
               event.stopPropagation()
-              setBalanceDetailFor(balanceDetailFor === balance.provider ? undefined : balance.provider)
+              setBalanceDetailFor(balanceDetailFor === id ? undefined : id)
             }}
           >
             ?
           </button>
         )}
-        {balanceDetailFor === balance.provider && (
+        {balanceDetailFor === id && (
           <BalanceDetailPopover
             balance={balance}
             days={days ?? 0}
@@ -1847,10 +1841,9 @@ function BillingDashboard({
       else list.push(quota)
     }
     // 余额挂接：通道显示名直接匹配（腾讯云 TokenHub）；DeepSeek 官方通道别名到 deepseek 余额。
-    const balanceForChannel = (name: string): ProviderBalance | undefined =>
+    const balancesForChannel = (name: string): readonly ProviderBalance[] =>
       name === channelNameOf('direct:deepseek') || name === channelNameOf('site:https://api.deepseek.com')
-        ? balanceFor('deepseek') ?? balanceFor(name)
-        : balanceFor(name)
+        ? balancesFor('deepseek') : balancesFor(name)
     const groups: ProviderBillingGroup[] = []
     for (const [name, rows] of mergedByChannel) {
       groups.push({
@@ -1858,7 +1851,7 @@ function BillingDashboard({
         name,
         models: rows,
         subscriptions: subscriptionsByChannel.get(name) ?? [],
-        balance: balanceForChannel(name),
+        balances: balancesForChannel(name),
         // 健康点取该通道费用最高模型的品牌健康（通道本身不做探活）。
         dot: providerDot(health, rows[0]?.provider ?? ''),
         channelKind: kindByChannel.get(name) ?? 'unknown',
@@ -1871,26 +1864,23 @@ function BillingDashboard({
         name,
         models: [],
         subscriptions: subscriptionsByChannel.get(groupKey) ?? [],
-        balance: balanceFor(name),
+        balances: balancesFor(name),
         dot: providerDot(health, name),
         channelKind: 'vendor',
       })
     }
     // 纯余额组：自定义 Provider（custom: 前缀）或无对应模型/订阅的余额行，
     // 以独立组呈现（内置厂商的「未配置」行不补组，避免噪音）。
-    const claimed = new Set(groups.flatMap(group => [
-      normalizeProvider(group.name),
-      ...(group.balance !== undefined ? [normalizeProvider(group.balance.provider)] : []),
-    ]))
+    const claimed = new Set(groups.flatMap(group => group.balances))
     for (const balance of balances) {
-      if (claimed.has(normalizeProvider(balance.provider))) continue
-      if (balance.error === undefined || balance.provider.startsWith('custom:')) {
+      if (claimed.has(balance)) continue
+      if (balance.error !== 'unconfigured' || balance.provider.startsWith('custom:') || balance.sourceRoute === 'deepseek') {
         groups.push({
-          id: `bal:${balance.provider}`,
+          id: `bal:${walletId(balance)}`,
           name: balance.displayName,
           models: [],
           subscriptions: [],
-          balance,
+          balances: [balance],
           dot: providerDot(health, balance.displayName),
           channelKind: 'vendor',
         })
@@ -3629,15 +3619,14 @@ function BillingDashboard({
                                 : <span className={css.providerGroupCostValue}>{money(providerCostOf(group))}</span>}
                             </span>
                             {/* 套餐徽章已移至组名后：原 64px 保列位空槽一并移除，费用/余额随之右移让位标题行。 */}
-                            {!hideBalanceForGroup(group) && group.balance !== undefined ? (
-                              <span className={css.providerGroupBalance} data-testid="billing-provider-balance">
-                                <span className={css.providerGroupBalanceLabel}>{t('balance')}</span>
-                                {renderBalance(group.balance)}
-                              </span>
-                            ) : (
-                              /* 空占位：同上，无余额的组保持余额列位。 */
-                              <span className={css.providerGroupBalance} aria-hidden="true" />
-                            )}
+                            <span className={css.walletRows}>
+                              {group.balances.filter(row => row.sourceRoute === 'deepseek' || row.error !== 'unconfigured' || !group.models.length || !group.models.every(model => model.plan)).map(row => (
+                                <span key={walletId(row)} className={css.providerGroupBalance} data-testid="billing-provider-balance">
+                                  <span className={css.providerGroupBalanceLabel}>{walletLabel(row, t)}</span>
+                                  {renderBalance(row)}
+                                </span>
+                              ))}
+                            </span>
                             {/* 官方充值入口（issue #47 反馈）：与余额状态解耦——只要厂商收录了
                                 充值页就显示，余额未配置/查询失败/订阅型组（余额槽隐藏）同样可用；
                                 「未知路由」等无法判定厂商的分组不显示。 */}
@@ -4308,6 +4297,27 @@ function workspaceTailOf(cwd: string): string {
   return parts.at(-1) ?? '—'
 }
 
+function walletId(row: ProviderBalance): string {
+  return [row.provider, row.sourceRoute, row.walletKind].join('/')
+}
+
+function walletLabel(row: ProviderBalance, t: (key: UsageBillingKey) => string): string {
+  if (row.walletKind === 'account') return t('walletLogin')
+  if (row.walletKind === 'api-key' && row.sourceRoute === 'deepseek') return t('walletPlatform')
+  return t('balance')
+}
+
+function walletStatus(row: ProviderBalance, t: (key: UsageBillingKey) => string): string | undefined {
+  if (row.accountState === 'no-service') return t('walletNoService')
+  if (row.accountState === 'no-metadata') return t('walletNoMetadata')
+  if (row.accountState === 'signed-out') return t('walletSignedOut')
+  if (row.error === 'invalid') return t('walletInvalid')
+  if (row.error === 'unconfigured') return t('balanceUnconfigured')
+  if (row.error === 'unreachable') return t('balanceUnreachable')
+  if (row.error === 'unauthorized') return t('balanceUnauthorized')
+  return undefined
+}
+
 /** U-4 设置页分区关键词：搜索查询对每组分词做大小写不敏感子串匹配，
  *  覆盖分区标题、说明与常见同义词（中英双份，避免依赖当前界面语言）。 */
 const SETTINGS_KEYWORDS = {
@@ -4828,13 +4838,13 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     const burn = dailyBurnRate(displayStats.byDay, today)
     const rate = getRateInfo().rate
     for (const balance of balances) {
-      if (balance.totalBalance === undefined || balance.error !== undefined) continue
+      if (balance.totalBalance === undefined || balance.error !== undefined || balance.otherBalances?.length) continue
       // USD 余额按当前汇率折成人民币，与阈值同口径。
       const cny = balance.currency === 'USD' ? balance.totalBalance * rate : balance.totalBalance
       if (cny >= lowThreshold) continue
       // 天数仅在有消耗记录时提供；刚用或未用（无历史）时以金额告警为主。
       const days = burn > 0 ? Math.floor(cny / burn) : undefined
-      return { name: balance.displayName, cny, days }
+      return { name: balance.sourceRoute === 'deepseek' ? `${balance.displayName} ${walletLabel(balance, t)}` : balance.displayName, cny, days }
     }
     return undefined
   }, [balances, displayStats.lowBalanceThreshold, displayStats.byDay, today])
@@ -4912,29 +4922,19 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     // 的渠道余额借过来显示（所有流量实际都走它）；多渠道时归属不明，隐藏该行
     // 而不是显示误导性的「未配置」。
     const balanceStatus = (name: string): { text: string; low: boolean } | undefined => {
-      const bal = balances.find(b => normalizeProvider(b.provider) === normalizeProvider(name))
-      if (bal === undefined || bal.totalBalance === undefined) {
-        // 目录兜底条目（Custom）不是真实渠道：单渠道用户把唯一配置成功的渠道余额
-        // 借过来显示（所有流量实际都走它）；多渠道时归属不明，隐藏该行而不是显示
-        // 误导性的「未配置」（issue #40 反馈）。
-        if (name === 'Custom') {
-          const configured = balances.filter(b => b.totalBalance !== undefined && b.error === undefined)
-          const only = configured[0]
-          if (only !== undefined && configured.length === 1) return balanceStatus(only.provider)
-          return undefined
-        }
-        // 无余额/异常时给出状态文案（未配置 / 密钥无效 / 查询失败），而非空。
-        const text = bal?.error === 'unauthorized'
-          ? t('balanceUnauthorized')
-          : bal?.error === 'unreachable' || bal?.error === 'invalid'
-            ? t('balanceUnreachable')
-            : t('balanceUnconfigured')
-        return { text, low: false }
+      let rows = balances.filter(b => normalizeProvider(b.provider) === normalizeProvider(name))
+      if (!rows.length && name === 'Custom') {
+        rows = balances.filter(b => b.totalBalance !== undefined && !b.error)
+        if (rows.length !== 1) return undefined
       }
-      const amount = bal.currency === 'USD' ? `$${bal.totalBalance.toFixed(2)}` : formatMoney(bal.totalBalance)
+      if (!rows.length) return { text: t('balanceUnconfigured'), low: false }
       const rate = getRateInfo().rate
-      const cny = bal.currency === 'USD' ? bal.totalBalance * rate : bal.totalBalance
-      return { text: amount, low: cny < lowThreshold }
+      const text = rows.map(row => {
+        const label = row.sourceRoute === 'deepseek' ? `${walletLabel(row, t)} ` : ''
+        const amount = walletStatus(row, t) ?? (row.totalBalance === undefined ? '—' : row.currency === 'USD' ? `$${row.totalBalance.toFixed(2)}` : formatMoney(row.totalBalance))
+        return label + amount + (row.otherBalances ?? []).map(other => ` + ${other.currency} ${other.totalBalance.toFixed(2)}`).join('')
+      }).join(' · ')
+      return { text, low: rows.some(row => !row.error && !row.otherBalances?.length && row.totalBalance !== undefined && row.totalBalance * (row.currency === 'USD' ? rate : 1) < lowThreshold) }
     }
     const quotaStatus = (name: string): { text: string; low: boolean } => {
       const q = quotas.find(qq => qq.displayName === name || subscriptionVendorOf(qq.provider) === name)

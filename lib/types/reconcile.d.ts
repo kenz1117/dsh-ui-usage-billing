@@ -9,6 +9,7 @@
  *
  * 纯函数：输入上一基准与本次余额查询结果，输出新基准与对账事件，可独立单测。
  */
+import type { UsageStatsDocument } from './aggregate.ts';
 /** 对账基准快照：上次余额查询时的官方账户状态，用于反推当日消费。 */
 export interface BalanceRef {
     /** 本地日期键（YYYY-MM-DD）。 */
@@ -23,7 +24,15 @@ export interface BalanceRef {
     currency: string;
     /** 打基准时刻（epoch ms）。 */
     at: number;
+    source?: string;
+    costAtBaseline?: number;
 }
+/** The daily official aggregate also includes other deepseek-* routes, the official
+ * origin (possibly shared), and web search (estimated cost, separate credentials).
+ * Require complete site coverage and exclude unrelated routes before comparing. */
+export declare function platformSpend(doc: UsageStatsDocument, day: string, providers: Readonly<Record<string, {
+    baseURL?: string;
+}>>, allowDirect?: boolean): number | undefined;
 /** 一次对账的结果类别。 */
 export type ReconcileKind = 'baseline' | 'structure-reset' | 'flat' | 'ok' | 'drift';
 /** 对账事件：`ok`/`drift`/`flat` 携带有意义的结果，`baseline`/`structure-reset` 仅为无消费的基准刷新。 */
@@ -52,9 +61,9 @@ interface BalanceSnapshot {
  * @param todayOfficialCost - 本地账本当日的官方渠道费用（CNY）。
  * @param dayKey - 本地日期键（YYYY-MM-DD）。
  * @param nowMs - 当前时刻（epoch ms）。
- * @returns 新基准与对账事件；余额不可用（无 totalBalance）时返回 `{ ref: prevRef, event: null }`。
+ * @returns 新基准与对账事件；余额不可用（无 totalBalance）时返回 `{ ref: null, event: null }`。
  */
-export declare function reconcileBalanceDelta(prevRef: BalanceRef | null, balance: BalanceSnapshot, todayOfficialCost: number, dayKey: string, nowMs: number): {
+export declare function reconcileBalanceDelta(prevRef: BalanceRef | null, balance: BalanceSnapshot, todayOfficialCost: number, dayKey: string, nowMs: number, source?: string): {
     ref: BalanceRef | null;
     event: ReconcileEvent | null;
 };

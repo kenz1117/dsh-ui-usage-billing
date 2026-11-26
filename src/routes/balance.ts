@@ -32,14 +32,13 @@ export interface BalanceDoc {
 interface CachedBalance {
   doc: BalanceDoc
   at: number
-  hasClientMetadata?: boolean
 }
 
 /** 路由依赖。 */
 export interface BalanceDeps {
   trustedHosts: ReadonlySet<string>
   /** 装配器内缓存 + 时间戳（`Date.now()`）。 */
-  cached: () => CachedBalance
+  cached: (client?: BalanceClientMetadata) => CachedBalance
   /** in-flight 去重的刷新入口。 */
   refreshOnce: (client?: BalanceClientMetadata) => Promise<void>
   /** 5 分钟缓存间隔（毫秒）。 */
@@ -56,7 +55,8 @@ export interface BalanceDeps {
   responseBudgetMs: number
 }
 
-function readClientMetadata(headers: IncomingMessage['headers']): BalanceClientMetadata | undefined {
+/** Loopback callers can supply these advisory UI headers. */
+export function readClientMetadata(headers: IncomingMessage['headers']): BalanceClientMetadata | undefined {
   const version = headers[BALANCE_CLIENT_HEADERS.version]
   const locale = headers[BALANCE_CLIENT_HEADERS.locale]
   const offset = headers[BALANCE_CLIENT_HEADERS.timezone]
@@ -78,26 +78,26 @@ export function registerBalanceRoute(ctx: Context, deps: BalanceDeps): void {
         if (!guardLoopback(req, res, deps.trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         const client = readClientMetadata(req.headers)
-        const cached = deps.cached()
-        // A headerless caller may have populated an API-only cache. Let the first
-        // UI request refresh it with account metadata, keeping the normal TTL thereafter.
-        if (Date.now() - cached.at < deps.cacheMs && (client === undefined || cached.hasClientMetadata === true)) {
+        const cached = deps.cached(client)
+        if (Date.now() - cached.at < deps.cacheMs) {
           res.end(JSON.stringify(cached.doc))
           return
         }
         // 刷新预算：到期立刻回上一次成功的余额（stale 标记），不把响应挂在
         // 上游查询上（issue #104：响应长期不落地会占满浏览器的同源连接池）。
         let timedOut = false
+        let failed = false
         const onFailure = (error: unknown): void => {
           // 查询失败：保留上次成功快照（从未成功则为空余额），避免每 30 秒把偶发故障刷成「未配置」。
+          failed = true
           console.warn('[usage-billing] refreshBalances failed; serving cached balances:', error)
         }
         await Promise.race([
           deps.refreshOnce(client).then(() => undefined, onFailure),
           new Promise<void>(resolve => { setTimeout(() => { timedOut = true; resolve() }, deps.responseBudgetMs).unref() }),
         ])
-        const doc = deps.cached().doc
-        res.end(JSON.stringify(timedOut ? { ...doc, stale: true } : doc))
+        const doc = deps.cached(client).doc
+        res.end(JSON.stringify(timedOut || failed ? { ...doc, stale: true } : doc))
       },
     }),
     'usage-billing: balance route',

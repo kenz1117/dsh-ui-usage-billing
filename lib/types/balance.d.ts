@@ -14,6 +14,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { BalanceClientMetadata, CustomBalanceConfig, CustomBalanceExtract, ProviderBalance } from './pricing-shared.ts';
+export declare function apiBalanceSource(row: ProviderBalance): string | undefined;
 /**
  * 从 TokenDance 余额响应提取剩余余额并换算为元。导出供测试：纯函数。
  * 优先用服务端现成的 `balance.balance`（= credits - credits_used）；缺失时

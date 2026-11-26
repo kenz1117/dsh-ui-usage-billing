@@ -120,7 +120,8 @@ describe('queryBalances（新版宿主形态）', () => {
     const rows = await queryBalances(ctx, { deepseek: {} })
     const row = rows.find(row => row.provider === 'deepseek')
     expect(row).toMatchObject({ error: 'unconfigured' })
-    expect(row).not.toHaveProperty('sourceRoute')
+    expect(rows.every(row => row.sourceRoute && row.walletKind)).toBe(true)
+    expect(rows.find(row => row.walletKind === 'account')).toMatchObject({ accountState: 'no-service' })
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
@@ -135,12 +136,12 @@ describe('queryBalances（新版宿主形态）', () => {
     const fetchSpy = vi.fn()
     vi.stubGlobal('fetch', fetchSpy)
     const rows = await queryBalances(ctx, { deepseek: {} }, client)
-    expect(rows.find(row => row.provider === 'deepseek')).toMatchObject({ sourceRoute: 'deepseek-account', totalBalance: 18, currency: 'CNY' })
+    expect(rows.find(row => row.walletKind === 'account')).toMatchObject({ sourceRoute: 'deepseek', totalBalance: 18, currency: 'CNY' })
     expect(getBalance).toHaveBeenCalledExactlyOnceWith(client)
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it('prefers the logged-in DeepSeek account wallet and combines matching bonuses', async () => {
+  it('returns a separate logged-in DeepSeek account wallet and combines matching bonuses', async () => {
     const ctx = {
       get: (name: string) => name === 'deepseekAccount' ? {
         getBalance: vi.fn(async () => ({
@@ -155,19 +156,20 @@ describe('queryBalances（新版宿主形态）', () => {
       } : undefined,
       credentials: { resolve: async (ref: unknown) => ref === 'DEEPSEEK_API_KEY' ? { value: 'api-key' } : undefined },
     } as never
-    const fetchSpy = vi.fn()
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ balance_infos: [{ currency: 'CNY', total_balance: 90 }] }) }))
     vi.stubGlobal('fetch', fetchSpy)
     const rows = await queryBalances(ctx, { deepseek: { apiKeyEnv: 'DEEPSEEK_API_KEY' } }, client)
-    expect(rows.find(row => row.provider === 'deepseek')).toMatchObject({
+    expect(rows.find(row => row.walletKind === 'account')).toMatchObject({
       provider: 'deepseek',
-      sourceRoute: 'deepseek-account',
+      sourceRoute: 'deepseek', attributedRoutes: ['deepseek'], otherBalances: [{ currency: 'USD', totalBalance: 99 }],
       currency: 'CNY',
       totalBalance: 18,
       toppedUpBalance: 15,
       grantedBalance: 3,
       isAvailable: true,
     })
-    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(fetchSpy).toHaveBeenCalledOnce()
+    expect(rows.find(row => row.sourceRoute === 'deepseek' && row.walletKind === 'api-key')).toMatchObject({ totalBalance: 90 })
   })
 
   it.each([
@@ -180,7 +182,7 @@ describe('queryBalances（新版宿主形态）', () => {
       credentials: { resolve: async () => undefined },
     } as never
     const rows = await queryBalances(ctx, {}, client)
-    expect(rows.find(row => row.provider === 'deepseek')).toMatchObject({ sourceRoute: 'deepseek-account', ...expected })
+    expect(rows.find(row => row.walletKind === 'account')).toMatchObject({ sourceRoute: 'deepseek', ...expected })
   })
 
   it.each([
@@ -204,12 +206,13 @@ describe('queryBalances（新版宿主形态）', () => {
     const rows = await queryBalances(ctx, { deepseek: { apiKeyEnv: 'DEEPSEEK_API_KEY' } }, client)
     expect(rows.find(row => row.provider === 'deepseek')).toMatchObject({ sourceRoute: 'deepseek', totalBalance: 7, currency: 'CNY' })
     expect(fetchSpy).toHaveBeenCalledOnce()
+    await queryBalances(ctx, {}, client) // repeat failures log once per cause
     if (warning === undefined) expect(warn).not.toHaveBeenCalled()
-    else expect(warn).toHaveBeenCalledExactlyOnceWith(`[usage-billing] DeepSeek sign-in wallet: ${warning}; trying Platform API-key fallback`)
+    else expect(warn).toHaveBeenCalledExactlyOnceWith(`[usage-billing] DeepSeek sign-in wallet: ${warning}`)
   })
 
   it.each([
-    [{ status: 'failed' }, { sourceRoute: 'deepseek-account', error: 'unreachable' }],
+    [{ status: 'failed' }, { sourceRoute: 'deepseek', walletKind: 'account', error: 'unreachable' }],
     [null, { error: 'unconfigured' }],
   ])('distinguishes %j from a query failure without a resolvable API key', async (details, expected) => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -220,7 +223,7 @@ describe('queryBalances（新版宿主形态）', () => {
       credentials: { resolve: async () => undefined },
     } as never
     const rows = await queryBalances(ctx, { deepseek: { apiKeyEnv: 'DEEPSEEK_API_KEY' } }, client)
-    expect(rows.find(row => row.provider === 'deepseek')).toMatchObject(expected)
+    expect(rows.find(row => row.walletKind === 'account')).toMatchObject(expected)
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 

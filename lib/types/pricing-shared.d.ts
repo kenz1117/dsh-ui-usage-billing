@@ -67,6 +67,15 @@ export declare const BALANCE_CLIENT_HEADERS: {
 export interface ProviderBalance {
     /** Exact direct route of the wallet queried (without `direct:`), also on failures. */
     sourceRoute?: string;
+    walletKind?: 'api-key' | 'account' | 'relay';
+    attributedRoutes?: readonly string[];
+    sourceRouteAliases?: readonly string[];
+    sourceOrigin?: string;
+    otherBalances?: readonly {
+        currency: string;
+        totalBalance: number;
+    }[];
+    accountState?: 'no-service' | 'no-metadata' | 'signed-out';
     /** 提供方 id（小写，如 `deepseek`），与模型表 provider 匹配用。 */
     provider: string;
     /** 显示名（如 `DeepSeek`）。 */

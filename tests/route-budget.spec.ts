@@ -18,7 +18,8 @@ import { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { describe, expect, it } from 'vitest'
-import { registerBalanceRoute, type BalanceDoc } from '../src/routes/balance.ts'
+import { BALANCE_CLIENT_HEADERS as H } from '../src/pricing-shared.ts'
+import { readClientMetadata, registerBalanceRoute, type BalanceDoc } from '../src/routes/balance.ts'
 import { registerSubscriptionsRoute } from '../src/routes/subscriptions.ts'
 import { registerRelayQuotasRoute } from '../src/routes/relay-quotas.ts'
 
@@ -171,4 +172,12 @@ describe('quota routes response budget (issue #104)', () => {
       expect(doc.stale).toBe(true)
     })
   })
+})
+
+const headers = { [H.locale]: 'zh-Hans-CN', [H.version]: '0.2.2-rc.5', [H.timezone]: '0' }
+it.each([-50400, 50400])('accepts inclusive timezone boundary %i', offset => {
+  expect(readClientMetadata({ ...headers, [H.timezone]: String(offset) })).toEqual({ locale: 'zh-Hans-CN', version: '0.2.2-rc.5', timezoneOffsetSeconds: offset })
+})
+it.each([[H.locale, 'en US'], [H.version, ''], [H.version, ['1', '2']], [H.locale, undefined], [H.timezone, '50401'], [H.timezone, '-50401'], [H.timezone, '0.5']] as const)('rejects malformed or missing %s (%s)', (key, value) => {
+  expect(readClientMetadata({ ...headers, [key]: value })).toBeUndefined()
 })

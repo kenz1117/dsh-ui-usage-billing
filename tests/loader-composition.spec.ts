@@ -33,15 +33,18 @@ let context: Context | undefined
 
 /** 余额上游替身开关：开启后 fetch 桩回答 DeepSeek 官方余额接口（issue #104）。 */
 let balanceUpstreamEnabled = false
+let beforeApiBalance: (() => Promise<void>) | undefined
 
 beforeEach(() => {
   // 外网一律拒绝（定价拉取降级 builtin）；本地回环放行给断言用 fetch。
+  beforeApiBalance = undefined
   const realFetch = globalThis.fetch
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input)
     if (url.startsWith('http://127.0.0.1')) return realFetch(input, init)
     // 余额上游替身：只回答 DeepSeek 官方余额接口，其余外网仍拒绝。
     if (balanceUpstreamEnabled && url === 'https://api.deepseek.com/user/balance') {
+      await beforeApiBalance?.()
       return new Response(JSON.stringify({
         is_available: true,
         balance_infos: [{ currency: 'CNY', total_balance: '100', granted_balance: '0', topped_up_balance: '100' }],
@@ -227,11 +230,13 @@ async function loadCompositionWith(options: {
   /** credentials 替身：'unresolved'（默认，余额走 unconfigured）/ 'resolved'（可解析）。 */
   credentials?: 'unresolved' | 'resolved'
   /** 余额上游替身：fetch 桩回答 DeepSeek 官方余额接口（issue #104）。 */
+  previousBalanceRef?: object
   balanceUpstream?: boolean
   accountBalance?: (client: BalanceClientMetadata) => Promise<unknown>
 } = {}): Promise<Context> {
   balanceUpstreamEnabled = options.balanceUpstream === true
   root = await mkdtemp(join(tmpdir(), 'dsh-usage-billing-'))
+  if (options.previousBalanceRef) await writeFile(join(root, 'usage-reconcile.json'), JSON.stringify({ ref: options.previousBalanceRef }))
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
     "- name: '@deepseek-ai/dsh-host-webserver'",
@@ -412,7 +417,7 @@ describe('usage-billing real Loader composition', () => {
     const balance = await getJson(port, '/api/billing/balance')
     expect(balance.status).toBe(200)
     const balances = (balance.json as { balances: { provider: string; error?: string }[] }).balances
-    expect(balances).toHaveLength(8)
+    expect(balances).toHaveLength(9)
     expect(balances.find(row => row.provider === 'deepseek')).toMatchObject({ error: 'unconfigured' })
     expect(balances.find(row => row.provider === '月之暗面')).toMatchObject({ error: 'unconfigured' })
     expect(balances.find(row => row.provider === '阶跃星辰')).toMatchObject({ error: 'unconfigured' })
@@ -604,33 +609,38 @@ describe('usage-billing real Loader composition', () => {
     await rm(snapshotDir, { recursive: true, force: true })
   })
 
-  it('shows the signed-in wallet without replacing the existing API reconciliation baseline', async () => {
-    const accountBalance = vi.fn(async () => ({
-      status: 'ready', value: [{ currency: 'CNY', balance: '19' }], bonusWallets: [],
-    }))
-    const loaded = await loadCompositionWith({ credentials: 'resolved', balanceUpstream: true, accountBalance })
+  it('serves both wallets to the UI during an in-flight headless refresh and clears its prior baseline', async () => {
+    const accountBalance = vi.fn(async () => ({ status: 'ready', value: [{ currency: 'CNY', balance: '19' }], bonusWallets: [] }))
+    const loaded = await loadCompositionWith({ credentials: 'resolved', balanceUpstream: true, accountBalance,
+      previousBalanceRef: { date: '2026-11-26', total: 100, granted: 0, topped: 100, currency: 'CNY', at: 1, source: 'previous', costAtBaseline: 10 },
+    })
     const port = loaded.webServer.port
-    const baselinePath = join(root!, 'usage-reconcile.json')
     await getJson(port, '/api/billing/usage-stats')
-    const initial = await getJson(port, '/api/billing/balance')
-    const api = initial.json as BalanceResponse
-    expect(api.balances.find(row => row.provider === 'deepseek')).toMatchObject({ sourceRoute: 'deepseek', totalBalance: 100 })
-    expect(api.reconcile?.kind).toBe('baseline')
-    expect(accountBalance).not.toHaveBeenCalled()
-    expect(await pollForFile(baselinePath)).toBe(true)
-    const baseline = await readFile(baselinePath, 'utf8')
-
     const client = { version: '0.2.2-rc.5', locale: 'en', timezoneOffsetSeconds: -18_000 }
-    const next = await getJson(port, '/api/billing/balance', { headers: {
+    const headers = {
       [BALANCE_CLIENT_HEADERS.version]: client.version,
       [BALANCE_CLIENT_HEADERS.locale]: client.locale,
       [BALANCE_CLIENT_HEADERS.timezone]: String(client.timezoneOffsetSeconds),
-    } })
-    const account = next.json as BalanceResponse
-    expect(accountBalance).toHaveBeenCalledExactlyOnceWith(client)
-    expect(account.balances.find(row => row.provider === 'deepseek')).toMatchObject({ sourceRoute: 'deepseek-account', totalBalance: 19 })
-    expect(account.reconcile).toBeUndefined()
-    expect(await readFile(baselinePath, 'utf8')).toBe(baseline)
+    }
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const upstream = vi.fn().mockImplementationOnce(() => gate)
+    beforeApiBalance = upstream
+    const headless = getJson(port, '/api/billing/balance')
+    await vi.waitFor(() => expect(upstream).toHaveBeenCalledOnce())
+    try {
+      const combined = (await getJson(port, '/api/billing/balance', { headers })).json as BalanceResponse
+      expect(accountBalance).toHaveBeenCalledExactlyOnceWith(client)
+      expect(combined.balances).toEqual(expect.arrayContaining([
+        expect.objectContaining({ sourceRoute: 'deepseek', walletKind: 'account', totalBalance: 19 }),
+        expect.objectContaining({ sourceRoute: 'deepseek', walletKind: 'api-key', totalBalance: 100 }),
+      ]))
+      expect(combined.reconcile).toBeUndefined()
+      expect(JSON.parse(await readFile(join(root!, 'usage-reconcile.json'), 'utf8'))).toEqual({ ref: null })
+    } finally { release() }
+    const api = (await headless).json as BalanceResponse
+    expect(api.balances.find(row => row.walletKind === 'account')).toMatchObject({ accountState: 'no-metadata' })
+    expect(api.reconcile).toBeUndefined()
   })
 
   it('serves the balance without waiting for a full fold (issue #104)', { timeout: 60_000 }, async () => {
