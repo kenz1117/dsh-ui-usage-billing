@@ -153,6 +153,21 @@ describe('web search estimate (#15)', () => {
 })
 
 describe('byDayModelsSite (issue #16)', () => {
+  it('reports known plan counts inside a mixed model × day × site cell', async () => {
+    const origin = 'https://relay.example'
+    const persistence = fakePersistence({
+      paid: [header(1, 'deepseek-v4.1-flash', 'paid'), message(2, 2_000, USAGE)],
+      plan: [header(1, 'deepseek-v4.1-flash', 'plan'), message(2, 2_000, USAGE)],
+    })
+    const stats = await aggregateUsage(persistence, {
+      subscriptionProviders: ['plan'],
+      resolveRoutes: () => ({ paid: { baseURL: `${origin}/v1` }, plan: { baseURL: `${origin}/plan` } }),
+    })
+    const mixed = stats.byDayModelsSite?.[dayStamp(2_000)]?.flash?.[`site:${origin}`]
+    expect(mixed).toMatchObject({ calls: 2, planCalls: 1 })
+    expect(mixed?.plan).toBeUndefined()
+    expect(mixed?.cost).toBeGreaterThan(0)
+  })
   it('folds per-day × model × site cells for a normal call', () => {
     const events: SessionEvent[] = [header(1, 'deepseek-v4-flash', 'deepseek-official'), message(2, 2_000, USAGE)]
     const fold = foldSession(events, new Set())

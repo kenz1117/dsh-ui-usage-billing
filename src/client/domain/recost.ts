@@ -60,26 +60,26 @@ export function recostWithUserPrices(stats: UsageStats): UsageStats {
       }
       let cost = cell.cost
       if (stats.byModel[key]?.plan !== true) {
-        if (sites !== undefined && (defaultPrice !== undefined || sourcePrices.length > 0)) {
-          // 只对确知来源的用量应用来源价；新旧会话混合时，三维格可能只覆盖部分调用。
-          const remaining = { ...cell }
-          let siteCost = 0
-          for (const [siteKey, siteCell] of Object.entries(sites)) {
-            remaining.calls -= siteCell.calls
-            remaining.cacheHit -= siteCell.cacheHit
-            remaining.cacheMiss -= siteCell.cacheMiss
-            remaining.output -= siteCell.output
-            remaining.cost -= siteCell.cost
-            const origin = siteKey.startsWith('site:') ? siteKey.slice('site:'.length) : undefined
-            siteCost += siteCell.plan || siteKey === 'direct:deepseek-account'
-              ? siteCell.cost
-              : applyPrice(origin === undefined ? defaultPrice : userPriceEntryOf(key, origin), siteCell)
-          }
-          cost = siteCost + (remaining.calls > 0 ? applyPrice(defaultPrice, remaining) : 0)
-        } else {
-          // 仅旧快照缺整个三维格时允许用唯一来源价兜底；已知来源不匹配则保留宿主价。
-          const legacyPrice = stats.byDayModelsSite === undefined && sourcePrices.length === 1 ? sourcePrices[0] : undefined
+        if (stats.byDayModelsSite === undefined) {
+          // 旧快照缺整个三维格：唯一来源价可用于估算，无法验证实际来源。
+          const legacyPrice = sourcePrices.length === 1 ? sourcePrices[0] : undefined
           cost = applyPrice(defaultPrice ?? legacyPrice, cell)
+        } else if (defaultPrice !== undefined || sourcePrices.length > 0) {
+          // 仅替换已归属格的费用；剩余用量（包括老账本行）保留宿主计价。
+          let remainingCalls = cell.calls
+          for (const [siteKey, siteCell] of Object.entries(sites ?? {})) {
+            remainingCalls -= siteCell.calls
+            if (siteCell.plan || siteKey === 'direct:deepseek-account') continue
+            // 混合格没有独立的订阅 token 数，不能对整格重估。
+            if ((siteCell.planCalls ?? 0) > 0) {
+              stillUnpriced.add(key)
+              continue
+            }
+            const origin = siteKey.startsWith('site:') ? siteKey.slice('site:'.length) : undefined
+            const price = origin === undefined ? defaultPrice : userPriceEntryOf(key, origin)
+            cost += applyPrice(price, siteCell) - siteCell.cost
+          }
+          if (remainingCalls > 0) stillUnpriced.add(key)
         }
       }
       dayCost += cost

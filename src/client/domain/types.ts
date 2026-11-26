@@ -282,6 +282,8 @@ export interface UsageStats {
     cost: number
     /** 该格全部调用都走订阅通道（聚合侧按三维格置位）；旧快照缺失，回退全局口径。 */
     plan?: boolean
+    /** 混合格中可确认的订阅调用次数（费用仅来自非订阅调用）。 */
+    planCalls?: number
   }>>>
   /**
    * 峰谷分桶（全量逐调用真实判档）：1.0.8 起服务端按调用时刻精确归桶，
