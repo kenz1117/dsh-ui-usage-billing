@@ -42,7 +42,7 @@ import { queryBalances, queryCustomBalances } from './balance.ts'
 import { queryDeclaredEndpoints } from './declarative.ts'
 import { reconcileBalanceDelta, type BalanceRef, type ReconcileEvent } from './reconcile.ts'
 import { fetchLivePricing } from './pricing-fetch.ts'
-import type { LivePricing, RelayQuota, SubscriptionQuota } from './pricing-shared.ts'
+import type { BalanceClientMetadata, LivePricing, RelayQuota, SubscriptionQuota } from './pricing-shared.ts'
 import type { UsageBillingConfig } from './config.ts'
 import { classifyMiniMaxPlanRoutes, collectSubscriptions, identifySubscriptionPlans, parseOpenCodeAuthDocument, resolveSubscriptionAccess, type IdentifiedSubscriptionPlan, type SubscriptionKeys } from './subscriptions.ts'
 import { isOfficialBaseUrl, queryRelayQuotas, type RelayRoute } from './relay.ts'
@@ -1130,12 +1130,12 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
   // 手动同步价格目录与 GET 价目表同 concern，由 src/routes/pricing.ts 内的
   // registerPricingRoutes 统一注册两条路由（GET /pricing + POST /pricing/refresh）。
 
- let balanceCache: { at: number; doc: { balances: Awaited<ReturnType<typeof queryBalances>>; reconcile?: ReconcileEvent } } = { at: 0, doc: { balances: [] } }
+  let balanceCache: { at: number; hasClientMetadata?: boolean; doc: { balances: Awaited<ReturnType<typeof queryBalances>>; reconcile?: ReconcileEvent } } = { at: 0, doc: { balances: [] } }
   // in-flight 去重（自审计延期项）：仪表盘、悬浮费用条、usage-stats 工具会并发
   // 打本路由；缓存过期的瞬间多个请求各自全套上游查询（余额 + 自定义 + 声明端点
   // + 对账），共享同一次进行中的刷新，上游只被打一遍。
   let balanceInflight: Promise<void> | undefined
-  const refreshBalance = async (): Promise<void> => {
+  const refreshBalance = async (client?: BalanceClientMetadata): Promise<void> => {
     // 余额 key 复用 llm-pi-ai 的 providers（同订阅）：部署为某 provider 配一次即可。
     // DeepSeek 保留 `balanceApiKeyEnv` 特例：llm-pi-ai 未配 deepseek key 时仍可用该 env 查余额。
     // 注意不能只看路由是否存在——路由存在但 apiKeyEnv 缺失（只配了 baseURL 之类）时，
@@ -1146,7 +1146,7 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
     if (deepseekKey === undefined || deepseekKey === '') {
       providers['deepseek'] = { ...providers['deepseek'], apiKeyEnv: config.balanceApiKeyEnv ?? DEFAULT_BALANCE_API_KEY_ENV }
     }
-    const balances = await queryBalances(ctx, providers)
+    const balances = await queryBalances(ctx, providers, client)
     // 自定义 Provider 余额（任意 HTTP 端点）：独立于内置三家，逐个成败。
     const custom = await queryCustomBalances(ctx, config.customBalances ?? [])
     // 声明端点（declarative）：为内置表没有的供应商自声明余额/额度接口。
@@ -1157,10 +1157,10 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       if (row.error === 'unauthorized') warnAuthOnce('balance', row.provider, row.displayName)
     }
     // 余额差对账：用官方余额当日变动反推消费，与本地账本今日官方费用比对。
-    // 只对 DeepSeek 官方余额行做（订阅/第三方不动官方余额）；取不到余额时不打扰。
+    // 基线只属于 DeepSeek API Key 钱包。登录钱包没有稳定账号标识，不能参与对账。
     // 币种口径：余额差是原生币种，账本费用是人民币——USD 账户直接比对会永久
     // 虚报漂移（约 6.8 倍差），只在人民币（或未标注币种的历史形状）下对账。
-    const official = balances.find(row => row.provider === 'deepseek')
+    const official = balances.find(row => row.provider === 'deepseek' && row.sourceRoute === 'deepseek')
     let reconcile: ReconcileEvent | undefined
     const reconcilable = official !== undefined && official.totalBalance !== undefined
       && (official.currency === undefined || official.currency.toUpperCase() === 'CNY')
@@ -1196,10 +1196,10 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       }
     }
     const doc = { balances: [...balances, ...custom, ...declared], ...(reconcile === undefined ? {} : { reconcile }) }
-    balanceCache = { at: Date.now(), doc }
+    balanceCache = { at: Date.now(), doc, hasClientMetadata: client !== undefined }
   }
-  const refreshBalanceOnce = (): Promise<void> => {
-    balanceInflight ??= refreshBalance().finally(() => { balanceInflight = undefined })
+  const refreshBalanceOnce = (client?: BalanceClientMetadata): Promise<void> => {
+    balanceInflight ??= refreshBalance(client).finally(() => { balanceInflight = undefined })
     return balanceInflight
   }
   registerBalanceRoute(ctx, {

@@ -26,6 +26,7 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import * as UsageBilling from '../src/index.ts'
+import { BALANCE_CLIENT_HEADERS, type BalanceClientMetadata, type BalanceResponse } from '../src/pricing-shared.ts'
 
 let root: string | undefined
 let context: Context | undefined
@@ -227,6 +228,7 @@ async function loadCompositionWith(options: {
   credentials?: 'unresolved' | 'resolved'
   /** 余额上游替身：fetch 桩回答 DeepSeek 官方余额接口（issue #104）。 */
   balanceUpstream?: boolean
+  accountBalance?: (client: BalanceClientMetadata) => Promise<unknown>
 } = {}): Promise<Context> {
   balanceUpstreamEnabled = options.balanceUpstream === true
   root = await mkdtemp(join(tmpdir(), 'dsh-usage-billing-'))
@@ -239,6 +241,7 @@ async function loadCompositionWith(options: {
     "- name: 'virtual:test-billing-persistence'",
     ...(options.llmRegistry === true ? ["- name: 'virtual:test-billing-llm'"] : []),
     "- name: 'virtual:test-billing-credentials'",
+    ...(options.accountBalance === undefined ? [] : ["- name: 'virtual:test-billing-deepseek-account'"]),
     `- name: 'virtual:test-billing-settings${options.settings === 'live' ? '-live' : ''}'`,
     // 显式 id 与 name 必须是同一个列表项（name 用 2 空格缩进续行），拆成两行
     // 会生成一个无 name 的空条目导致 import 失败。
@@ -282,6 +285,9 @@ async function loadCompositionWith(options: {
     ],
     ...(options.llmRegistry === true ? [['virtual:test-billing-llm', llmRegistryDouble] as const] : []),
     ['virtual:test-billing-credentials', options.credentials === 'resolved' ? resolvedCredentialsDouble : credentialsDouble],
+    ...(options.accountBalance === undefined ? [] : [['virtual:test-billing-deepseek-account', {
+      apply(ctx: Context): void { ctx.provide('deepseekAccount', { getBalance: options.accountBalance }) },
+    }] as const]),
     ...(options.settings === 'live'
       ? [['virtual:test-billing-settings-live', liveSettingsDouble(options.onUpdate ?? (() => {}))] as const]
       : [['virtual:test-billing-settings', settingsDouble] as const]),
@@ -303,8 +309,8 @@ async function loadCompositionWith(options: {
 }
 
 /** GET one billing API path; returns status and the parsed JSON body (undefined for non-JSON answers). */
-async function getJson(port: number, path: string): Promise<{ status: number; json: unknown }> {
-  const response = await fetch(`http://127.0.0.1:${String(port)}${path}`)
+async function getJson(port: number, path: string, init?: RequestInit): Promise<{ status: number; json: unknown }> {
+  const response = await fetch(`http://127.0.0.1:${String(port)}${path}`, init)
   try {
     return { status: response.status, json: JSON.parse(await response.text()) as unknown }
   } catch {
@@ -596,6 +602,35 @@ describe('usage-billing real Loader composition', () => {
     expect(doc.total.calls).toBe(2)
     expect(doc.staleSnapshot).toBe(true)
     await rm(snapshotDir, { recursive: true, force: true })
+  })
+
+  it('shows the signed-in wallet without replacing the existing API reconciliation baseline', async () => {
+    const accountBalance = vi.fn(async () => ({
+      status: 'ready', value: [{ currency: 'CNY', balance: '19' }], bonusWallets: [],
+    }))
+    const loaded = await loadCompositionWith({ credentials: 'resolved', balanceUpstream: true, accountBalance })
+    const port = loaded.webServer.port
+    const baselinePath = join(root!, 'usage-reconcile.json')
+    await getJson(port, '/api/billing/usage-stats')
+    const initial = await getJson(port, '/api/billing/balance')
+    const api = initial.json as BalanceResponse
+    expect(api.balances.find(row => row.provider === 'deepseek')).toMatchObject({ sourceRoute: 'deepseek', totalBalance: 100 })
+    expect(api.reconcile?.kind).toBe('baseline')
+    expect(accountBalance).not.toHaveBeenCalled()
+    expect(await pollForFile(baselinePath)).toBe(true)
+    const baseline = await readFile(baselinePath, 'utf8')
+
+    const client = { version: '0.2.2-rc.5', locale: 'en', timezoneOffsetSeconds: -18_000 }
+    const next = await getJson(port, '/api/billing/balance', { headers: {
+      [BALANCE_CLIENT_HEADERS.version]: client.version,
+      [BALANCE_CLIENT_HEADERS.locale]: client.locale,
+      [BALANCE_CLIENT_HEADERS.timezone]: String(client.timezoneOffsetSeconds),
+    } })
+    const account = next.json as BalanceResponse
+    expect(accountBalance).toHaveBeenCalledExactlyOnceWith(client)
+    expect(account.balances.find(row => row.provider === 'deepseek')).toMatchObject({ sourceRoute: 'deepseek-account', totalBalance: 19 })
+    expect(account.reconcile).toBeUndefined()
+    expect(await readFile(baselinePath, 'utf8')).toBe(baseline)
   })
 
   it('serves the balance without waiting for a full fold (issue #104)', { timeout: 60_000 }, async () => {

@@ -57,8 +57,23 @@ export interface ExtraModelPrice {
  *  与"网络不可达"（unreachable）区分，便于定位是上游变更还是网络问题。 */
 export type BalanceError = 'unconfigured' | 'unauthorized' | 'unreachable' | 'invalid'
 
+/** Metadata from the UI making the balance request, for the host login wallet service. */
+export interface BalanceClientMetadata {
+  version: string
+  locale: string
+  timezoneOffsetSeconds: number
+}
+
+export const BALANCE_CLIENT_HEADERS = {
+  version: 'x-dsh-billing-client-version',
+  locale: 'x-dsh-billing-client-locale',
+  timezone: 'x-dsh-billing-client-timezone-offset',
+} as const
+
 /** 一个提供方的账户余额（`/api/billing/balance` 的一行）。 */
 export interface ProviderBalance {
+  /** Exact direct route of the wallet queried (without `direct:`), also on failures. */
+  sourceRoute?: string
   /** 提供方 id（小写，如 `deepseek`），与模型表 provider 匹配用。 */
   provider: string
   /** 显示名（如 `DeepSeek`）。 */

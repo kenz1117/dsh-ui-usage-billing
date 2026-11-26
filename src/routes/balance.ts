@@ -14,7 +14,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { ProviderBalance } from '../pricing-shared.ts'
+import { BALANCE_CLIENT_HEADERS, type BalanceClientMetadata, type ProviderBalance } from '../pricing-shared.ts'
 import type { ReconcileEvent } from '../reconcile.ts'
 import { ANONYMOUS_ROUTE_AUTH, guardLoopback } from '../guard.ts'
 
@@ -32,6 +32,7 @@ export interface BalanceDoc {
 interface CachedBalance {
   doc: BalanceDoc
   at: number
+  hasClientMetadata?: boolean
 }
 
 /** 路由依赖。 */
@@ -40,7 +41,7 @@ export interface BalanceDeps {
   /** 装配器内缓存 + 时间戳（`Date.now()`）。 */
   cached: () => CachedBalance
   /** in-flight 去重的刷新入口。 */
-  refreshOnce: () => Promise<void>
+  refreshOnce: (client?: BalanceClientMetadata) => Promise<void>
   /** 5 分钟缓存间隔（毫秒）。 */
   cacheMs: number
   /**
@@ -55,6 +56,18 @@ export interface BalanceDeps {
   responseBudgetMs: number
 }
 
+function readClientMetadata(headers: IncomingMessage['headers']): BalanceClientMetadata | undefined {
+  const version = headers[BALANCE_CLIENT_HEADERS.version]
+  const locale = headers[BALANCE_CLIENT_HEADERS.locale]
+  const offset = headers[BALANCE_CLIENT_HEADERS.timezone]
+  if (typeof version !== 'string' || !/^[\w.+-]{1,64}$/.test(version) ||
+      typeof locale !== 'string' || !/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8}){0,8}$/.test(locale) ||
+      typeof offset !== 'string' || !/^-?\d{1,5}$/.test(offset)) return undefined
+  const timezoneOffsetSeconds = Number(offset)
+  if (Math.abs(timezoneOffsetSeconds) > 14 * 3600) return undefined
+  return { version, locale, timezoneOffsetSeconds }
+}
+
 export function registerBalanceRoute(ctx: Context, deps: BalanceDeps): void {
   ctx.effect(
     () => ctx.webServer.register({
@@ -64,9 +77,12 @@ export function registerBalanceRoute(ctx: Context, deps: BalanceDeps): void {
       handler: async (req: IncomingMessage, res: ServerResponse) => {
         if (!guardLoopback(req, res, deps.trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-        // 外部余额 API 低频变化：缓存 5 分钟，命中直接返回，避免每 30 秒后台轮询都打上游。
-        if (Date.now() - deps.cached().at < deps.cacheMs) {
-          res.end(JSON.stringify(deps.cached().doc))
+        const client = readClientMetadata(req.headers)
+        const cached = deps.cached()
+        // A headerless caller may have populated an API-only cache. Let the first
+        // UI request refresh it with account metadata, keeping the normal TTL thereafter.
+        if (Date.now() - cached.at < deps.cacheMs && (client === undefined || cached.hasClientMetadata === true)) {
+          res.end(JSON.stringify(cached.doc))
           return
         }
         // 刷新预算：到期立刻回上一次成功的余额（stale 标记），不把响应挂在
@@ -77,7 +93,7 @@ export function registerBalanceRoute(ctx: Context, deps: BalanceDeps): void {
           console.warn('[usage-billing] refreshBalances failed; serving cached balances:', error)
         }
         await Promise.race([
-          deps.refreshOnce().then(() => undefined, onFailure),
+          deps.refreshOnce(client).then(() => undefined, onFailure),
           new Promise<void>(resolve => { setTimeout(() => { timedOut = true; resolve() }, deps.responseBudgetMs).unref() }),
         ])
         const doc = deps.cached().doc

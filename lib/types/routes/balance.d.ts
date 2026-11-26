@@ -12,7 +12,7 @@
  * `cached()` 与 `refreshOnce()` 拿到结果。
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { ProviderBalance } from '../pricing-shared.ts';
+import { type BalanceClientMetadata, type ProviderBalance } from '../pricing-shared.ts';
 import type { ReconcileEvent } from '../reconcile.ts';
 /** 余额响应体形状（来自装配器 `balanceCache.doc`）。 */
 export interface BalanceDoc {
@@ -27,6 +27,7 @@ export interface BalanceDoc {
 interface CachedBalance {
     doc: BalanceDoc;
     at: number;
+    hasClientMetadata?: boolean;
 }
 /** 路由依赖。 */
 export interface BalanceDeps {
@@ -34,7 +35,7 @@ export interface BalanceDeps {
     /** 装配器内缓存 + 时间戳（`Date.now()`）。 */
     cached: () => CachedBalance;
     /** in-flight 去重的刷新入口。 */
-    refreshOnce: () => Promise<void>;
+    refreshOnce: (client?: BalanceClientMetadata) => Promise<void>;
     /** 5 分钟缓存间隔（毫秒）。 */
     cacheMs: number;
     /**

@@ -94,7 +94,7 @@ Overview / Queue / Billing / Usage / Trends / Agents / Rates / Settings. The her
 ## 🔌 Subscriptions & balance
 
 - **Subscription quotas**: detect Kimi, Z.ai, OpenCode Go, MiniMax, Claude, CommandCode and more, with remaining quota and reset times; subscription-channel model cost is 0.
-- **Official balances**: DeepSeek, Kimi, StepFun, SiliconFlow, xAI, Zhipu GLM and Tencent Cloud TokenHub, with days remaining estimated from the last 7 days.
+- **Official balances**: DeepSeek, Kimi, StepFun, SiliconFlow, xAI, Zhipu GLM and Tencent Cloud TokenHub, with days remaining estimated from the last 7 days. On hosts that provide the DeepSeek sign-in account service (such as supported Desktop builds), the dashboard prefers the signed-in wallet (topped-up plus granted balance). It falls back to the Platform API-key balance when the account wallet is unavailable. Balance-delta reconciliation uses only the Platform API-key wallet.
 - **Relays and reconciliation**: merge keys by site, read New API / Sub2API rolling quotas, and cross-check custom endpoints or official balance deltas against the ledger.
 
 ![Billing: provider billing & subscriptions (balance, plan quota, model usage) and session detail](screenshots/billing.png)

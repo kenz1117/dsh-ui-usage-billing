@@ -2,7 +2,7 @@
  * GET /api/billing/balance：余额 + 对账提示（同一响应体）。30s 轮询单端点
  * 比拆成两个端点更省（余额查询本身已有熔断与重试），失败回退空值。
  */
-import type { ProviderBalance, ReconcileNotice } from '../../pricing-shared.ts';
+import { type ProviderBalance, type ReconcileNotice } from '../../pricing-shared.ts';
 /** Path to the account-balance endpoint served by this plugin's node half. */
 export declare const BALANCE_PATH = "/api/billing/balance";
 /** 余额文档（服务端响应体的白名单切片）。 */

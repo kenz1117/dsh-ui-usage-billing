@@ -15,7 +15,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import type { CustomBalanceConfig, CustomBalanceExtract, ProviderBalance } from './pricing-shared.ts'
+import type { BalanceClientMetadata, CustomBalanceConfig, CustomBalanceExtract, ProviderBalance } from './pricing-shared.ts'
 import { firstResolvedRef, routeKeyRefCandidates } from './route-keys.ts'
 import { createCooldownGate, withRetry } from './resilience.ts'
 import { callTokenHub, firstEnabledTeamId, parseTencentCredential, pickRemainingQuota, toNumber } from './tc3.ts'
@@ -125,38 +125,107 @@ async function queryBearerBalance(
   }
 }
 
-/**
- * Query the DeepSeek account balance.
- * @param ctx - host context carrying the credentials seam.
- * @param apiKeyEnv - credential reference resolving the DeepSeek API key.
- * @returns the balance row, or an error row when the key/endpoint misbehaves.
- */
-function queryDeepSeek(ctx: Context, apiKeyEnv: string): Promise<ProviderBalance> {
-  return queryBearerBalance(ctx, DEEPSEEK_BALANCE_URL, apiKeyEnv, 'deepseek', 'DeepSeek', (data) => {
-    const doc = data as { is_available?: unknown; balance_infos?: unknown }
-    const infos = Array.isArray(doc.balance_infos) ? doc.balance_infos : []
-    const info = infos[0] as {
-      currency?: unknown
-      total_balance?: unknown
-      granted_balance?: unknown
-      topped_up_balance?: unknown
-    } | undefined
-    const currency = typeof info?.currency === 'string' ? info.currency : undefined
-    const totalBalance = toNumber(info?.total_balance)
-    const grantedBalance = toNumber(info?.granted_balance)
-    const toppedUpBalance = toNumber(info?.topped_up_balance)
-    const isAvailable = typeof doc.is_available === 'boolean' ? doc.is_available : undefined
-    return {
-      provider: 'deepseek',
-      displayName: 'DeepSeek',
-      // exactOptionalPropertyTypes: 只携带有值的可选字段。
-      ...(currency !== undefined ? { currency } : {}),
-      ...(totalBalance !== undefined ? { totalBalance } : {}),
-      ...(grantedBalance !== undefined ? { grantedBalance } : {}),
-      ...(toppedUpBalance !== undefined ? { toppedUpBalance } : {}),
-      ...(isAvailable !== undefined ? { isAvailable } : {}),
+/** Narrow runtime seam for the optional DSH login-account wallet service. */
+interface DeepSeekAccountBalanceService {
+  getBalance(options: BalanceClientMetadata): Promise<unknown>
+}
+
+function parseDeepSeekBalance(data: unknown): ProviderBalance {
+  const doc = data as { is_available?: unknown; balance_infos?: unknown }
+  const infos = Array.isArray(doc.balance_infos) ? doc.balance_infos : []
+  const info = infos[0] as {
+    currency?: unknown
+    total_balance?: unknown
+    granted_balance?: unknown
+    topped_up_balance?: unknown
+  } | undefined
+  const currency = typeof info?.currency === 'string' ? info.currency : undefined
+  const totalBalance = toNumber(info?.total_balance)
+  const grantedBalance = toNumber(info?.granted_balance)
+  const toppedUpBalance = toNumber(info?.topped_up_balance)
+  const isAvailable = typeof doc.is_available === 'boolean' ? doc.is_available : undefined
+  return {
+    provider: 'deepseek',
+    displayName: 'DeepSeek',
+    ...(currency !== undefined ? { currency } : {}),
+    ...(totalBalance !== undefined ? { totalBalance } : {}),
+    ...(grantedBalance !== undefined ? { grantedBalance } : {}),
+    ...(toppedUpBalance !== undefined ? { toppedUpBalance } : {}),
+    ...(isAvailable !== undefined ? { isAvailable } : {}),
+  }
+}
+
+const DEEPSEEK_ROW = { provider: 'deepseek', displayName: 'DeepSeek' } as const
+const ACCOUNT_WALLET = { ...DEEPSEEK_ROW, sourceRoute: 'deepseek-account' } as const
+
+function accountBalanceRow(details: unknown): ProviderBalance | undefined {
+  const doc = details as { status?: unknown; value?: unknown; bonusWallets?: unknown } | null
+  if (doc?.status !== 'ready') return undefined
+  const sumsByCurrency = (items: unknown): Map<string, number> => {
+    const sums = new Map<string, number>()
+    if (!Array.isArray(items)) return sums
+    for (const item of items as readonly ({ currency?: unknown; balance?: unknown } | null)[]) {
+      const currency = item?.currency
+      const value = toNumber(item?.balance)
+      if ((currency === 'CNY' || currency === 'USD') && value !== undefined) {
+        sums.set(currency, (sums.get(currency) ?? 0) + value)
+      }
     }
-  })
+    return sums
+  }
+  const toppedUp = sumsByCurrency(doc.value)
+  const granted = sumsByCurrency(doc.bonusWallets)
+  const has = (currency: string): boolean => toppedUp.has(currency) || granted.has(currency)
+  const currency = has('CNY') ? 'CNY' : has('USD') ? 'USD' : undefined
+  if (currency === undefined) return undefined
+  const toppedUpBalance = toppedUp.get(currency)
+  const grantedBalance = granted.get(currency)
+  return {
+    ...ACCOUNT_WALLET,
+    currency,
+    totalBalance: (toppedUpBalance ?? 0) + (grantedBalance ?? 0),
+    ...(toppedUpBalance !== undefined ? { toppedUpBalance } : {}),
+    ...(grantedBalance !== undefined ? { grantedBalance } : {}),
+    isAvailable: true,
+  }
+}
+
+function accountWalletFailure(reason: string, error: 'invalid' | 'unreachable' = 'unreachable'): ProviderBalance {
+  // Avoid logging upstream error objects, which may carry account request details.
+  console.warn(`[usage-billing] DeepSeek sign-in wallet: ${reason}; trying Platform API-key fallback`)
+  return { ...ACCOUNT_WALLET, error }
+}
+
+async function queryDeepSeekAccount(ctx: Context, client?: BalanceClientMetadata): Promise<ProviderBalance | undefined> {
+  // Non-UI callers and hosts without client metadata keep the API-key path.
+  if (client === undefined) return undefined
+  let account: DeepSeekAccountBalanceService | undefined
+  try {
+    account = ctx.get?.('deepseekAccount') as DeepSeekAccountBalanceService | undefined
+  } catch {
+    return accountWalletFailure('host service lookup threw')
+  }
+  if (typeof account?.getBalance !== 'function') return undefined
+  try {
+    const details = await account.getBalance(client)
+    if (details === null) return undefined // Signed out, or the grant changed during the request.
+    if ((details as { status?: unknown } | undefined)?.status === 'failed') {
+      return accountWalletFailure('host returned failed')
+    }
+    return accountBalanceRow(details) ?? accountWalletFailure('unusable balance response', 'invalid')
+  } catch {
+    return accountWalletFailure('balance query threw')
+  }
+}
+
+/** Query the DeepSeek account balance, preferring the logged-in DSH wallet. */
+async function queryDeepSeek(ctx: Context, apiKeyEnv: string, client?: BalanceClientMetadata): Promise<ProviderBalance> {
+  const account = await queryDeepSeekAccount(ctx, client)
+  if (account !== undefined && account.error === undefined) return account
+  if (apiKeyEnv === '') return account ?? { ...DEEPSEEK_ROW, error: 'unconfigured' }
+  const api = await queryBearerBalance(ctx, DEEPSEEK_BALANCE_URL, apiKeyEnv, 'deepseek', 'DeepSeek', parseDeepSeekBalance)
+  if (api.error === 'unconfigured') return account ?? api
+  return { ...api, sourceRoute: 'deepseek' }
 }
 
 /**
@@ -322,12 +391,14 @@ interface BalanceQuerier {
   route: string
   /** 厂商显示名（模型表 vendor 名），未配置时报未配置时同时用作 provider id。 */
   displayName: string
-  /** 余额查询器；`apiKeyEnv` 为该 route 解析到的凭据引用（缺失时查未配置）。 */
-  querier: (ctx: Context, apiKeyEnv: string) => Promise<ProviderBalance>
+  /** 余额查询器；DeepSeek 可在没有 API Key 时先读取可选的登录钱包服务。 */
+  querier: (ctx: Context, apiKeyEnv: string, client?: BalanceClientMetadata) => Promise<ProviderBalance>
+  /** Whether the querier can return a balance without an API-key credential. */
+  canQueryWithoutKey?: boolean
 }
 
 const QUERIERS: readonly BalanceQuerier[] = [
-  { route: 'deepseek', displayName: 'deepseek', querier: queryDeepSeek },
+  { route: 'deepseek', displayName: 'deepseek', querier: queryDeepSeek, canQueryWithoutKey: true },
   { route: 'moonshot', displayName: '月之暗面', querier: queryMoonshot },
   { route: 'stepfun', displayName: '阶跃星辰', querier: queryStepFun },
   { route: 'siliconflow', displayName: '硅基流动', querier: querySiliconFlow },
@@ -356,11 +427,13 @@ const QUERIERS: readonly BalanceQuerier[] = [
  * dashboard shows a stable state instead of dropping the row.
  * @param ctx - host context carrying the credentials seam.
  * @param providers - the llm-pi-ai providers dict (`<route> → { apiKeyEnv? }`).
+ * @param client - UI metadata for the optional DeepSeek sign-in wallet query.
  * @returns the balance rows (one per provider).
  */
 export async function queryBalances(
   ctx: Context,
   providers: Readonly<Record<string, { apiKeyEnv?: string }>>,
+  client?: BalanceClientMetadata,
 ): Promise<readonly ProviderBalance[]> {
   // 宽容解析口：单条 ref 解析失败不影响其他 route。
   const resolveRef = async (name: string): Promise<string | undefined> => {
@@ -392,12 +465,13 @@ export async function queryBalances(
     if (existing !== undefined && existing.ref !== undefined) continue
     byName.set(item.displayName, { displayName: item.displayName, querier: item.querier, ref: item.configured ? item.ref : undefined })
   }
-  return await Promise.all([...byName.values()].map(({ displayName, querier, ref }) => {
-    // 未配置 key 的厂商直接标未配置，不走 credentialRef（空 ref 会被其拒绝）。
-    if (ref === undefined) {
-      return Promise.resolve({ provider: displayName, displayName, error: 'unconfigured' as const })
+  return await Promise.all([...byName.values()].map(async ({ displayName, querier, ref }) => {
+    // DeepSeek 可先读取登录钱包；其他厂商未配置 key 时直接标未配置。
+    const canQueryWithoutKey = QUERIERS.some(item => item.displayName === displayName && item.canQueryWithoutKey === true)
+    if (ref === undefined && !canQueryWithoutKey) {
+      return { provider: displayName, displayName, error: 'unconfigured' as const }
     }
-    return querier(ctx, ref)
+    return querier(ctx, ref ?? '', client)
   }))
 }
 

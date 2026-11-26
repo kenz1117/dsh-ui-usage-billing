@@ -8,7 +8,8 @@ import type { ComponentProps } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { bindSnapshotSelector } from './bind-snapshot-selector'
 import { UsageBilling } from '../src/client/UsageBilling.tsx'
-import { fetchReconcile } from '../src/client/api/balance.ts'
+import { fetchBalanceDoc, fetchReconcile } from '../src/client/api/balance.ts'
+import { BALANCE_CLIENT_HEADERS } from '../src/pricing-shared.ts'
 import { createBillingBudgetStore } from '../src/client/budget-store.ts'
 import { zh } from '../src/client/locales.ts'
 
@@ -57,6 +58,30 @@ const makeProps = (): ComponentProps<typeof UsageBilling> => {
 }
 
 describe('余额差对账提示渲染', () => {
+  it('sends the host release and current document language with each balance request', async () => {
+    const lang = document.documentElement.lang
+    const offset = vi.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(-330)
+    const fetchSpy = vi.fn(async () => ({ ok: true, text: async () => '{"balances":[]}' }))
+    vi.stubGlobal('__DSH_BOOT__', { release: { version: '0.2.2-rc.5' } })
+    vi.stubGlobal('fetch', fetchSpy)
+    try {
+      document.documentElement.lang = 'en'
+      await fetchBalanceDoc()
+      document.documentElement.lang = 'zh-CN'
+      await fetchBalanceDoc()
+      for (const [call, locale] of [[1, 'en'], [2, 'zh-CN']] as const) {
+        expect(fetchSpy).toHaveBeenNthCalledWith(call, '/api/billing/balance', expect.objectContaining({ headers: {
+          [BALANCE_CLIENT_HEADERS.version]: '0.2.2-rc.5',
+          [BALANCE_CLIENT_HEADERS.locale]: locale,
+          [BALANCE_CLIENT_HEADERS.timezone]: '19800',
+        } }))
+      }
+    } finally {
+      document.documentElement.lang = lang
+      offset.mockRestore()
+    }
+  })
+
   it('fetchReconcile parses a drift notice from the balance response', async () => {
     stubBalanceApi({ kind: 'drift', spent: 12, todayOfficialCost: 2 })
     const notice = await fetchReconcile()
