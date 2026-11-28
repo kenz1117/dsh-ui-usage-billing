@@ -55,13 +55,16 @@ it('keeps first save, edit, and clear forward-only through live folds, restart, 
   const dir = mkdtempSync(join(tmpdir(), 'billing-peak-fold-'))
   try {
     const path = join(dir, 'schedule.json')
-    let clock = time + 100
+    // Beijing noon changed Flash's official off/peak prices from ¥6/¥12 to
+    // ¥5/¥10 for 1M input + 1M output. Assert the published prices directly.
+    const reprice = Date.parse('2026-09-10T04:00:00Z')
+    let clock = reprice - 100
     let store = openScheduleStore(path, eligibleScheduleModel, () => clock)
     let ledger: UsageLedgerDocument | undefined
     let stamp = 'one', archived = false
     const sessions = {
-      target: [message('key')],
-      independent: [message('other')],
+      target: [message('key', 'flash', clock - 1)],
+      independent: [message('other', 'flash', clock - 1)],
     }
     const readFrom = vi.fn(async (id: keyof typeof sessions, from: number) => ({ meta: { id }, events: sessions[id].filter(e => e.seq >= from) }))
     const persistence = { list: async () => archived ? [] : Object.keys(sessions).map(id => ({ id })), stampOf: async () => stamp, readFrom } as unknown as UsagePersistence
@@ -71,11 +74,11 @@ it('keeps first save, edit, and clear forward-only through live folds, restart, 
     })
     const agg = make()
     const base = await agg.aggregate()
-    const native = base.bySite![`site:${site}`]!.cost
-    expect(native).toBeGreaterThan(0)
+    expect(base.bySite![`site:${site}`]!.cost).toBe(12)
     expect(readFrom).toHaveBeenCalledTimes(2)
-    const samples = [native]
-    for (const [i, rule] of [{ windows: [0, 1440], weekendOffPeak: false }, { windows: [] }, null].entries()) {
+    const targetCosts = [12, 6, 10, 5]
+    const peerCosts = [12, 12, 5, 5]
+    for (const [i, rule] of [{ windows: [] }, { windows: [0, 1440], weekendOffPeak: false }, null].entries()) {
       const before = await agg.aggregate()
       const readCount = readFrom.mock.calls.length
       await agg.withPeakScheduleChange(latest => store.save({ version: 3, changes: { [scoped]: rule } }, latest))
@@ -85,15 +88,14 @@ it('keeps first save, edit, and clear forward-only through live folds, restart, 
       expect(after.peakSchedule?.models[scoped]).toEqual(rule ?? undefined)
       sessions.target.push(message('key', 'flash', clock, i + 2))
       sessions.independent.push(message('other', 'flash', clock, i + 2))
-      samples.push(i === 0 ? native * 2 : native)
       stamp += '+'
       clock += 100
       // Change the document TTL key on each new suffix without waiting in real time.
       vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_000)
       try {
         const doc = await agg.aggregate()
-        expect(doc.bySite![`site:${site}`]!.cost).toBeCloseTo(samples.reduce((a, b) => a + b, 0))
-        expect(doc.bySite!['direct:other']!.cost).toBeCloseTo((i + 2) * native)
+        expect(doc.bySite![`site:${site}`]!.cost).toBe(targetCosts.slice(0, i + 2).reduce((a, b) => a + b, 0))
+        expect(doc.bySite!['direct:other']!.cost).toBe(peerCosts.slice(0, i + 2).reduce((a, b) => a + b, 0))
       } finally { vi.restoreAllMocks() }
     }
     const expected = await agg.aggregate()
@@ -110,8 +112,8 @@ it('keeps first save, edit, and clear forward-only through live folds, restart, 
     for (const doc of [restarted, replayed, archivedDoc, ledgerOnly]) {
       expect(doc.bySite).toEqual(expected.bySite)
       expect(doc.total).toEqual(expected.total)
-      expect(doc.byTurn?.filter(row => row.sessionId === 'target').map(row => [row.turn, row.scheduleTier]).sort())
-        .toEqual([[1, undefined], [2, 'peak'], [3, 'offPeak'], [4, undefined]])
+      expect(doc.byTurn?.filter(row => row.sessionId === 'target').map(row => [row.turn, row.scheduleTier, row.cost]).sort())
+        .toEqual([[1, undefined, 12], [2, 'offPeak', 6], [3, 'peak', 10], [4, undefined, 5]])
       expect(doc.staleLedgerSessions ?? 0).toBe(0)
     }
   } finally { rmSync(dir, { recursive: true, force: true }) }

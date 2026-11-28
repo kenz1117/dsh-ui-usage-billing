@@ -35,6 +35,15 @@ describe('source-scoped peak displays', () => {
     expect(band('2026-11-25T00:59Z', { utcOffsetMinutes: 0, windows: [0, 60, 60, 120] })?.nextSwitchInMs).toBe(61 * 60000)
     for (const windows of [[], [0, 1440]]) expect(band('2026-11-25T00:00Z', { windows })?.nextSwitchInMs).toBe(Infinity)
     expect(band('2026-01-01T00:00Z', { utcOffsetMinutes: 0, holidays: ['20270101'] })?.nextSwitchInMs).toBe(365 * 86400000)
+    // Countdown uses fixed wall-clock offsets and elapsed UTC minutes, never host DST.
+    for (const [time, minutes] of [
+      ['2026-03-08T06:59Z', 61],  // one minute before the New York spring jump
+      ['2026-11-01T05:59Z', 121], // one minute before the New York fall repeat
+    ] as const) {
+      expect(band(time, { utcOffsetMinutes: -300, windows: [0, 180] })).toEqual({
+        tier: 'peak', nextSwitchInMs: minutes * 60000,
+      })
+    }
   })
   it('colors each historical row by its recorded tier', () => {
     const view = render(<RoundCostChart rounds={[{ ...turn, scheduleTier: 'offPeak' }, { ...turn, turn: 2 }]} flags={[]} currency="cny" t={key => key} />)
