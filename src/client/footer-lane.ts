@@ -16,19 +16,32 @@
  *
  * 判定（§25 方案 A：卡片型占用者有邻居时降级为按钮形态）：
  * - 横向行且有邻居 → 收成 36×36 图标钮（此时禁止 `width:100%`）；
- * - 纵向栈 → 同样收成图标钮；
+ * - 纵向座位 → 只有「放不下宽卡」的窄座才收成图标钮；**整行宽座**（第三方
+ *   皮肤显式给出的宽座，客人被拉满整行、宽卡放得下）保留宽卡（issue #140）；
  * - 其余（独占一行 / 测不到行）→ 保持宽卡。
  *
  * 本模块只做测量与判定，不碰宿主容器（不得注入 `flex-wrap` /
  * `flex-direction` / `order`，见 §25 硬规则 2）。
  */
 
+/**
+ * 宽卡仍能显示主金额的最小座位宽度（= 卡面 `≤140px` 档容器查询的断点：
+ * 窄于此只剩仪表图标）。窄于此的座位放不下宽卡，纵向时按 §25.6 收成图标钮。
+ */
+const CARD_MIN_READABLE_WIDTH = 140
+
 /** 同槽占位事实。 */
 export interface FooterLaneFacts {
   /** 真正的行容器（最近的 flex 祖先）；找不到时为 null（此时没有横向挤占问题）。 */
   row: HTMLElement | null
-  /** 行是纵向列（手机端侧栏浮层）而非横向行。 */
+  /** 行是纵向列（手机端侧栏浮层 / 皮肤改写的竖座）而非横向行。 */
   stacked: boolean
+  /**
+   * 纵向座位是「整行宽座」：客人被拉满整行宽度（`align-items` 拉伸）且座位
+   * 放得下宽卡。第三方皮肤（如 dsh-islands-ui 的工作区底部宽座）这样声明
+   * 「这里要放得下宽插件」；手机端的窄竖条不是（issue #140 现象二）。
+   */
+  wideSeat: boolean
   /** 同行可见占位者数量（不含自己）。 */
   neighbors: number
 }
@@ -71,6 +84,13 @@ function findFooterRow(self: HTMLElement): HTMLElement | null {
  * 与不可见元素（`display:none` / `visibility:hidden` / 脱离布局的
  * `position:absolute|fixed` / 零尺寸）。
  *
+ * **剪枝顺序要紧**（issue #140 根因一）：宿主把每个槽位渲染成**一个**
+ * `display:contents` 锚点，锚点里装着该槽的**所有**占用者。若在展开
+ * `display:contents` 之前就按 `contains(self)` 剪枝，命中的是那个锚点，
+ * 整棵子树（含同槽邻居）被一起剪掉 → 邻居数恒为 0 → 横向行永远判成
+ * 「独占一行」，宽卡把邻居挤出面板（社区 issue #237 的老现象）。
+ * 所以先展开 contents，再在真实盒子上剪枝。
+ *
  * 零尺寸判据只在**有布局**时生效（`row.clientWidth > 0`）：jsdom 不做布局，
  * 所有 rect 都是 0，照字面执行会把邻居全判成不可见。
  */
@@ -78,15 +98,16 @@ function countNeighbors(row: HTMLElement, self: HTMLElement): number {
   const hasLayout = row.clientWidth > 0
   let count = 0
   const visit = (el: Element): void => {
-    // 自己所在的子树整棵跳过（自己不是「邻居」）。
-    if (el.contains(self)) return
     const style = getComputedStyle(el)
     if (style.display === 'none' || style.visibility === 'hidden') return
     if (style.position === 'absolute' || style.position === 'fixed') return
+    // display:contents 的槽位锚点不是盒子：展开它的子项再判断。
     if (style.display === 'contents') {
       for (const child of Array.from(el.children)) visit(child)
       return
     }
+    // 自己所在的子树整棵跳过（自己不是「邻居」）。
+    if (el.contains(self)) return
     if (hasLayout) {
       const rect = el.getBoundingClientRect()
       if (rect.width === 0 && rect.height === 0) return
@@ -98,15 +119,35 @@ function countNeighbors(row: HTMLElement, self: HTMLElement): number {
 }
 
 /**
+ * 纵向座位是不是「整行宽座」：客人被拉满整行宽度（`align-items` 拉伸），
+ * 且座位宽度放得下宽卡的可读宽度。
+ *
+ * 判据取「座位把客人拉满整行」而不是「座位有多宽」：手机抽屉（宽 340px）
+ * 比皮肤宽座（≈260px）更宽，用宽度分不开两者；拉伸才是宽座的签名——窄竖条
+ * 排的是 36px 图标钮，不会拉伸（拉伸会把图标钮拉成整行宽，反而破相）。
+ * 宽度测不到时（未布局 / 隐藏）不误降级：宁可在宽座上多留一张卡，也不把
+ * 明明放得下的座位收成图标钮。
+ */
+function isWideSeat(row: HTMLElement, style: CSSStyleDeclaration): boolean {
+  const align = style.alignItems
+  const stretches = align === '' || align === 'normal' || align === 'stretch'
+  if (!stretches) return false
+  const width = row.clientWidth
+  if (width === 0) return true
+  return width >= CARD_MIN_READABLE_WIDTH
+}
+
+/**
  * 测量同槽占位事实。
  * @param self - 本插件在行内的元素（触发卡外壳）。
- * @returns 行容器 / 是否纵向栈 / 邻居数量。
+ * @returns 行容器 / 是否纵向栈 / 是否宽座 / 邻居数量。
  */
 export function measureFooterLane(self: HTMLElement): FooterLaneFacts {
   const row = findFooterRow(self)
-  if (row === null) return { row: null, stacked: false, neighbors: 0 }
-  const stacked = getComputedStyle(row).flexDirection === 'column'
-  return { row, stacked, neighbors: countNeighbors(row, self) }
+  if (row === null) return { row: null, stacked: false, wideSeat: false, neighbors: 0 }
+  const style = getComputedStyle(row)
+  const stacked = style.flexDirection === 'column' || style.flexDirection === 'column-reverse'
+  return { row, stacked, wideSeat: stacked && isWideSeat(row, style), neighbors: countNeighbors(row, self) }
 }
 
 /**
@@ -117,8 +158,11 @@ export function measureFooterLane(self: HTMLElement): FooterLaneFacts {
 export function resolveTriggerForm(facts: FooterLaneFacts): TriggerForm {
   // 测不到行：没有行就没有横向挤占问题，保持宽卡（与旧行为一致）。
   if (facts.row === null) return 'card'
-  // 纵向栈：宽卡仍以 width:100% 铺满，把同列其它入口挤到下方（§25.6）。
-  if (facts.stacked) return 'icon'
+  // 纵向座位（手机端侧栏浮层 / 皮肤改写的竖座）：宽卡占满整行会把同列的
+  // 其它入口挤到下方（§25.6）。但**整行宽座**（皮肤显式声明要放得下宽插件）
+  // 放得下宽卡，收窄只会白丢信息（issue #140 现象二）——只有放不下的窄座
+  // 才按 §25.6 收成图标钮。
+  if (facts.stacked) return facts.wideSeat ? 'card' : 'icon'
   // 横向行内有邻居：宽卡不得占满，否则把邻居推出面板外（§25 硬规则 1）。
   return facts.neighbors > 0 ? 'icon' : 'card'
 }

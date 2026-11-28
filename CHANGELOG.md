@@ -2,11 +2,34 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。条目按版本倒序，只记录用户可感知的变更；完整提交历史见 [GitHub commits](https://github.com/kenz1117/dsh-ui-usage-billing/commits/main)。
 
-当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.3-alpha.2。当前 `latest` 指向 `1.8.10` 正式版（= `1.8.9` 内容 + 预览版 `1.8.3-alpha.15` 晋升：issue #130 侧栏共存形态 A + 目录扩容批 2026-11-25）；`alpha` 仍指向 `1.8.3-alpha.15`（内容已是正式版子集），下一轮预览从 `1.8.3-alpha.16` 起。后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+当前只维护一份 `main` 代码，分为**正式版**（非预发布版本号、npm `latest`、正式 GitHub Release）与**预览版**（预发布版本号、npm `alpha`、Pre-release）两个发行通道，共同适配 DSH 0.1.2-alpha.1 ~ 0.2.3-alpha.2。当前 `latest` 指向 `1.8.11` 正式版（= `1.8.10` 内容 + 预览版 `1.8.3-alpha.16` 晋升：issue #140 形态 A 两处失效的修复 + 宿主 `0.2.3-alpha.3` 兼容声明）；`alpha` 仍指向 `1.8.3-alpha.16`（内容已是正式版的子集），下一轮预览从 `1.8.3-alpha.17` 起。后续正式版只切 `latest`，预览版只切 `alpha`。标签策略与监控机制见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ## 当前版本（1.8.x，适配 DSH 0.1.2-alpha.1 ~ 0.2.3-alpha.2）
 
 > 安装建议钉具体版本号，避免包管理器的发布冷静期解析到其他版本。
+
+### v1.8.11（2026-11-28）
+
+**正式版**：把预览版 `1.8.3-alpha.16` 的内容晋升到正式通道。内容 = `1.8.10` 全部条目 + 下列两条（预览通道停在 `1.8.3-alpha.16`，其内容已是本正式版的子集，下一轮预览从 `1.8.3-alpha.17` 起）。
+
+- **修复：侧栏 footer 同槽共存的邻居计数与纵向座位判定（issue #140）**。`1.8.10` 发布后，社区报告者在宿主 `0.2.2-rc.5` + `ds-bot@0.4.0` / `dsh-islands-ui@1.2.7` 上验出形态 A 两处没生效：
+  - **根因一（邻居恒 0）**：宿主把每个槽位渲染成**一个** `display:contents` 锚点，锚点里装着该槽的**所有**占用者；我们的剪枝（`contains(self)`）写在 `display:contents` 展开**之前**，命中的正是那个锚点 → 整棵子树（含同槽邻居）被一起剪掉 → 邻居数恒为 0 → 横向行永远被判成「独占一行」，形态 A 在真机上等于没生效（`1.8.10` 的验收把邻居注入到 `.footerActions` 的直接子项，正好绕开了真实路径）。改为**先展开 `display:contents`、再剪枝**（与社区参考实现 `measureFooterSeat` 的顺序一致）。
+  - **根因二（纵向宽座被当成竖栈）**：此前把「纵向」直接等同于「手机端竖栈」，忽略了第三方皮肤给的**整行宽座**。现在纵向座位按形态分两种：**窄竖条**（客人按内容排、`align-items` 非拉伸）→ 36×36 图标钮（§25.6，宽卡会把同列入口挤到下方）；**整行宽座**（`align-items:stretch` 的整行宽座，如 `dsh-islands-ui` 的工作区底部）→ **保留宽卡**（宽卡放得下，收窄只是白丢信息）。判据**不按座位宽度**：手机抽屉 `min(88vw,340px)` 比皮肤宽座（≈264px）更宽，用宽度分不开两者；「座位把客人拉满整行」才是宽座的签名。座位宽度测不到时按宽座处理（宁可在宽座上多留一张卡，也不误收窄）。
+  - **验收**（宿主 `0.2.3-alpha.3` 隔离环境，端口 3093）：独占一行时宽卡 264×64 正常渲染；把邻居注入**槽位锚点内部**后自动收成 36×36 图标钮，邻居移除后自动还原成宽卡；纵向宽座（`column` + `align-items:stretch`）保留宽卡；纵向窄竖条（`column` + `align-items:center`、120px）收成图标钮；仪表盘 8 个 Tab 正常。
+- **兼容：声明宿主 `0.2.3-alpha.3` 兼容（矩阵 40 → 41 项）**。宿主 `0.2.3-alpha.3`（2026-11-28 发布）把客户端包拆成 host / client 两半：`ui-primitives` 与 `ui-slots` 的**根导出换成了 host 半边**（`lib/index.js` 只导出 `apply`），客户端面挪到 `/client` 子路径。**运行时 specifier 不变**——浏览器里插件 bundle 的 `require('@deepseek-ai/dsh-client-ui-primitives')` 由宿主的模块表应答（`immediately` row → 客户端面），老宿主应答不了新路径，因此不把新 specifier 塞进 `PLATFORM_MODULES`；只有测试环境（node 解析根导出 → host 半边 → `Modal`/`Tooltip` 全是 `undefined`）在 `vitest.config.ts` 里加了一条 alias 指向随包发布的客户端源码面。计费面零漂移：同数据在 `0.2.3-alpha.2`（端口 3092）与 `0.2.3-alpha.3`（端口 3093）上的 `/api/billing/usage-stats` 逐字段相同（仅 `pluginVersion` 与 `updatedAt` 不同）。
+- **体积**：客户端 bundle **377,100 字节（368.3 KiB，自设强线 500 KiB，余量 131.7 KiB）**；`lib/index.js` 402,148 字节（不设门禁）。
+- **验收**：960 用例（97 文件）全绿 / lint 十一条纪律守卫全绿 / 目录、兼容、平台种子校验全绿 / API e2e 7 条全绿（宿主 `0.2.3-alpha.3`）。
+
+### v1.8.3-alpha.16（2026-11-28）
+
+**预览版**：修 issue #140——形态 A 在真机上两处失效（邻居计数恒 0、纵向宽座被当成竖栈）。内容 = `1.8.10` 全部条目 + 下列一条。
+
+- **修复：侧栏 footer 同槽共存的邻居计数与纵向座位判定（issue #140）**。`1.8.10`（= `1.8.3-alpha.15` 晋升）发布后，报告者在宿主 `0.2.2-rc.5` + `ds-bot@0.4.0` / `dsh-islands-ui@1.2.7` 上验出形态 A 两处没生效：
+  - **根因一（邻居恒 0）**：宿主把每个槽位渲染成**一个** `display:contents` 锚点，锚点里装着该槽的**所有**占用者；我们的剪枝（`contains(self)`）写在 `display:contents` 展开**之前**，命中的正是那个锚点 → 整棵子树（含同槽邻居）被一起剪掉 → 邻居数恒为 0 → 横向行永远被判成「独占一行」，形态 A 在真机上等于没生效（`1.8.10` 的验收把邻居注入到 `.footerActions` 的直接子项，正好绕开了真实路径）。改为**先展开 `display:contents`、再剪枝**（与社区参考实现 `measureFooterSeat` 的顺序一致）。
+  - **根因二（纵向宽座被当成竖栈）**：此前把「纵向」直接等同于「手机端竖栈」，忽略了第三方皮肤给的**整行宽座**。现在纵向座位按形态分两种：**窄竖条**（客人按内容排、`align-items` 非拉伸）→ 36×36 图标钮（§25.6，宽卡会把同列入口挤到下方）；**整行宽座**（`align-items:stretch` 的整行宽座，如 `dsh-islands-ui` 的工作区底部）→ **保留宽卡**（宽卡放得下，收窄只是白丢信息）。判据**不按座位宽度**：手机抽屉 `min(88vw,340px)` 比皮肤宽座（≈264px）更宽，用宽度分不开两者；「座位把客人拉满整行」才是宽座的签名。座位宽度测不到时按宽座处理（宁可在宽座上多留一张卡，也不误收窄）。
+  - **验收**（宿主 `0.2.3-alpha.2` 隔离环境，端口 3092）：独占一行时宽卡 264×64 正常渲染；把邻居注入**槽位锚点内部**后自动收成 36×36 图标钮，邻居移除后自动还原成宽卡；纵向宽座（`column` + `align-items:stretch`）保留宽卡；纵向窄竖条（`column` + `align-items:center`、120px）收成图标钮。
+  - **兼容：声明宿主 `0.2.3-alpha.3` 兼容（矩阵 40 → 41 项）**。宿主 `0.2.3-alpha.3`（2026-11-28 发布）把客户端包拆成 host / client 两半：`ui-primitives` 与 `ui-slots` 的**根导出换成了 host 半边**（`lib/index.js` 只导出 `apply`），客户端面挪到 `/client` 子路径。**运行时 specifier 不变**——浏览器里插件 bundle 的 `require('@deepseek-ai/dsh-client-ui-primitives')` 由宿主的模块表应答（`immediately` row → 客户端面），老宿主应答不了新路径，因此不把新 specifier 塞进 `PLATFORM_MODULES`；只有测试环境（node 解析根导出 → host 半边 → `Modal`/`Tooltip` 全是 `undefined`）在 `vitest.config.ts` 里加了一条 alias 指向随包发布的客户端源码面。计费面零漂移：同数据在 `0.2.3-alpha.2`（端口 3092）与 `0.2.3-alpha.3`（端口 3093）上的 `/api/billing/usage-stats` 逐字段相同（仅 `pluginVersion` 与 `updatedAt` 不同）；真机侧栏卡、仪表盘 8 个 Tab、共享态收窄与还原均正常。
+  - **体积**：客户端 bundle 376,867 → **377,100 字节（368.3 KiB，强线 500 KiB，余量 131.7 KiB）**；`lib/index.js` 402,148 字节（不设门禁）。兼容矩阵 41 项（至宿主 `0.2.3-alpha.3`）。
 
 ### v1.8.10（2026-11-26）
 

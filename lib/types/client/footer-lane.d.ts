@@ -16,7 +16,8 @@
  *
  * 判定（§25 方案 A：卡片型占用者有邻居时降级为按钮形态）：
  * - 横向行且有邻居 → 收成 36×36 图标钮（此时禁止 `width:100%`）；
- * - 纵向栈 → 同样收成图标钮；
+ * - 纵向座位 → 只有「放不下宽卡」的窄座才收成图标钮；**整行宽座**（第三方
+ *   皮肤显式给出的宽座，客人被拉满整行、宽卡放得下）保留宽卡（issue #140）；
  * - 其余（独占一行 / 测不到行）→ 保持宽卡。
  *
  * 本模块只做测量与判定，不碰宿主容器（不得注入 `flex-wrap` /
@@ -26,8 +27,14 @@
 export interface FooterLaneFacts {
     /** 真正的行容器（最近的 flex 祖先）；找不到时为 null（此时没有横向挤占问题）。 */
     row: HTMLElement | null;
-    /** 行是纵向列（手机端侧栏浮层）而非横向行。 */
+    /** 行是纵向列（手机端侧栏浮层 / 皮肤改写的竖座）而非横向行。 */
     stacked: boolean;
+    /**
+     * 纵向座位是「整行宽座」：客人被拉满整行宽度（`align-items` 拉伸）且座位
+     * 放得下宽卡。第三方皮肤（如 dsh-islands-ui 的工作区底部宽座）这样声明
+     * 「这里要放得下宽插件」；手机端的窄竖条不是（issue #140 现象二）。
+     */
+    wideSeat: boolean;
     /** 同行可见占位者数量（不含自己）。 */
     neighbors: number;
 }
@@ -41,7 +48,7 @@ export interface FooterLaneWatch {
 /**
  * 测量同槽占位事实。
  * @param self - 本插件在行内的元素（触发卡外壳）。
- * @returns 行容器 / 是否纵向栈 / 邻居数量。
+ * @returns 行容器 / 是否纵向栈 / 是否宽座 / 邻居数量。
  */
 export declare function measureFooterLane(self: HTMLElement): FooterLaneFacts;
 /**
