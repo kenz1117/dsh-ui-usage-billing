@@ -36,10 +36,12 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function stubUsageStats(): void {
+function stubUsageStats(configured: () => unknown[] = () => [], overrides: object = {}): void {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
-    const body = url.includes('/api/billing/pricing')
+    const body = url.endsWith('/pricing-models')
+      ? { models: configured().map(key => ({ key, name: key, channel: 'Relay', route: 'relay', origin: 'https://relay.test' })), partial: false }
+      : url.includes('/api/billing/pricing')
       ? { source: 'builtin' }
       : {
           total: { calls: 2, input: 10000, output: 5000, cacheHit: 0, cacheMiss: 10000, cost: 0, reasoning: 0 },
@@ -50,7 +52,7 @@ function stubUsageStats(): void {
           byDayModels: {},
           byDayModelsSite: {},
           unpricedModels: UNPRICED,
-          updatedAt: 0,
+          updatedAt: 0, ...overrides,
         }
     return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
   }))
@@ -71,6 +73,166 @@ function makeProps(): ComponentProps<typeof UsageBilling> {
 }
 
 describe('issue #125 未收录模型的可发现性', () => {
+  it('locks and deduplicates selections, preserves edits across discovery and requires explicit prices', async () => {
+    let keys = ['relay：unknown', 'flash']
+    stubUsageStats(() => keys)
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    fireEvent.click(await screen.findByTestId('billing-unpriced-fix'))
+    const picker = await screen.findByTestId('billing-price-picker')
+    const select = (key: string) => fireEvent.change(picker, { target: { value: JSON.stringify([key, 'https://relay.test']) } })
+    await waitFor(() => expect(picker.textContent).toContain('relay：unknown'))
+    select('relay：unknown'); select('relay：unknown')
+    expect(screen.getAllByTestId('billing-user-price-row')).toHaveLength(1)
+    expect((screen.getByTestId('billing-user-price-model') as HTMLInputElement).readOnly).toBe(true)
+    const save = screen.getByTestId('billing-user-price-save') as HTMLButtonElement
+    expect(save.disabled).toBe(true)
+    const inputs = screen.getByTestId('billing-user-price-normal').querySelectorAll('input')
+    for (const input of inputs) fireEvent.change(input, { target: { value: '0' } })
+    expect(save.disabled).toBe(false)
+    const off = screen.getByTestId('billing-user-price-offpeak').querySelectorAll('input')
+    fireEvent.change(off[0]!, { target: { value: '0' } }); expect(save.disabled).toBe(true)
+    for (const input of [...off].slice(1)) fireEvent.change(input, { target: { value: '0' } })
+    expect(save.disabled).toBe(false)
+    keys = ['flash', 'added']
+    fireEvent.focus(window)
+    await waitFor(() => expect(picker.textContent).toContain('added'))
+    expect(inputs[0]!.value).toBe('0')
+    select('flash')
+    expect(screen.getAllByTestId('billing-user-price-row')).toHaveLength(2)
+    expect(Number(screen.getAllByTestId('billing-user-price-normal')[1]!.querySelector('input')!.value)).toBeGreaterThan(0)
+    fireEvent.click(save)
+    const rows = JSON.parse(localStorage.getItem('dsh.ui-usage-billing.prices')!)
+    expect(rows[0]).toEqual({ key: 'relay：unknown', origin: 'https://relay.test', input: 0, output: 0, cacheHit: 0, offPeak: { input: 0, output: 0, cacheHit: 0 } })
+  })
+
+  it('saves a catalog selection and explicit zero while retaining the prior price and raw draft of an invalid row', async () => {
+    const store = 'dsh.ui-usage-billing.prices'
+    const saved = { key: 'saved', origin: 'https://saved.test', input: 1, cacheHit: 2, output: 3 }
+    localStorage.setItem(store, JSON.stringify([{ ...saved, key: 'remove' }, saved]))
+    stubUsageStats()
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    fireEvent.click(await screen.findByTestId('billing-unpriced-fix'))
+    const picker = await screen.findByTestId('billing-price-picker') as HTMLSelectElement
+    const catalog = JSON.stringify(['flash', ''])
+    expect([...picker.options].some(option => option.value === catalog)).toBe(true)
+    fireEvent.change(picker, { target: { value: catalog } })
+    const model = screen.getAllByTestId('billing-user-price-model')[1] as HTMLInputElement
+    fireEvent.change(model, { target: { value: 'renamed' } })
+    const invalid = screen.getAllByTestId('billing-user-price-normal')[1]!.querySelector('input')!
+    fireEvent.change(invalid, { target: { value: '-1.50' } }); fireEvent.blur(invalid)
+    fireEvent.click(screen.getAllByTestId('billing-user-price-select')[0]!)
+    fireEvent.click(screen.getByTestId('billing-user-price-remove-selected'))
+    expect(screen.getAllByTestId('billing-user-price-normal')[0]!.querySelector('input')).toBe(invalid)
+    const catalogInputs = screen.getAllByTestId('billing-user-price-normal')[1]!.querySelectorAll('input')
+    for (const input of catalogInputs) fireEvent.change(input, { target: { value: '0' } })
+    fireEvent.click(screen.getByTestId('billing-user-price-save'))
+    expect(invalid.value).toBe('-1.50')
+    expect(model.value).toBe('renamed')
+    expect(JSON.parse(localStorage.getItem(store)!)).toEqual([saved, expect.objectContaining({ key: 'flash', input: 0, cacheHit: 0, output: 0 })])
+    expect(screen.getAllByTestId('billing-user-price-row')[0]!.textContent).toContain(t('priceIncomplete'))
+    expect(screen.getAllByTestId('billing-user-price-row')[1]!.textContent).toContain(t('priceSaved'))
+    expect((screen.getByTestId('billing-user-price-save') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('recalculates the dashboard after saving a catalog price, including a zero-priced source estimate', async () => {
+    const cell = { calls: 1, input: 1_000_000, cacheMiss: 750_000, cacheHit: 250_000, output: 500_000, cost: 3, reasoning: 0 }
+    const total = { calls: 2, input: 2_000_000, cacheMiss: 1_500_000, cacheHit: 500_000, output: 1_000_000, cost: 6, reasoning: 0 }
+    const legacy = '2026-11-01', modern = '2026-11-02'
+    stubUsageStats(undefined, {
+      total, byModel: { flash: total }, byDay: { [legacy]: cell, [modern]: cell },
+      byDayModels: { [legacy]: { flash: cell }, [modern]: { flash: cell } },
+      byDayModelsSite: { [modern]: { flash: { 'site:https://relay.test': cell } } }, unpricedModels: [],
+      // A stale server-supplied hint must never become a client-side pricing decision.
+      sourceEstimatedModels: ['not-from-recost'],
+    })
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    const hero = () => Number(screen.getByTestId('billing-hero-range-value').textContent)
+    await waitFor(() => expect(hero()).toBe(6))
+    expect(screen.queryByTestId('billing-source-estimate')).toBeNull()
+    fireEvent.click(screen.getByTestId('billing-tab-settings'))
+    const picker = await screen.findByTestId('billing-price-picker') as HTMLSelectElement
+    // Only the relay-specific option comes from observed usage; the model default is from the catalog.
+    const id = JSON.stringify(['flash', ''])
+    expect([...picker.options].filter(option => option.value === id)).toHaveLength(1)
+    fireEvent.change(picker, { target: { value: id } })
+    const setPrices = (rates: string[]) => {
+      screen.getByTestId('billing-user-price-normal').querySelectorAll('input').forEach((field, i) => {
+        fireEvent.change(field, { target: { value: rates[i] } })
+      })
+      for (const field of screen.getByTestId('billing-user-price-offpeak').querySelectorAll('input')) {
+        fireEvent.change(field, { target: { value: '' } })
+      }
+    }
+    setPrices(['8', '4', '10'])
+    fireEvent.click(screen.getByTestId('billing-user-price-save'))
+    fireEvent.click(screen.getByTestId('billing-tab-overview'))
+    // Two calls × (0.75M misses × ¥8 + 0.25M hits × ¥4 + 0.5M output × ¥10).
+    expect(hero()).toBe(24)
+    expect(screen.queryByTestId('billing-source-estimate')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('billing-tab-settings'))
+    const origin = screen.getByTestId('billing-user-price-origin') as HTMLInputElement
+    if (origin.readOnly) fireEvent.click(screen.getByRole('button', { name: t('userPriceEditIdentity') }))
+    fireEvent.change(origin, { target: { value: 'https://relay.test' } })
+    setPrices(['0', '0', '0'])
+    fireEvent.click(screen.getByTestId('billing-user-price-save'))
+    fireEvent.click(screen.getByTestId('billing-tab-overview'))
+    expect(screen.getByTestId('billing-source-estimate').textContent).toBe(`${t('sourceEstimate')} · flash`)
+    expect(hero()).toBe(0)
+  })
+
+  it('shows partial discovery, ignores malformed rows, and unlocks identity only on Edit', async () => {
+    stubUsageStats(() => [42, 'valid:relay'])
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    fireEvent.click(await screen.findByTestId('billing-unpriced-fix'))
+    const picker = await screen.findByTestId('billing-price-picker')
+    await screen.findByText(t('priceModelsPartial'))
+    expect(picker.textContent).toContain('valid:relay')
+    expect(picker.textContent).not.toContain('42')
+    fireEvent.change(picker, { target: { value: JSON.stringify(['valid:relay', 'https://relay.test']) } })
+    const model = screen.getByTestId('billing-user-price-model') as HTMLInputElement
+    const origin = screen.getByTestId('billing-user-price-origin') as HTMLInputElement
+    expect(model.readOnly).toBe(true)
+    expect(origin.readOnly).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: t('userPriceEditIdentity') }))
+    expect(model.readOnly).toBe(false)
+    expect(origin.readOnly).toBe(false)
+    expect(document.activeElement).toBe(model)
+    expect(model.value).toBe('valid:relay')
+    expect(origin.value).toBe('https://relay.test')
+    fireEvent.change(origin, { target: { value: 'alt.test/v1' } })
+    for (const input of screen.getByTestId('billing-user-price-normal').querySelectorAll('input')) {
+      fireEvent.change(input, { target: { value: '1' } })
+    }
+    fireEvent.click(screen.getByTestId('billing-user-price-save'))
+    expect(JSON.parse(localStorage.getItem('dsh.ui-usage-billing.prices')!)[0]).toMatchObject({
+      key: 'valid:relay', origin: 'https://alt.test', input: 1,
+    })
+  })
+
+  it('labels only the model actually estimated from a sole source, and identifies unresolved usage separately', async () => {
+    const cell = { calls: 1, input: 100, output: 10, cacheHit: 0, cacheMiss: 100, cost: 0, reasoning: 0 }
+    const models = { legacy: cell, exact: cell, empty: cell, defaulted: cell }
+    const source = { origin: 'https://relay.test', input: 1, cacheHit: 0, output: 1 }
+    localStorage.setItem('dsh.ui-usage-billing.prices', JSON.stringify([
+      ...Object.keys(models).map(key => ({ key, ...source })), { key: 'defaulted', input: 2, cacheHit: 0, output: 2 },
+    ]))
+    const day = '2026-11-01'
+    stubUsageStats(undefined, { byModel: models, byDayModels: { [day]: models }, byDay: { [day]: cell }, unpricedModels: Object.keys(models),
+      byDayModelsSite: { [day]: { exact: { 'site:https://relay.test': cell }, empty: {} } } })
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    const estimate = await screen.findByTestId('billing-source-estimate')
+    expect(estimate.textContent).toBe(`${t('sourceEstimate')} · legacy`)
+    const unresolved = screen.getByTestId('billing-unpriced-hint')
+    expect(unresolved.textContent).toContain('empty')
+    for (const key of ['legacy', 'exact', 'defaulted']) expect(unresolved.textContent).not.toContain(key)
+  })
+
   it('概览横幅列出未收录模型 id', async () => {
     stubUsageStats()
     render(<UsageBilling {...makeProps()} />)

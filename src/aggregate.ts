@@ -299,6 +299,8 @@ export interface ModelUsage {
   reasoning: number
   /** 该模型本次统计的所有调用是否都走订阅通道（coding/token plan）；混合通道不置位。 */
   plan?: boolean
+  /** 模型 × 日期 × 站点格混有订阅和其他调用时，记录可确认的订阅次数。 */
+  planCalls?: number
   /** 走官方渠道的调用数（DeepSeek 官方直连；其余为三方）。 */
   officialCalls: number
   /** 走官方渠道的费用（CNY）；三方费用 = cost - officialCost。 */
@@ -3080,7 +3082,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
               // 不再借模型全局口径）。旧账本行无 planSiteCalls 计数 → 保守不置位，
               // 客户端回退模型全局 plan（byModel.plan）。
               const count = planSiteCalls.get(planSiteKey(day, model, site)) ?? 0
-              return [site, count === cell.calls && cell.calls > 0 ? { ...cell, plan: true } : cell]
+              if (count === cell.calls && count > 0) return [site, { ...cell, plan: true }]
+              if (count > 0 && count < cell.calls) return [site, { ...cell, planCalls: count }]
+              return [site, cell]
             }))]))]))
 
       // 性能指标：按模型（含 P90）、按小时×模型聚合；无任何可测样本时整个 perf 字段缺失。

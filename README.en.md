@@ -86,7 +86,7 @@ Overview / Queue / Billing / Usage / Trends / Agents / Rates / Settings. The her
 
 - **Channel attribution**: official, direct, relay and unknown routes stay separate; route and model aliases repair historical attribution.
 - **Time-based pricing**: live models.dev data, 247 built-in models across 25 vendors, segmented peak pricing and live FX; later changes never rewrite history.
-- **Real-cost overrides**: set relay-specific prices for the same model and fill gaps for uncatalogued models.
+- **Real-cost overrides**: set relay-specific prices for the same model and fill gaps for uncatalogued models. For each day and model, an existing site grid (even an empty one) leaves unattributed usage and mixed paid/subscription buckets at the host cost. A missing grid uses the model default or, if absent, the sole source price. The dashboard labels these source estimates because the source is unknown. The picker includes configured, used and catalog models. Save applies complete, unique rows and keeps the last saved price for rows with invalid drafts. Enter `0` explicitly for a free rate.
 - **Budget controls**: global and per-model budgets, 50 / 80 / 100% alerts, balance warnings and last-40-turn spike attribution.
 
 ![Rates: model rate table (peak/off-peak split and live rate)](screenshots/pricing.png)

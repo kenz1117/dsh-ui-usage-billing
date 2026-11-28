@@ -16,6 +16,7 @@ import { registerUsageStatsRoute } from '../src/routes/usage-stats.ts'
 import { registerBalanceRoute } from '../src/routes/balance.ts'
 import { registerNotifyClaimRoute } from '../src/routes/notify-claim.ts'
 import { registerRelayQuotasRoute } from '../src/routes/relay-quotas.ts'
+import { registerPricingModelsRoute } from '../src/routes/pricing-models.ts'
 import { registerPricingRoutes } from '../src/routes/pricing.ts'
 import { registerSubscriptionsRoute } from '../src/routes/subscriptions.ts'
 import { registerUsageToolRoute } from '../src/routes/usage-tool.ts'
@@ -54,6 +55,7 @@ const REGISTRARS: { name: string; register: (ctx: Context) => void }[] = [
   { name: 'balance', register: (ctx) => registerBalanceRoute(ctx, {} as never) },
   { name: 'notify-claim', register: (ctx) => registerNotifyClaimRoute(ctx, {} as never) },
   { name: 'relay-quotas', register: (ctx) => registerRelayQuotasRoute(ctx, {} as never) },
+  { name: 'pricing-models', register: ctx => registerPricingModelsRoute(ctx, new Set()) },
   { name: 'pricing', register: (ctx) => registerPricingRoutes(ctx, {} as never) },
   { name: 'subscriptions', register: (ctx) => registerSubscriptionsRoute(ctx, {} as never) },
   { name: 'usage-tool', register: (ctx) => registerUsageToolRoute(ctx, {} as never) },
@@ -61,13 +63,14 @@ const REGISTRARS: { name: string; register: (ctx: Context) => void }[] = [
 ]
 
 describe('web route admission (host 0.2.3-alpha.1+)', () => {
-  it('registers ten routes', () => {
+  it('registers the billing routes', () => {
     const routes = REGISTRARS.flatMap(registrar => captureRoutes(registrar.register))
-    expect(routes).toHaveLength(10)
+    expect(routes).toHaveLength(11)
     expect(routes.map(route => route.path).sort()).toEqual([
       '/api/billing/balance',
       '/api/billing/notify-claim',
       '/api/billing/pricing',
+      '/api/billing/pricing-models',
       '/api/billing/pricing/refresh',
       '/api/billing/relay-quotas',
       '/api/billing/subscriptions',

@@ -98,6 +98,11 @@ describe('filterStatsByChannels', () => {
     expect(Object.keys(filtered.byDayModelsSite?.['2026-11-14']?.['flash'] ?? {})).toEqual(['direct:deepseek'])
   })
 
+  it('retains an empty site grid when its last attributed channel is hidden', () => {
+    const filtered = filterStatsByChannels(statsOf(), new Set(['direct:deepseek']))
+    expect(filtered.byDayModelsSite?.['2026-11-14']?.pro).toEqual({})
+  })
+
   it('keeps usage that cannot be attributed to a channel (old-format rows)', () => {
     // 旧格式会话的账本行没有三维维度：其用量只在 byDay/byModel/total 里，
     // 隐藏通道不得把它一并扣掉（宁可多算，不可静默丢数）。

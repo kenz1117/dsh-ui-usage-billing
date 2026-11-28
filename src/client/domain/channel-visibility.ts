@@ -201,7 +201,8 @@ export function filterStatsByChannels(stats: UsageStats, hidden: ReadonlySet<str
         }
         keptBuckets[siteKey] = cell
       }
-      if (Object.keys(keptBuckets).length > 0) keptModels[modelKey] = keptBuckets
+      // An empty known grid must remain distinct from a legacy cell without site data.
+      keptModels[modelKey] = keptBuckets
     }
     keptSites[date] = keptModels
   }

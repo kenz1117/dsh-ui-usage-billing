@@ -282,6 +282,8 @@ export interface UsageStats {
     cost: number
     /** 该格全部调用都走订阅通道（聚合侧按三维格置位）；旧快照缺失，回退全局口径。 */
     plan?: boolean
+    /** 混合格中可确认的订阅调用次数（费用仅来自非订阅调用）。 */
+    planCalls?: number
   }>>>
   /**
    * 峰谷分桶（全量逐调用真实判档）：1.0.8 起服务端按调用时刻精确归桶，
@@ -324,6 +326,10 @@ export interface UsageStats {
   }>
   /** 不可计价模型 id（未收录/无价，费用按 0 计）；旧快照可能缺失。 */
   unpricedModels?: readonly string[]
+  /** Client-only: at least one observed call was repriced; a zero total is intentional. */
+  userPriceApplied?: boolean
+  /** Display-only: models with usage estimated from a sole, unverified source price. */
+  sourceEstimatedModels?: readonly string[]
   /** 联网搜索请求的单次费用估算（人民币元，配置回显）；0 或缺省 = 未启用估算。 */
   searchCallEstimateCny?: number
   /** 按角色费用归因（估算口径：输出实测，输入按消息长度摊分）；旧快照可能缺失。 */

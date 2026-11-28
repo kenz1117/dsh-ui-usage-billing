@@ -165,7 +165,9 @@ export type UsageBillingKey =
   | 'toolName'
   | 'userPrices'
   | 'userPricesHint'
-  | 'userPriceSave'
+  | 'userPriceSave' | 'priceSaved'
+  | 'userPriceEditIdentity'
+  | 'pricePicker' | 'priceModelsPartial' | 'priceModelsPending' | 'priceModelDefault' | 'priceIncomplete' | 'priceUnpriced'
   | 'userPriceModel'
   | 'userPriceSource'
   | 'userPriceSourceHint'
@@ -350,6 +352,7 @@ export type UsageBillingKey =
   | 'popTitle'
   | 'popDirectLead'
   | 'popSubLead'
+  | 'sourceEstimate'
   | 'unpricedHint'
   | 'channelVisibility'
   | 'channelVisibilityHint'
@@ -615,7 +618,10 @@ export const zh: Record<UsageBillingKey, string> = {
   'toolName': '工具',
   'userPrices': '自定义单价',
   'userPricesHint': '为未收录或变价模型填入实付单价，总览与日趋势按此重估；模型可用下拉候选（目录键或模型 id）；来源留空=该模型默认价，填入中转站域名=仅该来源的同名模型用此价（协议可省）；低谷价三栏填后按峰/谷混合估算，留空=平档',
-  'userPriceSave': '保存',
+  'userPriceSave': '保存', 'priceSaved': '已保存',
+  'userPriceEditIdentity': '编辑模型和来源',
+  'pricePicker': '选择已配置、已用或目录模型', 'priceModelsPartial': '部分模型配置读取失败，将自动重试。', 'priceModelsPending': '正在读取模型配置…',
+  'priceModelDefault': '模型默认价', 'priceIncomplete': '此行未保存。请填写模型和非负单价（免费填 0，低谷价可整组留空），并检查模型与来源是否重复。', 'priceUnpriced': '未定价',
   'userPriceModel': '模型',
   'userPriceSource': '来源（中转站域名）',
   'userPriceSourceHint': '留空=默认价，或 https://api.中转站.com',
@@ -803,7 +809,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'popNoConsumption': '暂无消耗',
   'popDirectLead': '直联',
   'popSubLead': '订阅',
-  'unpricedHint': '{count} 个模型未收录计价，费用已按 0 计：{models}',
+  'sourceEstimate': '部分用量按唯一来源价估算（实际来源未知）',
+  'unpricedHint': '{count} 个模型仍有未定价用量，未覆盖部分沿用原账单费用：{models}',
   'channelVisibility': '通道可见性',
   'channelVisibilityHint': '隐藏的通道不参与统计口径：账单分组、概览数字、趋势与用量随之联动。会话 / 工具 / 角色等没有通道维度的指标仍为全量。',
   'channelVisibilityShowAll': '全部显示',
@@ -1067,7 +1074,10 @@ export const en: Record<UsageBillingKey, string> = {
   'toolName': 'Tool',
   'userPrices': 'Custom prices',
   'userPricesHint': 'Enter actual per-1M-token prices; main views are re-costed. Pick a model key from the dropdown candidates. Leave source empty for the model default, or enter a relay origin (protocol optional) to price only that source. Fill all three off-peak fields for peak/off-peak estimation; leave them empty for flat pricing.',
-  'userPriceSave': 'Save',
+  'userPriceSave': 'Save', 'priceSaved': 'Saved',
+  'userPriceEditIdentity': 'Edit model and source',
+  'pricePicker': 'Choose a configured, used or catalog model', 'priceModelsPartial': 'Some configured models could not be loaded. Retrying automatically.', 'priceModelsPending': 'Loading configured models…',
+  'priceModelDefault': 'Model default', 'priceIncomplete': 'Row not saved. Enter a model and nonnegative rates (0 for free), complete or clear the off-peak band, and check for a duplicate model and source.', 'priceUnpriced': 'Unpriced',
   'userPriceModel': 'Model',
   'userPriceSource': 'Source (relay origin)',
   'userPriceSourceHint': 'Empty = default; e.g. https://api.relay.com',
@@ -1255,7 +1265,8 @@ export const en: Record<UsageBillingKey, string> = {
   'popNoConsumption': 'No usage yet',
   'popDirectLead': 'Direct',
   'popSubLead': 'Subscription',
-  'unpricedHint': '{count} models not priced; their cost counts as 0: {models}',
+  'sourceEstimate': 'Some usage is estimated at the sole source price (actual source unknown)',
+  'unpricedHint': '{count} models have unpriced usage. Uncovered usage retains its recorded cost: {models}',
   'channelVisibility': 'Channel visibility',
   'channelVisibilityHint': 'Hidden channels are excluded from the statistics scope: billing groups, overview numbers, trends and usage follow along. Session / tool / role metrics have no channel dimension and stay global.',
   'channelVisibilityShowAll': 'Show all',

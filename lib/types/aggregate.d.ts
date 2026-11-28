@@ -206,6 +206,8 @@ export interface ModelUsage {
     reasoning: number;
     /** 该模型本次统计的所有调用是否都走订阅通道（coding/token plan）；混合通道不置位。 */
     plan?: boolean;
+    /** 模型 × 日期 × 站点格混有订阅和其他调用时，记录可确认的订阅次数。 */
+    planCalls?: number;
     /** 走官方渠道的调用数（DeepSeek 官方直连；其余为三方）。 */
     officialCalls: number;
     /** 走官方渠道的费用（CNY）；三方费用 = cost - officialCost。 */
