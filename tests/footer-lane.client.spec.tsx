@@ -2,12 +2,15 @@
 /**
  * 侧栏 footer 同槽占位（社区约定 §20.4 / §25「卡片型占用者」方案 A）。
  *
- * 宿主不向占位者暴露同槽邻居信息，占位事实只能从 DOM 反推。本剧本锁三件事：
- * 1) 测量：数出同排的可见占位者（展开 display:contents 的槽位外壳、
+ * 宿主不向占位者暴露同槽邻居信息，占位事实只能从 DOM 反推。本剧本锁四件事：
+ * 1) 测量：数出同排的可见占位者（**展开 display:contents 的槽位锚点**、
  *    排除隐藏项与自己的子树）；
- * 2) 判定：横向行有邻居 → 图标钮；纵向栈 → 图标钮；独占/测不到行 → 宽卡；
+ * 2) 判定：横向行有邻居 → 图标钮；纵向窄座 → 图标钮；纵向宽座 → 宽卡；
+ *    独占/测不到行 → 宽卡；
  * 3) 组件：同槽有邻居时触发卡真的收成 36×36 图标钮（不再 width:100%，
- *    否则把邻居推出面板外——用户看到的「别的插件像没加载」）。
+ *    否则把邻居推出面板外——用户看到的「别的插件像没加载」）；
+ * 4) 回归（issue #140）：夹具按**宿主真实结构**建——每个槽位只有一个
+ *    `display:contents` 锚点，锚点里装着该槽的所有占用者。
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -26,7 +29,7 @@ afterEach(() => {
 
 const t = (key: string): string => (zh as Record<string, string>)[key] ?? key
 
-/** 复刻宿主侧栏 footer 结构：`.footerActions` 是 flex 行，每个占用者一个 display:contents 槽位外壳。 */
+/** 复刻宿主侧栏 footer 结构：`.footerActions` 是 flex 行。 */
 function buildRow(direction: 'row' | 'column' = 'row'): HTMLDivElement {
   const row = document.createElement('div')
   row.style.display = 'flex'
@@ -34,12 +37,22 @@ function buildRow(direction: 'row' | 'column' = 'row'): HTMLDivElement {
   return row
 }
 
-/** 把元素塞进一个 display:contents 的槽位外壳（宿主渲染结构）。 */
-function intoSlot(row: HTMLElement, child: HTMLElement): void {
-  const shell = document.createElement('div')
-  shell.style.display = 'contents'
-  shell.appendChild(child)
-  row.appendChild(shell)
+/**
+ * 宿主把每个槽位渲染成**一个** `display:contents` 锚点，锚点里装着该槽的
+ * 所有占用者（`scoped-slots.tsx` 的 `ANCHOR_STYLE` + `SlotOutlet`）。
+ * 「每个占用者一个锚点」是错的，那正是 issue #140 里测不出来的原因。
+ */
+function intoSlot(row: HTMLElement, ...guests: HTMLElement[]): HTMLDivElement {
+  const anchor = document.createElement('div')
+  anchor.style.display = 'contents'
+  for (const guest of guests) anchor.appendChild(guest)
+  row.appendChild(anchor)
+  return anchor
+}
+
+/** jsdom 不做布局：座位宽度得手工喂。 */
+function setSeatWidth(row: HTMLElement, width: number): void {
+  Object.defineProperty(row, 'clientWidth', { value: width, configurable: true })
 }
 
 describe('footer-lane 测量与判定', () => {
@@ -56,12 +69,12 @@ describe('footer-lane 测量与判定', () => {
     expect(resolveTriggerForm(facts)).toBe('card')
   })
 
-  it('同排有邻居时判定为图标钮（方案 A：禁止 width:100%）', () => {
+  it('同一槽位锚点里有邻居时判定为图标钮（宿主真实结构，issue #140 根因一）', () => {
+    // 宿主真实 DOM：.footerActions > div[data-slot] > (邻居, 自己)
     const row = buildRow()
     const self = document.createElement('span')
-    intoSlot(row, self)
     const sibling = document.createElement('button')
-    intoSlot(row, sibling)
+    intoSlot(row, sibling, self)
     document.body.appendChild(row)
 
     const facts = measureFooterLane(self)
@@ -72,24 +85,53 @@ describe('footer-lane 测量与判定', () => {
   it('邻居被隐藏（display:none）时不算占位，回到宽卡', () => {
     const row = buildRow()
     const self = document.createElement('span')
-    intoSlot(row, self)
     const sibling = document.createElement('button')
     sibling.style.display = 'none'
-    intoSlot(row, sibling)
+    intoSlot(row, sibling, self)
     document.body.appendChild(row)
 
     expect(resolveTriggerForm(measureFooterLane(self))).toBe('card')
   })
 
-  it('纵向栈（手机端侧栏浮层）即便没有邻居也收成图标钮', () => {
+  it('纵向窄座（客人按内容排、不拉伸）即便没有邻居也收成图标钮（§25.6）', () => {
     const row = buildRow('column')
+    row.style.alignItems = 'center'
+    setSeatWidth(row, 120)
     const self = document.createElement('span')
     intoSlot(row, self)
     document.body.appendChild(row)
 
     const facts = measureFooterLane(self)
     expect(facts.stacked).toBe(true)
+    expect(facts.wideSeat).toBe(false)
     expect(resolveTriggerForm(facts)).toBe('icon')
+  })
+
+  it('纵向宽座（客人拉满整行、座位放得下宽卡）保留宽卡（issue #140 现象二）', () => {
+    // 第三方皮肤（如 dsh-islands-ui）把 footer 座位改成整行宽座：客人被拉满
+    // 整行宽度，宽卡放得下 —— 这时收窄只会白丢信息。
+    const row = buildRow('column')
+    row.style.alignItems = 'stretch'
+    setSeatWidth(row, 264)
+    const self = document.createElement('span')
+    intoSlot(row, self)
+    document.body.appendChild(row)
+
+    const facts = measureFooterLane(self)
+    expect(facts.stacked).toBe(true)
+    expect(facts.wideSeat).toBe(true)
+    expect(resolveTriggerForm(facts)).toBe('card')
+  })
+
+  it('纵向座位再宽也放不下宽卡时仍然收成图标钮', () => {
+    const row = buildRow('column')
+    row.style.alignItems = 'stretch'
+    setSeatWidth(row, 100)
+    const self = document.createElement('span')
+    intoSlot(row, self)
+    document.body.appendChild(row)
+
+    expect(resolveTriggerForm(measureFooterLane(self))).toBe('icon')
   })
 
   it('测不到行时保守按宽卡（没有行就没有横向挤占问题）', () => {
@@ -137,18 +179,19 @@ describe('触发卡的共享态（形态 A）', () => {
     }), { status: 200, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch)
     notifiedKeys.clear()
 
-    // 复刻宿主：footer 行是 flex，里面另一个插件占了入口（各自一个槽位外壳）。
-    // 渲染容器是行里的「我方槽位」——直接渲染进行容器会清掉行里的其它孩子。
+    // 复刻宿主：footer 行是 flex，槽位锚点（display:contents）里还有别的插件。
+    // React 渲染会清空容器原有子节点，所以渲染容器是锚点里的「我方那一格」。
     const row = document.createElement('div')
     row.style.display = 'flex'
-    const ourSlot = document.createElement('div')
-    const otherSlot = document.createElement('div')
-    otherSlot.appendChild(document.createElement('button'))
-    row.appendChild(ourSlot)
-    row.appendChild(otherSlot)
+    const anchor = document.createElement('div')
+    anchor.style.display = 'contents'
+    anchor.appendChild(document.createElement('button'))
+    const ourSeat = document.createElement('div')
+    anchor.appendChild(ourSeat)
+    row.appendChild(anchor)
     document.body.appendChild(row)
 
-    const { queryByTestId, getByTestId } = render(<UsageBilling {...props()} />, { container: ourSlot })
+    const { queryByTestId, getByTestId } = render(<UsageBilling {...props()} />, { container: ourSeat })
 
     expect(getByTestId('billing-trigger-shared')).toBeTruthy()
     expect(queryByTestId('billing-trigger')).toBeNull()
