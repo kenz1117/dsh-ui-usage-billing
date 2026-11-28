@@ -13,10 +13,11 @@
  * 3. 仍未收录的模型照旧留在「未收录」提示里（不误标已收录）。
  */
 import { describe, expect, it } from 'vitest'
-import { applyBuiltinCatalog, computeCost, modelOf, resolveCatalogKey } from '../src/client/pricing.ts'
+import { applyBuiltinCatalog, computeCost, DEFAULT_PEAK_SHARE, modelOf, resolveCatalogKey } from '../src/client/pricing.ts'
+import { scheduleKey, type ScheduleHistory } from '../src/peak-schedule.ts'
 import { BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES } from '../src/builtin-catalog.ts'
 import {
-  configFingerprint, createUsageAggregator, emptyUsage, FOLD_VERSION,
+  configFingerprint, createUsageAggregator, dayStamp, emptyUsage, foldSession, FOLD_VERSION,
   DEFAULT_SEARCH_CALL_ESTIMATE_CNY, DEFAULT_SUBSCRIPTION_PROVIDERS,
   type ModelUsage, type UsageLedgerSession, type UsagePersistence,
 } from '../src/aggregate.ts'
@@ -263,4 +264,71 @@ describe('issue #127：兜底账本行的键归一与补价', () => {
     expect(turn?.model).toBe('flash')
     expect(turn?.cost).toBeGreaterThan(0)
   })
+})
+
+const RAW = 'cn:deepseek-v4.1-flash'
+const direct = 'direct:other'
+const relayOrigin = SITE.slice(5)
+// These are the same Beijing 10:00/20:00 probes inside the host-local DAY, including western host zones.
+function probe(utcHour: number) {
+  let ms = Date.parse(`${DAY}T${String(utcHour).padStart(2,'0')}:00:00Z`)
+  if (dayStamp(ms) < DAY) ms += 86_400_000
+  if (dayStamp(ms) > DAY) ms -= 86_400_000
+  return ms
+}
+const times = [probe(2), probe(12)]
+const history: ScheduleHistory = { version: 3, revisions: [
+  { effectiveFromMs: 0, changes: { [scheduleKey(SITE,'flash')]: { windows: [] }, [scheduleKey(direct,'flash')]: { windows: [] } } },
+  { effectiveFromMs: times[1]!, changes: { [scheduleKey(SITE,'flash')]: { windows: [0,1440], weekendOffPeak: false } } },
+] }
+const tokenUnit = { input: 1_000_000, output: 1_000_000, cacheHit: 0, cacheMiss: 1_000_000, cacheWrite: 0 }
+const routes = { relay: { baseURL: relayOrigin }, other: {}, 'deepseek-account': { baseURL: relayOrigin } }
+function replay(provider: string, time: number, custom: boolean) {
+  const event = { type: 'assistant/message', time, data: { turn: 1, usage: { inputTokens: tokenUnit.input, outputTokens: tokenUnit.output }, message: { source: { kind: 'model', provider, model: 'flash' } } } }
+  return foldSession([event], new Set(), undefined, routes, 0, 0, {}, custom ? history : undefined).total.cost
+}
+function weighted(provider: string, custom: boolean) {
+  return replay(provider, times[0]!, custom) * DEFAULT_PEAK_SHARE + replay(provider, times[1]!, custom) * (1 - DEFAULT_PEAK_SHARE)
+}
+function fingerprint(aliases = {}, origins: Record<string,string> = { relay: relayOrigin }) {
+  return configFingerprint(new Set(), undefined, aliases, 0, {}, new Set(), origins)
+}
+async function archive(sites: Record<string, ModelUsage>, fp?: string, uncovered = 0, turnSource?: string | null) {
+  const row = ledgerRow('archive', { fingerprint: fp }), gap = cell({ calls: uncovered, ...scale(uncovered) })
+  const sum = Object.values(sites).reduce(sumCell, gap)
+  row.fold.byModel = { [RAW]: sum }; row.fold.byDayModels = { [DAY]: { [RAW]: sum } }; row.fold.byDayModelsSite = { [DAY]: { [RAW]: sites } }
+  row.fold.total = sum; row.fold.byDay = { [DAY]: sum }; row.fold.bySite = sites; row.fold.byTier = {}; row.fold.roles.inputCost = 0
+  row.fold.turns = [{ turn: 1, model: RAW, ...tokenUnit, cost: 0, startedAt: times[0]!, ...(turnSource !== undefined && { unpricedSource: turnSource }) }]
+  const agg = createUsageAggregator(emptyPersistence(), { ledger: ledgerStore([row]).store, resolvePeakHistory: () => history })
+  return agg.aggregate()
+}
+function scale(n: number) { return { ...tokenUnit, input: tokenUnit.input*n, output: tokenUnit.output*n, cacheMiss: tokenUnit.cacheMiss*n } }
+
+it.each(['old', 'modern'])('matches live prices at each probe and weights by source tokens (%s)', async shape => {
+  const relay = cell({ calls: 1, ...scale(3) }), other = cell({ calls: 1, ...scale(1) })
+  if (shape === 'modern') { relay.pendingPrice = { scheduled: scale(3) }; other.pendingPrice = { scheduled: scale(1) } }
+  const doc = await archive({ [SITE]: relay, [direct]: other }, shape === 'old' ? fingerprint() : undefined, 1, shape === 'modern' ? SITE : undefined)
+  const relayCost = 3*weighted('relay', true), directCost = weighted('other', true), gap = weighted('other', false)
+  expect(doc.total.cost).toBeCloseTo(relayCost+directCost+gap, 8)
+  expect(doc.bySite?.[SITE]?.cost).toBeCloseTo(relayCost, 8); expect(doc.bySite?.[direct]?.cost).toBeCloseTo(directCost, 8)
+  expect(doc.byModel.flash?.cost).toBeCloseTo(doc.total.cost)
+  expect((doc.byTier?.peak.cost ?? 0)+(doc.byTier?.offPeak.cost ?? 0)).toBeCloseTo(doc.total.cost)
+  expect(Object.values(doc.byRole ?? {}).reduce((a,b) => a+b,0)).toBeCloseTo(doc.total.cost)
+  expect(doc.byTurn?.[0]?.cost).toBeCloseTo(replay('relay', times[0]!, shape === 'modern'))
+})
+it('uses a fully covered unique safe legacy source for timestamped turns', async () => {
+  const doc = await archive({ [SITE]: cell({ calls: 1, ...scale(1) }) }, fingerprint())
+  expect(doc.byTurn?.[0]?.cost).toBe(replay('relay', times[0]!, true))
+})
+it.each([undefined, 'unparseable', fingerprint({}, {}), fingerprint({}, { relay: relayOrigin, 'deepseek-account': relayOrigin }),
+  fingerprint({ 'deepseek-account': 'relay' })])('keeps uncertain legacy origins on native prices (%s)', async fp => {
+  const doc = await archive({ [SITE]: cell({ calls: 1, ...scale(1) }) }, fp)
+  expect(doc.total.cost).toBeCloseTo(weighted('relay', false))
+  expect(doc.byTurn?.[0]?.cost).toBe(replay('relay', times[0]!, false))
+})
+it('excludes subscriptions/unknown usage and prices protected account tokens natively at a shared origin', async () => {
+  const shared = cell({ calls: 3, ...scale(8), pendingPrice: { scheduled: scale(1), native: scale(2) } })
+  const doc = await archive({ [SITE]: shared, unknown: cell({ calls: 1, ...scale(5), pendingPrice: {} }) }, undefined, 0, null)
+  expect(doc.total.cost).toBeCloseTo(weighted('relay', true)+2*weighted('deepseek-account', false))
+  expect(doc.byTurn?.[0]?.cost).toBe(0)
 })

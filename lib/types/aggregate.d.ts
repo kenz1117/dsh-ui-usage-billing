@@ -10,9 +10,11 @@
  * zero while their tokens still count. Pure functions only: the persistence
  * handle is injected, so the fold is unit-testable without a host.
  */
+import { type PeakSchedule, type ScheduleHistory } from './peak-schedule.ts';
 import type { SessionEvent, SessionHeader, SessionId, SessionLogOffset as SessionLogOffsetT } from '@deepseek-ai/dsh-session/types';
 import type { TokenUsage } from '@deepseek-ai/dsh-llm';
 import { resolveCatalogKey } from './client/pricing.ts';
+import type { TokenUsageBuckets } from './client/pricing.ts';
 import { BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts';
 /** 会话日志偏移：宿主 0.1.2-alpha.4 前的 dsh-session/types 不导出 SessionLogOffset
  * 值，具名导入让这些宿主装载即崩（v1.4.19~v1.4.22 实测，alpha.3 真机复现）；
@@ -130,6 +132,8 @@ export declare function sumSiteBuckets(bySite: Readonly<Record<string, {
 };
 /** Aggregation tuning options. */
 export interface AggregateOptions {
+    resolvePeakSchedule?: () => PeakSchedule;
+    resolvePeakHistory?: () => ScheduleHistory;
     /** 订阅制 provider id 列表；缺省按订阅卡同款 id 判定（`isSubscriptionProviderId`）。 */
     subscriptionProviders?: readonly string[];
     /**
@@ -191,6 +195,11 @@ export interface AggregateOptions {
 export declare const DEFAULT_MAX_CACHE_SESSIONS = 400;
 /** One model's aggregated usage plus estimated cost in CNY. */
 export interface ModelUsage {
+    /** Unpriced day/model/site cells only. Excludes free calls and separates account tokens. */
+    pendingPrice?: {
+        scheduled?: Required<TokenUsageBuckets>;
+        native?: Required<TokenUsageBuckets>;
+    };
     calls: number;
     input: number;
     output: number;
@@ -293,6 +302,7 @@ export interface UsagePersistence {
 }
 /** The usage-stats document served to the billing dashboard. */
 export interface UsageStatsDocument {
+    peakSchedule?: PeakSchedule;
     version: number;
     updatedAt: number;
     source: 'session-logs';
@@ -464,6 +474,9 @@ export declare function subParentOf(meta: SessionHeader): string | undefined;
 export declare function foldSubagentFamilies(rows: SessionUsageRow[]): void;
 /** 每轮费用明细行：仪表盘「每轮费用」图的数据源。 */
 export interface TurnUsageRow {
+    unpricedSource?: string | null;
+    scheduleSource?: string;
+    scheduleTier?: 'peak' | 'offPeak';
     /** 会话 id（字符串形式）：不同会话的轮次号相互独立，展示时需区分。 */
     sessionId: string;
     /** 会话内轮次号。 */
@@ -647,6 +660,8 @@ export interface UsageLedgerSession {
      * 更早写入的行（配置不参与复用判定）；与当前指纹不一致的行不复用、全量重折。
      */
     fingerprint?: string;
+    /** Schedule prefix through this fold's latest event. */
+    scheduleFingerprint?: string;
     /**
      * 该行最近一次折叠落盘的时刻（epoch 毫秒）。多实例共享同一账本文件时，
      * save 侧按它做行级合并（后折覆盖先折），防止整份覆盖式落盘丢掉另一实例
@@ -765,7 +780,7 @@ export declare function foldSession(events: readonly {
     time: number;
     data: unknown;
     seq?: number;
-}[], subscriptionProviders: SubscriptionMatcher, officialProviderIds?: ReadonlySet<string>, routes?: Readonly<Record<string, ProviderRouteView>>, searchCallEstimateCny?: number, seedLength?: number, routeAliases?: Readonly<Record<string, string>>): SessionFold;
+}[], subscriptionProviders: SubscriptionMatcher, officialProviderIds?: ReadonlySet<string>, routes?: Readonly<Record<string, ProviderRouteView>>, searchCallEstimateCny?: number, seedLength?: number, routeAliases?: Readonly<Record<string, string>>, history?: ScheduleHistory): SessionFold;
 /**
  * 增量聚合器：按会话缓存折叠结果，用日志文件的 mtime+size 作失效键——
  * 日志没动的会话直接复用，只有写过的会话重新折叠；整份文档另有短 TTL
@@ -777,6 +792,8 @@ export interface UsageAggregator {
     /** Aggregate current usage, reusing cached per-session folds when their logs are untouched.
      *  并发调用共享同一次进行中的折叠（in-flight 去重），不会多倍全量重读。 */
     aggregate(): Promise<UsageStatsDocument>;
+    /** Publish a schedule change between folds using the latest timestamp already folded. */
+    withPeakScheduleChange<T>(save: (latestEventTime: number) => Promise<T>): Promise<T>;
     /**
      * 按会话 id 取该会话的完整累计用量。doc 的 `byTurn` 封顶（最近 200 轮），
      * 用户回到旧会话续聊时其轮次已被挤出，从 doc 反推会低估——这里直接读该

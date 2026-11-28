@@ -10,6 +10,7 @@
     "src/css-modules.d.ts",
     "src/pricing-shared.ts",
     "src/task-queue-shared.ts",
+    "src/peak-schedule.ts",
     "src/silent.ts"
   ],
   "references": []

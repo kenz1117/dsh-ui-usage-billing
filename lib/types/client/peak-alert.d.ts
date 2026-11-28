@@ -6,6 +6,7 @@
  * （默认关闭，用户到面板设置开启）；「同一切换点只提醒一次」由 budget store 的
  * `lastTierSwitchAt` 承担（与原系统通知共用一份去重，避免一条切换提醒弹两次）。
  */
+import { type EffectiveRule } from './scheduled-band.ts';
 import { type PriceTierId, type RateChannel } from './pricing.ts';
 /** 提醒模式：只提醒进入峰时 / 只提醒进入平价 / 峰与谷都提醒。 */
 export type PeakAlertMode = 'peak' | 'offPeak' | 'both';
@@ -55,5 +56,5 @@ export declare function savePeakAlertConfig(config: PeakAlertConfig): void;
  * @param channel - 当前会话模型的计费通道；none 直接返回 null。
  * @returns 命中（含即将进入的档位、切换时刻与通道），否则 null。
  */
-export declare function computePeakAlert(nowMs: number, config: PeakAlertConfig, lastAlertedAt: number, channel: RateChannel): PeakAlertHit | null;
+export declare function computePeakAlert(nowMs: number, config: PeakAlertConfig, lastAlertedAt: number, channel: RateChannel, rule?: EffectiveRule): PeakAlertHit | null;
 //# sourceMappingURL=peak-alert.d.ts.map

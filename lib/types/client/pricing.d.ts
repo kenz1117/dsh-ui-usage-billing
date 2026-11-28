@@ -465,7 +465,7 @@ export declare function computeCost(entry: ModelEntry, buckets: TokenUsageBucket
  * @param peakShare - fallback mix used only when `timeMs` is missing.
  * @returns the estimated cost in CNY（USD 计价模型已按当前汇率折算）。
  */
-export declare function computeCostAt(entry: ModelEntry, buckets: TokenUsageBuckets, timeMs: number | null | undefined, peakShare?: number): number;
+export declare function computeCostAt(entry: ModelEntry, buckets: TokenUsageBuckets, timeMs: number | null | undefined, peakShare?: number, tierOverride?: PriceTierId): number;
 /** 人民币 → 美元（显示换算用）：用当前生效汇率（实时优先，缺失回退内置），
  *  与计价链路的 `currentRate()` 同口径，避免实时汇率生效时 USD 显示与计价不一致。 */
 export declare function cnyToUsd(cny: number): number;

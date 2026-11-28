@@ -7,7 +7,8 @@
  * `lastTierSwitchAt` 承担（与原系统通知共用一份去重，避免一条切换提醒弹两次）。
  */
 
-import { channelUpcomingSwitch, type PriceTierId, type RateChannel } from './pricing.ts'
+import { scheduledCountdown, type EffectiveRule } from './scheduled-band.ts'
+import { type PriceTierId, type RateChannel } from './pricing.ts'
 import { swallowed } from '../silent.ts'
 
 /** 提醒模式：只提醒进入峰时 / 只提醒进入平价 / 峰与谷都提醒。 */
@@ -118,10 +119,11 @@ export function savePeakAlertConfig(config: PeakAlertConfig): void {
  * @param channel - 当前会话模型的计费通道；none 直接返回 null。
  * @returns 命中（含即将进入的档位、切换时刻与通道），否则 null。
  */
-export function computePeakAlert(nowMs: number, config: PeakAlertConfig, lastAlertedAt: number, channel: RateChannel): PeakAlertHit | null {
+export function computePeakAlert(nowMs: number, config: PeakAlertConfig, lastAlertedAt: number, channel: RateChannel, rule?: EffectiveRule): PeakAlertHit | null {
   if (!config.enabled) return null
-  const upcoming = channelUpcomingSwitch(nowMs, channel, config.leadMin * 60_000)
-  if (upcoming === null) return null
+  const band = scheduledCountdown(nowMs, channel, rule)
+  if (!band || band.nextSwitchInMs > config.leadMin * 60_000) return null
+  const upcoming = { entering: band.tier === 'peak' ? 'offPeak' as const : 'peak' as const, atMs: nowMs + band.nextSwitchInMs }
   if (config.mode === 'peak' && upcoming.entering !== 'peak') return null
   if (config.mode === 'offPeak' && upcoming.entering !== 'offPeak') return null
   if (upcoming.atMs === lastAlertedAt) return null

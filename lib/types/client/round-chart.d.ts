@@ -13,6 +13,7 @@ import type { AnomalyFlag } from './anomaly.ts';
 import { type CostCurrency } from './pricing.ts';
 /** 每轮费用图的一行（TurnUsageRow 的展示子集）。 */
 export interface RoundChartRow {
+    scheduleTier?: 'peak' | 'offPeak';
     sessionId: string;
     turn: number;
     model: string;

@@ -19,6 +19,8 @@
  * visible without opening the dashboard.
  */
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
+import type { PeakSchedule } from '../peak-schedule.ts';
+import { type ScheduledTurn } from './scheduled-band.ts';
 import type { LiveCostBarPrefs } from './usage-billing-settings.ts';
 import type { UsageBillingKey } from './locales.ts';
 /** The usage-stats shape the composer bar needs (a thin slice, not the whole doc). */
@@ -28,12 +30,12 @@ export interface LiveStats {
         cost: number;
         subCost?: number;
     }[];
-    byTurn?: readonly {
+    byTurn?: readonly (ScheduledTurn & {
         sessionId: string;
         turn: number;
-        model?: string;
         cost: number;
-    }[];
+    })[];
+    peakSchedule?: PeakSchedule;
 }
 /** 订阅额度的薄切片（/api/billing/subscriptions 响应的行）。 */
 export interface QuotaSlice {
@@ -89,6 +91,11 @@ export declare function lowQuotaChips(quotas: readonly QuotaSlice[], threshold?:
  * @returns 该会话最近一轮的归因模型键；无轮次或轮行未带模型时 undefined。
  */
 export declare function sessionModelOf(stats: LiveStats | null, sessionId: string | undefined): string | undefined;
+export declare function sessionTurnOf(stats: LiveStats | null, sessionId: string | undefined): (ScheduledTurn & {
+    sessionId: string;
+    turn: number;
+    cost: number;
+}) | undefined;
 /** 胶囊位置偏好（设置 Tab 三选）。 */
 type CapsulePosition = LiveCostBarPrefs['position'];
 /** 胶囊条的宿主座位：above=input.dock（卡片上方）；below=composer.dock（卡片下方）。 */

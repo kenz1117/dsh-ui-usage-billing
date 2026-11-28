@@ -1876,6 +1876,17 @@ describe('ledger foldVersion / stale confidence', () => {
     expect(current().sessions[0]?.foldVersion).toBe(1)
   })
 
+  it('retains priced ledger totals and confidence after a later schedule save', async () => {
+    const fold = legacyFold()
+    const { store } = fakeLedgerStore([{ id: 'missing-log', foldVersion: FOLD_VERSION,
+      fingerprint: configFingerprint(new Set(DEFAULT_SUBSCRIPTION_PROVIDERS), undefined, {}, DEFAULT_SEARCH_CALL_ESTIMATE_CNY), fold }])
+    const stats = await aggregateUsage(fakePersistence({}), { ledger: store, resolvePeakHistory: () => ({ version: 3,
+      revisions: [{ effectiveFromMs: fold.lastActive + 1, changes: { '["direct:key","flash"]': { windows: [] } } }] }) })
+    expect(stats.total.cost).toBe(fold.total.cost)
+    expect(stats.bySession[0]?.stale).toBeUndefined()
+    expect(stats.staleLedgerSessions).toBeUndefined()
+  })
+
   it('treats current-version rows as trusted (no stale marker, no notice count)', async () => {
     const { store, saved, current } = fakeLedgerStore([{
       id: 'fresh-session',

@@ -18,6 +18,7 @@ import { convertFromCny, formatMoney, rateChannelOf, tierAt, type CostCurrency }
 
 /** 每轮费用图的一行（TurnUsageRow 的展示子集）。 */
 export interface RoundChartRow {
+  scheduleTier?: 'peak' | 'offPeak'
   sessionId: string
   turn: number
   model: string
@@ -89,7 +90,7 @@ export function RoundCostChart({ rounds, flags, currency, t }: {
           // 只对 DeepSeek 按量模型有意义——延迟档（Gemini）与平价模型的轮次
           // 不套北京窗口着色，避免暗示不存在的时间窗计费（与 rateChannelOf
           // 「峰谷提示严格跟随实际计费通道」同口径）。
-          const peak = rateChannelOf(round.model, false) === 'deepseek-metered' && tierAt(round.startedAt) === 'peak'
+          const peak = rateChannelOf(round.model, false) === 'deepseek-metered' && (round.scheduleTier ?? tierAt(round.startedAt)) === 'peak'
           return (
             <div key={`${round.sessionId}:${round.turn}`} className={clsx(css.roundsBarCol, peak ? css.roundsBarColPeak : css.roundsBarColOff)}>
               {/* 每根柱子顶部的费用数字：随柱高定位（bottom = height%），紧贴各自柱顶上方。 */}

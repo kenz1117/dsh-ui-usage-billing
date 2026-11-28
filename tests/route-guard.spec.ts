@@ -91,6 +91,7 @@ async function startHost(): Promise<void> {
     `    snapshotPath: '${join(root, 'usage-stats.json')}'`,
     `    ledgerPath: '${join(root, 'usage-ledger.json')}'`,
     `    reconcilePath: '${join(root, 'usage-reconcile.json')}'`,
+    `    peakSchedulePath: '${join(root, 'peak-schedule.json')}'`,
     '',
   ].join('\n'))
 
@@ -128,6 +129,23 @@ async function stopHost(): Promise<void> {
 const PORT = (): number => (ctx as Context & { webServer: { port: number } }).webServer.port
 
 describe('路由边界防护', () => {
+  it('persists an accepted clear while reporting a rejected key over loopback HTTP', async () => {
+    const key = JSON.stringify(['direct:relay', 'flash'])
+    await writeFile(join(root, 'peak-schedule.json'), JSON.stringify({ version: 3, revisions: [
+      { effectiveFromMs: 1, changes: { [key]: { windows: [] } } },
+    ] }))
+    const origin = `http://127.0.0.1:${PORT()}`, url = `${origin}/api/billing/peak-schedule`
+    const saved = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', origin },
+      body: JSON.stringify({ version: 3, changes: { [key]: null, malformed: {} } }) })
+    expect(saved.status).toBe(200)
+    const body = await saved.json()
+    expect(body.results).toEqual({ [key]: 'accepted', malformed: 'invalidRule' })
+    expect(body.effectiveFromMs).toBeGreaterThan(1)
+    const loaded = await (await fetch(url)).json()
+    expect(loaded.effectiveFromMs).toBe(body.effectiveFromMs)
+    expect(loaded.config.models).toEqual({})
+  })
+
   it('403：PUT /api/billing/usage-stats 被回环守卫拒绝（非 GET/POST）', async () => {
     const res = await fetch(`http://127.0.0.1:${String(PORT())}/api/billing/usage-stats`, { method: 'PUT' })
     // guardLoopback 对非 GET/POST 一律 403（405 是路由内部的 methodOk 校验，

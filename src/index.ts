@@ -51,6 +51,10 @@ import { planTypeOf, subscriptionFeeCnyOf } from './client/plan-knowledge.ts'
 import { swallowed } from './silent.ts'
 // v1.5.2 抽出：共享 loopback 守卫 + 9 条 HTTP 路由的注册块各自独立成文件，apply() 收缩为装配器。
 import { normalizeTrustedHosts } from './guard.ts'
+import { registerPeakScheduleRoute, PeakScheduleInputError } from './routes/peak-schedule.ts'
+import { eligibleScheduleModel, createScheduleModelDiscovery, type ScheduleProfile } from './peak-schedule-models.ts'
+import { openScheduleStore } from './peak-schedule-store.ts'
+import { partitionScheduleEdit, scheduleKey } from './peak-schedule.ts'
 import { registerNotifyClaimRoute } from './routes/notify-claim.ts'
 import { registerPricingRoutes } from './routes/pricing.ts'
 import { registerBalanceRoute } from './routes/balance.ts'
@@ -347,15 +351,23 @@ async function readPiAiProviders(settings: SettingsReader): Promise<Readonly<Rec
  * @returns `<route> → { baseURL? }`；命名空间不可读时返回空。
  */
 export function readPiAiProviderRoutes(settings: SettingsReader): Readonly<Record<string, { baseURL?: string }>> {
+  return Object.fromEntries(Object.entries(readScheduleProfiles(settings)).map(([id, { baseURL }]) => [id, baseURL === undefined ? {} : { baseURL }]))
+}
+
+function readScheduleProfiles(settings: SettingsReader): Record<string, ScheduleProfile> {
   try {
     const descriptors = settings.describe({ redactSecrets: true })
     const pi = descriptors.find(descriptor => descriptor.ns === 'llm-pi-ai')?.value
-    const providers = (pi as { providers?: Record<string, { baseURL?: unknown }> } | null | undefined)?.providers
-    const out: Record<string, { baseURL?: string }> = {}
+    const providers = (pi as { providers?: Record<string, { baseURL?: unknown; displayName?: unknown; models?: unknown }> } | null | undefined)?.providers
+    const out: Record<string, ScheduleProfile> = Object.create(null)
     for (const [route, entry] of Object.entries(providers ?? {})) {
       if (entry === null || typeof entry !== 'object') continue
       const baseURL = entry.baseURL
-      out[route] = typeof baseURL === 'string' && baseURL !== '' ? { baseURL } : {}
+      out[route] = {
+        ...(typeof baseURL === 'string' && baseURL !== '' ? { baseURL } : {}),
+        ...(typeof entry.displayName === 'string' ? { displayName: entry.displayName } : {}),
+        ...(Array.isArray(entry.models) ? { models: entry.models } : {}),
+      }
     }
     return out
   } catch {
@@ -763,8 +775,38 @@ export function apply(ctx: Context, config: UsageBillingConfig = {}): void {
       swallowed('minimax-plan-classify-failed', error)
     }
   }
+  const schedules = openScheduleStore(config.peakSchedulePath ?? join(dshHome, '.dsh-usage-peak-schedule.json'), eligibleScheduleModel)
+  const discoverScheduleModels = createScheduleModelDiscovery()
+  const configuredScheduleModels = async () => {
+    const llm = (ctx as { get?: (key: string) => unknown }).get?.('llm') as Parameters<typeof discoverScheduleModels>[0]
+    return discoverScheduleModels(llm, readScheduleProfiles(ctx.settings), config.routeAliases ?? {})
+  }
+  const scheduleSnapshot = (discovery: Awaited<ReturnType<typeof configuredScheduleModels>>) => {
+    const config = schedules.current()
+    const models = new Map(discovery.models.map(row => [scheduleKey(row.source, row.model), row]))
+    // Keep a saved override reachable for clearing after a route disappears.
+    for (const key of Object.keys(config.models)) {
+      if (models.has(key)) continue
+      const [source, model] = JSON.parse(key) as [string, string]
+      models.set(key, { source, model, label: `${source} / ${model}` })
+    }
+    const notices = [...schedules.notices(), ...discovery.notices]
+    const effectiveFromMs = schedules.history().revisions.at(-1)?.effectiveFromMs
+    return { config, ...(effectiveFromMs !== undefined && { effectiveFromMs }), models: [...models.values()], ...(notices.length ? { notices } : {}) }
+  }
+  registerPeakScheduleRoute(ctx, { trustedHosts, read: async () => scheduleSnapshot(await configuredScheduleModels()), save: async raw => {
+    const discovery = await configuredScheduleModels()
+    const allowed = new Set(discovery.models.map(row => scheduleKey(row.source, row.model)))
+    let batch
+    try { batch = partitionScheduleEdit(raw, (key, model) => allowed.has(key) && eligibleScheduleModel(model)) }
+    catch { throw new PeakScheduleInputError('invalidSchedule') }
+    if (Object.keys(batch.edit.changes).length) await aggregator.withPeakScheduleChange(latestEventTime => schedules.save(batch.edit, latestEventTime))
+    return { ...scheduleSnapshot(discovery), results: batch.results }
+  } })
   const replayDelayMs = readReplayDelayMs(config.replayDelayMs)
   const aggregator = createUsageAggregator(adaptSessionPersistence(ctx.sessionPersistence), {
+    resolvePeakSchedule: schedules.current,
+    resolvePeakHistory: schedules.history,
     subscriptionMatcher: subscriptionRoutes,
     // 历史路由别名：改名/删除路由的历史用量按别名归位（站点/订阅/官方判定同步生效）。
     ...(config.routeAliases === undefined ? {} : { routeAliases: config.routeAliases }),
