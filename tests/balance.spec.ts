@@ -213,7 +213,7 @@ describe('queryBalances（新版宿主形态）', () => {
 
   it.each([
     [{ status: 'failed' }, { sourceRoute: 'deepseek', walletKind: 'account', error: 'unreachable' }],
-    [null, { error: 'unconfigured' }],
+    [null, { error: 'unconfigured', accountState: 'signed-out' }],
   ])('distinguishes %j from a query failure without a resolvable API key', async (details, expected) => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const fetchSpy = vi.fn()
