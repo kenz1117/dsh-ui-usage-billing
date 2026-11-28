@@ -146,6 +146,7 @@ import { notifyAcrossInstances, notifyAllowed } from './domain/notify.ts'
 import { buildSessionDisplay } from './domain/provider-merge.ts'
 import { agentTreeStats, buildAgentTree } from './domain/agent-tree.ts'
 import { filterSessionsForViewer } from './domain/session-viewer.ts'
+import { floatingLeads, floatingStatus } from './domain/floating-model.ts'
 import { settingsSectionHidden } from './settings-search.ts'
 import { formatClock, providerCostOf, providerDot, relayKindText, RELAY_KIND_CLASS, subFamilyOf, subscriptionStatusText, subscriptionWindowLabel } from './domain/kpi.ts'
 import { loadUsageStats } from './api/usage-stats.ts'
@@ -626,7 +627,9 @@ function UsageBillingTrigger(
               </span>
             </span>
             <span className={css.popModel}>
-              <span className={css.popModelLabel}>{t('popTodayModel')}</span>
+              <span className={css.popModelLabel}>
+                {t('popTodayModel')} · {t(cardPrefs.span === 'day' ? 'cardSpanDay' : cardPrefs.span === 'week' ? 'cardSpanWeek' : 'cardSpanMonth')}
+              </span>
               {(vendorStatus.direct !== undefined || vendorStatus.sub !== undefined)
                 ? (
                   <>
@@ -4879,83 +4882,10 @@ export function UsageBilling(props: UsageBillingProps): React.ReactNode {
     notifyAcrossInstances(`model-budget:${top.model}:${top.tier}:${today}`, () => { new Notification(t('modelBudgetTitle'), { body }) })
   }, [modelBudgets, monthModelCost, modelTierAlertDays, today, actions, t])
 
-  // hover 速览「主力直联/订阅消耗」：本月按厂商聚合消耗，区分按量（直联）与订阅，
-  // 并附余额/配额状态——余额仅按量厂商有意义，配额仅订阅厂商有意义。
-  const vendorStatus = useMemo(() => {
-    const prefix = today.slice(0, 7)
-    const vendor = new Map<string, { cost: number; plan: boolean }>()
-    for (const [date, models] of Object.entries(displayStats.byDayModels ?? {})) {
-      if (!date.startsWith(prefix)) continue
-      for (const [modelKey, usage] of Object.entries(models)) {
-        if (usage.cost <= 0) continue
-        const provider = modelOf(modelKey).provider
-        const isPlan = displayStats.byModel?.[modelKey]?.plan === true
-        const cur = vendor.get(provider) ?? { cost: 0, plan: isPlan }
-        cur.cost += usage.cost
-        // 混合计费（部分订阅）视为存在按量 → 归直联桶。
-        if (!isPlan) cur.plan = false
-        vendor.set(provider, cur)
-      }
-    }
-    // 直联/订阅各取费用最高的渠道：单次遍历同时找两个最大值（稳定并列语义同 sort[0]）。
-    let directEntry: [string, { cost: number; plan: boolean }] | undefined
-    let subEntry: [string, { cost: number; plan: boolean }] | undefined
-    for (const entry of vendor) {
-      const top = entry[1].plan ? subEntry : directEntry
-      if (top === undefined || entry[1].cost > top[1].cost) {
-        if (entry[1].plan) subEntry = entry
-        else directEntry = entry
-      }
-    }
-    // 目录兜底条目（Custom/其他）不是真实渠道：用户给未收录模型配价后它可能成为
-    // 主力（issue #40 反馈），按名查余额必然「未配置」。单渠道用户把唯一配置成功
-    // 的渠道余额借过来显示（所有流量实际都走它）；多渠道时归属不明，隐藏该行
-    // 而不是显示误导性的「未配置」。
-    const balanceStatus = (name: string): { text: string; low: boolean } | undefined => {
-      const bal = balances.find(b => normalizeProvider(b.provider) === normalizeProvider(name))
-      if (bal === undefined || bal.totalBalance === undefined) {
-        // 目录兜底条目（Custom）不是真实渠道：单渠道用户把唯一配置成功的渠道余额
-        // 借过来显示（所有流量实际都走它）；多渠道时归属不明，隐藏该行而不是显示
-        // 误导性的「未配置」（issue #40 反馈）。
-        if (name === 'Custom') {
-          const configured = balances.filter(b => b.totalBalance !== undefined && b.error === undefined)
-          const only = configured[0]
-          if (only !== undefined && configured.length === 1) return balanceStatus(only.provider)
-          return undefined
-        }
-        // 无余额/异常时给出状态文案（未配置 / 密钥无效 / 查询失败），而非空。
-        const text = bal?.error === 'unauthorized'
-          ? t('balanceUnauthorized')
-          : bal?.error === 'unreachable' || bal?.error === 'invalid'
-            ? t('balanceUnreachable')
-            : t('balanceUnconfigured')
-        return { text, low: false }
-      }
-      const amount = bal.currency === 'USD' ? `$${bal.totalBalance.toFixed(2)}` : formatMoney(bal.totalBalance)
-      const rate = getRateInfo().rate
-      const cny = bal.currency === 'USD' ? bal.totalBalance * rate : bal.totalBalance
-      return { text: amount, low: cny < lowThreshold }
-    }
-    const quotaStatus = (name: string): { text: string; low: boolean } => {
-      const q = quotas.find(qq => qq.displayName === name || subscriptionVendorOf(qq.provider) === name)
-      if (q === undefined || q.windows.length === 0) {
-        return { text: t('subscriptionNoApi'), low: false }
-      }
-      const lowest = q.windows.reduce((min, window) => Math.min(min, window.remainingPercent), 100)
-      return {
-        text: lowest <= 0 ? t('subscriptionExhausted') : t('subscriptionRemaining').replace('{pct}', String(lowest)),
-        low: lowest < 20,
-      }
-    }
-    const directStatus = directEntry === undefined ? undefined : balanceStatus(directEntry[0])
-    return {
-      direct: directEntry === undefined || directStatus === undefined
-        ? undefined
-        : { name: directEntry[0], ...directStatus },
-      sub: subEntry === undefined ? undefined : { name: subEntry[0], ...quotaStatus(subEntry[0]) },
-    }
-  }, [displayStats.byDayModels, displayStats.byModel, displayStats.lowBalanceThreshold, balances, quotas, today, t])
-
+  const leads = useMemo(() => floatingLeads(displayStats, cardPrefs.span, today),
+    [displayStats, cardPrefs.span, today])
+  const vendorStatus = useMemo(() => floatingStatus(leads, balances, relayQuotas, quotas, lowThreshold, t),
+    [leads, balances, relayQuotas, quotas, lowThreshold, t])
   // hover 速览「数据卡」数值：全量累计用量（参考图风格）。
   const dash = useMemo(() => {
     const total = displayStats.total

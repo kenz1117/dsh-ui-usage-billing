@@ -19,6 +19,8 @@ import { isPriced, resolveCatalogKey, computeCostAt, modelOf, tierAt, DEFAULT_PE
 import type { ModelEntry } from './client/pricing.ts'
 import { BUILTIN_MODEL_KEY_ALIASES } from './builtin-catalog.ts'
 import { isSubscriptionProviderId } from './subscriptions.ts'
+import { siteBucketKey, siteKeyParts, type SiteRef } from './pricing-shared.ts'
+export { siteBucketKey, type SiteRef, type SiteKind } from './pricing-shared.ts'
 
 /** 会话日志偏移：宿主 0.1.2-alpha.4 前的 dsh-session/types 不导出 SessionLogOffset
  * 值，具名导入让这些宿主装载即崩（v1.4.19~v1.4.22 实测，alpha.3 真机复现）；
@@ -136,18 +138,6 @@ export interface ProviderRouteView {
   baseURL?: string
 }
 
-/** 站点归属分类：site=中转站（有 baseURL origin）；direct=直连；unknown=未知路由（配置已删）。 */
-export type SiteKind = 'site' | 'direct' | 'unknown'
-
-/** 一个 provider 路由归类后的站点引用。 */
-export interface SiteRef {
-  kind: SiteKind
-  /** 站点归一化 origin（仅 site）。 */
-  origin?: string
-  /** 原 provider 路由名。 */
-  provider: string
-}
-
 /** 由 baseURL 归一化出站点 origin（协议 + 主机 + 端口）；解析失败回退原值。 */
 export function siteOriginOf(baseURL: string): string {
   try {
@@ -189,13 +179,6 @@ export function siteRefOf(
   return { kind: 'unknown', provider }
 }
 
-/** 站点桶的稳定 key：`site:<origin>` 与 `direct:<provider>` 分开，`unknown` 单一桶。 */
-export function siteBucketKey(ref: SiteRef): string {
-  if (ref.kind === 'site') return `site:${ref.origin ?? ''}`
-  if (ref.kind === 'direct') return `direct:${ref.provider}`
-  return 'unknown'
-}
-
 /**
  * 站点桶按范围求和（usage_stats 工具的 bySite/relay 口径）：bySite 全量累计；
  * relay 只计中转站桶（`site:<origin>` 键）——`direct:*` 与 `unknown` 不计入，
@@ -210,7 +193,7 @@ export function sumSiteBuckets(
   let input = 0
   let output = 0
   for (const [bucket, usage] of Object.entries(bySite)) {
-    if (range === 'relay' && !bucket.startsWith('site:')) continue
+    if (range === 'relay' && siteKeyParts(bucket).kind !== 'site') continue
     cost += usage.cost
     calls += usage.calls
     input += usage.input
@@ -299,6 +282,8 @@ export interface ModelUsage {
   reasoning: number
   /** 该模型本次统计的所有调用是否都走订阅通道（coding/token plan）；混合通道不置位。 */
   plan?: boolean
+  /** 模型 × 日期 × 站点格混有订阅和其他调用时，记录可确认的订阅次数。 */
+  planCalls?: number
   /** 走官方渠道的调用数（DeepSeek 官方直连；其余为三方）。 */
   officialCalls: number
   /** 走官方渠道的费用（CNY）；三方费用 = cost - officialCost。 */
@@ -3080,7 +3065,9 @@ export function createUsageAggregator(persistence: UsagePersistence, options: Ag
               // 不再借模型全局口径）。旧账本行无 planSiteCalls 计数 → 保守不置位，
               // 客户端回退模型全局 plan（byModel.plan）。
               const count = planSiteCalls.get(planSiteKey(day, model, site)) ?? 0
-              return [site, count === cell.calls && cell.calls > 0 ? { ...cell, plan: true } : cell]
+              if (count === cell.calls && count > 0) return [site, { ...cell, plan: true }]
+              if (count > 0 && count < cell.calls) return [site, { ...cell, planCalls: count }]
+              return [site, cell]
             }))]))]))
 
       // 性能指标：按模型（含 P90）、按小时×模型聚合；无任何可测样本时整个 perf 字段缺失。

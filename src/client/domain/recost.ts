@@ -14,6 +14,7 @@ import {
   userOriginPriceEntryOf,
   userPriceOf,
 } from '../pricing.ts'
+import { siteKeyParts } from '../../pricing-shared.ts'
 import type { UsageStats } from './types.ts'
 
 export function recostWithUserPrices(stats: UsageStats): UsageStats {
@@ -58,8 +59,8 @@ export function recostWithUserPrices(stats: UsageStats): UsageStats {
         // 按「模型×站点」分布逐来源重算：带 origin 价宽松命中，其余回落默认价或内置。
         let siteCost = 0
         for (const [siteKey, siteCell] of Object.entries(stats.byDayModelsSite[date][key])) {
-          const origin = siteKey.startsWith('site:') ? siteKey.slice('site:'.length) : undefined
-          const sitePrice = origin !== undefined ? userPriceOf(key, origin) : undefined
+          const parts = siteKeyParts(siteKey)
+          const sitePrice = parts.kind === 'site' ? userPriceOf(key, parts.origin) : undefined
           siteCost += costFromPrice(sitePrice ?? originFallback, siteCell, siteCell.cost)
         }
         cost = siteCost

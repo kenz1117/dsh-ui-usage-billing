@@ -96,6 +96,8 @@ export type UsageBillingKey =
   | 'rechargeHint'
   | 'balanceUnconfigured'
   | 'balanceUnauthorized'
+  | 'walletLogin'
+  | 'walletPlatform'
   | 'balanceUnreachable'
   | 'uncatalogued'
   | 'estimatedPricing'
@@ -348,6 +350,12 @@ export type UsageBillingKey =
   | 'popTodayModel'
   | 'popNoConsumption'
   | 'popTitle'
+  | 'popBalanceUnavailable'
+  | 'popQuotaUnavailable'
+  | 'popSourceUnknown'
+  | 'popPartialSource'
+  | 'popMultipleSources'
+  | 'popUnknownUnit'
   | 'popDirectLead'
   | 'popSubLead'
   | 'unpricedHint'
@@ -548,6 +556,8 @@ export const zh: Record<UsageBillingKey, string> = {
   'rechargeHint': '打开该厂商官方平台的充值页',
   'balanceUnconfigured': '未配置',
   'balanceUnauthorized': '密钥无效',
+  'walletLogin': '登录钱包',
+  'walletPlatform': 'API Key 钱包',
   'balanceUnreachable': '查询失败',
   'uncatalogued': '未收录',
   'estimatedPricing': '估算价',
@@ -573,7 +583,7 @@ export const zh: Record<UsageBillingKey, string> = {
   'floatModeSubscription': '订阅卡',
   'floatMode': '展示模式',
   'floatTargets': '订阅目标',
-  'floatWindowHint': '悬浮在左下角计费卡上的用量速览；综合=当前样式，订阅卡=每次展示一张订阅额度卡（可切换）。',
+  'floatWindowHint': '综合速览按所选范围展示费用最高的按量模型和调用最多的订阅模型。订阅卡模式可逐张查看所选套餐的额度。',
   'floatPrimaryToday': '今日',
   'floatPrimaryWeek': '本周',
   'floatPrimaryMonth': '本月',
@@ -801,7 +811,13 @@ export const zh: Record<UsageBillingKey, string> = {
   'popTodayModel': '主力消耗模型余额',
   'popTitle': '用量速览',
   'popNoConsumption': '暂无消耗',
-  'popDirectLead': '直联',
+  'popBalanceUnavailable': '余额不可确认',
+  'popQuotaUnavailable': '额度不可确认',
+  'popMultipleSources': '多个通道',
+  'popSourceUnknown': '来源不可确认',
+  'popPartialSource': '部分用量来源不明',
+  'popUnknownUnit': '单位未提供',
+  'popDirectLead': '按量',
   'popSubLead': '订阅',
   'unpricedHint': '{count} 个模型未收录计价，费用已按 0 计：{models}',
   'channelVisibility': '通道可见性',
@@ -1000,6 +1016,8 @@ export const en: Record<UsageBillingKey, string> = {
   'rechargeHint': 'Open the vendor\'s official top-up page',
   'balanceUnconfigured': 'Not set',
   'balanceUnauthorized': 'Bad key',
+  'walletLogin': 'Sign-in wallet',
+  'walletPlatform': 'API key wallet',
   'balanceUnreachable': 'Unavailable',
   'uncatalogued': 'Not catalogued',
   'estimatedPricing': 'Estimated',
@@ -1025,7 +1043,7 @@ export const en: Record<UsageBillingKey, string> = {
   'floatModeSubscription': 'Subscription card',
   'floatMode': 'Display mode',
   'floatTargets': 'Targets',
-  'floatWindowHint': 'Usage summary floating on the footer card; Combined=current style, Subscription cards=one quota card at a time (switchable).',
+  'floatWindowHint': 'Combined shows the highest-cost metered model and the most-used subscription model for the selected period. Subscription cards show one selected plan’s quota at a time.',
   'floatPrimaryToday': 'Today',
   'floatPrimaryWeek': 'Week',
   'floatPrimaryMonth': 'Month',
@@ -1253,7 +1271,13 @@ export const en: Record<UsageBillingKey, string> = {
   'popTodayModel': 'Main model balance',
   'popTitle': 'Usage overview',
   'popNoConsumption': 'No usage yet',
-  'popDirectLead': 'Direct',
+  'popBalanceUnavailable': 'Balance unavailable',
+  'popQuotaUnavailable': 'Quota unavailable',
+  'popMultipleSources': 'Multiple channels',
+  'popSourceUnknown': 'Source unconfirmed',
+  'popPartialSource': 'Some usage has no known source',
+  'popUnknownUnit': 'unit unspecified',
+  'popDirectLead': 'Metered',
   'popSubLead': 'Subscription',
   'unpricedHint': '{count} models not priced; their cost counts as 0: {models}',
   'channelVisibility': 'Channel visibility',

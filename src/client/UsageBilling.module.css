@@ -776,7 +776,14 @@ body {
   line-height: 14px;
   color: var(--ds-t-3);
 }
-.popModelRow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.popModelRow {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  min-width: 0;
+}
 .popDot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
 .popDotDirect { background: var(--ds-green); }
 .popDotSub { background: var(--ds-amber); }
@@ -801,18 +808,17 @@ body {
   line-height: 16px;
   font-weight: 500;
   color: var(--ds-t-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .popModelStatus {
-  margin-left: auto;
+  grid-column: 2 / -1;
+  min-width: 0;
   font-size: 11px;
   line-height: 16px;
   font-weight: 600;
   color: var(--ds-t-1);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .popModelStatusLow { color: var(--ds-red); }
 
