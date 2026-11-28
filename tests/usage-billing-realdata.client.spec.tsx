@@ -15,7 +15,8 @@ applyBuiltinCatalog(BUILTIN_MODEL_CATALOG, BUILTIN_MODEL_KEY_ALIASES)
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ComponentProps } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { saveUserPrices } from '../src/client/usage-billing-settings.ts'
 import { bindSnapshotSelector } from './bind-snapshot-selector'
 import { UsageBilling } from '../src/client/UsageBilling.tsx'
 import { notifiedKeys } from '../src/client/domain/notify.ts'
@@ -110,6 +111,51 @@ describe('UsageBilling real-data surface', () => {
         : REAL_STATS
       return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
     }))
+  })
+
+  // One million uncached input tokens per metered call makes the custom price
+  // independently checkable. The relay's wallet and the plan's quota are not spend.
+  const origin = 'https://relay.example'
+  const direct = day(1, 1_000_000, 0, 0, 1_000_000, 3)
+  const relay = day(1, 1_000_000, 0, 0, 1_000_000, 4)
+  const plan = { ...day(2, 800_000, 0, 0, 800_000, 0), plan: true }
+  it.each([
+    { group: 'mixed-source', model: day(2, 2_000_000, 0, 0, 2_000_000, 7), sites: { 'direct:deepseek': direct, [`site:${origin}`]: relay }, expected: '¥7.00', status: t('popMultipleSources') },
+    { group: 'subscription', model: plan, sites: { 'direct:plan': plan }, expected: '¥0', status: 'Plan · 剩余 35%' },
+    { group: 'relay with a custom price', model: relay, sites: { [`site:${origin}`]: relay }, expected: '¥6.25', status: 'Relay · 42.00 (单位未提供)' },
+  ])('shows the same daily spend on hover and in the dashboard for $group', async ({ group, model, sites, expected, status }) => {
+    const today = todayStamp()
+    const previous = day(1, 1_000_000, 0, 0, 1_000_000, 20)
+    const history = '2020-01-01'
+    const stats = {
+      total: day(model.calls + 1, model.input + previous.input, 0, 0, model.cacheMiss + previous.cacheMiss, model.cost + 20),
+      byModel: { flash: model, pro: previous },
+      byDay: { [today]: model, [history]: previous },
+      byDayModels: { [today]: { flash: model }, [history]: { pro: previous } },
+      byDayModelsSite: { [today]: { flash: sites } },
+    }
+    if (group === 'relay with a custom price') saveUserPrices([{ key: 'flash', origin, input: 6.25, cacheHit: 0, output: 0 }])
+    const responses: Record<string, unknown> = {
+      'usage-stats': stats, pricing: { source: 'builtin' }, balance: { balances: [] },
+      subscriptions: { quotas: [{ provider: 'plan', displayName: 'Plan', status: 'ok', windows: [{ kind: 'weekly', usedPercent: 65, remainingPercent: 35 }] }] },
+      'relay-quotas': { quotas: [{ route: 'relay', displayName: 'Relay', origin, kind: 'sub2api', status: 'ok', balance: 42 }] },
+    }
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const endpoint = new URL(String(input), 'http://localhost').pathname.split('/').pop()!
+      return Response.json(responses[endpoint] ?? {})
+    }))
+    render(<UsageBilling {...makeProps()} />)
+    const trigger = screen.getByTestId('billing-trigger')
+    fireEvent.mouseEnter(trigger)
+    const pop = within(screen.getByTestId('billing-trigger-pop'))
+    // Wait for attributed usage (a real zero-spend subscription must not pass on the loading zero).
+    await pop.findByText(status)
+    const hoverAmount = pop.getByText(t('floatPrimaryToday')).nextElementSibling?.textContent
+    expect(hoverAmount).toBe(expected)
+    fireEvent.click(trigger)
+    const hero = within(await screen.findByTestId('billing-hero'))
+    // The dashboard appends a day-over-day delta after the amount.
+    expect(hero.getByText(t('todayCost')).nextElementSibling?.firstChild?.textContent).toBe(hoverAmount)
   })
 
   it('opens the dashboard over a realistic snapshot without throwing', async () => {
