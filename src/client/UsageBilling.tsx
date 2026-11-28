@@ -1947,7 +1947,8 @@ function BillingDashboard({
   // 现算值，而未知通道费用记 0，回退会让金额换个名目重新出现。
   const unknownChannelCalls = stats.bySite?.unknown?.calls ?? 0
   const estimatedTotal = modelRows.reduce((sum, row) => sum + row.estimated, 0)
-  const displayTotal = total.cost > 0 || unknownChannelCalls > 0 ? total.cost : estimatedTotal
+  // A matched user price can be explicitly free. Do not resurrect the catalog price.
+  const displayTotal = total.cost > 0 || unknownChannelCalls > 0 || stats.userPriceApplied ? total.cost : estimatedTotal
 
   // KPI 七卡按所选范围聚合（issue #47 反馈）：累计沿用「实际优先」口径（含搜索
   // 估值兜底）与 total 全字段；其余范围对 byDay 逐日聚合，除零时比例回 0。

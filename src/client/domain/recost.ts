@@ -96,6 +96,7 @@ export function recostWithUserPrices(stats: UsageStats): UsageStats {
   }
   return {
     ...stats,
+    userPriceApplied: repriced.size > 0,
     total: { ...stats.total, cost: totalCost },
     byDay,
     byDayModels,

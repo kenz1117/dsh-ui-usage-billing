@@ -136,6 +136,54 @@ describe('issue #125 未收录模型的可发现性', () => {
     expect((screen.getByTestId('billing-user-price-save') as HTMLButtonElement).disabled).toBe(true)
   })
 
+  it('recalculates the dashboard after saving a catalog price, including a zero-priced source estimate', async () => {
+    const cell = { calls: 1, input: 1_000_000, cacheMiss: 750_000, cacheHit: 250_000, output: 500_000, cost: 3, reasoning: 0 }
+    const total = { calls: 2, input: 2_000_000, cacheMiss: 1_500_000, cacheHit: 500_000, output: 1_000_000, cost: 6, reasoning: 0 }
+    const legacy = '2026-11-01', modern = '2026-11-02'
+    stubUsageStats(undefined, {
+      total, byModel: { flash: total }, byDay: { [legacy]: cell, [modern]: cell },
+      byDayModels: { [legacy]: { flash: cell }, [modern]: { flash: cell } },
+      byDayModelsSite: { [modern]: { flash: { 'site:https://relay.test': cell } } }, unpricedModels: [],
+      // A stale server-supplied hint must never become a client-side pricing decision.
+      sourceEstimatedModels: ['not-from-recost'],
+    })
+    render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(screen.getByTestId('billing-trigger'))
+    const hero = () => Number(screen.getByTestId('billing-hero-range-value').textContent)
+    await waitFor(() => expect(hero()).toBe(6))
+    expect(screen.queryByTestId('billing-source-estimate')).toBeNull()
+    fireEvent.click(screen.getByTestId('billing-tab-settings'))
+    const picker = await screen.findByTestId('billing-price-picker') as HTMLSelectElement
+    // Only the relay-specific option comes from observed usage; the model default is from the catalog.
+    const id = JSON.stringify(['flash', ''])
+    expect([...picker.options].filter(option => option.value === id)).toHaveLength(1)
+    fireEvent.change(picker, { target: { value: id } })
+    const setPrices = (rates: string[]) => {
+      screen.getByTestId('billing-user-price-normal').querySelectorAll('input').forEach((field, i) => {
+        fireEvent.change(field, { target: { value: rates[i] } })
+      })
+      for (const field of screen.getByTestId('billing-user-price-offpeak').querySelectorAll('input')) {
+        fireEvent.change(field, { target: { value: '' } })
+      }
+    }
+    setPrices(['8', '4', '10'])
+    fireEvent.click(screen.getByTestId('billing-user-price-save'))
+    fireEvent.click(screen.getByTestId('billing-tab-overview'))
+    // Two calls × (0.75M misses × ¥8 + 0.25M hits × ¥4 + 0.5M output × ¥10).
+    expect(hero()).toBe(24)
+    expect(screen.queryByTestId('billing-source-estimate')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('billing-tab-settings'))
+    const origin = screen.getByTestId('billing-user-price-origin') as HTMLInputElement
+    if (origin.readOnly) fireEvent.click(screen.getByRole('button', { name: t('userPriceEditIdentity') }))
+    fireEvent.change(origin, { target: { value: 'https://relay.test' } })
+    setPrices(['0', '0', '0'])
+    fireEvent.click(screen.getByTestId('billing-user-price-save'))
+    fireEvent.click(screen.getByTestId('billing-tab-overview'))
+    expect(screen.getByTestId('billing-source-estimate').textContent).toBe(`${t('sourceEstimate')} · flash`)
+    expect(hero()).toBe(0)
+  })
+
   it('shows partial discovery, ignores malformed rows, and unlocks identity only on Edit', async () => {
     stubUsageStats(() => [42, 'valid:relay'])
     render(<UsageBilling {...makeProps()} />)
