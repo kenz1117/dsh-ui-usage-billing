@@ -194,19 +194,19 @@ export async function queryDeclaredEndpoints(
   return await Promise.all(declarations.map(async (decl): Promise<ProviderBalance> => {
     const displayName = typeof decl.displayName === 'string' && decl.displayName !== '' ? decl.displayName : '已声明'
     const provider = `declared:${displayName}` as const
-    const requestPath = compileDeclaredEndpoint(decl)
-    if (requestPath === undefined) {
-      return { provider, displayName, declared: true, error: 'invalid', reason: 'path 必须单斜杠绝对路径' }
-    }
-    // 规则 1：声明 origin 只是查找键，请求必须发往某条已配置的同源 provider；找不到就不查。
     const declOrigin = normalizeDeclaredOrigin(decl.origin)
     const matched = declOrigin === undefined ? undefined : byOrigin.get(declOrigin)
+    const identity = { provider, displayName, declared: true, walletKind: 'relay', sourceRoute: matched?.route ?? provider, attributedRoutes: matched ? [matched.route] : [] } as const
+    const requestPath = compileDeclaredEndpoint(decl)
+    if (requestPath === undefined) {
+      return { ...identity, error: 'invalid', reason: 'path 必须单斜杠绝对路径' }
+    }
     if (matched === undefined) {
-      return { provider, displayName, declared: true, error: 'unconfigured', reason: '未匹配到同源 provider（需先在 llm-pi-ai 配好 baseURL）' }
+      return { ...identity, error: 'unconfigured', reason: '未匹配到同源 provider（需先在 llm-pi-ai 配好 baseURL）' }
     }
     const gateKey = `${declOrigin}${requestPath}`
     if (!declaredGate.check(gateKey)) {
-      return { provider, displayName, declared: true, error: 'unreachable' }
+      return { ...identity, error: 'unreachable' }
     }
     // 规则 4：凭据候选（显式 apiKeyEnv 在首，路由约定 ref 补后——新版宿主把路由
     // key 存进凭据 refs）。全部落空按未配置上报，不发请求。
@@ -216,12 +216,12 @@ export async function queryDeclaredEndpoints(
     ]
     const hit = await firstResolvedRef(credentialRefs, resolveRef)
     if (hit === undefined) {
-      return { provider, displayName, declared: true, error: 'unconfigured' }
+      return { ...identity, error: 'unconfigured' }
     }
     // URL 由匹配 provider 的 origin 构造，规则 2 再次校验：构造后 origin 必须一致。
     const url = new URL(requestPath, declOrigin!)
     if (url.origin !== declOrigin) {
-      return { provider, displayName, declared: true, error: 'invalid', reason: '跨源路径被拒绝' }
+      return { ...identity, error: 'invalid', reason: '跨源路径被拒绝' }
     }
     try {
       const body = await fetchDeclaredBody(url, decl.raw === true, hit.value)
@@ -236,9 +236,7 @@ export async function queryDeclaredEndpoints(
       // 全部字段（金额 + 窗口）都没解析出来：声明路径写错，得说出来而不是留一张空卡。
       const nothingResolved = total === undefined && granted === undefined && used === undefined && windows.length === 0
       return {
-        provider,
-        displayName,
-        declared: true,
+        ...identity,
         ...(total !== undefined ? { totalBalance: total } : {}),
         ...(granted !== undefined ? { grantedBalance: granted } : {}),
         ...(typeof currency === 'string' && currency !== '' ? { currency } : {}),
@@ -248,7 +246,7 @@ export async function queryDeclaredEndpoints(
       }
     } catch {
       declaredGate.fail(gateKey)
-      return { provider, displayName, declared: true, error: 'unreachable' }
+      return { ...identity, error: 'unreachable' }
     }
   }))
 }

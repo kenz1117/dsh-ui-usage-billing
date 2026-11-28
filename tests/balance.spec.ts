@@ -1,5 +1,12 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { pickTokenDanceBalanceCny, queryBalances, resolveHeaders } from '../src/balance.ts'
+
+const client = { version: '0.2.2-rc.5', locale: 'en', timezoneOffsetSeconds: 19_800 }
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 
 /** 凭据 seam 桩：KEY/TOKEN 可解析，EMPTY 为空串，其余未配置。credentialRef 是 branded 字符串。 */
 function ctxWith(entries: Record<string, string>) {
@@ -101,5 +108,128 @@ describe('queryBalances（新版宿主形态）', () => {
     const zhipu = rows.find(row => row.displayName === '智谱 AI')
     expect(zhipu).toMatchObject({ displayName: '智谱 AI', error: 'unconfigured' })
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('keeps the unconfigured state when neither wallet nor API key is available', async () => {
+    const ctx = {
+      get: () => undefined,
+      credentials: { resolve: async () => undefined },
+    } as never
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const rows = await queryBalances(ctx, { deepseek: {} })
+    const row = rows.find(row => row.provider === 'deepseek')
+    expect(row).toMatchObject({ error: 'unconfigured' })
+    expect(rows.every(row => row.sourceRoute && row.walletKind)).toBe(true)
+    expect(rows.find(row => row.walletKind === 'account')).toMatchObject({ accountState: 'no-service' })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('queries the signed-in wallet without an API key using the requesting UI metadata', async () => {
+    const getBalance = vi.fn(async () => ({
+      status: 'ready', value: [{ currency: 'CNY', balance: '18' }], bonusWallets: [],
+    }))
+    const ctx = {
+      get: (name: string) => name === 'deepseekAccount' ? { getBalance } : undefined,
+      credentials: { resolve: async () => undefined },
+    } as never
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const rows = await queryBalances(ctx, { deepseek: {} }, client)
+    expect(rows.find(row => row.walletKind === 'account')).toMatchObject({ sourceRoute: 'deepseek', totalBalance: 18, currency: 'CNY' })
+    expect(getBalance).toHaveBeenCalledExactlyOnceWith(client)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('returns a separate logged-in DeepSeek account wallet and combines matching bonuses', async () => {
+    const ctx = {
+      get: (name: string) => name === 'deepseekAccount' ? {
+        getBalance: vi.fn(async () => ({
+          status: 'ready',
+          value: [
+            { currency: 'USD', balance: 99 },
+            { currency: 'CNY', balance: '12.5' },
+            { currency: 'CNY', balance: 2.5 },
+          ],
+          bonusWallets: [{ currency: 'CNY', balance: 3 }],
+        })),
+      } : undefined,
+      credentials: { resolve: async (ref: unknown) => ref === 'DEEPSEEK_API_KEY' ? { value: 'api-key' } : undefined },
+    } as never
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ balance_infos: [{ currency: 'CNY', total_balance: 90 }] }) }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const rows = await queryBalances(ctx, { deepseek: { apiKeyEnv: 'DEEPSEEK_API_KEY' } }, client)
+    expect(rows.find(row => row.walletKind === 'account')).toMatchObject({
+      provider: 'deepseek',
+      sourceRoute: 'deepseek', attributedRoutes: ['deepseek'], otherBalances: [{ currency: 'USD', totalBalance: 99 }],
+      currency: 'CNY',
+      totalBalance: 18,
+      toppedUpBalance: 15,
+      grantedBalance: 3,
+      isAvailable: true,
+    })
+    expect(fetchSpy).toHaveBeenCalledOnce()
+    expect(rows.find(row => row.sourceRoute === 'deepseek' && row.walletKind === 'api-key')).toMatchObject({ totalBalance: 90 })
+  })
+
+  it.each([
+    [[], [{ currency: 'CNY', balance: '1.5' }], { currency: 'CNY', grantedBalance: 1.5, totalBalance: 1.5 }],
+    [[{ currency: 'USD', balance: '8' }], [{ currency: 'CNY', balance: '1.5' }], { currency: 'CNY', grantedBalance: 1.5, totalBalance: 1.5 }],
+    [[{ currency: 'USD', balance: '8' }], [], { currency: 'USD', toppedUpBalance: 8, totalBalance: 8 }],
+  ])('selects currency from cash %j and bonus %j', async (value, bonusWallets, expected) => {
+    const ctx = {
+      get: () => ({ getBalance: async () => ({ status: 'ready', value, bonusWallets }) }),
+      credentials: { resolve: async () => undefined },
+    } as never
+    const rows = await queryBalances(ctx, {}, client)
+    expect(rows.find(row => row.walletKind === 'account')).toMatchObject({ sourceRoute: 'deepseek', ...expected })
+  })
+
+  it.each([
+    ['signed out', () => ({ getBalance: async () => null }), undefined],
+    ['failed result', () => ({ getBalance: async () => ({ status: 'failed' }) }), 'host returned failed'],
+    ['malformed result', () => ({ getBalance: async () => ({ status: 'ready', value: [{ currency: 'CNY', balance: 'invalid' }] }) }), 'unusable balance response'],
+    ['get throws', () => { throw new Error('private detail') }, 'host service lookup threw'],
+    ['getBalance rejects', () => ({ getBalance: async () => { throw new Error('private detail') } }), 'balance query threw'],
+  ] as const)('keeps exact API provenance when the account path is %s', async (_name, get, warning) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const ctx = {
+      get,
+      credentials: { resolve: async (ref: unknown) => ref === 'DEEPSEEK_API_KEY' ? { value: 'api-key' } : undefined },
+    } as never
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ is_available: true, balance_infos: [{ currency: 'CNY', total_balance: 7 }] }),
+    }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const rows = await queryBalances(ctx, { deepseek: { apiKeyEnv: 'DEEPSEEK_API_KEY' } }, client)
+    expect(rows.find(row => row.provider === 'deepseek')).toMatchObject({ sourceRoute: 'deepseek', totalBalance: 7, currency: 'CNY' })
+    expect(fetchSpy).toHaveBeenCalledOnce()
+    await queryBalances(ctx, {}, client) // repeat failures log once per cause
+    if (warning === undefined) expect(warn).not.toHaveBeenCalled()
+    else expect(warn).toHaveBeenCalledExactlyOnceWith(`[usage-billing] DeepSeek sign-in wallet: ${warning}`)
+  })
+
+  it.each([
+    [{ status: 'failed' }, { sourceRoute: 'deepseek', walletKind: 'account', error: 'unreachable' }],
+    [null, { error: 'unconfigured', accountState: 'signed-out' }],
+  ])('distinguishes %j from a query failure without a resolvable API key', async (details, expected) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const ctx = {
+      get: () => ({ getBalance: async () => details }),
+      credentials: { resolve: async () => undefined },
+    } as never
+    const rows = await queryBalances(ctx, { deepseek: { apiKeyEnv: 'DEEPSEEK_API_KEY' } }, client)
+    expect(rows.find(row => row.walletKind === 'account')).toMatchObject(expected)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('keeps API failures attributed to the Platform API route', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ status: 401 })))
+    const rows = await queryBalances(ctxWith({ DEEPSEEK_API_KEY: 'api-key' }), {}, client)
+    expect(rows.find(row => row.provider === 'deepseek')).toMatchObject({ sourceRoute: 'deepseek', error: 'unauthorized' })
   })
 })

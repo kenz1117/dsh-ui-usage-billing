@@ -3762,6 +3762,12 @@ span.bandDot { cursor: default; }
   background: color-mix(in srgb, var(--ds-green) 12%, transparent);
 }
 
+.walletRows {
+  display: flex;
+  flex-direction: column;
+  min-width: 118px;
+}
+
 .providerGroupBalance {
   display: inline-flex;
   align-items: baseline;

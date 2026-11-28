@@ -10,6 +10,9 @@
  * 纯函数：输入上一基准与本次余额查询结果，输出新基准与对账事件，可独立单测。
  */
 
+import type { UsageStatsDocument } from './aggregate.ts'
+import { OFFICIAL_DEEPSEEK_ORIGIN, siteOriginOf } from './aggregate.ts'
+
 /** 对账基准快照：上次余额查询时的官方账户状态，用于反推当日消费。 */
 export interface BalanceRef {
   /** 本地日期键（YYYY-MM-DD）。 */
@@ -24,6 +27,37 @@ export interface BalanceRef {
   currency: string
   /** 打基准时刻（epoch ms）。 */
   at: number
+  source?: string
+  costAtBaseline?: number
+}
+
+/** The daily official aggregate also includes other deepseek-* routes, the official
+ * origin (possibly shared), and web search (estimated cost, separate credentials).
+ * Require complete site coverage and exclude unrelated routes before comparing. */
+export function platformSpend(doc: UsageStatsDocument, day: string, providers: Readonly<Record<string, { baseURL?: string }>>, allowDirect = true): number | undefined {
+  if (doc.staleSnapshot || doc.sessionListError !== undefined || doc.unreadableSessions) return undefined
+  const owners = Object.entries(providers).filter(([, p]) => p.baseURL !== undefined && siteOriginOf(p.baseURL) === OFFICIAL_DEEPSEEK_ORIGIN)
+  const uniqueOrigin = owners.length === 1 && owners[0]?.[0] === 'deepseek'
+  if (!allowDirect && !uniqueOrigin) return undefined
+  const daily = doc.byDay[day]
+  if (daily === undefined) return 0
+  const models = doc.byDayModelsSite?.[day]
+  if (models === undefined) return undefined
+  let coveredCalls = 0, coveredCost = 0, cost = 0
+  for (const sites of Object.values(models)) {
+    for (const [site, cell] of Object.entries(sites)) {
+      coveredCalls += cell.officialCalls
+      coveredCost += cell.officialCost
+      if (site === 'direct:deepseek' && !allowDirect) return undefined
+      if (site === `site:${OFFICIAL_DEEPSEEK_ORIGIN}` && !uniqueOrigin) return undefined
+      if (site !== 'direct:deepseek' && site !== `site:${OFFICIAL_DEEPSEEK_ORIGIN}`) continue
+      // Search is forced into direct:deepseek without a wallet identifier. Unknown
+      // price / subscription calls likewise cannot corroborate a balance delta.
+      if (cell.searchCalls || cell.officialCalls !== cell.calls || (cell.calls && cell.officialCost <= 0)) return undefined
+      cost += cell.officialCost
+    }
+  }
+  return coveredCalls === daily.officialCalls && Math.abs(coveredCost - daily.officialCost) < 1e-6 ? cost : undefined
 }
 
 /** 一次对账的结果类别。 */
@@ -88,7 +122,7 @@ function snapOf(ref: Pick<BalanceRef, 'date' | 'currency'>, balance: BalanceSnap
  * @param todayOfficialCost - 本地账本当日的官方渠道费用（CNY）。
  * @param dayKey - 本地日期键（YYYY-MM-DD）。
  * @param nowMs - 当前时刻（epoch ms）。
- * @returns 新基准与对账事件；余额不可用（无 totalBalance）时返回 `{ ref: prevRef, event: null }`。
+ * @returns 新基准与对账事件；余额不可用（无 totalBalance）时返回 `{ ref: null, event: null }`。
  */
 export function reconcileBalanceDelta(
   prevRef: BalanceRef | null,
@@ -96,18 +130,19 @@ export function reconcileBalanceDelta(
   todayOfficialCost: number,
   dayKey: string,
   nowMs: number,
+  source = 'deepseek',
 ): { ref: BalanceRef | null; event: ReconcileEvent | null } {
   const total = balance.totalBalance
   if (typeof total !== 'number' || !Number.isFinite(total)) {
-    return { ref: prevRef, event: null }
+    return { ref: null, event: null }
   }
-  const snap = snapOf({ date: dayKey, currency: prevRef?.currency ?? '' }, balance, nowMs)
+  const snap = { ...snapOf({ date: dayKey, currency: '' }, balance, nowMs), source, costAtBaseline: todayOfficialCost }
   // 新的一天（或首次/基准形状异常）：只打基准，不对账。
-  if (prevRef === null || prevRef.date !== dayKey) {
+  if (prevRef === null || prevRef.date !== dayKey || prevRef.source !== source || !Number.isFinite(prevRef.costAtBaseline)) {
     return { ref: snap, event: { kind: 'baseline' } }
   }
   // 币种变化：金额不可比，重置基准（防止不同币种误读产生虚高漂移）。
-  if (prevRef.currency !== snap.currency) {
+  if (prevRef.currency !== snap.currency || todayOfficialCost < prevRef.costAtBaseline! || snap.total > prevRef.total + 0.009) {
     return { ref: snap, event: { kind: 'structure-reset' } }
   }
   // 充值/授信只会让分项余额增加（消费只会减少）：分项变大则旧基准失效，重置不告警。
@@ -119,7 +154,7 @@ export function reconcileBalanceDelta(
   if (spent <= 0.009) {
     return { ref: prevRef, event: { kind: 'flat' } }
   }
-  const cost = num(todayOfficialCost)
+  const cost = todayOfficialCost - prevRef.costAtBaseline!
   const dev = Math.abs(spent - cost)
   const threshold = Math.max(MIN_DRIFT_ABS, DRIFT_RELATIVE * Math.max(spent, cost))
   if (dev > threshold) {

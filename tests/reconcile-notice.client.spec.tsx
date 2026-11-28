@@ -8,7 +8,8 @@ import type { ComponentProps } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { bindSnapshotSelector } from './bind-snapshot-selector'
 import { UsageBilling } from '../src/client/UsageBilling.tsx'
-import { fetchReconcile } from '../src/client/api/balance.ts'
+import { fetchBalanceDoc, fetchReconcile } from '../src/client/api/balance.ts'
+import { BALANCE_CLIENT_HEADERS, type ProviderBalance } from '../src/pricing-shared.ts'
 import { createBillingBudgetStore } from '../src/client/budget-store.ts'
 import { zh } from '../src/client/locales.ts'
 
@@ -22,7 +23,7 @@ afterEach(() => {
 const t = (key: string): string => (zh as Record<string, string>)[key] ?? key
 
 /** stub `/api/billing/usage-stats`（空文档）与 `/api/billing/balance`（给定 balances+reconcile）。 */
-function stubBalanceApi(reconcile: object | undefined): void {
+function stubBalanceApi(reconcile: object | undefined, balances: ProviderBalance[] = [], todayUsage = false): void {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input instanceof Request ? input.url : input)
     if (url.endsWith('/api/billing/usage-stats')) {
@@ -30,11 +31,12 @@ function stubBalanceApi(reconcile: object | undefined): void {
         version: 3, source: 'session-logs',
         total: { calls: 0, input: 0, output: 0, cacheHit: 0, cacheMiss: 0, cost: 0, reasoning: 0, officialCalls: 0, officialCost: 0 },
         byModel: {}, byDay: {}, byDayModels: {}, bySession: [],
+        ...(todayUsage ? { byDayModelsSite: { [new Date().toLocaleDateString('sv-SE')]: { flash: { 'direct:deepseek': { calls: 1, input: 1, output: 1, cacheHit: 0, cacheMiss: 1, cost: 2, officialCalls: 1, officialCost: 2 } } } } } : {}),
       })
       return { ok: true, status: 200, json: async () => JSON.parse(body), text: async () => body }
     }
     if (url.endsWith('/api/billing/balance')) {
-      const body = JSON.stringify({ balances: [], ...(reconcile === undefined ? {} : { reconcile }) })
+      const body = JSON.stringify({ balances, ...(reconcile === undefined ? {} : { reconcile }) })
       return { ok: true, status: 200, json: async () => JSON.parse(body), text: async () => body }
     }
     // 订阅/中转站等其它拉取：返回空，避免网络错误。
@@ -57,6 +59,30 @@ const makeProps = (): ComponentProps<typeof UsageBilling> => {
 }
 
 describe('余额差对账提示渲染', () => {
+  it('sends the host release and current document language with each balance request', async () => {
+    const lang = document.documentElement.lang
+    const offset = vi.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(-330)
+    const fetchSpy = vi.fn(async () => ({ ok: true, text: async () => '{"balances":[]}' }))
+    vi.stubGlobal('__DSH_BOOT__', { release: { version: '0.2.2-rc.5' } })
+    vi.stubGlobal('fetch', fetchSpy)
+    try {
+      document.documentElement.lang = 'en'
+      await fetchBalanceDoc()
+      document.documentElement.lang = 'zh-CN'
+      await fetchBalanceDoc()
+      for (const [call, locale] of [[1, 'en'], [2, 'zh-CN']] as const) {
+        expect(fetchSpy).toHaveBeenNthCalledWith(call, '/api/billing/balance', expect.objectContaining({ headers: {
+          [BALANCE_CLIENT_HEADERS.version]: '0.2.2-rc.5',
+          [BALANCE_CLIENT_HEADERS.locale]: locale,
+          [BALANCE_CLIENT_HEADERS.timezone]: '19800',
+        } }))
+      }
+    } finally {
+      document.documentElement.lang = lang
+      offset.mockRestore()
+    }
+  })
+
   it('fetchReconcile parses a drift notice from the balance response', async () => {
     stubBalanceApi({ kind: 'drift', spent: 12, todayOfficialCost: 2 })
     const notice = await fetchReconcile()
@@ -95,4 +121,23 @@ describe('余额差对账提示渲染', () => {
     expect(screen.queryByTestId('billing-reconcile-notice')).toBeNull()
     expect(localStorage.getItem('dsh-billing:reconcile-dismissed')).toEqual(expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/))
   })
+})
+
+it('renders two distinct wallet rows, secondary currency and account failures', async () => {
+  const identity = { provider: 'deepseek', displayName: 'DeepSeek', sourceRoute: 'deepseek' }
+  for (const account of [
+    { currency: 'CNY', totalBalance: 1.5, otherBalances: [{ currency: 'USD', totalBalance: 8 }] },
+    { error: 'invalid' as const },
+    { accountState: 'no-metadata' as const, error: 'unconfigured' as const },
+  ]) {
+    stubBalanceApi(undefined, [{ ...identity, walletKind: 'api-key', totalBalance: 42, currency: 'CNY' }, { ...identity, walletKind: 'account', ...account }], true)
+    const { container } = render(<UsageBilling {...makeProps()} />)
+    fireEvent.click(container.querySelector('button')!)
+    fireEvent.click(await screen.findByTestId('billing-tab-providers'))
+    const toggle = await screen.findByTestId('billing-provider-today-toggle')
+    if (toggle.getAttribute('aria-checked') !== 'true') fireEvent.click(toggle)
+    expect((await screen.findByText(t('walletPlatform'))).parentElement?.textContent).toContain('¥42.0')
+    expect((await screen.findByText(t('walletLogin'))).parentElement?.textContent).toContain(account.otherBalances ? 'USD 8.00' : t(account.accountState ? 'walletNoMetadata' : 'walletInvalid'))
+    cleanup()
+  }
 })

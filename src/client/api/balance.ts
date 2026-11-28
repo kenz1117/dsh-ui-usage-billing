@@ -3,7 +3,7 @@
  * 比拆成两个端点更省（余额查询本身已有熔断与重试），失败回退空值。
  */
 
-import type { BalanceResponse, ProviderBalance, ReconcileNotice } from '../../pricing-shared.ts'
+import { BALANCE_CLIENT_HEADERS, type BalanceResponse, type ProviderBalance, type ReconcileNotice } from '../../pricing-shared.ts'
 import { fetchBilling } from './http.ts'
 
 /** Path to the account-balance endpoint served by this plugin's node half. */
@@ -25,7 +25,17 @@ export interface BalanceDocSlice {
  */
 export async function fetchBalanceDoc(): Promise<BalanceDocSlice> {
   try {
-    const response = await fetchBilling(BALANCE_PATH)
+    // The host publishes its release in the boot graph and keeps <html lang>
+    // in sync with the active UI locale. Use the UI's timezone (not the node host's).
+    const boot = Reflect.get(globalThis, '__DSH_BOOT__') as { release?: { version?: unknown } } | undefined
+    const version = boot?.release?.version
+    const locale = typeof document === 'undefined' ? '' : document.documentElement.lang
+    const headers = typeof version === 'string' && version !== '' && locale !== '' ? {
+      [BALANCE_CLIENT_HEADERS.version]: version,
+      [BALANCE_CLIENT_HEADERS.locale]: locale,
+      [BALANCE_CLIENT_HEADERS.timezone]: String(-new Date().getTimezoneOffset() * 60),
+    } : undefined
+    const response = await fetchBilling(BALANCE_PATH, headers === undefined ? {} : { headers })
     if (!response.ok) return { balances: [] }
     const text = await response.text()
     const parsed = JSON.parse(text) as unknown

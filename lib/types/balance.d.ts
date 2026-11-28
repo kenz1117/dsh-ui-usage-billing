@@ -13,7 +13,8 @@
  * provider's key once and every surface reuses it.
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { CustomBalanceConfig, CustomBalanceExtract, ProviderBalance } from './pricing-shared.ts';
+import type { BalanceClientMetadata, CustomBalanceConfig, CustomBalanceExtract, ProviderBalance } from './pricing-shared.ts';
+export declare function apiBalanceSource(row: ProviderBalance): string | undefined;
 /**
  * 从 TokenDance 余额响应提取剩余余额并换算为元。导出供测试：纯函数。
  * 优先用服务端现成的 `balance.balance`（= credits - credits_used）；缺失时
@@ -30,11 +31,12 @@ export declare function pickTokenDanceBalanceCny(data: unknown): number | undefi
  * dashboard shows a stable state instead of dropping the row.
  * @param ctx - host context carrying the credentials seam.
  * @param providers - the llm-pi-ai providers dict (`<route> → { apiKeyEnv? }`).
+ * @param client - UI metadata for the optional DeepSeek sign-in wallet query.
  * @returns the balance rows (one per provider).
  */
 export declare function queryBalances(ctx: Context, providers: Readonly<Record<string, {
     apiKeyEnv?: string;
-}>>): Promise<readonly ProviderBalance[]>;
+}>>, client?: BalanceClientMetadata): Promise<readonly ProviderBalance[]>;
 /**
  * 按 extract 规则从响应 JSON 求值。导出供测试：纯函数。
  * @param rule - 提取规则（const / path / add / subtract / divide）。

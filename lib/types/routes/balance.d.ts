@@ -12,7 +12,8 @@
  * `cached()` 与 `refreshOnce()` 拿到结果。
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { ProviderBalance } from '../pricing-shared.ts';
+import type { IncomingMessage } from 'node:http';
+import { type BalanceClientMetadata, type ProviderBalance } from '../pricing-shared.ts';
 import type { ReconcileEvent } from '../reconcile.ts';
 /** 余额响应体形状（来自装配器 `balanceCache.doc`）。 */
 export interface BalanceDoc {
@@ -32,9 +33,9 @@ interface CachedBalance {
 export interface BalanceDeps {
     trustedHosts: ReadonlySet<string>;
     /** 装配器内缓存 + 时间戳（`Date.now()`）。 */
-    cached: () => CachedBalance;
+    cached: (client?: BalanceClientMetadata) => CachedBalance;
     /** in-flight 去重的刷新入口。 */
-    refreshOnce: () => Promise<void>;
+    refreshOnce: (client?: BalanceClientMetadata) => Promise<void>;
     /** 5 分钟缓存间隔（毫秒）。 */
     cacheMs: number;
     /**
@@ -48,6 +49,8 @@ export interface BalanceDeps {
      */
     responseBudgetMs: number;
 }
+/** Loopback callers can supply these advisory UI headers. */
+export declare function readClientMetadata(headers: IncomingMessage['headers']): BalanceClientMetadata | undefined;
 export declare function registerBalanceRoute(ctx: Context, deps: BalanceDeps): void;
 export {};
 //# sourceMappingURL=balance.d.ts.map

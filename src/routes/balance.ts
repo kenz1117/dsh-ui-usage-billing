@@ -14,7 +14,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { ProviderBalance } from '../pricing-shared.ts'
+import { BALANCE_CLIENT_HEADERS, type BalanceClientMetadata, type ProviderBalance } from '../pricing-shared.ts'
 import type { ReconcileEvent } from '../reconcile.ts'
 import { ANONYMOUS_ROUTE_AUTH, guardLoopback } from '../guard.ts'
 
@@ -38,9 +38,9 @@ interface CachedBalance {
 export interface BalanceDeps {
   trustedHosts: ReadonlySet<string>
   /** 装配器内缓存 + 时间戳（`Date.now()`）。 */
-  cached: () => CachedBalance
+  cached: (client?: BalanceClientMetadata) => CachedBalance
   /** in-flight 去重的刷新入口。 */
-  refreshOnce: () => Promise<void>
+  refreshOnce: (client?: BalanceClientMetadata) => Promise<void>
   /** 5 分钟缓存间隔（毫秒）。 */
   cacheMs: number
   /**
@@ -55,6 +55,19 @@ export interface BalanceDeps {
   responseBudgetMs: number
 }
 
+/** Loopback callers can supply these advisory UI headers. */
+export function readClientMetadata(headers: IncomingMessage['headers']): BalanceClientMetadata | undefined {
+  const version = headers[BALANCE_CLIENT_HEADERS.version]
+  const locale = headers[BALANCE_CLIENT_HEADERS.locale]
+  const offset = headers[BALANCE_CLIENT_HEADERS.timezone]
+  if (typeof version !== 'string' || !/^[\w.+-]{1,64}$/.test(version) ||
+      typeof locale !== 'string' || !/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8}){0,8}$/.test(locale) ||
+      typeof offset !== 'string' || !/^-?\d{1,5}$/.test(offset)) return undefined
+  const timezoneOffsetSeconds = Number(offset)
+  if (Math.abs(timezoneOffsetSeconds) > 14 * 3600) return undefined
+  return { version, locale, timezoneOffsetSeconds }
+}
+
 export function registerBalanceRoute(ctx: Context, deps: BalanceDeps): void {
   ctx.effect(
     () => ctx.webServer.register({
@@ -64,24 +77,27 @@ export function registerBalanceRoute(ctx: Context, deps: BalanceDeps): void {
       handler: async (req: IncomingMessage, res: ServerResponse) => {
         if (!guardLoopback(req, res, deps.trustedHosts)) return
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-        // 外部余额 API 低频变化：缓存 5 分钟，命中直接返回，避免每 30 秒后台轮询都打上游。
-        if (Date.now() - deps.cached().at < deps.cacheMs) {
-          res.end(JSON.stringify(deps.cached().doc))
+        const client = readClientMetadata(req.headers)
+        const cached = deps.cached(client)
+        if (Date.now() - cached.at < deps.cacheMs) {
+          res.end(JSON.stringify(cached.doc))
           return
         }
         // 刷新预算：到期立刻回上一次成功的余额（stale 标记），不把响应挂在
         // 上游查询上（issue #104：响应长期不落地会占满浏览器的同源连接池）。
         let timedOut = false
+        let failed = false
         const onFailure = (error: unknown): void => {
           // 查询失败：保留上次成功快照（从未成功则为空余额），避免每 30 秒把偶发故障刷成「未配置」。
+          failed = true
           console.warn('[usage-billing] refreshBalances failed; serving cached balances:', error)
         }
         await Promise.race([
-          deps.refreshOnce().then(() => undefined, onFailure),
+          deps.refreshOnce(client).then(() => undefined, onFailure),
           new Promise<void>(resolve => { setTimeout(() => { timedOut = true; resolve() }, deps.responseBudgetMs).unref() }),
         ])
-        const doc = deps.cached().doc
-        res.end(JSON.stringify(timedOut ? { ...doc, stale: true } : doc))
+        const doc = deps.cached(client).doc
+        res.end(JSON.stringify(timedOut || failed ? { ...doc, stale: true } : doc))
       },
     }),
     'usage-billing: balance route',
